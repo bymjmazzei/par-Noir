@@ -127,6 +127,99 @@ export function pageTileAxis(pageView: PenPageView): 'vertical' | 'horizontal' {
   return pageView === 'vertical' ? 'vertical' : 'horizontal';
 }
 
+export const PREVIEW_ZOOM_MIN = 0.25;
+export const PREVIEW_ZOOM_MAX = 4;
+
+export function clampPreviewZoom(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  const stepped = Math.round(value * 100) / 100;
+  return Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, stepped));
+}
+
+/** Scroll offset that puts the middle of the content in the middle of the view. */
+export function centeredScroll(scrollSize: number, viewSize: number): number {
+  return Math.max(0, (scrollSize - viewSize) / 2);
+}
+
+/** Frame is at least the pane, and large enough for the scaled page. */
+export function zoomFrameSize(layoutPx: number, zoom: number, viewPx: number): number {
+  return Math.max(viewPx, Math.ceil(Math.max(0, layoutPx) * clampPreviewZoom(zoom)));
+}
+
+export function PreviewZoomControl({
+  zoom,
+  onZoom
+}: {
+  zoom: number;
+  onZoom: (next: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(event: MouseEvent) {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return (
+    <div ref={rootRef} data-preview-zoom className="absolute bottom-3 right-3 z-40">
+      {open ? (
+        <div className="absolute bottom-full right-0 mb-1 flex items-center gap-1 rounded-md border border-stone-200 bg-white px-2 py-1.5 shadow-lg">
+          <button
+            type="button"
+            aria-label="Zoom out"
+            title="Zoom out"
+            className="inline-flex h-6 w-6 items-center justify-center text-stone-600"
+            onClick={() => onZoom(clampPreviewZoom(zoom - 0.1))}
+          >
+            −
+          </button>
+          <input
+            aria-label="Zoom preview"
+            title="Zoom preview"
+            type="range"
+            min={PREVIEW_ZOOM_MIN}
+            max={PREVIEW_ZOOM_MAX}
+            step={0.05}
+            value={zoom}
+            onChange={(event) => onZoom(clampPreviewZoom(Number(event.target.value)))}
+            className="h-1 w-24 cursor-pointer appearance-none bg-stone-300 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-stone-500"
+          />
+          <button
+            type="button"
+            aria-label="Zoom in"
+            title="Zoom in"
+            className="inline-flex h-6 w-6 items-center justify-center text-stone-600"
+            onClick={() => onZoom(clampPreviewZoom(zoom + 0.1))}
+          >
+            +
+          </button>
+          <span className="w-10 text-right text-[11px] tabular-nums text-stone-600">
+            {Math.round(zoom * 100)}%
+          </span>
+        </div>
+      ) : null}
+      <button
+        type="button"
+        aria-label="Workspace zoom"
+        aria-expanded={open}
+        title="Zoom"
+        className="flex h-8 w-8 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-700 shadow-sm"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+          <circle cx="7" cy="7" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.4" />
+          <path d="M10.2 10.2 13.5 13.5" stroke="currentColor" strokeWidth="1.4" />
+          <path d="M5 7h4M7 5v4" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function PageHoverPreview({
   section,
   presentation,

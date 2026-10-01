@@ -71,6 +71,9 @@ type GradeState = {
   uClarity: WebGLUniformLocation | null;
 };
 
+/** Leave the upload unflipped. The quad samples v=0 along its top edge. */
+export const GRADE_UNPACK_FLIP_Y = 0;
+
 const states = new WeakMap<HTMLCanvasElement, GradeState>();
 
 function compile(gl: WebGLRenderingContext, type: number, source: string): WebGLShader | null {
@@ -186,7 +189,8 @@ export function paintGradedFrame(
   gl.vertexAttribPointer(state.aUv, 2, gl.FLOAT, false, 16, 8);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, state.texture);
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+  // The quad already puts v=0 at the top. Flipping the upload again inverts the picture.
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, GRADE_UNPACK_FLIP_Y);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);

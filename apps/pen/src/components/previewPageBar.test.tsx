@@ -13,8 +13,12 @@ import {
   pageTileAxis,
   PageFinderTiles,
   PreviewOrientationMenu,
+  centeredScroll,
+  clampPreviewZoom,
   PreviewPageBar,
-  PreviewPageStrip
+  PreviewPageStrip,
+  PreviewZoomControl,
+  zoomFrameSize
 } from './PreviewPageBar';
 
 describe('preview page toolbar', () => {
@@ -152,6 +156,20 @@ describe('preview page toolbar', () => {
     expect(html).not.toContain('Lock view');
     expect(html).not.toContain('aria-label="Portrait"');
     expect(html).not.toContain('Scroll vertically');
+  });
+
+  it('workspace zoom stays centered on the page', () => {
+    expect(clampPreviewZoom(0)).toBe(0.25);
+    expect(clampPreviewZoom(9)).toBe(4);
+    expect(clampPreviewZoom(1.234)).toBe(1.23);
+    expect(centeredScroll(800, 400)).toBe(200);
+    expect(centeredScroll(300, 400)).toBe(0);
+    expect(zoomFrameSize(500, 2, 400)).toBe(1000);
+    expect(zoomFrameSize(200, 1, 400)).toBe(400);
+    const html = renderToStaticMarkup(<PreviewZoomControl zoom={1} onZoom={() => undefined} />);
+    expect(html).toContain('aria-label="Workspace zoom"');
+    expect(html).toContain('data-preview-zoom');
+    expect(html).not.toContain('Zoom preview');
   });
 
   it('a horizontal page strip centers in the pane and keeps its width', () => {
