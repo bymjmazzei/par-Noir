@@ -1291,6 +1291,20 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const fs = await import('fs');
       const path = await import('path');
+      const sealedPath = path.join(__dirname, '../../migrations/add_social_mailbox_sealed.sql');
+      const sealedSql = fs.readFileSync(sealedPath, 'utf-8');
+      await db.query(sealedSql);
+      console.log('✅ social_mailbox sealed migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ social_mailbox sealed migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
       const ownerUniquePath = path.join(
         __dirname,
         '../../migrations/add_mailbox_route_binding_owner_unique.sql'

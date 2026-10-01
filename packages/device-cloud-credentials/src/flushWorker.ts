@@ -251,6 +251,7 @@ export async function enqueueMailboxThroughway(opts: {
   identityId: string;
   routeKey: string;
   jobType: string;
+  callerKey: string;
   payload: Record<string, unknown>;
 }): Promise<{ created: boolean; jobId?: string }> {
   if (!isMailboxRouteKey(opts.routeKey)) {
@@ -268,6 +269,7 @@ export async function enqueueMailboxThroughway(opts: {
       pnIdentifier: opts.identityId,
       routeKey: opts.routeKey.trim(),
       jobType: opts.jobType,
+      callerKey: opts.callerKey,
       payload: opts.payload
     })
   });
@@ -282,6 +284,7 @@ export async function lookupMailboxThroughway(opts: {
   identityId: string;
   routeKey: string;
   jobType: string;
+  callerKey?: string;
   messageId?: string;
   commentId?: string;
   fileId?: string;
@@ -296,6 +299,7 @@ export async function lookupMailboxThroughway(opts: {
     routeKey: opts.routeKey.trim(),
     jobType: opts.jobType
   });
+  if (opts.callerKey) q.set('callerKey', opts.callerKey);
   if (opts.messageId) q.set('messageId', opts.messageId);
   if (opts.commentId) q.set('commentId', opts.commentId);
   if (opts.fileId) q.set('fileId', opts.fileId);

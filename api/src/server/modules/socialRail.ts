@@ -87,12 +87,9 @@ export async function enqueueSocialJob(params: SocialJobParams): Promise<boolean
     let envelope = params.envelope;
     const envelopeContext = params.envelopeContext || params.requestId;
 
-    if (params.sealed && Object.keys(params.sealed).length > 0) {
+    if (!envelope) {
       const peerKey = await publishedMlKemPublicKey(params.peerPn);
       if (!peerKey) {
-        // Dropping the job outright would be a silent dead end. Refusing loudly
-        // is the honest outcome: the peer has not published a key, so nothing
-        // can be delivered to them privately.
         safeLogger.warn('[SocialRail] Peer has no published ML-KEM key; job not enqueued', {
           jobType: params.jobType,
           peerPnHash: hashIdentifier(params.peerPn)
@@ -100,17 +97,19 @@ export async function enqueueSocialJob(params: SocialJobParams): Promise<boolean
         return false;
       }
       const { sealSocialEnvelope } = await import('@par-noir/dm-crypto');
-      envelope = await sealSocialEnvelope(peerKey, envelopeContext, params.sealed);
+      const plain = {
+        ...(params.sealed || {}),
+        ...(params.extra || {}),
+        requestId: params.requestId
+      };
+      envelope = await sealSocialEnvelope(peerKey, envelopeContext, plain);
     }
 
     await enqueueSocialMailboxJob({
       routeKey,
       jobType: params.jobType,
-      payload: {
-        requestId: params.requestId,
-        ...(envelope ? { envelope, envelopeContext } : {}),
-        ...(params.extra || {})
-      }
+      callerKey: params.requestId,
+      payload: { envelope, envelopeContext }
     });
     // Best-effort: nudge live recipients to drain mailbox (Requests/inbox listeners).
     try {

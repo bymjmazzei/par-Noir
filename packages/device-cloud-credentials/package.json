@@ -23,6 +23,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@par-noir/dm-crypto": "file:../dm-crypto",
     "@par-noir/user-owned-storage": "^0.1.0"
   },
   "devDependencies": {

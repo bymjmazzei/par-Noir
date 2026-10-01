@@ -3,11 +3,13 @@
  */
 // API unit helpers for opaque social mailbox (no DB).
 import {
+  ackMailboxJobs,
   enqueueSocialMailboxJob,
   isDeviceCloudCustodyEnabled,
   isMailboxRouteKey,
   mailboxOwnerHash,
   sanitizeMailboxPayload,
+  sealedMailboxPayload,
 } from './socialMailboxService';
 import { getDatabasePool } from '../utils/database';
 
@@ -100,7 +102,18 @@ describe('sanitizeMailboxPayload', () => {
     expect(out).toEqual({ messageId: 'm1', ciphertext: 'opaque' });
   });
 
-  it('drops nested identity keys, a pn threadId, a pn-keyed media map, and a pn requestId', async () => {
+  it('rejects a clear payload', () => {
+    expect(() =>
+      sealedMailboxPayload({
+        messageId: 'm1',
+        fromPnIdentifier: 'pn-alice',
+        envelope: { kemCiphertext: 'kem', ciphertext: 'ct' },
+        envelopeContext: 'm1',
+      })
+    ).toThrow(/sealed envelope/);
+  });
+
+  it('stores only the sealed envelope and deletes the row on ack', async () => {
     const routeKey = 'ab'.repeat(32);
     const inserted: unknown[][] = [];
     const query = jest.fn(async (sql: string, params?: unknown[]) => {
@@ -121,6 +134,9 @@ describe('sanitizeMailboxPayload', () => {
           ],
         };
       }
+      if (sql.includes('DELETE FROM social_mailbox')) {
+        return { rows: [{ id: 'job-1' }], rowCount: 1 };
+      }
       return { rows: [] };
     });
     (getDatabasePool as jest.Mock).mockReturnValue({ query });
@@ -128,36 +144,28 @@ describe('sanitizeMailboxPayload', () => {
     await enqueueSocialMailboxJob({
       routeKey,
       jobType: 'message_append',
-      recipientPn: 'pn-bob',
+      callerKey: 'm1',
       payload: {
-        messageId: 'm1',
-        fromPnIdentifier: 'pn-alice',
-        toPnIdentifier: 'pn-bob',
-        nested: { ownerPn: 'pn-alice', ciphertext: 'inner' },
-        threadId: 'pn-alice_pn-bob',
-        mediaEnvelopesByPn: {
-          'pn-alice': 'sender-ct',
-          'pn-bob': 'recipient-ct',
-        },
-        requestId: 'gmsg:m1:pn-bob',
-        connectionId: 'conn-1',
+        envelope: { kemCiphertext: 'kem', ciphertext: 'ct' },
+        envelopeContext: 'm1',
       },
     });
 
     const stored = String(inserted[0][3]);
-    expect(stored).not.toContain('pn-alice');
-    expect(stored).not.toContain('pn-bob');
+    expect(stored).not.toContain('messageId');
     expect(stored).not.toContain('pn-');
     const payload = JSON.parse(stored) as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      messageId: 'm1',
-      connectionId: 'conn-1',
-      mediaEnvelope: 'recipient-ct',
+    expect(payload).toEqual({
+      envelope: { kemCiphertext: 'kem', ciphertext: 'ct' },
+      envelopeContext: 'm1',
     });
-    expect(payload.requestId).toBeUndefined();
-    expect(payload.threadId).toBeUndefined();
-    expect(payload.mediaEnvelopesByPn).toBeUndefined();
-    expect((payload.nested as Record<string, unknown>).ownerPn).toBeUndefined();
+    expect(String(inserted[0][5])).toBe('48');
+
+    const removed = await ackMailboxJobs(routeKey, ['job-1']);
+    expect(removed).toBe(1);
+    expect(query.mock.calls.some((call) => String(call[0]).includes('DELETE FROM social_mailbox'))).toBe(
+      true
+    );
   });
 
   it('rejects a route key that is long but not 64 hex', async () => {
@@ -165,6 +173,7 @@ describe('sanitizeMailboxPayload', () => {
       enqueueSocialMailboxJob({
         routeKey: 'x'.repeat(40),
         jobType: 'message_append',
+        callerKey: 'm1',
         payload: { messageId: 'm1' },
       })
     ).rejects.toThrow(/routeKey required/);

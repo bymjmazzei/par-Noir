@@ -90,13 +90,17 @@ export async function sendConnectionRequest(
     );
   }
   const envelopeContext = `connect:${requesterPnIdentifier}:${recipientPnIdentifier}`;
+  const connectionId = `conn_${Date.now().toString(36)}`;
+  const createdAt = new Date().toISOString();
   const recipientEnvelope = await sealSocialEnvelope(
     recipientProfile.mlKemPublicKey,
     envelopeContext,
     {
       peerPnIdentifier: requesterPnIdentifier,
       peerMlKemPublicKey: mlKemPublicKey,
-      peerMailboxRouteKey: mailboxRouteKey
+      peerMailboxRouteKey: mailboxRouteKey,
+      connectionId,
+      createdAt
     }
   );
 
@@ -105,13 +109,12 @@ export async function sendConnectionRequest(
     const { sessionDriveFor } = await import('./sessionDrive');
     const drive = await sessionDriveFor(requesterPnIdentifier);
     const sheetId = drive.index.sheetIds.connections;
-    const connectionId = `conn_${Date.now().toString(36)}`;
     if (sheetId) {
       await upsertDeviceConnection(drive.accessToken, sheetId, {
         connectionId,
         userPnIdentifier: recipientPnIdentifier,
         status: 'pending_sent',
-        createdAt: new Date().toISOString(),
+        createdAt,
         peerMailboxRouteKey: mailboxRouteKey,
       });
     }

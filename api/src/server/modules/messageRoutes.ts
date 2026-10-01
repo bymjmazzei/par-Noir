@@ -133,8 +133,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
           isDeviceCloudCustodyEnabled,
           enqueueSocialMailboxJob,
           getMailboxRouteKeyForOwner,
-          isMailboxRouteKey,
-          sanitizeMailboxPayload
+          isMailboxRouteKey
         } = await import('./socialMailboxService');
 
         // Throughway fan-out only. Sender outbox (client/cloud) is the durable commit.
@@ -171,8 +170,23 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             new Date().toISOString();
           const connectionId = connectionIdFromBody || `conn_pending_${messageId}`;
 
-          // Durable throughway payload: ciphertext + connectionId. No clear from/to pair.
-          const messagePayload = sanitizeMailboxPayload({
+          const { sealSocialEnvelope } = await import('@par-noir/dm-crypto');
+          const db = (await import('../utils/database')).getDatabasePool();
+          const keyRow = await db.query(
+            `SELECT ml_kem_public_key FROM user_profiles WHERE pn_identifier = $1`,
+            [toPnIdentifier]
+          );
+          const peerKey = keyRow.rows[0]?.ml_kem_public_key;
+          if (typeof peerKey !== 'string' || !peerKey) {
+            return res.status(409).json({
+              error: 'peer_key_missing',
+              message: 'Recipient has not published a messaging key.'
+            });
+          }
+          const channelClientId = normalizeChannelClientIdSync(
+            typeof req.body?.channelClientId === 'string' ? req.body.channelClientId : undefined
+          );
+          const messagePlain = {
             messageId,
             encryptedContent,
             cryptoVersion: 2,
@@ -186,32 +200,30 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
                 ? mediaEnvelopesByPn
                 : undefined,
             connectionId,
-            channelClientId: normalizeChannelClientIdSync(
-              typeof req.body?.channelClientId === 'string' ? req.body.channelClientId : undefined
-            ),
+            channelClientId,
             isConnectionRequest: !!isConnectionRequest,
             role: 'recipient'
-          }, { recipientPn: toPnIdentifier });
-
+          };
+          const messageEnvelope = await sealSocialEnvelope(peerKey, messageId, messagePlain);
           await enqueueSocialMailboxJob({
             routeKey,
             jobType: 'message_append',
-            recipientPn: toPnIdentifier,
-            payload: messagePayload
+            callerKey: messageId,
+            payload: { envelope: messageEnvelope, envelopeContext: messageId }
           });
           if (mediaFileId) {
+            const attachmentEnvelope = await sealSocialEnvelope(peerKey, messageId, {
+              messageId,
+              mediaFileId,
+              mediaMimeType,
+              mediaBackend,
+              connectionId
+            });
             await enqueueSocialMailboxJob({
               routeKey,
               jobType: 'message_attachment',
-              recipientPn: toPnIdentifier,
-              payload: sanitizeMailboxPayload({
-                messageId,
-                mediaFileId,
-                mediaMimeType,
-                mediaBackend,
-                mediaEnvelopesByPn,
-                connectionId
-              }, { recipientPn: toPnIdentifier })
+              callerKey: messageId,
+              payload: { envelope: attachmentEnvelope, envelopeContext: messageId }
             });
           }
           // Notifications UI uses /api/notifications Sheets + push/new_message realtime —

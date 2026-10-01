@@ -541,6 +541,26 @@ export class StorageCredentialsService {
     return this.upsertCredentials(identityId, merged, existing?.cid ?? undefined);
   }
 
+  /**
+   * Rewrite rows that still contain provider secrets. New writes already strip;
+   * this pass replaces the ciphertext the server key can still open.
+   */
+  async rewriteCloudSecretsAtRest(): Promise<number> {
+    const db = getDatabasePool();
+    const listed = await db.query(`SELECT identity_id FROM storage_credentials`);
+    let rewritten = 0;
+    for (const row of listed.rows) {
+      const identityId = String(row.identity_id || '');
+      if (!identityId) continue;
+      const existing = await this.getCredentials(identityId);
+      if (!existing?.credentials || !credentialsContainCloudSecrets(existing.credentials)) continue;
+      const stripped = this.stripCloudSecrets(existing.credentials as Record<string, unknown>);
+      await this.upsertCredentials(identityId, stripped, existing.cid ?? undefined);
+      rewritten += 1;
+    }
+    return rewritten;
+  }
+
   async purgeCloudSecrets(identityId: string): Promise<StoredCredentialsRecord | null> {
     const existing = await this.getCredentials(identityId);
     if (!existing?.credentials) return null;

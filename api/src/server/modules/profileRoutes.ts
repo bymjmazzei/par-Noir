@@ -172,6 +172,8 @@ export function setupProfileRoutes(app: express.Application, _deps: ProfileRoute
           ON CONFLICT (pn_identifier)
           DO UPDATE SET ml_kem_public_key = EXCLUDED.ml_kem_public_key, updated_at = NOW()
         `, [pnIdentifier, mlKemPublicKey]);
+        const { rememberMailboxRecipientKey } = await import('./socialMailboxService');
+        await rememberMailboxRecipientKey(pnIdentifier);
         return res.json({ success: true });
       } catch (error: any) {
         console.error('Error updating ML-KEM public key:', error);

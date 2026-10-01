@@ -4,6 +4,14 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('@par-noir/dm-crypto', () => ({
+  sealSocialEnvelope: async (_key: string, context: string, payload: Record<string, unknown>) => ({
+    kemCiphertext: 'kem',
+    ciphertext: `sealed:${context}:${Object.keys(payload).join(',')}`
+  })
+}));
+
 import { promoteOutboxRecord } from './promoteOutbox.js';
 import { setSessionDriveIndex } from './sessionMemory.js';
 import type { OutboxRecord } from './outbox.js';
@@ -59,6 +67,9 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
       if (String(url).includes('/api/mailbox/lookup')) {
         return new Response(JSON.stringify({ found: false, pending: false }), { status: 200 });
       }
+      if (String(url).includes('/api/mailbox/recipient-key')) {
+        return new Response(JSON.stringify({ mlKemPublicKey: 'peer-key' }), { status: 200 });
+      }
       if (String(url).includes('/api/mailbox/enqueue')) {
         return new Response(JSON.stringify({ created: true }), { status: 200 });
       }
@@ -111,6 +122,17 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
     expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-from-device');
     const applyHeaders = applyCalls[0]![1] as RequestInit;
     expect((applyHeaders.headers as Record<string, string>)['X-PN-Cloud-Access-Token']).toBeUndefined();
+    const enqueueCalls = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/mailbox/enqueue')
+    );
+    expect(enqueueCalls.length).toBe(1);
+    const enqueued = JSON.parse(String((enqueueCalls[0]![1] as RequestInit).body));
+    expect(enqueued.payload).toEqual({
+      envelope: { kemCiphertext: 'kem', ciphertext: expect.stringContaining('sealed:msg_1') },
+      envelopeContext: 'msg_1'
+    });
+    expect(enqueued.payload.messageId).toBeUndefined();
+    expect(enqueued.payload.encryptedContent).toBeUndefined();
     expect(upsertSpy).toHaveBeenCalled();
     const lastUpsert = upsertSpy.mock.calls.at(-1)?.[2] as OutboxRecord;
     expect(lastUpsert.status).toBe('materialized');

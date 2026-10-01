@@ -8,6 +8,7 @@ import { getDeviceAccessMode } from '@par-noir/device-auth';
 import {
   gateFirstPartyOwnerRoute,
   assertDeviceCapability,
+  requireFirstPartyOAuthClient,
   getBearerPnIdentifier,
   normalizePnIdentifier,
   DEVICE_CAPABILITIES
@@ -16,6 +17,7 @@ import {
   ackMailboxJobs,
   enqueueSocialMailboxJob,
   getMailboxRouteKeyForOwner,
+  getRecipientMlKemPublicKey,
   isDeviceCloudCustodyEnabled,
   isMailboxRouteKey,
   listPendingMailboxJobs,
@@ -262,9 +264,14 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
         return res.status(400).json({ error: 'payload object required' });
       }
 
+      const callerKey = typeof req.body?.callerKey === 'string' ? req.body.callerKey.trim() : '';
+      if (!callerKey) {
+        return res.status(400).json({ error: 'callerKey required' });
+      }
       const job = await enqueueSocialMailboxJob({
         routeKey,
         jobType,
+        callerKey,
         payload: payload as Record<string, unknown>
       });
       return res.json({
@@ -279,6 +286,9 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
         }
       });
     } catch (error: unknown) {
+      if (error instanceof Error && /sealed envelope|envelopeContext|callerKey/.test(error.message)) {
+        return res.status(400).json({ error: error.message });
+      }
       safeLogger.error('mailbox_enqueue_failed', {
         actor: hashIdentifier(
           String((req.body || {}).pnIdentifier || getBearerTokenPayload(req)?.pnIdentifier || '')
@@ -307,6 +317,9 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
         typeof req.query.commentId === 'string' ? req.query.commentId : undefined;
       const requestId =
         typeof req.query.requestId === 'string' ? req.query.requestId : undefined;
+      const callerKey =
+        typeof req.query.callerKey === 'string' ? req.query.callerKey : undefined;
+      const fileId = typeof req.query.fileId === 'string' ? req.query.fileId : undefined;
 
       if (!pnIdentifier) {
         return res.status(400).json({ error: 'pnIdentifier required' });
@@ -331,9 +344,11 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       const job = await lookupMailboxJob({
         routeKey,
         jobType,
+        callerKey,
         messageId,
         commentId,
-        requestId
+        requestId,
+        fileId
       });
       return res.json({
         success: true,
@@ -355,6 +370,43 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       });
       return res.status(500).json({
         error: 'Failed to lookup mailbox job',
+        message: safeClientErrorMessage(error, nodeEnv === 'production')
+      });
+    }
+  });
+
+  /** Published ML-KEM key for a route, so a sender can seal without a clear pn on the row. */
+  app.get('/api/mailbox/recipient-key', async (req: Request, res: Response) => {
+    try {
+      const tokenPayload = getBearerTokenPayload(req);
+      const pnIdentifier =
+        (typeof req.query.pnIdentifier === 'string' && req.query.pnIdentifier) ||
+        tokenPayload?.pnIdentifier;
+      const routeKey = resolveRouteKey(req.query.routeKey);
+      if (!pnIdentifier || !routeKey) {
+        return res.status(400).json({ error: 'pnIdentifier and routeKey required' });
+      }
+      if (!requireFirstPartyOAuthClient(req, res)) return;
+      const bearer = getBearerPnIdentifier(req);
+      if (!bearer || bearer !== normalizePnIdentifier(pnIdentifier)) {
+        return res.status(403).json({ error: 'forbidden' });
+      }
+      const messagesGate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.messagesSend);
+      const socialGate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.socialWrite);
+      if (!messagesGate.ok && !socialGate.ok) {
+        return res.status(403).json({ error: 'capability_not_allowed' });
+      }
+      const mlKemPublicKey = await getRecipientMlKemPublicKey(routeKey);
+      if (!mlKemPublicKey) {
+        return res.status(404).json({ error: 'recipient_key_missing' });
+      }
+      return res.json({ mlKemPublicKey });
+    } catch (error: unknown) {
+      safeLogger.error('mailbox_recipient_key_failed', {
+        err: error instanceof Error ? error.message : 'error'
+      });
+      return res.status(500).json({
+        error: 'Failed to read recipient key',
         message: safeClientErrorMessage(error, nodeEnv === 'production')
       });
     }

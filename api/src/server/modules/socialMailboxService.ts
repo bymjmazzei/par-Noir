@@ -49,7 +49,7 @@ export interface SocialMailboxJob {
   ackedAt: string | null;
 }
 
-const DEFAULT_TTL_DAYS = parseInt(process.env.SOCIAL_MAILBOX_TTL_DAYS || '30', 10) || 30;
+const DEFAULT_TTL_HOURS = parseInt(process.env.SOCIAL_MAILBOX_TTL_HOURS || '48', 10) || 48;
 
 /** Fields that must not persist in durable throughway payload (clear graph). */
 const STRIP_PAYLOAD_KEYS = new Set([
@@ -122,6 +122,7 @@ export async function registerMailboxRoute(
   const ownerHash = mailboxOwnerHash(identityId);
   const existing = await getMailboxRouteKeyForOwner(identityId);
   if (existing) {
+    await rememberMailboxRecipientKey(identityId);
     return { ok: true, routeKey: existing, adopted: existing !== key };
   }
 
@@ -135,6 +136,7 @@ export async function registerMailboxRoute(
       [key, ownerHash]
     );
     if (result.rowCount && result.rowCount > 0) {
+      await rememberMailboxRecipientKey(identityId);
       return { ok: true, routeKey: key, adopted: false };
     }
   } catch (err: unknown) {
@@ -148,9 +150,35 @@ export async function registerMailboxRoute(
 
   const ownerOfKey = await getMailboxRouteOwnerHash(key);
   if (ownerOfKey === ownerHash) {
+    await rememberMailboxRecipientKey(identityId);
     return { ok: true, routeKey: key, adopted: false };
   }
   return { ok: false, reason: 'route_already_claimed' };
+}
+
+/** Copy the owner's published ML-KEM key onto the route binding so senders can seal. */
+export async function rememberMailboxRecipientKey(identityId: string): Promise<void> {
+  const db = getDatabasePool();
+  const key = await db.query(
+    `SELECT ml_kem_public_key FROM user_profiles WHERE pn_identifier = $1`,
+    [identityId]
+  );
+  const publicKey = key.rows[0]?.ml_kem_public_key;
+  if (typeof publicKey !== 'string' || !publicKey) return;
+  await db.query(
+    `UPDATE mailbox_route_binding SET ml_kem_public_key = $2 WHERE owner_hash = $1`,
+    [mailboxOwnerHash(identityId), publicKey]
+  );
+}
+
+export async function getRecipientMlKemPublicKey(routeKey: string): Promise<string | null> {
+  const db = getDatabasePool();
+  const result = await db.query(
+    `SELECT ml_kem_public_key FROM mailbox_route_binding WHERE route_key = $1`,
+    [String(routeKey || '').trim()]
+  );
+  const value = result.rows[0]?.ml_kem_public_key;
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 export async function getMailboxRouteOwnerHash(routeKey: string): Promise<string | null> {
@@ -187,6 +215,43 @@ export async function ownsMailboxRoute(
   if (!key) return false;
   const ownerHash = await getMailboxRouteOwnerHash(key);
   return ownerHash !== null && ownerHash === mailboxOwnerHash(identityId);
+}
+
+export function mailboxIdempotencyKey(
+  routeKey: string,
+  jobType: string,
+  callerKey: string
+): string {
+  return createHash('sha256')
+    .update(`${routeKey}\0${jobType}\0${callerKey}`, 'utf8')
+    .digest('hex');
+}
+
+/** Durable row body: the sealed envelope only. Clear fields are rejected. */
+export function sealedMailboxPayload(payload: Record<string, unknown>): {
+  envelope: { kemCiphertext: string; ciphertext: string };
+  envelopeContext: string;
+} {
+  const keys = Object.keys(payload);
+  if (keys.some((key) => key !== 'envelope' && key !== 'envelopeContext')) {
+    throw new Error('mailbox payload must be a sealed envelope');
+  }
+  const envelope = payload.envelope;
+  const envelopeContext = payload.envelopeContext;
+  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
+    throw new Error('sealed envelope required');
+  }
+  const body = envelope as Record<string, unknown>;
+  if (typeof body.kemCiphertext !== 'string' || typeof body.ciphertext !== 'string') {
+    throw new Error('sealed envelope required');
+  }
+  if (typeof envelopeContext !== 'string' || !envelopeContext.trim()) {
+    throw new Error('envelopeContext required');
+  }
+  return {
+    envelope: { kemCiphertext: body.kemCiphertext, ciphertext: body.ciphertext },
+    envelopeContext: envelopeContext.trim(),
+  };
 }
 
 export function sanitizeMailboxPayload(
@@ -243,54 +308,37 @@ export function mailboxRequestId(parts: readonly string[]): string {
 }
 
 /**
- * Without a stable key a job re-enqueues on every reconcile. messageId only
- * exists on DM traffic, so social jobs carry a deterministic requestId
- * (the connectionId, follow pair, or group message id).
- */
-function idempotencyMid(payload: Record<string, unknown>): string {
-  return (
-    (typeof payload.messageId === 'string' && payload.messageId) ||
-    (typeof payload.commentId === 'string' && payload.commentId) ||
-    (typeof payload.requestId === 'string' && payload.requestId) ||
-    randomUUID()
-  );
-}
-
-/**
  * Idempotent enqueue: same (routeKey, jobType, messageId|…) returns existing pending row.
  */
 export async function enqueueSocialMailboxJob(params: {
   routeKey: string;
   jobType: SocialMailboxJobType;
+  /** Clear caller id used only to hash idempotency. Never stored. */
+  callerKey: string;
   payload: Record<string, unknown>;
-  ttlDays?: number;
-  /** Used only to pick that recipient's media ciphertext. Never written. */
-  recipientPn?: string;
+  ttlHours?: number;
 }): Promise<SocialMailboxJob & { created: boolean }> {
   const routeKey = String(params.routeKey || '').trim();
   if (!isMailboxRouteKey(routeKey)) {
     throw new Error('routeKey required (opaque mailbox route)');
   }
+  const callerKey = String(params.callerKey || '').trim();
+  if (!callerKey) throw new Error('callerKey required');
+  const payload = sealedMailboxPayload(params.payload);
+  const idempotencyKey = mailboxIdempotencyKey(routeKey, params.jobType, callerKey);
   const db = getDatabasePool();
-  const ttl = params.ttlDays ?? DEFAULT_TTL_DAYS;
-  const payload = sanitizeMailboxPayload(params.payload, { recipientPn: params.recipientPn });
-  const mid = idempotencyMid(payload);
+  const ttlHours = params.ttlHours ?? DEFAULT_TTL_HOURS;
 
   const existing = await db.query(
     `SELECT id, route_key, job_type, payload, created_at, expires_at, acked_at
      FROM social_mailbox
      WHERE route_key = $1
        AND job_type = $2
-       AND acked_at IS NULL
+       AND idempotency_key = $3
        AND expires_at > NOW()
-       AND (
-         payload->>'messageId' = $3
-         OR payload->>'commentId' = $3
-         OR payload->>'requestId' = $3
-       )
      ORDER BY created_at DESC
      LIMIT 1`,
-    [routeKey, params.jobType, mid]
+    [routeKey, params.jobType, idempotencyKey]
   );
   if (existing.rows[0]) {
     return { ...mapRow(existing.rows[0]), created: false };
@@ -298,10 +346,10 @@ export async function enqueueSocialMailboxJob(params: {
 
   const id = randomUUID();
   const result = await db.query(
-    `INSERT INTO social_mailbox (id, route_key, job_type, payload, expires_at)
-     VALUES ($1, $2, $3, $4::jsonb, NOW() + ($5::text || ' days')::interval)
+    `INSERT INTO social_mailbox (id, route_key, job_type, payload, idempotency_key, expires_at)
+     VALUES ($1, $2, $3, $4::jsonb, $5, NOW() + ($6::text || ' hours')::interval)
      RETURNING id, route_key, job_type, payload, created_at, expires_at, acked_at`,
-    [id, routeKey, params.jobType, JSON.stringify(payload), String(ttl)]
+    [id, routeKey, params.jobType, JSON.stringify(payload), idempotencyKey, String(ttlHours)]
   );
   return { ...mapRow(result.rows[0]), created: true };
 }
@@ -309,31 +357,31 @@ export async function enqueueSocialMailboxJob(params: {
 export async function lookupMailboxJob(params: {
   routeKey: string;
   jobType: SocialMailboxJobType;
+  callerKey?: string;
   messageId?: string;
   commentId?: string;
   requestId?: string;
+  fileId?: string;
 }): Promise<SocialMailboxJob | null> {
+  const callerKey =
+    params.callerKey ||
+    params.messageId ||
+    params.commentId ||
+    params.requestId ||
+    params.fileId ||
+    '';
+  if (!callerKey) return null;
   const db = getDatabasePool();
   const result = await db.query(
     `SELECT id, route_key, job_type, payload, created_at, expires_at, acked_at
      FROM social_mailbox
      WHERE route_key = $1
        AND job_type = $2
+       AND idempotency_key = $3
        AND expires_at > NOW()
-       AND (
-         ($3::text IS NOT NULL AND payload->>'messageId' = $3)
-         OR ($4::text IS NOT NULL AND payload->>'commentId' = $4)
-         OR ($5::text IS NOT NULL AND payload->>'requestId' = $5)
-       )
      ORDER BY created_at DESC
      LIMIT 1`,
-    [
-      params.routeKey.trim(),
-      params.jobType,
-      params.messageId ?? null,
-      params.commentId ?? null,
-      params.requestId ?? null
-    ]
+    [params.routeKey.trim(), params.jobType, mailboxIdempotencyKey(params.routeKey.trim(), params.jobType, callerKey)]
   );
   if (!result.rows[0]) return null;
   return mapRow(result.rows[0]);
@@ -399,11 +447,9 @@ export async function ackMailboxJobs(
   if (jobTypes && jobTypes.length === 0) return 0;
   const db = getDatabasePool();
   const result = await db.query(
-    `UPDATE social_mailbox
-     SET acked_at = NOW()
+    `DELETE FROM social_mailbox
      WHERE route_key = $1
        AND id = ANY($2::uuid[])
-       AND acked_at IS NULL
        AND ($3::text[] IS NULL OR job_type = ANY($3::text[]))
      RETURNING id`,
     [routeKey.trim(), jobIds, jobTypes ? [...jobTypes] : null]
@@ -416,7 +462,23 @@ export async function purgeExpiredMailboxJobs(): Promise<number> {
   const result = await db.query(
     `DELETE FROM social_mailbox
      WHERE expires_at < NOW()
-        OR (acked_at IS NOT NULL AND acked_at < NOW() - INTERVAL '7 days')
+     RETURNING id`
+  );
+  return result.rowCount ?? 0;
+}
+
+/** Drop rows that are not a sealed envelope. Senders rebuild those from their outbox. */
+export async function wipeSocialMailbox(): Promise<number> {
+  const db = getDatabasePool();
+  const result = await db.query(
+    `DELETE FROM social_mailbox
+     WHERE payload->'envelope'->>'kemCiphertext' IS NULL
+        OR payload->'envelope'->>'ciphertext' IS NULL
+        OR COALESCE(payload->>'envelopeContext', '') = ''
+        OR EXISTS (
+          SELECT 1 FROM jsonb_object_keys(payload) AS key
+          WHERE key NOT IN ('envelope', 'envelopeContext')
+        )
      RETURNING id`
   );
   return result.rowCount ?? 0;

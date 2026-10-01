@@ -19,6 +19,7 @@ import { omitCloudAccessHeader } from './cloudVault.js';
 import { appendDeviceCloudRow } from './deviceCloudRow.js';
 import { appendDeviceMessage } from './deviceSocial.js';
 import { layoutSheetId } from './layoutSheet.js';
+import { sealSocialEnvelope } from '@par-noir/dm-crypto';
 
 export interface PromoteOutboxOptions {
   apiBaseUrl: string;
@@ -147,6 +148,23 @@ async function postOwnSheetApply(
   }
 }
 
+async function recipientPublicKey(
+  opts: PromoteOutboxOptions,
+  routeKey: string
+): Promise<string> {
+  const base = opts.apiBaseUrl.replace(/\/$/, '');
+  const q = new URLSearchParams({ pnIdentifier: opts.identityId, routeKey });
+  const res = await fetch(`${base}/api/mailbox/recipient-key?${q}`, {
+    headers: { Authorization: `Bearer ${opts.authToken}`, Accept: 'application/json' }
+  });
+  if (!res.ok) {
+    throw new Error(`recipient key missing for mailbox fanout (${res.status})`);
+  }
+  const body = (await res.json()) as { mlKemPublicKey?: string };
+  if (!body.mlKemPublicKey) throw new Error('recipient key missing for mailbox fanout');
+  return body.mlKemPublicKey;
+}
+
 async function ensureFanout(opts: PromoteOutboxOptions, record: OutboxRecord): Promise<void> {
   for (const target of record.fanout) {
     const routeKey = target.routeKey;
@@ -163,12 +181,14 @@ async function ensureFanout(opts: PromoteOutboxOptions, record: OutboxRecord): P
       typeof record.payload.commentId === 'string' ? record.payload.commentId : undefined;
     const fileId =
       typeof record.payload.fileId === 'string' ? record.payload.fileId : undefined;
+    const callerKey = messageId || commentId || requestId || fileId || record.outboxId;
     const lookup = await lookupMailboxThroughway({
       apiBaseUrl: opts.apiBaseUrl,
       authToken: opts.authToken,
       identityId: opts.identityId,
       routeKey,
       jobType: target.jobType,
+      callerKey,
       messageId,
       commentId,
       fileId,
@@ -189,14 +209,20 @@ async function ensureFanout(opts: PromoteOutboxOptions, record: OutboxRecord): P
               commentId: record.payload.commentId
             }
           : { ...record.payload };
-
+    const peerKey = await recipientPublicKey(opts, routeKey);
+    const envelope = await sealSocialEnvelope(
+      peerKey,
+      callerKey,
+      stripGraph(basePayload as Record<string, unknown>)
+    );
     await enqueueMailboxThroughway({
       apiBaseUrl: opts.apiBaseUrl,
       authToken: opts.authToken,
       identityId: opts.identityId,
       routeKey,
       jobType: target.jobType,
-      payload: stripGraph(basePayload as Record<string, unknown>)
+      callerKey,
+      payload: { envelope, envelopeContext: callerKey }
     });
   }
 }

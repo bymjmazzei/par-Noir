@@ -1057,6 +1057,23 @@ class ProductionServer {
       // SCALABILITY: Initialize Redis cache
       const { initializeCache } = await import('./server/utils/cache');
       await initializeCache();
+      const { wipeSocialMailbox, purgeExpiredMailboxJobs } = await import(
+        './server/modules/socialMailboxService'
+      );
+      const removed = await wipeSocialMailbox();
+      if (removed > 0) {
+        console.log(`[mailbox] removed ${removed} clear throughway rows`);
+      }
+      setInterval(() => {
+        purgeExpiredMailboxJobs().catch((e: unknown) =>
+          console.error('[mailbox] purge failed:', e)
+        );
+      }, 60 * 60 * 1000);
+      const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+      const rewritten = await storageCredentialsService.rewriteCloudSecretsAtRest();
+      if (rewritten > 0) {
+        console.log(`[StorageCredentials] rewrote ${rewritten} rows that still held cloud secrets`);
+      }
     } catch (error) {
       console.error('⚠️ Failed to initialize database:', error);
       // Continue anyway - database might not be configured yet

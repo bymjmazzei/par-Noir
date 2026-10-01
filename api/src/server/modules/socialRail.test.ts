@@ -63,18 +63,19 @@ describe('social rail sealing', () => {
     expect(ok).toBe(true);
     expect(enqueueSocialMailboxJob).toHaveBeenCalledTimes(1);
 
-    const { payload, routeKey } = enqueueSocialMailboxJob.mock.calls[0][0];
+    const { payload, routeKey, callerKey } = enqueueSocialMailboxJob.mock.calls[0][0];
     expect(routeKey).toBe(BOB_ROUTE);
-
-    // The sender's pn must not appear anywhere in what gets persisted.
+    expect(callerKey).toBe('delete:conn-1');
+    expect(Object.keys(payload).sort()).toEqual(['envelope', 'envelopeContext']);
     expect(JSON.stringify(payload)).not.toContain(SENDER);
 
-    const opened = await openSocialEnvelope<{ peerPnIdentifier: string }>(
+    const opened = await openSocialEnvelope<{ peerPnIdentifier: string; connectionId: string }>(
       payload.envelope,
       keys.secretKey,
       payload.envelopeContext
     );
     expect(opened.peerPnIdentifier).toBe(SENDER);
+    expect(opened.connectionId).toBe('conn-1');
   });
 
   it('refuses to enqueue when peer has no claimed mailbox route', async () => {
