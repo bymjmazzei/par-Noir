@@ -24,6 +24,7 @@ import {
   type PenSectionContent,
   type PenWidgetElement
 } from '@par-noir/pen-protocol';
+import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from './PageCanvas';
 import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
 import { SectionTimeline } from './SectionTimeline';
@@ -125,7 +126,9 @@ export function WidgetEditorPanel({
   accessToken,
   pnIdentifier,
   excludeDocId,
-  pageLayout
+  pageLayout,
+  docId,
+  session
 }: {
   layer: PenPageLayer | null;
   section: PenSectionContent;
@@ -140,6 +143,8 @@ export function WidgetEditorPanel({
   pnIdentifier?: string;
   excludeDocId?: string;
   pageLayout?: PenPageLayout;
+  docId?: string;
+  session?: PenSession | null;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -513,11 +518,12 @@ export function WidgetEditorPanel({
       )}
       </div>
       <SectionTimeline
-        mode="widget"
         section={section}
         activeLayerId={layer?.id ?? null}
         playheadSec={playheadSec}
         playing={playing}
+        docId={docId}
+        session={session}
         onPlayhead={onPlayhead || (() => undefined)}
         onPlaying={onPlaying || (() => undefined)}
         onSelectLayer={onSelectLayer || (() => undefined)}

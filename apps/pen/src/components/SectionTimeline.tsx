@@ -11,7 +11,9 @@ import {
 import {
   applyTransitionPreset,
   defaultLayerName,
+  docToPlainText,
   editorPlaybackSrc,
+  getTextLayerDoc,
   KEYFRAME_EPSILON_SEC,
   layerClockSpan,
   layerClips,
@@ -24,10 +26,12 @@ import {
   reorderTimelineLayer,
   resolveTimelineDuration,
   sampleLayerAt,
+  sanitizeWidgetMarkup,
   setKeyframeEase,
   spanLeavingKey,
   splitLayerAt,
   trackJoinPoints,
+  timeLayerCaption,
   toggleKeyframeAt,
   upsertLayer,
   wrapTime,
@@ -321,6 +325,19 @@ function TransitionSketch({ preset }: { preset: PenTransitionPreset }) {
       />
     </span>
   );
+}
+
+function clipFace(layer: PenPageLayer): { text: string; svg?: string } {
+  if (layer.widgetElement === 'svg' && layer.svgSrc) return { text: '', svg: layer.svgSrc };
+  if (layer.widgetElement === 'time') return { text: timeLayerCaption(layer) };
+  if (layer.widgetElement === 'html') {
+    return {
+      text: (layer.htmlSource || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    };
+  }
+  if (layer.kind === 'text') return { text: docToPlainText(getTextLayerDoc(layer)).trim() };
+  if (layer.kind === 'interactive') return { text: layer.label || '' };
+  return { text: '' };
 }
 
 function ClipDecor({
@@ -1117,7 +1134,7 @@ export function SectionTimeline({
           </button>
         </div>
       </div>
-      <div className="max-h-64 min-w-0 overflow-x-auto overflow-y-auto px-2 pb-2">
+      <div className="min-w-0 shrink-0 overflow-x-auto px-2 pb-2">
         <div
           data-timeline-scale
           className="relative"
@@ -1140,7 +1157,7 @@ export function SectionTimeline({
               </span>
             ))}
           </div>
-          <div className="space-y-1">
+          <div data-timeline-tracks className="h-[6.5rem] shrink-0 space-y-1 overflow-x-hidden overflow-y-auto">
         {groups.map(({ trackId, depth, layers: trackLayers }) => {
           const groupLayer = trackLayers.find((item) => item.kind === 'group');
           const layer = trackLayers.find((item) => item.id === activeLayerId) ?? trackLayers[0]!;
@@ -1148,11 +1165,9 @@ export function SectionTimeline({
           const clock = widget ? duration : rowDur;
           const local = layer.kind === 'group' ? wrapTime(playheadSec, rowDur) : layerSampleTime(section, layer, playheadSec);
           const posed = sampleLayerAt(layer, local);
-          const clips = widget
-            ? []
-            : trackLayers.flatMap((item) =>
-                item.kind === 'group' ? [] : layerClips(item, rowDur).map((clip) => ({ clip, owner: item }))
-              );
+          const clips = trackLayers.flatMap((item) =>
+            item.kind === 'group' ? [] : layerClips(item, rowDur).map((clip) => ({ clip, owner: item }))
+          );
           const keys = trackLayers.flatMap((item) =>
             (item.motion?.keys || []).map((key) => ({ key, ownerId: item.id }))
           );
@@ -1191,7 +1206,7 @@ export function SectionTimeline({
                   className="relative h-8 min-w-0 flex-1 cursor-pointer rounded-md border border-blue-600 bg-white"
                   onPointerDown={beginScrub}
                 >
-                {widget ? (
+                {widget && clips.length === 0 ? (
                   <span
                     data-clip-title={defaultLayerName(host, section.layers || [])}
                     className="pointer-events-none absolute left-1 top-0.5 z-[1] max-w-[90%] truncate text-[11px] text-stone-500"
@@ -1209,18 +1224,22 @@ export function SectionTimeline({
                         ? owner.imageSrc
                         : undefined;
                   const name = defaultLayerName(owner, section.layers || []);
+                  const face = playbackSrc ? null : clipFace(owner);
                   return (
                   <div
                     key={`${owner.id}-${clip.id}`}
                     className="absolute bottom-0 top-0 overflow-hidden border border-blue-600 bg-white"
                     style={{
                       left: `${(clip.inSec / Math.max(rowDur, 0.01)) * 100}%`,
-                      width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(rowDur, 0.01)) * 100)}%`
+                      width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(rowDur, 0.01)) * 100)}%`,
+                      backgroundColor: playbackSrc ? undefined : owner.backgroundColor || '#e7e5e4',
+                      color: owner.textColor || undefined
                     }}
                     onPointerDown={(e) =>
                       beginMove(e, owner, (owner.clips?.length || 0) > 1 ? clip.id : undefined)
                     }
                   >
+                    {playbackSrc ? (
                     <ClipDecor
                       src={playbackSrc}
                       still={owner.kind === 'image'}
@@ -1232,6 +1251,20 @@ export function SectionTimeline({
                         return videoController(owner, true)?.master ?? null;
                       }}
                     />
+                    ) : face?.svg ? (
+                      <span
+                        data-clip-preview={owner.id}
+                        className="pointer-events-none absolute inset-0 overflow-hidden [&_svg]:h-full [&_svg]:w-full"
+                        dangerouslySetInnerHTML={{ __html: sanitizeWidgetMarkup(face.svg) }}
+                      />
+                    ) : (
+                      <span
+                        data-clip-preview={owner.id}
+                        className="pointer-events-none absolute inset-0 flex items-center px-3 text-[11px]"
+                      >
+                        {face?.text}
+                      </span>
+                    )}
                     <span
                       data-clip-title={name}
                       className={`pointer-events-none absolute left-3 top-0.5 z-[1] max-w-[90%] truncate text-[11px] ${

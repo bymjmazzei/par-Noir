@@ -2418,6 +2418,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               accessToken={session.accessToken}
               pnIdentifier={session.pnIdentifier}
               excludeDocId={bundle.manifest.docId}
+              docId={bundle.manifest.docId}
+              session={session}
               pageLayout={pageLayout}
               playheadSec={playheadSec}
               playing={timelinePlaying}

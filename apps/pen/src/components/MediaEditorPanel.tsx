@@ -366,7 +366,7 @@ export function MediaEditorPanel({
         </div>
       </div>
 
-      <div className="flex min-h-[8rem] flex-1 items-center justify-center overflow-hidden px-3">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-3">
       <div
         data-media-frame
         className="relative overflow-hidden bg-stone-200"

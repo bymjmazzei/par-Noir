@@ -98,6 +98,9 @@ describe('section timeline', () => {
     expect(html).toContain('title="Mute"');
     expect(html).toContain('title="Unmute"');
     expect(html).toContain('data-clip-title="Title"');
+    expect(html).toContain('data-clip-preview="title"');
+    expect(html).toContain('data-timeline-tracks');
+    expect(html).toContain('h-[6.5rem]');
     expect(html).toContain('absolute left-3 top-0.5');
     expect(html).toContain('border-blue-600');
     expect(html).toContain('bg-white');
