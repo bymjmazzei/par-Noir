@@ -1093,7 +1093,8 @@ export function SectionTimeline({
         className="relative z-30 h-px shrink-0 cursor-ns-resize border-t border-stone-300 before:absolute before:-top-1.5 before:left-0 before:right-0 before:h-3 before:content-['']"
         onPointerDown={beginResize}
       />
-      <div data-timeline-toolbar className="flex flex-nowrap items-center gap-1 overflow-x-auto px-2 py-0.5">
+      <div data-timeline-toolbar className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 overflow-x-auto px-2 py-0.5">
+        <div className="flex min-w-0 items-center gap-1">
         {scopeGroup ? (
           <button
             type="button"
@@ -1106,35 +1107,6 @@ export function SectionTimeline({
             {defaultLayerName(scopeGroup, section.layers || [])}
           </button>
         ) : null}
-        <button
-          type="button"
-          aria-label={playing ? 'Pause' : 'Play'}
-          title={playing ? 'Pause' : 'Play'}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600"
-          onClick={() => {
-            const next = !playing;
-            const at = next && playheadSec >= duration - 0.05 ? 0 : playheadSec;
-            playheadRef.current = at;
-            playingRef.current = next;
-            if (at !== playheadSec) onPlayhead(at);
-            onPlaying(next);
-            driveVideos(next ? 'play' : 'pause', at);
-          }}
-        >
-          {playing ? (
-            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-              <rect x="1" y="1" width="3.5" height="10" rx="0.5" fill="currentColor" />
-              <rect x="7.5" y="1" width="3.5" height="10" rx="0.5" fill="currentColor" />
-            </svg>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-              <path d="M3 1.5v9l7.5-4.5L3 1.5z" fill="currentColor" />
-            </svg>
-          )}
-        </button>
-        <span className="shrink-0 text-[13px] tabular-nums text-stone-700">
-          {formatTime(playheadSec)} / {formatTime(duration)}
-        </span>
         {widget ? null : (
           <button
             type="button"
@@ -1215,7 +1187,72 @@ export function SectionTimeline({
             </div>
           ) : null}
         </div>
-        <div className="flex items-center gap-1 text-stone-500">
+        {widget ? null : (
+          <>
+            <button
+              type="button"
+              aria-label="Mirror"
+              title="Mirror"
+              aria-pressed={Boolean(active?.mediaMirror)}
+              className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : 'text-stone-500'}`}
+              onClick={() => {
+                if (!active) return;
+                onSectionChange(upsertLayer(section, { ...active, mediaMirror: !active.mediaMirror }));
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                <path d="M8 1.5v13" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M6.6 4.2 2.2 8l4.4 3.8z" fill="currentColor" />
+                <path d="M9.4 4.2 13.8 8l-4.4 3.8z" fill="currentColor" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              aria-label="Reverse"
+              title="Reverse"
+              aria-pressed={Boolean(active?.mediaReversed)}
+              className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : 'text-stone-500'}`}
+              onClick={() => onReverse?.()}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                <path d="M12.5 2.5 3.5 8l9 5.5V2.5z" fill="currentColor" />
+              </svg>
+            </button>
+          </>
+        )}
+        </div>
+        <div className="flex shrink-0 items-center justify-center gap-1">
+        <button
+          type="button"
+          aria-label={playing ? 'Pause' : 'Play'}
+          title={playing ? 'Pause' : 'Play'}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600"
+          onClick={() => {
+            const next = !playing;
+            const at = next && playheadSec >= duration - 0.05 ? 0 : playheadSec;
+            playheadRef.current = at;
+            playingRef.current = next;
+            if (at !== playheadSec) onPlayhead(at);
+            onPlaying(next);
+            driveVideos(next ? 'play' : 'pause', at);
+          }}
+        >
+          {playing ? (
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+              <rect x="1" y="1" width="3.5" height="10" rx="0.5" fill="currentColor" />
+              <rect x="7.5" y="1" width="3.5" height="10" rx="0.5" fill="currentColor" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+              <path d="M3 1.5v9l7.5-4.5L3 1.5z" fill="currentColor" />
+            </svg>
+          )}
+        </button>
+        <span className="shrink-0 text-[13px] tabular-nums text-stone-700">
+          {formatTime(playheadSec)} / {formatTime(duration)}
+        </span>
+        </div>
+        <div className="flex items-center justify-end gap-1 text-stone-500">
           <button
             type="button"
             aria-label="Zoom out"
@@ -1249,41 +1286,6 @@ export function SectionTimeline({
           >
             <Magnify plus />
           </button>
-        </div>
-        <div className="ml-auto inline-flex shrink-0 items-center gap-1 text-stone-500">
-          {widget ? null : (
-            <>
-              <button
-                type="button"
-                aria-label="Mirror"
-                title="Mirror"
-                aria-pressed={Boolean(active?.mediaMirror)}
-                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : ''}`}
-                onClick={() => {
-                  if (!active) return;
-                  onSectionChange(upsertLayer(section, { ...active, mediaMirror: !active.mediaMirror }));
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                  <path d="M8 1.5v13" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M6.6 4.2 2.2 8l4.4 3.8z" fill="currentColor" />
-                  <path d="M9.4 4.2 13.8 8l-4.4 3.8z" fill="currentColor" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                aria-label="Reverse"
-                title="Reverse"
-                aria-pressed={Boolean(active?.mediaReversed)}
-                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : ''}`}
-                onClick={() => onReverse?.()}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                  <path d="M12.5 2.5 3.5 8l9 5.5V2.5z" fill="currentColor" />
-                </svg>
-              </button>
-            </>
-          )}
           <button
             type="button"
             aria-label="Delete clip"
