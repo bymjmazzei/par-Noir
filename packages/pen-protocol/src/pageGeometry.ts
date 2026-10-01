@@ -36,6 +36,8 @@ export const DEFAULT_IMAGE_ASPECT = 1;
 export const PAGE_GUTTER_PX = 16;
 /** Gray frame around a preview page. Flow fills the pane, so it uses none. */
 export const PREVIEW_PAGE_GUTTER_PX = 28;
+/** Gray workspace kept around a fixed page so a layer can sit outside the frame. */
+export const EDITOR_PASTEBOARD_PX = 120;
 
 export type PageSheetDims = {
   /** Fixed column width, or null when Flow fills the container. */
@@ -62,6 +64,17 @@ export function previewPageUsesGutter(
   widthPx?: number | null
 ): boolean {
   return !((layout || 'flow') === 'flow' && isFlowWorkspaceOpen(widthPx));
+}
+
+/**
+ * Letter, A4, and fixed ratios (9:16 and the rest) can park a layer on the
+ * pasteboard. Open Flow has no frame, so its layers stay inside the panel.
+ */
+export function pageAllowsPasteboard(
+  layout: PenPageLayout | undefined,
+  widthPx?: number | null
+): boolean {
+  return previewPageUsesGutter(layout, widthPx);
 }
 
 export const MIN_PAGE_SIZE_PX = 64;

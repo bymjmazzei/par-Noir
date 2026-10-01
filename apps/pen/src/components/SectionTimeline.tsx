@@ -286,30 +286,63 @@ async function readWave(url: string): Promise<number[]> {
   }
 }
 
-async function readFrames(master: HTMLVideoElement): Promise<string[]> {
-  const dur = master.duration;
-  if (!dur || !Number.isFinite(dur) || dur < 0.05) return [];
-  const saved = master.currentTime || 0;
-  const count = Math.min(8, Math.max(1, Math.round(dur)));
-  const canvas = document.createElement('canvas');
-  const sourceWidth = master.videoWidth || 16;
-  const sourceHeight = master.videoHeight || 9;
-  canvas.height = 64;
-  canvas.width = Math.max(32, Math.round(64 * (sourceWidth / sourceHeight)));
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return [];
-  const frames: string[] = [];
+/**
+ * Filmstrip thumbs use their own element. Seeking the shared master jumps the
+ * layer preview while the timeline is trying to play it.
+ */
+async function readFrames(src: string, cancelled: () => boolean): Promise<string[]> {
+  const video = document.createElement('video');
+  video.muted = true;
+  video.defaultMuted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  if (src.startsWith('http://') || src.startsWith('https://')) video.crossOrigin = 'anonymous';
+  video.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+  document.body.appendChild(video);
+  video.src = src;
   try {
+    await new Promise<void>((resolve, reject) => {
+      const ok = () => resolve();
+      const bad = () => reject(new Error('frames'));
+      video.addEventListener('loadeddata', ok, { once: true });
+      video.addEventListener('error', bad, { once: true });
+    });
+    if (cancelled()) return [];
+    const dur = video.duration;
+    if (!dur || !Number.isFinite(dur) || dur < 0.05) return [];
+    const count = Math.min(8, Math.max(1, Math.round(dur)));
+    const canvas = document.createElement('canvas');
+    const sourceWidth = video.videoWidth || 16;
+    const sourceHeight = video.videoHeight || 9;
+    canvas.height = 64;
+    canvas.width = Math.max(32, Math.round(64 * (sourceWidth / sourceHeight)));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return [];
+    const frames: string[] = [];
     for (let i = 0; i < count; i += 1) {
-      await seekVideo(master, ((i + 0.5) / count) * Math.max(0.05, dur - 0.05));
-      ctx.drawImage(master, 0, 0, canvas.width, canvas.height);
+      if (cancelled()) return frames;
+      await seekVideo(video, ((i + 0.5) / count) * Math.max(0.05, dur - 0.05));
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       frames.push(canvas.toDataURL('image/jpeg', 0.82));
     }
+    return frames;
   } catch {
-    /* keep the frames already drawn */
+    return [];
+  } finally {
+    video.removeAttribute('src');
+    video.load();
+    video.remove();
   }
-  await seekVideo(master, saved);
-  return frames;
+}
+
+/** Forward playback keeps the element's own clock. Scrub, play, and reverse seek. */
+export function shouldSeekTimelineVideo(
+  mode: 'play' | 'pause' | 'seek' | 'tick',
+  reversed: boolean
+): boolean {
+  if (mode === 'pause') return false;
+  if (mode === 'tick') return reversed;
+  return true;
 }
 
 function WaveLine({ values }: { values: number[] }) {
@@ -393,11 +426,11 @@ function ClipDecor({
       return;
     }
     let cancel = false;
-    const master = readyRef.current(resolved);
+    readyRef.current(resolved);
     void (async () => {
       const [wave, frames] = await Promise.all([
         readWave(resolved),
-        master ? readFrames(master) : Promise.resolve([])
+        readFrames(resolved, () => cancel)
       ]);
       if (cancel) return;
       const next = { frames, wave };
@@ -715,21 +748,21 @@ export function SectionTimeline({
         if (!ctrl) continue;
         if (mode === 'pause') {
           ctrl.pause();
+          ctrl.master.loop = true;
           continue;
         }
         const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
         ctrl.setPlaybackRate(rate);
         const mediaAt = layerMediaTime(layer, at, rate, layerClockSpan(section, layer));
-        if (layer.mediaReversed) {
+        const reversed = Boolean(layer.mediaReversed);
+        if (mode === 'play') ctrl.master.loop = false;
+        if (!shouldSeekTimelineVideo(mode, reversed)) continue;
+        if (reversed) {
           ctrl.pause();
           placeVideo(ctrl.master, mediaAt, true);
           continue;
         }
-        if (mode === 'tick') {
-          placeVideo(ctrl.master, mediaAt);
-          continue;
-        }
-        placeVideo(ctrl.master, mediaAt);
+        placeVideo(ctrl.master, mediaAt, true);
         if (mode === 'play') void ctrl.ensurePlaying();
       }
     }

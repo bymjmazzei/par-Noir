@@ -28,6 +28,7 @@ import {
   sizeMediaLayerForAttach,
   getTextLayerDoc,
   isFlowWorkspaceOpen,
+  pageAllowsPasteboard,
   isGooglePenFont,
   isPageLayerId,
   applyLayoutAtPlayhead,
@@ -423,9 +424,7 @@ function BodyWrapObject({
         data-wrap={side}
         role="button"
         tabIndex={0}
-        className={`overflow-visible ${
-          selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300'
-        }`}
+        className={`overflow-visible ${selected ? 'ring-2 ring-sky-500' : ''}`}
         style={{
           ...boxStyle,
           boxShadow: wrapChrome.boxShadow,
@@ -651,7 +650,7 @@ export function EditablePagePreview({
     measuredSheetW,
     scrollWithParent && measuredSheetH > 0 ? measuredSheetH : undefined
   );
-  const artboard = manifest.pageLayout !== 'flow';
+  const artboard = pageAllowsPasteboard(manifest.pageLayout, manifest.flowWorkspaceWidthPx);
   const artboardGutter = artboard && !scrollWithParent
     ? pasteboardGutterPx(
         items.map((item) => ({ x: item.x + pad, y: item.y + pad, w: item.w, h: item.h })),
@@ -1100,7 +1099,9 @@ export function EditablePagePreview({
         ref={scrollerRef}
         className={
           scrollWithParent
-            ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent p-0'
+            ? `flex h-full min-h-0 w-full flex-col bg-transparent p-0 ${
+                artboard ? 'overflow-visible' : 'overflow-hidden'
+              }`
             : `flex min-h-0 flex-1 overflow-auto ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
                 flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
               }`
@@ -1231,7 +1232,7 @@ export function EditablePagePreview({
               }
               items={items.map((item) => ({ ...item, x: item.x + pad, y: item.y + pad }))}
               bounds={{ width: box.width + 2 * pad, height: box.height + 2 * pad }}
-              freePlacement={manifest.pageLayout !== 'flow'}
+              freePlacement={artboard}
               frameStyle={(item) => {
                 const layer = layers.find((entry) => entry.id === item.id);
                 return layer ? layerChromeStyle(layer) : {};

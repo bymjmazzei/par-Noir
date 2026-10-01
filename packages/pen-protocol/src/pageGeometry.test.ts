@@ -4,6 +4,7 @@ import {
   A4_WIDTH_PX,
   clampLayerRect,
   loosenLayerRect,
+  pageAllowsPasteboard,
   pasteboardGutterPx,
   contentBoxSize,
   fittedPreviewPagePx,
@@ -175,6 +176,12 @@ describe('pageGeometry', () => {
     const clamped = clampLayerRect({ x: 0, y: 900, w: 100, h: 100 }, 500, 400);
     expect(clamped.y).toBe(300);
     expect(clamped.y + clamped.h).toBe(400);
+  });
+
+  it('a fixed ratio keeps a pasteboard and open flow does not', () => {
+    expect(pageAllowsPasteboard('flow', 1080)).toBe(true);
+    expect(pageAllowsPasteboard('flow', null)).toBe(false);
+    expect(pageAllowsPasteboard('letter', null)).toBe(true);
   });
 
   it('a non-flow editor move may sit past the page', () => {

@@ -293,7 +293,7 @@ export function LayoutSurface({
             role="button"
             tabIndex={0}
             className={`absolute box-border overflow-visible pointer-events-auto ${
-              selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300/80'
+              selected ? 'ring-2 ring-sky-500' : ''
             } ${disabled || item.positionLocked ? '' : 'cursor-grab active:cursor-grabbing'}`}
             style={{
               left: item.x,

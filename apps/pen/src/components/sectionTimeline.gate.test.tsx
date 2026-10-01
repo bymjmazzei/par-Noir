@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, sampleLayerAt, type PenSectionContent } from '@par-noir/pen-protocol';
-import { SectionTimeline, timelineTracksMaxPx } from './SectionTimeline';
+import { SectionTimeline, shouldSeekTimelineVideo, timelineTracksMaxPx } from './SectionTimeline';
 
 const section: PenSectionContent = {
   ...emptySection('body'),
@@ -41,6 +41,14 @@ const section: PenSectionContent = {
 };
 
 describe('section timeline', () => {
+  it('lets a forward clip play on its own clock', () => {
+    expect(shouldSeekTimelineVideo('tick', false)).toBe(false);
+    expect(shouldSeekTimelineVideo('play', false)).toBe(true);
+    expect(shouldSeekTimelineVideo('seek', false)).toBe(true);
+    expect(shouldSeekTimelineVideo('pause', false)).toBe(false);
+    expect(shouldSeekTimelineVideo('tick', true)).toBe(true);
+  });
+
   it('lists a text layer as a track and samples a later key into the row', () => {
     const html = renderToStaticMarkup(
       <SectionTimeline

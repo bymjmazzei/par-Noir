@@ -36,7 +36,9 @@ import {
   reorderDocPages,
   fittedPreviewPagePx,
   isFlowWorkspaceOpen,
+  EDITOR_PASTEBOARD_PX,
   PREVIEW_PAGE_GUTTER_PX,
+  pageAllowsPasteboard,
   previewPageUsesGutter,
   resolvePagePaddingPx,
   resolvePageOrientation,
@@ -1967,11 +1969,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   )
     ? PREVIEW_PAGE_GUTTER_PX
     : 0;
+  const artboard = pageAllowsPasteboard(
+    bundle.manifest.pageLayout,
+    bundle.manifest.flowWorkspaceWidthPx
+  );
+  const fitInset = artboard ? EDITOR_PASTEBOARD_PX : previewGutter;
   const paneReady = previewPaneSize.width > 0 && previewPaneSize.height > 0;
   const previewPageBox = fittedPreviewPagePx(
     bundle.manifest.pageLayout,
-    paneReady ? Math.max(1, previewPaneSize.width - previewGutter * 2) : 0,
-    paneReady ? Math.max(1, previewPaneSize.height - previewGutter * 2) : 0,
+    paneReady ? Math.max(1, previewPaneSize.width - fitInset * 2) : 0,
+    paneReady ? Math.max(1, previewPaneSize.height - fitInset * 2) : 0,
     {
       widthPx: bundle.manifest.flowWorkspaceWidthPx,
       heightPx: bundle.manifest.flowWorkspaceHeightPx
@@ -1984,8 +1991,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     screenAllPages && paneReady && screenFullWidth > 0 && screenFullHeight > 0
       ? Math.min(
           1,
-          Math.max(1, previewPaneSize.width - previewGutter * 2) / screenFullWidth,
-          Math.max(1, previewPaneSize.height - previewGutter * 2) / screenFullHeight
+          Math.max(1, previewPaneSize.width - fitInset * 2) / screenFullWidth,
+          Math.max(1, previewPaneSize.height - fitInset * 2) / screenFullHeight
         )
       : 1;
   const screenPageIndex = Math.max(
@@ -1993,18 +2000,24 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     previewPages.findIndex((page) => page.slug === activeSlug)
   );
   const layerPad = resolvePagePaddingPx(pagePresentation.padding);
-  const artboard = bundle.manifest.pageLayout !== 'flow';
-  const screenArtboardGutter = artboard
+  const layerOverhang = artboard
     ? pasteboardGutterPx(
         bundle.sections.flatMap((item) =>
           (item.layers || [])
             .filter((layer) => layer.kind !== 'guide')
-            .map((layer) => ({ x: layer.x, y: layer.y, w: layer.w, h: layer.h }))
+            .map((layer) => ({
+              x: layer.x + layerPad,
+              y: layer.y + layerPad,
+              w: layer.w,
+              h: layer.h
+            }))
         ),
         previewPageBox.width,
-        previewPageBox.height
+        previewPageBox.height,
+        0
       )
     : 0;
+  const framePad = artboard ? Math.max(EDITOR_PASTEBOARD_PX, layerOverhang) : previewGutter;
   const screenStripBackground = pageFrameStyle(pagePresentation);
   if (
     (!screenStripBackground.backgroundColor ||
@@ -2812,9 +2825,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   className={
                     pageLayout === 'flow'
                       ? `flex min-h-0 min-w-0 flex-1 bg-neutral-100 ${
-                          pageView === 'vertical'
-                            ? 'flex-col items-center overflow-x-hidden overflow-y-auto'
-                            : 'flex-row items-center overflow-x-auto overflow-y-hidden'
+                          artboard
+                            ? pageView === 'vertical'
+                              ? 'flex-col items-center overflow-auto'
+                              : 'flex-row items-center overflow-auto'
+                            : pageView === 'vertical'
+                              ? 'flex-col items-center overflow-x-hidden overflow-y-auto'
+                              : 'flex-row items-center overflow-x-auto overflow-y-hidden'
                         }`
                       : 'grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-1 overflow-auto bg-neutral-100'
                   }
@@ -2832,12 +2849,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       ? {
                           width:
                             (screenAllPages ? screenFullWidth * screenFit : previewPageBox.width) +
-                            screenArtboardGutter * 2,
+                            framePad * 2,
                           height:
                             (screenAllPages ? screenFullHeight * screenFit : previewPageBox.height) +
-                            screenArtboardGutter * 2,
-                          padding: screenArtboardGutter,
-                          margin: previewGutter
+                            framePad * 2,
+                          padding: framePad,
+                          margin: 0
                         }
                       : undefined
                   }
@@ -2890,11 +2907,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       <div
                         key={page.slug}
                         data-preview-page={page.slug}
-                        className="shrink-0"
+                        className="relative shrink-0 overflow-visible"
                         style={{
                           width: previewPageBox.width,
                           height: previewPageBox.height,
-                          margin: pageView === 'screen' ? 0 : Math.max(previewGutter, screenArtboardGutter)
+                          margin: pageView === 'screen' ? 0 : framePad
                         }}
                         onClick={() => {
                           if (!active) setActiveSlug(page.slug);
