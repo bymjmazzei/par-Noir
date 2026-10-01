@@ -35,7 +35,9 @@ export function LayoutSurface({
   getLinkedIds,
   resizeDisabledIds,
   lockAspectRatioIds,
-  bounds
+  bounds,
+  freePlacement = false,
+  frameStyle
 }: {
   items: LayoutItem[];
   onChange: (next: LayoutItem[]) => void;
@@ -56,6 +58,10 @@ export function LayoutSurface({
   lockAspectRatioIds?: Set<string> | string[];
   /** Content-box size in CSS px (clamp + snap). */
   bounds?: LayoutBounds;
+  /** Non-flow artboard: layers may leave the page. Rendered output still clips. */
+  freePlacement?: boolean;
+  /** Shadow, blur, and stroke paint on the layer frame, outside the clipped face. */
+  frameStyle?: (item: LayoutItem) => CSSProperties;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const itemsRef = useRef(items);
@@ -181,7 +187,7 @@ export function LayoutSurface({
       const appliedDy = snapped.y - drag.orig.y;
       setGuides({ v: snapped.snappedX, h: snapped.snappedY });
       const nextPreview: Record<string, LayoutItem> = {
-        [drag.id]: clampLayoutItem({ ...drag.orig, x: snapped.x, y: snapped.y }, b)
+        [drag.id]: clampLayoutItem({ ...drag.orig, x: snapped.x, y: snapped.y }, b, freePlacement)
       };
       for (const lid of Object.keys(drag.linkedOrig)) {
         const orig = drag.linkedOrig[lid]!;
@@ -191,7 +197,8 @@ export function LayoutSurface({
             x: orig.x + appliedDx,
             y: orig.y + appliedDy
           },
-          b
+          b,
+          freePlacement
         );
       }
       setPreview(nextPreview);
@@ -211,14 +218,14 @@ export function LayoutSurface({
       if (lockAspect(drag.id)) {
         const sized = resizeSeKeepAspect(drag.orig, dx, dy);
         const aspect = drag.orig.w / Math.max(1, drag.orig.h);
-        const maxW = Math.max(24, b.width - drag.orig.x);
-        const maxH = Math.max(24, b.height - drag.orig.y);
-        const fitted = fitAspectInBox(
-          aspect,
-          Math.min(sized.w, maxW),
-          Math.min(sized.h, maxH)
-        );
-        next = clampLayoutItem({ ...drag.orig, w: fitted.w, h: fitted.h }, b);
+        const fitted = freePlacement
+          ? { w: sized.w, h: sized.h }
+          : fitAspectInBox(
+              aspect,
+              Math.min(sized.w, Math.max(24, b.width - drag.orig.x)),
+              Math.min(sized.h, Math.max(24, b.height - drag.orig.y))
+            );
+        next = clampLayoutItem({ ...drag.orig, w: fitted.w, h: fitted.h }, b, freePlacement);
       } else {
         next = clampLayoutItem(
           {
@@ -226,7 +233,8 @@ export function LayoutSurface({
             w: drag.orig.w + dx,
             h: drag.orig.h + dy
           },
-          b
+          b,
+          freePlacement
         );
       }
       setPreview({ [drag.id]: next });
@@ -284,7 +292,7 @@ export function LayoutSurface({
             data-layer-id={item.id}
             role="button"
             tabIndex={0}
-            className={`absolute box-border overflow-hidden pointer-events-auto ${
+            className={`absolute box-border overflow-visible pointer-events-auto ${
               selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300/80'
             } ${disabled || item.positionLocked ? '' : 'cursor-grab active:cursor-grabbing'}`}
             style={{
@@ -295,7 +303,8 @@ export function LayoutSurface({
               zIndex: item.zIndex,
               borderRadius: item.cornerRadius ? `${item.cornerRadius}px` : undefined,
               transform: item.rotate ? `rotate(${item.rotate}deg)` : undefined,
-              transformOrigin: item.rotate ? 'center' : undefined
+              transformOrigin: item.rotate ? 'center' : undefined,
+              ...frameStyle?.(item)
             }}
             onPointerDown={(e) => onPointerDownMove(e, item)}
             onClick={(e) => {

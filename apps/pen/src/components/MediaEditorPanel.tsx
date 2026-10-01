@@ -231,7 +231,9 @@ export function MediaEditorPanel({
   onPlayhead,
   onPlaying,
   onSelectLayer,
-  onSectionChange
+  onSectionChange,
+  scopeGroupId = null,
+  onEnterGroup
 }: {
   layer: PenPageLayer;
   section: PenSectionContent;
@@ -246,6 +248,8 @@ export function MediaEditorPanel({
   onPlaying?: (playing: boolean) => void;
   onSelectLayer?: (id: string) => void;
   onSectionChange: (next: PenSectionContent) => void;
+  scopeGroupId?: string | null;
+  onEnterGroup?: (id: string | null) => void;
 }) {
   const [tab, setTab] = useState<ToolTab>('color');
   const [activeSetting, setActiveSetting] = useState<string | null>(null);
@@ -766,6 +770,8 @@ export function MediaEditorPanel({
         onSelectLayer={onSelectLayer || (() => undefined)}
         onSectionChange={onSectionChange}
         onReverse={() => void onReverse()}
+        scopeGroupId={scopeGroupId}
+        onEnterGroup={onEnterGroup}
       />
 
       <CloudFeedMediaPicker

@@ -4,6 +4,7 @@ import {
   useState,
   type ReactNode
 } from 'react';
+import { ColorSliders, parseCssColor } from '../PanelValueControls';
 
 export function RibbonSep() {
   return <span className="pen-ribbon-sep" aria-hidden />;
@@ -91,40 +92,37 @@ export function ColorAButton({
 }: {
   mode: 'text' | 'highlight';
   color: string;
-  onChange: (hex: string) => void;
+  onChange: (next: string) => void;
   title: string;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const safe = /^#[0-9a-fA-F]{6}$/.test(color)
-    ? color
-    : mode === 'highlight'
-      ? '#fef08a'
-      : '#1c1917';
+  const [open, setOpen] = useState(false);
+  const parsed = parseCssColor(color);
+  const safe = color && color !== 'transparent' ? color : mode === 'highlight' ? '#fef08a' : '#1c1917';
+  const swatch = parsed.a > 0 ? safe : mode === 'highlight' ? '#fef08a' : '#1c1917';
 
   return (
-    <button
-      type="button"
-      title={title}
-      className={`pen-ribbon-btn pen-ribbon-a ${mode === 'highlight' ? 'is-highlight' : 'is-text'}`}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => inputRef.current?.click()}
-      style={
-        mode === 'text'
-          ? { ['--pen-a-color' as string]: safe }
-          : { ['--pen-a-bg' as string]: safe }
-      }
-    >
-      <span className="pen-ribbon-a-glyph">A</span>
-      <input
-        ref={inputRef}
-        type="color"
-        className="pen-ribbon-a-input"
-        value={safe}
-        onChange={(e) => onChange(e.target.value)}
-        tabIndex={-1}
-        aria-hidden
-      />
-    </button>
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        title={title}
+        aria-expanded={open}
+        className={`pen-ribbon-btn pen-ribbon-a ${mode === 'highlight' ? 'is-highlight' : 'is-text'}`}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((value) => !value)}
+        style={
+          mode === 'text'
+            ? { ['--pen-a-color' as string]: swatch }
+            : { ['--pen-a-bg' as string]: swatch }
+        }
+      >
+        <span className="pen-ribbon-a-glyph">A</span>
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-stone-200 bg-white p-2 shadow-lg">
+          <ColorSliders label={title} value={safe} onChange={onChange} />
+        </div>
+      ) : null}
+    </span>
   );
 }
 

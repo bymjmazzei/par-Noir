@@ -51,6 +51,7 @@ import {
   shouldPublishSocialAsCollection,
   downloadKindForSections,
   partitionSectionsForPublish,
+  pasteboardGutterPx,
   resolveTimelineDuration,
   sectionHasMotion,
   sectionIsFeedPage,
@@ -95,6 +96,7 @@ import { ActionLayerPhoneOverlay } from '../components/ActionLayerPhoneOverlay';
 import { ActionBindStrip } from '../components/ActionBindStrip';
 import { IconLayers } from '../components/icons/PenIcons';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
+import { SectionTimeline } from '../components/SectionTimeline';
 import { bindTimelineSample, emitTimelineSample } from '../services/timelineSample';
 import { findComposeExportRoot } from '../services/penGalleryPreview';
 import { composePageToVideo } from '../services/composePageVideoEncode';
@@ -268,6 +270,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
   const [playheadSec, setPlayheadSec] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
+  const [timelineGroupId, setTimelineGroupId] = useState<string | null>(null);
   const [socialLayersOpen, setSocialLayersOpen] = useState(false);
   const [socialSelectedIds, setSocialSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const socialLayersBtnRef = useRef<HTMLButtonElement>(null);
@@ -1965,6 +1968,18 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     previewPages.findIndex((page) => page.slug === activeSlug)
   );
   const layerPad = resolvePagePaddingPx(pagePresentation.padding);
+  const artboard = bundle.manifest.pageLayout !== 'flow';
+  const screenArtboardGutter = artboard
+    ? pasteboardGutterPx(
+        bundle.sections.flatMap((item) =>
+          (item.layers || [])
+            .filter((layer) => layer.kind !== 'guide')
+            .map((layer) => ({ x: layer.x, y: layer.y, w: layer.w, h: layer.h }))
+        ),
+        previewPageBox.width,
+        previewPageBox.height
+      )
+    : 0;
   const screenStripBackground = pageFrameStyle(pagePresentation);
   if (
     (!screenStripBackground.backgroundColor ||
@@ -2401,6 +2416,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 onPlayhead={setPlayheadSec}
                 onPlaying={setTimelinePlaying}
                 onSelectLayer={(id) => setActiveLayerId(id)}
+                scopeGroupId={timelineGroupId}
+                onEnterGroup={(id) => {
+                  setTimelineGroupId(id);
+                  if (id) setActiveLayerId(id);
+                }}
                 onSectionChange={(next) => {
                   persist({
                     ...bundle,
@@ -2429,26 +2449,65 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 setActiveLayerId(id);
                 setSocialSelectedIds([id]);
               }}
+              scopeGroupId={timelineGroupId}
+              onEnterGroup={(id) => {
+                setTimelineGroupId(id);
+                if (id) {
+                  setActiveLayerId(id);
+                  setSocialSelectedIds([id]);
+                }
+              }}
               onSectionChange={commitWidgetSection}
               onPlaced={(id) => {
                 setActiveLayerId(id);
                 setSocialSelectedIds([id]);
               }}
             />
-          ) : writingEnabled && canvasSection ? (
-            <PageCanvas
-              key={`${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`}
-              section={canvasSection}
-              sectionTitle={writingLabel}
-              pageLayout={pageLayout}
-              flowWorkspaceWidthPx={bundle.manifest.flowWorkspaceWidthPx}
-              flowWorkspaceHeightPx={bundle.manifest.flowWorkspaceHeightPx}
-              pnIdentifier={session.pnIdentifier}
-              onEditorReady={onEditorReady}
-              onChange={(next) => {
-                persistWritingDoc(next.doc);
-              }}
-            />
+          ) : writingEnabled && canvasSection && section ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <PageCanvas
+                key={`${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`}
+                section={canvasSection}
+                sectionTitle={writingLabel}
+                pageLayout={pageLayout}
+                flowWorkspaceWidthPx={bundle.manifest.flowWorkspaceWidthPx}
+                flowWorkspaceHeightPx={bundle.manifest.flowWorkspaceHeightPx}
+                pnIdentifier={session.pnIdentifier}
+                onEditorReady={onEditorReady}
+                onChange={(next) => {
+                  persistWritingDoc(next.doc);
+                }}
+              />
+              <SectionTimeline
+                section={section}
+                activeLayerId={activeLayerId}
+                playheadSec={playheadSec}
+                playing={timelinePlaying}
+                docId={bundle.manifest.docId}
+                session={session}
+                scopeGroupId={timelineGroupId}
+                onPlayhead={setPlayheadSec}
+                onPlaying={setTimelinePlaying}
+                onSelectLayer={(id) => {
+                  setActiveLayerId(id);
+                  setSocialSelectedIds([id]);
+                }}
+                onEnterGroup={(id) => {
+                  setTimelineGroupId(id);
+                  if (id) {
+                    setActiveLayerId(id);
+                    setSocialSelectedIds([id]);
+                  }
+                }}
+                onSectionChange={(next) => {
+                  persist({
+                    ...bundle,
+                    sections: bundle.sections.map((item) => (item.slug === next.slug ? next : item)),
+                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                  });
+                }}
+              />
+            </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center bg-[#f3f3f3] px-6 text-center">
               <p className="text-sm text-stone-500">
@@ -2700,6 +2759,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     onSelectedIdsChange={setSocialSelectedIds}
                     session={session}
                     docId={bundle.manifest.docId}
+                    onEnterGroup={(id) => {
+                      setTimelineGroupId(id);
+                      setActiveLayerId(id);
+                      setSocialSelectedIds([id]);
+                    }}
                   />
                 )}
               </div>
@@ -2728,16 +2792,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   }
                 >
                 <div
-                  className={pageView === 'screen' ? 'relative shrink-0 overflow-hidden' : 'contents'}
+                  className={pageView === 'screen' ? 'relative shrink-0 overflow-visible' : 'contents'}
                   style={
                     pageView === 'screen'
                       ? {
-                          width: screenAllPages
-                            ? screenFullWidth * screenFit
-                            : previewPageBox.width,
-                          height: screenAllPages
-                            ? screenFullHeight * screenFit
-                            : previewPageBox.height,
+                          width:
+                            (screenAllPages ? screenFullWidth * screenFit : previewPageBox.width) +
+                            screenArtboardGutter * 2,
+                          height:
+                            (screenAllPages ? screenFullHeight * screenFit : previewPageBox.height) +
+                            screenArtboardGutter * 2,
+                          padding: screenArtboardGutter,
                           margin: previewGutter
                         }
                       : undefined
@@ -2795,7 +2860,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                         style={{
                           width: previewPageBox.width,
                           height: previewPageBox.height,
-                          margin: pageView === 'screen' ? 0 : previewGutter
+                          margin: pageView === 'screen' ? 0 : Math.max(previewGutter, screenArtboardGutter)
                         }}
                         onClick={() => {
                           if (!active) setActiveSlug(page.slug);
@@ -2821,6 +2886,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             onToggleViewLock={togglePageViewLock}
                             buttonCaptionById={buttonCaptionById}
                             session={session}
+                            onEnterGroup={(id) => {
+                              setTimelineGroupId(id);
+                              setActiveSlug(page.slug);
+                              setActiveLayerId(id);
+                              setSocialSelectedIds([id]);
+                            }}
                             onSelectLayer={(id) => {
                               setActiveSlug(page.slug);
                               setActiveLayerId(id || PAGE_LAYER_ID);
@@ -2925,6 +2996,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     onWidgetAction={(layer) => void runWidgetAction(layer)}
                     snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
                     playheadSec={playheadSec}
+                    freePlacement={artboard}
                   />
                 )}
                 </div>

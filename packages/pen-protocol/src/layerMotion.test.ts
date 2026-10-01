@@ -13,6 +13,8 @@ import {
   sectionHasMotion,
   setKeyframeEase,
   detachClipAsLayer,
+  moveClipBy,
+  moveClipToTrack,
   splitLayerAt
 } from './layerMotion.js';
 import { emptySection } from './richDoc.js';
@@ -324,13 +326,71 @@ describe('timeline tracks', () => {
     ]);
     const order = (next: PenSectionContent) =>
       [...(next.layers || [])].sort((a, b) => a.zIndex - b.zIndex).map((item) => item.id);
-    expect(order(reorderTimelineLayer(doc, 'c', 'a'))).toEqual(['c', 'a', 'b']);
+    // Front is the top row. Moving c in front of a leaves b in front of both.
+    expect(order(reorderTimelineLayer(doc, 'c', 'a'))).toEqual(['a', 'c', 'b']);
     const shared = joinLayerToTrack(doc, 'b', 'a');
     const lifted = reorderTimelineLayer(shared, 'b', 'c');
     const b = lifted.layers?.find((item) => item.id === 'b');
     const c = lifted.layers?.find((item) => item.id === 'c');
     expect(b?.timelineTrackId).not.toBe('a');
-    expect((b?.zIndex || 0) < (c?.zIndex || 0)).toBe(true);
+    expect((b?.zIndex || 0) > (c?.zIndex || 0)).toBe(true);
+  });
+
+  it('reorders children inside a group without touching the page stack', () => {
+    const doc = section([
+      layer({ id: 'page', zIndex: 50 }),
+      layer({ id: 'g', kind: 'group', zIndex: 40 }),
+      layer({ id: 'a', parentGroupId: 'g', zIndex: 1 }),
+      layer({ id: 'b', parentGroupId: 'g', zIndex: 2 })
+    ]);
+    const next = reorderTimelineLayer(doc, 'a', 'b', 'g');
+    const a = next.layers?.find((item) => item.id === 'a');
+    const b = next.layers?.find((item) => item.id === 'b');
+    const page = next.layers?.find((item) => item.id === 'page');
+    expect((a?.zIndex || 0) > (b?.zIndex || 0)).toBe(true);
+    expect(page?.zIndex).toBe(50);
+    expect(reorderTimelineLayer(doc, 'a', null)).toBe(doc);
+  });
+
+  it('slides a clip and swaps it past the piece in front of it', () => {
+    const doc = section([
+      layer({
+        id: 'clip',
+        kind: 'video',
+        clips: [
+          { id: 'left', inSec: 0, outSec: 2 },
+          { id: 'right', inSec: 2, outSec: 4 }
+        ]
+      })
+    ]);
+    const shifted = moveClipBy(doc, 'clip', 'right', 1);
+    expect(shifted.layers?.[0]?.clips?.map((clip) => clip.inSec)).toEqual([0, 3]);
+    const swapped = moveClipBy(doc, 'clip', 'right', -2);
+    expect(swapped.layers?.[0]?.clips?.map((clip) => [clip.id, clip.inSec, clip.outSec])).toEqual([
+      ['right', 0, 2],
+      ['left', 2, 4]
+    ]);
+  });
+
+  it('moves one piece onto another track', () => {
+    const doc = section([
+      layer({ id: 'host', kind: 'video', inSec: 0, outSec: 2 }),
+      layer({
+        id: 'clip',
+        kind: 'video',
+        timelineTrackId: 'row',
+        clips: [
+          { id: 'stay', inSec: 0, outSec: 1 },
+          { id: 'go', inSec: 1, outSec: 3 }
+        ]
+      })
+    ]);
+    const next = moveClipToTrack(doc, 'clip', 'go', 'host');
+    const created = next.layers?.find((item) => item.clips?.[0]?.id === 'go');
+    const source = next.layers?.find((item) => item.id === 'clip');
+    expect(source?.clips?.map((clip) => clip.id)).toEqual(['stay']);
+    expect(created?.timelineTrackId).toBe('host');
+    expect(created?.inSec).toBe(2);
   });
 
   it('marks the meeting point of two clips on one track', () => {

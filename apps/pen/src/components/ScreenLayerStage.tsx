@@ -15,6 +15,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
+import { layerChromeStyle } from './LayerObjectToolbar';
 import { PageGuides } from './PageGuides';
 import { PreviewLayerFace } from './PreviewLayerFace';
 import type { PenSession } from '../services/penSession';
@@ -37,7 +38,8 @@ export function ScreenLayerStage({
   onPollVote,
   onWidgetAction,
   snapToPageCenter = false,
-  playheadSec = 0
+  playheadSec = 0,
+  freePlacement = false
 }: {
   sections: PenSectionContent[];
   pageWidth: number;
@@ -58,6 +60,8 @@ export function ScreenLayerStage({
   snapToPageCenter?: boolean;
   /** Section clock. Sampled for display; drags write keys when the layer has them. */
   playheadSec?: number;
+  /** Non-flow artboard. Layers may sit past the page; render still clips. */
+  freePlacement?: boolean;
 }) {
   const owner = new Map<string, { index: number; slug: string }>();
   const sampledById = new Map<string, PenPageLayer>();
@@ -123,8 +127,13 @@ export function ScreenLayerStage({
       }}
     />
     <LayoutSurface
-      className="pointer-events-none absolute inset-0 z-20"
+      className="pointer-events-none absolute inset-0 z-20 overflow-visible"
       bounds={{ width: sections.length * pageWidth, height: pageHeight }}
+      freePlacement={freePlacement}
+      frameStyle={(item) => {
+        const layer = sampledById.get(item.id);
+        return layer ? layerChromeStyle(layer) : {};
+      }}
       items={items}
       selectedId={activeLayerId}
       snapToPageCenter={snapToPageCenter}

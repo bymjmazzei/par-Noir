@@ -3,6 +3,8 @@ import {
   A4_HEIGHT_PX,
   A4_WIDTH_PX,
   clampLayerRect,
+  loosenLayerRect,
+  pasteboardGutterPx,
   contentBoxSize,
   fittedPreviewPagePx,
   matchPageSize,
@@ -173,6 +175,13 @@ describe('pageGeometry', () => {
     const clamped = clampLayerRect({ x: 0, y: 900, w: 100, h: 100 }, 500, 400);
     expect(clamped.y).toBe(300);
     expect(clamped.y + clamped.h).toBe(400);
+  });
+
+  it('a non-flow editor move may sit past the page', () => {
+    const loose = loosenLayerRect({ x: -40, y: 900, w: 10, h: 100 });
+    expect(loose).toMatchObject({ x: -40, y: 900, w: 24, h: 100 });
+    expect(pasteboardGutterPx([loose], 500, 400, 48)).toBe(600);
+    expect(pasteboardGutterPx([{ x: 10, y: 10, w: 20, h: 20 }], 500, 400)).toBe(48);
   });
 
   it('migrateSectionLayerGeomToPx converts once and stamps layerGeom', () => {

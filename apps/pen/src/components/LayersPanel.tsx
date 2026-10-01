@@ -99,7 +99,8 @@ export function LayersPopover({
   onSelectedIdsChange,
   contentWidthPx = 736,
   session,
-  docId
+  docId,
+  onEnterGroup
 }: {
   open: boolean;
   onClose: () => void;
@@ -114,6 +115,7 @@ export function LayersPopover({
   contentWidthPx?: number;
   session?: PenSession | null;
   docId: string;
+  onEnterGroup?: (id: string) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -433,7 +435,7 @@ export function LayersPopover({
                   setAddOpen(false);
                 }}
               >
-                New layer
+                New text layer
               </button>
               <button
                 type="button"
@@ -575,6 +577,11 @@ export function LayersPopover({
               } ${!isVisible ? 'opacity-60' : ''}`}
               style={{ paddingLeft: `${8 + depth * 14}px` }}
               onPointerDown={(e) => onRowPointerDown(e, layer.id)}
+              onDoubleClick={(e) => {
+                if (!isGroup || !onEnterGroup) return;
+                e.stopPropagation();
+                onEnterGroup(layer.id);
+              }}
             >
               <span className="w-4 shrink-0 text-[10px] text-neutral-400">{indexLabel}</span>
               {isGroup && (

@@ -265,6 +265,7 @@ export async function rasterizeElementToPosterBlob(
 
   const clone = el.cloneNode(true) as HTMLElement;
   inlineSafeComputedStyles(el, clone);
+  clone.style.overflow = 'hidden';
   if (punchVideos) punchVideoHolesFromLive(el, clone);
   sanitizeCloneForRaster(clone);
 

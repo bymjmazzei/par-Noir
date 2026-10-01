@@ -38,10 +38,6 @@ const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'html', label: 'HTML snippet' }
 ];
 
-function hexColor(value: string | undefined, fallback: string): string {
-  return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
-}
-
 function WidgetTextEditor({
   layer,
   section,
@@ -128,7 +124,9 @@ export function WidgetEditorPanel({
   excludeDocId,
   pageLayout,
   docId,
-  session
+  session,
+  scopeGroupId = null,
+  onEnterGroup
 }: {
   layer: PenPageLayer | null;
   section: PenSectionContent;
@@ -145,6 +143,8 @@ export function WidgetEditorPanel({
   pageLayout?: PenPageLayout;
   docId?: string;
   session?: PenSession | null;
+  scopeGroupId?: string | null;
+  onEnterGroup?: (id: string | null) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -356,23 +356,15 @@ export function WidgetEditorPanel({
             <ColorSwatchButton
               row
               label="Fill"
-              value={hexColor(layer.backgroundColor, '#0f766e')}
+              value={layer.backgroundColor || '#0f766e'}
               onChange={(value) =>
                 onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: value }))
               }
             />
             <ColorSwatchButton
               row
-              label="Text"
-              value={hexColor(layer.textColor, '#ffffff')}
-              onChange={(value) =>
-                onSectionChange(patchLayerStyle(section, layer.id, { textColor: value }))
-              }
-            />
-            <ColorSwatchButton
-              row
               label="Stroke"
-              value={hexColor(layer.strokeColor, '#000000')}
+              value={layer.strokeColor || '#000000'}
               onChange={(value) =>
                 onSectionChange(
                   patchLayerStyle(section, layer.id, {
@@ -528,6 +520,8 @@ export function WidgetEditorPanel({
         onPlaying={onPlaying || (() => undefined)}
         onSelectLayer={onSelectLayer || (() => undefined)}
         onSectionChange={onSectionChange}
+        scopeGroupId={scopeGroupId}
+        onEnterGroup={onEnterGroup}
       />
     </div>
   );

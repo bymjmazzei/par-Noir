@@ -17,6 +17,7 @@ import {
   type PenStrokeStyle
 } from '@par-noir/pen-protocol';
 import { ActionBindStrip } from './ActionBindStrip';
+import { ColorSliders } from './PanelValueControls';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
 import { isPenMediaSrcRef, resolvePenMediaSrc } from '../services/penLocalMedia';
@@ -426,18 +427,14 @@ export function LayerObjectToolbar({
             ))}
           </div>
           {(fill.mode === 'color' || fill.mode === 'gradient') && (
-            <label className="flex items-center justify-between gap-2">
-              <span className="text-neutral-500">Color</span>
-              <input
-                type="color"
-                value={/^#/.test(fill.color) ? fill.color : '#ffffff'}
-                onChange={(e) => {
-                  if (isPage) patchPage({ backgroundColor: e.target.value });
-                  else patchLayer({ backgroundColor: e.target.value, backgroundGradient: undefined });
-                }}
-                className="h-7 w-10 cursor-pointer rounded border border-neutral-300"
-              />
-            </label>
+            <ColorSliders
+              label="Color"
+              value={fill.color || '#ffffff'}
+              onChange={(next) => {
+                if (isPage) patchPage({ backgroundColor: next });
+                else patchLayer({ backgroundColor: next, backgroundGradient: undefined });
+              }}
+            />
           )}
           {fill.mode === 'gradient' && (
             <label className="block space-y-1">
@@ -472,15 +469,11 @@ export function LayerObjectToolbar({
       <Popover open={open === 'shadow'} onClose={() => setOpen(null)}>
         <div className="space-y-2 text-[11px]">
           <div className="font-bold uppercase tracking-wide text-neutral-400">Shadow</div>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-neutral-500">Color</span>
-            <input
-              type="color"
-              value={/^#/.test(shadowColor) ? shadowColor.slice(0, 7) : '#000000'}
-              onChange={(e) => patchLayer({ shadowColor: e.target.value, textShadow: undefined })}
-              className="h-7 w-10 cursor-pointer rounded border border-neutral-300"
-            />
-          </label>
+          <ColorSliders
+            label="Color"
+            value={shadowColor || '#000000'}
+            onChange={(next) => patchLayer({ shadowColor: next, textShadow: undefined })}
+          />
           <label className="block">
             <div className="mb-0.5 flex justify-between text-neutral-500">
               <span>Blur</span>
@@ -606,20 +599,16 @@ export function LayerObjectToolbar({
       <Popover open={open === 'stroke'} onClose={() => setOpen(null)}>
         <div className="space-y-2 text-[11px]">
           <div className="font-bold uppercase tracking-wide text-neutral-400">Stroke</div>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-neutral-500">Color</span>
-            <input
-              type="color"
-              value={/^#/.test(strokeColor) ? strokeColor.slice(0, 7) : '#000000'}
-              onChange={(e) =>
-                patchLayer({
-                  strokeColor: e.target.value,
-                  strokeWidth: strokeWidth || 1
-                })
-              }
-              className="h-7 w-10 cursor-pointer rounded border border-neutral-300"
-            />
-          </label>
+          <ColorSliders
+            label="Color"
+            value={strokeColor || '#000000'}
+            onChange={(next) =>
+              patchLayer({
+                strokeColor: next,
+                strokeWidth: strokeWidth || 1
+              })
+            }
+          />
           <label className="block space-y-1">
             <span className="text-neutral-500">Style</span>
             <select
@@ -696,34 +685,41 @@ export function LayerObjectToolbar({
   );
 }
 
-/** Apply layer visual styles for preview render. */
-export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
+/** Shadow, blur, opacity, blend, and stroke belong to the layer frame, outside the clipped face. */
+export function layerChromeStyle(layer: PenPageLayer): CSSProperties {
   const shadow = layerShadowCss(layer);
   const stroke = layerStrokeStyle(layer);
   const opacityPct = layer.opacity ?? 100;
   const blendAmt = (layer.blendAmount ?? 100) / 100;
+  const boxShadow =
+    stroke.boxShadow && shadow ? `${stroke.boxShadow}, ${shadow}` : stroke.boxShadow || shadow;
   const style: CSSProperties = {
     opacity: (opacityPct / 100) * (layer.mixBlendMode && layer.mixBlendMode !== 'normal' ? blendAmt : 1),
     mixBlendMode: (layer.mixBlendMode as CSSProperties['mixBlendMode']) || undefined,
     filter: layer.blur ? `blur(${layer.blur}px)` : undefined,
-    boxShadow: stroke.boxShadow || shadow,
-    textShadow: shadow,
+    boxShadow,
     border: stroke.border,
     outline: stroke.outline,
     outlineOffset: stroke.outlineOffset
   };
   if (layer.kind === 'group') {
-    style.backgroundColor = 'transparent';
     style.border = style.border || '1px dashed rgba(0,0,0,0.25)';
+  }
+  return style;
+}
+
+/** Fill painted on the clipped face. Text color lives in the text document. */
+export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
+  const style: CSSProperties = {};
+  if (layer.kind === 'group') {
+    style.backgroundColor = 'transparent';
     return style;
   }
-  // Image/video frames are media-first — never default to an opaque white card.
   if (layer.kind === 'image' || layer.kind === 'video') {
     style.backgroundColor = layer.backgroundColor || 'transparent';
     return style;
   }
   if (layer.cornerRadius) style.borderRadius = `${layer.cornerRadius}px`;
-  if (layer.textColor) style.color = layer.textColor;
   if (layer.backgroundGradient) {
     style.backgroundImage = layer.backgroundGradient;
   } else if (layer.backgroundImage && !isPenMediaSrcRef(layer.backgroundImage)) {
@@ -734,11 +730,6 @@ export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
     style.backgroundColor = layer.backgroundColor;
   } else {
     style.backgroundColor = 'rgba(255,255,255,0.95)';
-  }
-  // When both stroke center boxShadow and drop shadow exist, prefer stroke on the box;
-  // drop shadow still applies via textShadow for text layers.
-  if (stroke.boxShadow && shadow) {
-    style.boxShadow = `${stroke.boxShadow}, ${shadow}`;
   }
   return style;
 }

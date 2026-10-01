@@ -134,8 +134,8 @@ export function PreviewLayerFace({
     return (
       <button
         type="button"
-        className="pointer-events-auto flex h-full w-full items-center justify-center px-3 text-sm font-medium"
-        style={{ ...shell, color: layer.textColor || '#ffffff' }}
+      className="pointer-events-auto flex h-full w-full items-center justify-center overflow-hidden px-3 text-sm font-medium"
+      style={shell}
         title={layer.behavior || 'button'}
         onClick={(e) => {
           e.stopPropagation();
@@ -147,12 +147,10 @@ export function PreviewLayerFace({
       >
         {runtime ? (
           runtime
-        ) : layer.label ? (
-          layer.label
         ) : rich ? (
           <span className="pen-rich-html" dangerouslySetInnerHTML={{ __html: rich }} />
         ) : (
-          'Button'
+          layer.label || 'Button'
         )}
       </button>
     );
@@ -173,8 +171,7 @@ export function PreviewLayerFace({
         <div
           className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
           style={{
-            fontFamily: presentation.fontFamily || undefined,
-            color: presentation.textColor || '#111'
+            fontFamily: presentation.fontFamily || undefined
           }}
           dangerouslySetInnerHTML={{
             __html: docToHtml(getTextLayerDoc(layer)) || '<p class="text-neutral-400">Text</p>'
@@ -188,8 +185,7 @@ export function PreviewLayerFace({
       <div
         className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
         style={{
-          fontFamily: presentation.fontFamily || undefined,
-          color: presentation.textColor || '#111'
+          fontFamily: presentation.fontFamily || undefined
         }}
         dangerouslySetInnerHTML={{
           __html: docToHtml(getTextLayerDoc(layer)) || '<p class="text-neutral-400">Text</p>'

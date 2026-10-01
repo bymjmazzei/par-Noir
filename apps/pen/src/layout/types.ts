@@ -22,15 +22,19 @@ const MIN = 24;
 
 export function clampLayoutItem(
   item: LayoutItem,
-  bounds?: LayoutBounds
+  bounds?: LayoutBounds,
+  freePlacement = false
 ): LayoutItem {
+  const w = Math.max(MIN, item.w);
+  const h = Math.max(MIN, item.h);
+  if (freePlacement) return { ...item, w, h };
   const contentW = Math.max(MIN, bounds?.width ?? 736);
   const contentH = Math.max(MIN, bounds?.height ?? 976);
-  const w = Math.min(contentW, Math.max(MIN, item.w));
-  const h = Math.min(contentH, Math.max(MIN, item.h));
-  const x = Math.min(Math.max(0, contentW - w), Math.max(0, item.x));
-  const y = Math.min(Math.max(0, contentH - h), Math.max(0, item.y));
-  return { ...item, x, y, w, h };
+  const width = Math.min(contentW, w);
+  const height = Math.min(contentH, h);
+  const x = Math.min(Math.max(0, contentW - width), Math.max(0, item.x));
+  const y = Math.min(Math.max(0, contentH - height), Math.max(0, item.y));
+  return { ...item, x, y, w: width, h: height };
 }
 
 export function bringToFront(items: LayoutItem[], id: string): LayoutItem[] {

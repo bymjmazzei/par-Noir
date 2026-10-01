@@ -1,5 +1,7 @@
 /** Section timeline lists every layer, and a later key moves the sampled rect. */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, sampleLayerAt, type PenSectionContent } from '@par-noir/pen-protocol';
@@ -272,7 +274,7 @@ describe('section timeline', () => {
     );
     expect(html).toContain('data-keyframe="solo:1"');
     expect(html).toContain('left:20%');
-    expect(html).toContain('calc(1.75rem + (100% - 1.75rem) * 0.2)');
+    expect(html).toContain('calc(5.25rem + (100% - 5.25rem) * 0.2)');
     expect(html).not.toContain('left:100%');
   });
 
@@ -306,5 +308,86 @@ describe('section timeline', () => {
     expect(html).toContain('max-height:104px');
     expect(html).toContain('data-track-row="row-4"');
     expect(html).toContain('overflow-y-auto');
+  });
+
+  it('selects one track and offers an eye and a grabber', () => {
+    const html = renderToStaticMarkup(
+      <SectionTimeline
+        section={section}
+        activeLayerId="title"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html).toContain('data-track-selected="true"');
+    expect(html).toContain('data-track-selected="false"');
+    expect(html).toContain('aria-label="Hide title"');
+    expect(html).toContain('aria-label="Reorder title"');
+    expect(html.match(/border-blue-600/g)?.length).toBeLessThan(html.match(/border-stone-300/g)?.length || 0);
+  });
+
+  it('shows a group as one track until the timeline is inside that group', () => {
+    const widget: PenSectionContent = {
+      ...emptySection('card'),
+      layers: [
+        { id: 'box', kind: 'group', x: 0, y: 0, w: 80, h: 40, zIndex: 2, name: 'Box' },
+        {
+          id: 'yes',
+          kind: 'text',
+          parentGroupId: 'box',
+          x: 0,
+          y: 0,
+          w: 40,
+          h: 20,
+          zIndex: 1,
+          name: 'Yes'
+        },
+        { id: 'solo', kind: 'text', x: 0, y: 0, w: 40, h: 20, zIndex: 1, name: 'Solo' }
+      ]
+    };
+    const page = renderToStaticMarkup(
+      <SectionTimeline
+        section={widget}
+        activeLayerId="box"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(page).toContain('data-track-row="box"');
+    expect(page).not.toContain('data-track-row="yes"');
+    const inside = renderToStaticMarkup(
+      <SectionTimeline
+        section={widget}
+        scopeGroupId="box"
+        activeLayerId="yes"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(inside).toContain('data-track-row="yes"');
+    expect(inside).toContain('aria-label="Leave group"');
+    expect(inside).not.toContain('data-track-row="solo"');
+  });
+
+  it('mounts the timeline under the text editor', () => {
+    const page = readFileSync(resolve(__dirname, '../pages/DocEditorPage.tsx'), 'utf8');
+    const writing = page.indexOf('writingEnabled && canvasSection && section');
+    const timeline = page.indexOf('<SectionTimeline', writing);
+    const fallback = page.indexOf('Select Body or a text layer to write.', writing);
+    expect(writing).toBeGreaterThan(-1);
+    expect(timeline).toBeGreaterThan(writing);
+    expect(fallback).toBeGreaterThan(timeline);
   });
 });

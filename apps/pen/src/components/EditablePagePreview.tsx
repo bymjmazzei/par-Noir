@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import {
   clampLayerRect,
+  pasteboardGutterPx,
   collectFontFamiliesFromDoc,
   clampPageSizePx,
   contentBoxSize,
@@ -68,6 +69,7 @@ import { LayersPopover, layerDisplayLabel, pageLayerLabel } from './LayersPanel'
 import { IconLayers, IconTapeMeasure } from './icons/PenIcons';
 import {
   LayerObjectToolbar,
+  layerChromeStyle,
   layerPreviewStyle,
   pageFrameStyle
 } from './LayerObjectToolbar';
@@ -244,6 +246,7 @@ function BodyWrapObject({
     pointerEvents: 'none'
   };
 
+  const wrapChrome = layerChromeStyle(layer);
   const boxStyle: CSSProperties = {
     ...opaqueWrapShell(layer),
     float: side,
@@ -373,8 +376,7 @@ function BodyWrapObject({
       <div
         className="pen-rich-html h-full w-full overflow-hidden p-2 text-sm"
         style={{
-          fontFamily: presentation.fontFamily || undefined,
-          color: presentation.textColor || '#111'
+          fontFamily: presentation.fontFamily || undefined
         }}
         title={layerDisplayLabel(layer, allLayers)}
         dangerouslySetInnerHTML={{
@@ -398,8 +400,7 @@ function BodyWrapObject({
     inner = (
       <button
         type="button"
-        className="flex h-full w-full items-center justify-center px-3 text-sm font-medium"
-        style={{ color: layer.textColor || '#ffffff' }}
+        className="flex h-full w-full items-center justify-center overflow-hidden px-3 text-sm font-medium"
         title={`${layer.behavior || 'interactive'} → ${layer.bindDocId || ''}`}
         onClick={(e) => {
           e.stopPropagation();
@@ -422,10 +423,17 @@ function BodyWrapObject({
         data-wrap={side}
         role="button"
         tabIndex={0}
-        className={`overflow-hidden ${
+        className={`overflow-visible ${
           selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300'
         }`}
-        style={boxStyle}
+        style={{
+          ...boxStyle,
+          boxShadow: wrapChrome.boxShadow,
+          border: wrapChrome.border,
+          outline: wrapChrome.outline,
+          outlineOffset: wrapChrome.outlineOffset,
+          filter: wrapChrome.filter
+        }}
         onPointerDown={onPointerDownMove}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -476,7 +484,8 @@ export function EditablePagePreview({
   onPageOrientation,
   onPageView,
   onToggleViewLock,
-  playheadSec = 0
+  playheadSec = 0,
+  onEnterGroup
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -510,6 +519,7 @@ export function EditablePagePreview({
   onToggleViewLock?: () => void;
   /** Section clock. Layers with keys are sampled here for display only. */
   playheadSec?: number;
+  onEnterGroup?: (id: string) => void;
   onPageSizeChange?: (next: PageSizeChoice) => void;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSnapChange?: (enabled: boolean) => void;
@@ -641,6 +651,14 @@ export function EditablePagePreview({
     measuredSheetW,
     scrollWithParent && measuredSheetH > 0 ? measuredSheetH : undefined
   );
+  const artboard = manifest.pageLayout !== 'flow';
+  const artboardGutter = artboard && !scrollWithParent
+    ? pasteboardGutterPx(
+        items.map((item) => ({ x: item.x + pad, y: item.y + pad, w: item.w, h: item.h })),
+        box.width + 2 * pad,
+        box.height + 2 * pad
+      )
+    : 0;
 
   const activeObject = layers.find((l) => l.id === activeLayerId) || null;
   const pageActive = isPageLayerId(activeLayerId);
@@ -1061,6 +1079,7 @@ export function EditablePagePreview({
         contentWidthPx={box.width}
         session={session}
         docId={manifest.docId}
+        onEnterGroup={onEnterGroup}
       />
     </>
   ) : null;
@@ -1086,6 +1105,7 @@ export function EditablePagePreview({
                 flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
               }`
         }
+        style={artboard ? { padding: artboardGutter } : undefined}
       >
         <PageSheetColumn
           sheetRef={sheetMeasureRef}
@@ -1093,7 +1113,7 @@ export function EditablePagePreview({
           flowWorkspaceWidthPx={manifest.flowWorkspaceWidthPx}
           flowWorkspaceHeightPx={manifest.flowWorkspaceHeightPx}
           contentOuterHeightPx={contentOuterH}
-          style={frameStyle}
+          style={artboard ? { ...frameStyle, overflow: 'visible' } : frameStyle}
           bare={
             !scrollWithParent &&
             presentation.backgroundColor === 'transparent' &&
@@ -1200,7 +1220,7 @@ export function EditablePagePreview({
             )}
             {showAbsoluteLayers && (
             <LayoutSurface
-              className="pointer-events-none absolute z-[1]"
+              className="pointer-events-none absolute z-[1] overflow-visible"
               style={
                 {
                   top: 0,
@@ -1211,6 +1231,11 @@ export function EditablePagePreview({
               }
               items={items.map((item) => ({ ...item, x: item.x + pad, y: item.y + pad }))}
               bounds={{ width: box.width + 2 * pad, height: box.height + 2 * pad }}
+              freePlacement={manifest.pageLayout !== 'flow'}
+              frameStyle={(item) => {
+                const layer = layers.find((entry) => entry.id === item.id);
+                return layer ? layerChromeStyle(layer) : {};
+              }}
               selectedId={pageActive ? null : activeLayerId}
               snapToPageCenter={snapEnabled}
               snapGuides={snapGuides}
@@ -1323,8 +1348,8 @@ export function EditablePagePreview({
                   return (
                     <button
                       type="button"
-                      className="pointer-events-auto flex h-full w-full items-center justify-center px-3 text-sm font-medium"
-                      style={{ ...shell, color: layer.textColor || '#ffffff' }}
+                      className="pointer-events-auto flex h-full w-full items-center justify-center overflow-hidden px-3 text-sm font-medium"
+                      style={shell}
                       title={layer.behavior || 'button'}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1337,15 +1362,13 @@ export function EditablePagePreview({
                     >
                       {runtime ? (
                         runtime
-                      ) : layer.label ? (
-                        layer.label
                       ) : rich ? (
                         <span
                           className="pen-rich-html"
                           dangerouslySetInnerHTML={{ __html: rich }}
                         />
                       ) : (
-                        'Button'
+                        layer.label || 'Button'
                       )}
                     </button>
                   );
@@ -1366,8 +1389,7 @@ export function EditablePagePreview({
                       <div
                         className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
                         style={{
-                          fontFamily: presentation.fontFamily || undefined,
-                          color: presentation.textColor || '#111'
+                          fontFamily: presentation.fontFamily || undefined
                         }}
                         dangerouslySetInnerHTML={{
                           __html:
@@ -1384,8 +1406,7 @@ export function EditablePagePreview({
                     <div
                       className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
                       style={{
-                        fontFamily: presentation.fontFamily || undefined,
-                        color: presentation.textColor || '#111'
+                        fontFamily: presentation.fontFamily || undefined
                       }}
                       dangerouslySetInnerHTML={{
                         __html: html || '<p class="text-neutral-400">Text</p>'

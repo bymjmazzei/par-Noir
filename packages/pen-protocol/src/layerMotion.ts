@@ -364,9 +364,9 @@ export function detachClipAsLayer(
     outSec: clip.outSec,
     sourceInSec: clip.sourceInSec,
     timelineTrackId: trackId,
+    parentGroupId: source.parentGroupId,
     zIndex: source.zIndex + 1
   };
-  delete detached.parentGroupId;
   const nextSource: PenPageLayer = {
     ...source,
     clips: rest,
@@ -696,54 +696,164 @@ export function joinLayerToTrack(
   };
 }
 
+function clipDuration(clip: { inSec: number; outSec: number }): number {
+  return Math.max(0.05, clip.outSec - clip.inSec);
+}
+
+/** Keep clip order by start time. A clip that overlaps the one before it slides forward. */
+function packClips(clips: PenTimelineClip[], movedId: string): PenTimelineClip[] {
+  const ordered = [...clips].sort((a, b) => {
+    if (a.inSec !== b.inSec) return a.inSec - b.inSec;
+    if (a.id === movedId) return -1;
+    if (b.id === movedId) return 1;
+    return 0;
+  });
+  const next: PenTimelineClip[] = [];
+  let cursor = 0;
+  for (const clip of ordered) {
+    const duration = clipDuration(clip);
+    if (next.length && clip.inSec < cursor - 0.001) {
+      next.push({ ...clip, inSec: cursor, outSec: cursor + duration });
+      cursor += duration;
+    } else {
+      next.push({ ...clip });
+      cursor = Math.max(cursor, clip.outSec);
+    }
+  }
+  return next;
+}
+
+function writeLayerClips(layer: PenPageLayer, clips: PenTimelineClip[]): PenPageLayer {
+  if (!layer.clips?.length && clips.length === 1) {
+    const only = clips[0]!;
+    return { ...layer, inSec: only.inSec, outSec: only.outSec, sourceInSec: only.sourceInSec };
+  }
+  return {
+    ...layer,
+    clips,
+    inSec: Math.min(...clips.map((clip) => clip.inSec)),
+    outSec: Math.max(...clips.map((clip) => clip.outSec))
+  };
+}
+
 /**
- * Move a layer's row above another track, or to the end when `beforeTrackId` is null.
- * A layer that shared a row becomes its own row. Joining stays on `joinLayerToTrack`.
+ * Slide one piece along its track. Passing another piece on that layer
+ * reorders them and closes the overlap.
+ */
+export function moveClipBy(
+  section: PenSectionContent,
+  layerId: string,
+  clipId: string,
+  deltaSec: number
+): PenSectionContent {
+  if (!deltaSec) return section;
+  const layers = section.layers || [];
+  const layer = layers.find((item) => item.id === layerId);
+  if (!layer || layer.kind === 'guide' || layer.kind === 'group') return section;
+  const span = layerClockSpan(section, layer);
+  const clips = layerClips(layer, span).map((clip) => ({ ...clip }));
+  const index = clips.findIndex((clip) => clip.id === clipId);
+  if (index < 0) return section;
+  const hit = clips[index]!;
+  const duration = clipDuration(hit);
+  const inSec = Math.max(0, hit.inSec + deltaSec);
+  clips[index] = { ...hit, inSec, outSec: inSec + duration };
+  const packed = packClips(clips, clipId);
+  return {
+    ...section,
+    layers: layers.map((item) => (item.id === layer.id ? writeLayerClips(layer, packed) : item))
+  };
+}
+
+/**
+ * Move one piece onto another track. A multi-clip layer gives that piece its own layer first.
+ * The piece starts when the host track ends.
+ */
+export function moveClipToTrack(
+  section: PenSectionContent,
+  layerId: string,
+  clipId: string,
+  trackId: string
+): PenSectionContent {
+  const layer = (section.layers || []).find((item) => item.id === layerId);
+  if (!layer || layer.kind === 'guide' || layer.kind === 'group') return section;
+  if (layerTrackId(layer) === trackId && (layer.clips?.length || 0) <= 1) return section;
+  const detached =
+    layer.clips && layer.clips.length > 1 ? detachClipAsLayer(section, layerId, clipId) : null;
+  if (layer.clips && layer.clips.length > 1 && !detached) return section;
+  const next = detached?.section ?? section;
+  const movingId = detached?.layerId ?? layerId;
+  return joinLayerToTrack(next, movingId, trackId);
+}
+
+function trackKey(layer: PenPageLayer, scopeGroupId: string | null): string {
+  if (!scopeGroupId && layer.kind === 'group') return layer.id;
+  return layerTrackId(layer);
+}
+
+function layerInTimelineScope(layer: PenPageLayer, scopeGroupId: string | null): boolean {
+  if (layer.kind === 'guide') return false;
+  if (scopeGroupId) return layer.parentGroupId === scopeGroupId;
+  return !layer.parentGroupId;
+}
+
+/**
+ * Move a track in front of another, or to the back when `beforeTrackId` is null.
+ * Order is front-first: the first track is the top row and the front of the layers list.
+ * A shared clip becomes its own row unless `releaseShared` is false (the track grabber).
+ * `scopeGroupId` reorders children inside that group.
  */
 export function reorderTimelineLayer(
   section: PenSectionContent,
   layerId: string,
-  beforeTrackId: string | null
+  beforeTrackId: string | null,
+  scopeGroupId: string | null = null,
+  releaseShared = true
 ): PenSectionContent {
   const layers = section.layers || [];
   const moving = layers.find((layer) => layer.id === layerId);
-  if (!moving || moving.kind === 'guide' || moving.parentGroupId) return section;
-  const track = layerTrackId(moving);
+  if (!moving || moving.kind === 'guide') return section;
+  if (!layerInTimelineScope(moving, scopeGroupId)) return section;
+  const track = trackKey(moving, scopeGroupId);
   const peers = layers.filter(
-    (layer) => !layer.parentGroupId && layer.kind !== 'guide' && layerTrackId(layer) === track
+    (layer) => layerInTimelineScope(layer, scopeGroupId) && trackKey(layer, scopeGroupId) === track
   );
-  const released = peers.length > 1 ? releaseLayerTrack(section, layerId) : section;
+  const released =
+    releaseShared && peers.length > 1 && moving.kind !== 'group'
+      ? releaseLayerTrack(section, layerId)
+      : section;
   const nextLayers = released.layers || [];
   const current = nextLayers.find((layer) => layer.id === layerId);
   if (!current) return section;
-  const movingTrack = layerTrackId(current);
+  const movingTrack = trackKey(current, scopeGroupId);
   if (beforeTrackId === movingTrack) return released;
   const tops = nextLayers
-    .filter((layer) => !layer.parentGroupId && layer.kind !== 'guide')
-    .sort((a, b) => a.zIndex - b.zIndex);
+    .filter((layer) => layerInTimelineScope(layer, scopeGroupId))
+    .sort((a, b) => b.zIndex - a.zIndex);
   const order: string[] = [];
   for (const layer of tops) {
-    const id = layerTrackId(layer);
+    const id = trackKey(layer, scopeGroupId);
     if (!order.includes(id)) order.push(id);
   }
   const rest = order.filter((id) => id !== movingTrack);
   const at = beforeTrackId ? rest.indexOf(beforeTrackId) : -1;
   rest.splice(at >= 0 ? at : rest.length, 0, movingTrack);
   const ranked = new Map(rest.map((id, index) => [id, index]));
+  const count = rest.length;
   return {
     ...released,
     layers: nextLayers.map((layer) => {
-      if (layer.parentGroupId || layer.kind === 'guide') return layer;
-      const index = ranked.get(layerTrackId(layer));
+      if (!layerInTimelineScope(layer, scopeGroupId)) return layer;
+      const index = ranked.get(trackKey(layer, scopeGroupId));
       if (index == null) return layer;
       const siblings = tops
-        .filter((item) => layerTrackId(item) === layerTrackId(layer))
-        .sort((a, b) => a.zIndex - b.zIndex);
+        .filter((item) => trackKey(item, scopeGroupId) === trackKey(layer, scopeGroupId))
+        .sort((a, b) => b.zIndex - a.zIndex);
       const offset = Math.max(
         0,
         siblings.findIndex((item) => item.id === layer.id)
       );
-      return { ...layer, zIndex: (index + 1) * 100 + offset };
+      return { ...layer, zIndex: (count - index) * 100 - offset };
     })
   };
 }

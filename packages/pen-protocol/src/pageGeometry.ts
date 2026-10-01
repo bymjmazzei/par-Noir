@@ -484,6 +484,29 @@ export function clampLayerRect(
   return { x, y, w, h };
 }
 
+/** Minimum size only. A non-flow layer may sit past the page. */
+export function loosenLayerRect(item: LayerRect): LayerRect {
+  return {
+    ...item,
+    w: Math.max(MIN_LAYER_SIZE_PX, item.w),
+    h: Math.max(MIN_LAYER_SIZE_PX, item.h)
+  };
+}
+
+/** Gray workspace around a page, wide enough to show layers that hang off it. */
+export function pasteboardGutterPx(
+  rects: Array<Pick<LayerRect, 'x' | 'y' | 'w' | 'h'>>,
+  pageW: number,
+  pageH: number,
+  min = 48
+): number {
+  let over = 0;
+  for (const rect of rects) {
+    over = Math.max(over, -rect.x, -rect.y, rect.x + rect.w - pageW, rect.y + rect.h - pageH, 0);
+  }
+  return Math.max(min, Math.ceil(over));
+}
+
 export type PageMeasureUnit = 'px' | 'in' | 'cm' | 'mm';
 
 const PX_PER_UNIT: Record<PageMeasureUnit, number> = {

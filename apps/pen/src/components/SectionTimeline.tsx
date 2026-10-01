@@ -26,8 +26,8 @@ import {
   layerMediaTime,
   layerSampleTime,
   deleteClipAt,
-  detachClipAsLayer,
-  joinLayerToTrack,
+  moveClipBy,
+  moveClipToTrack,
   publishPlaybackSrc,
   reorderTimelineLayer,
   resolveTimelineDuration,
@@ -94,68 +94,52 @@ function formatTime(sec: number): string {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/** Mute column (w-6) plus the row gap, so the playhead shares the lane's time axis. */
-const TRACK_GUTTER = '1.75rem';
+/** Eye, mute, and grabber (each w-6) plus the row gaps, so the playhead shares the lane's time axis. */
+const TRACK_GUTTER = '5.25rem';
 
 function trackLeft(time: number, span: number): string {
   const ratio = time / Math.max(span, 0.01);
   return `calc(${TRACK_GUTTER} + (100% - ${TRACK_GUTTER}) * ${ratio})`;
 }
 
-function trackRows(section: PenSectionContent): Array<{ layer: PenPageLayer; depth: number }> {
-  const layers = (section.layers || []).filter((layer) => layer.kind !== 'guide');
-  const top = layers
-    .filter((layer) => !layer.parentGroupId)
-    .sort((a, b) => a.zIndex - b.zIndex);
-  const rows: Array<{ layer: PenPageLayer; depth: number }> = [];
-  for (const layer of top) {
-    rows.push({ layer, depth: 0 });
-    if (layer.kind !== 'group') continue;
-    const kids = layers
-      .filter((item) => item.parentGroupId === layer.id)
-      .sort((a, b) => a.zIndex - b.zIndex);
-    for (const kid of kids) rows.push({ layer: kid, depth: 1 });
-  }
-  return rows;
-}
-
-/** A group is one track. A layer that is not in a group is its own track. Members stay on the group row. */
-function widgetTracks(section: PenSectionContent): Array<{
+type TimelineTrack = {
   trackId: string;
-  depth: number;
   layers: PenPageLayer[];
-}> {
-  const layers = (section.layers || []).filter((layer) => layer.kind !== 'guide');
-  const top = layers
-    .filter((layer) => !layer.parentGroupId)
-    .sort((a, b) => a.zIndex - b.zIndex);
-  return top.map((layer) => {
-    if (layer.kind !== 'group') {
-      return { trackId: layer.id, depth: 0, layers: [layer] };
-    }
-    const kids = layers
-      .filter((item) => item.parentGroupId === layer.id)
-      .sort((a, b) => a.zIndex - b.zIndex);
-    return { trackId: layer.id, depth: 0, layers: [layer, ...kids] };
-  });
-}
+  compound: boolean;
+};
 
-function groupTracks(rows: Array<{ layer: PenPageLayer; depth: number }>): Array<{
-  trackId: string;
-  depth: number;
-  layers: PenPageLayer[];
-}> {
+/**
+ * Front-first tracks. On the page, a group is one compound track.
+ * Inside a group, that group's children are the tracks.
+ */
+function timelineTracks(section: PenSectionContent, scopeGroupId: string | null): TimelineTrack[] {
+  const layers = (section.layers || []).filter((layer) => layer.kind !== 'guide');
+  const pool = scopeGroupId
+    ? layers.filter((layer) => layer.parentGroupId === scopeGroupId)
+    : layers.filter((layer) => !layer.parentGroupId);
+  const sorted = [...pool].sort((a, b) => b.zIndex - a.zIndex);
   const order: string[] = [];
-  const map = new Map<string, { depth: number; layers: PenPageLayer[] }>();
-  for (const row of rows) {
-    const trackId = row.layer.timelineTrackId || row.layer.id;
-    const hit = map.get(trackId);
-    if (!hit) {
+  const map = new Map<string, PenPageLayer[]>();
+  const compound = new Set<string>();
+  for (const layer of sorted) {
+    const isGroup = layer.kind === 'group';
+    const trackId = isGroup ? layer.id : layer.timelineTrackId || layer.id;
+    if (!map.has(trackId)) {
       order.push(trackId);
-      map.set(trackId, { depth: row.depth, layers: [row.layer] });
-    } else hit.layers.push(row.layer);
+      map.set(trackId, []);
+    }
+    map.get(trackId)!.push(layer);
+    if (isGroup) compound.add(trackId);
   }
-  return order.map((trackId) => ({ trackId, depth: map.get(trackId)!.depth, layers: map.get(trackId)!.layers }));
+  for (const layer of layers) {
+    if (!layer.parentGroupId || !compound.has(layer.parentGroupId)) continue;
+    map.get(layer.parentGroupId)!.push(layer);
+  }
+  return order.map((trackId) => ({
+    trackId,
+    layers: map.get(trackId) || [],
+    compound: compound.has(trackId)
+  }));
 }
 
 function formatMark(sec: number, minor: number): string {
@@ -206,6 +190,42 @@ function SpeakerIcon({ muted }: { muted: boolean }) {
           strokeWidth="1.2"
         />
       )}
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <path
+        d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4S1.5 8 1.5 8z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <circle cx="8" cy="8" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <path d="M2 2.5 14 13.5" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M3 6.2A8 8 0 0 0 1.5 8s2.4 4 6.5 4c.8 0 1.5-.1 2.2-.4M6.2 4.3A8 8 0 0 1 8 4c4.1 0 6.5 4 6.5 4a8 8 0 0 1-1.6 1.9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
+function GrabberIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <path d="M5 3.5h.01M5 8h.01M5 12.5h.01M9 3.5h.01M9 8h.01M9 12.5h.01" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -567,7 +587,9 @@ export function SectionTimeline({
   onSelectLayer,
   onSectionChange,
   onReverse,
-  mode = 'media'
+  mode = 'media',
+  scopeGroupId = null,
+  onEnterGroup
 }: {
   section: PenSectionContent;
   activeLayerId: string | null;
@@ -580,13 +602,18 @@ export function SectionTimeline({
   onSelectLayer: (id: string) => void;
   onSectionChange: (next: PenSectionContent) => void;
   onReverse?: () => void;
-  /** Widget rows are one group or one ungrouped layer. Media keeps clip joins. */
+  /** Widget rows hide clip tools. Both modes collapse a group to one track until you enter it. */
   mode?: 'media' | 'widget';
+  /** When set, the timeline is that group's own tracks. */
+  scopeGroupId?: string | null;
+  onEnterGroup?: (id: string | null) => void;
 }) {
   const widget = mode === 'widget';
   const duration = resolveTimelineDuration(section);
-  const rows = trackRows(section);
-  const groups = widget ? widgetTracks(section) : groupTracks(rows);
+  const groups = timelineTracks(section, scopeGroupId);
+  const scopeGroup = scopeGroupId
+    ? (section.layers || []).find((layer) => layer.id === scopeGroupId && layer.kind === 'group')
+    : null;
   const playback = usePlaybackMode();
   const active =
     (section.layers || []).find((layer) => layer.id === activeLayerId && layer.kind !== 'guide') ??
@@ -679,27 +706,32 @@ export function SectionTimeline({
   }
 
   function driveVideos(mode: 'play' | 'pause' | 'seek' | 'tick', at: number) {
-    for (const { layer } of rows) {
-      const ctrl = videoController(layer, mode === 'play');
-      if (!ctrl) continue;
-      if (mode === 'pause') {
-        ctrl.pause();
-        continue;
-      }
-      const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
-      ctrl.setPlaybackRate(rate);
-      const mediaAt = layerMediaTime(layer, at, rate, layerClockSpan(section, layer));
-      if (layer.mediaReversed) {
-        ctrl.pause();
-        placeVideo(ctrl.master, mediaAt, true);
-        continue;
-      }
-      if (mode === 'tick') {
+    const seen = new Set<string>();
+    for (const group of groups) {
+      for (const layer of group.layers) {
+        if (seen.has(layer.id)) continue;
+        seen.add(layer.id);
+        const ctrl = videoController(layer, mode === 'play');
+        if (!ctrl) continue;
+        if (mode === 'pause') {
+          ctrl.pause();
+          continue;
+        }
+        const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
+        ctrl.setPlaybackRate(rate);
+        const mediaAt = layerMediaTime(layer, at, rate, layerClockSpan(section, layer));
+        if (layer.mediaReversed) {
+          ctrl.pause();
+          placeVideo(ctrl.master, mediaAt, true);
+          continue;
+        }
+        if (mode === 'tick') {
+          placeVideo(ctrl.master, mediaAt);
+          continue;
+        }
         placeVideo(ctrl.master, mediaAt);
-        continue;
+        if (mode === 'play') void ctrl.ensurePlaying();
       }
-      placeVideo(ctrl.master, mediaAt);
-      if (mode === 'play') void ctrl.ensurePlaying();
     }
   }
 
@@ -877,11 +909,19 @@ export function SectionTimeline({
     onSectionChange(deleteClipAt(section, activeLayerId, playheadSec));
   }
 
-  function beginMove(
-    event: ReactPointerEvent<HTMLElement>,
-    layer: PenPageLayer,
-    clipId?: string
-  ) {
+  function dropBefore(ev: PointerEvent): string | null {
+    const root = rootRef.current;
+    const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-track-row]');
+    const trackId = hit?.getAttribute('data-track-row');
+    const rows = [...(root?.querySelectorAll('[data-track-row]') || [])];
+    const ids = rows.map((row) => row.getAttribute('data-track-row') || '');
+    if (!hit || !trackId || !(hit instanceof HTMLElement)) return null;
+    const y = (ev.clientY - hit.getBoundingClientRect().top) / Math.max(1, hit.getBoundingClientRect().height);
+    const index = ids.indexOf(trackId);
+    return y < 0.5 ? trackId : ids[index + 1] || null;
+  }
+
+  function beginGrab(event: ReactPointerEvent<HTMLElement>, layer: PenPageLayer, trackId: string) {
     event.preventDefault();
     event.stopPropagation();
     const startX = event.clientX;
@@ -893,50 +933,49 @@ export function SectionTimeline({
     const up = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      onSelectLayer(layer.id);
+      if (!moved) return;
+      const before = dropBefore(ev);
+      if (before === trackId) return;
+      onSectionChange(reorderTimelineLayer(section, layer.id, before, scopeGroupId, false));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  function beginClipDrag(
+    event: ReactPointerEvent<HTMLElement>,
+    layer: PenPageLayer,
+    clipId: string,
+    span: number
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const lane = event.currentTarget.closest('[data-clip-lane]');
+    const width = lane instanceof HTMLElement ? lane.getBoundingClientRect().width : 1;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 6) moved = true;
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
       if (!moved) {
         onSelectLayer(layer.id);
         return;
       }
-      const root = rootRef.current;
       const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-track-row]');
       const trackId = hit?.getAttribute('data-track-row');
-      const own = layer.timelineTrackId || layer.id;
-      const rows = [...(root?.querySelectorAll('[data-track-row]') || [])];
-      const ids = rows.map((row) => row.getAttribute('data-track-row') || '');
-      const y =
-        hit instanceof HTMLElement
-          ? (ev.clientY - hit.getBoundingClientRect().top) / Math.max(1, hit.getBoundingClientRect().height)
-          : null;
-      const offRow = y == null || y <= 0.28 || y >= 0.72;
-      const piece =
-        clipId && (layer.clips?.length || 0) > 1
-          ? detachClipAsLayer(section, layer.id, clipId)
-          : null;
-      if (piece && offRow) {
-        let next = piece.section;
-        if (!hit || !trackId || !(hit instanceof HTMLElement)) {
-          next = reorderTimelineLayer(next, piece.layerId, null);
-        } else {
-          const index = ids.indexOf(trackId);
-          const before = (y ?? 1) < 0.5 ? trackId : ids[index + 1] || null;
-          next = reorderTimelineLayer(next, piece.layerId, before);
-        }
+      const own = scopeGroupId && layer.kind === 'group' ? layer.id : layer.timelineTrackId || layer.id;
+      if (trackId && trackId !== own) {
+        const next = moveClipToTrack(section, layer.id, clipId, trackId);
         onSectionChange(next);
-        onSelectLayer(piece.layerId);
         return;
       }
-      if (!hit || !trackId || !(hit instanceof HTMLElement)) {
-        onSectionChange(reorderTimelineLayer(section, layer.id, null));
-        return;
-      }
-      if (trackId !== own && y != null && y > 0.28 && y < 0.72) {
-        onSectionChange(joinLayerToTrack(section, layer.id, trackId));
-        return;
-      }
-      const index = ids.indexOf(trackId);
-      const before = (y ?? 0) < 0.5 ? trackId : ids[index + 1] || null;
-      if (before === own) return;
-      onSectionChange(reorderTimelineLayer(section, layer.id, before));
+      const delta = ((ev.clientX - startX) / Math.max(1, width)) * span;
+      onSectionChange(moveClipBy(section, layer.id, clipId, delta));
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -984,19 +1023,18 @@ export function SectionTimeline({
     window.addEventListener('pointerup', up);
   }
 
+  function toggleVisible(layer: PenPageLayer) {
+    onSectionChange(upsertLayer(section, { ...layer, visible: layer.visible === false }));
+  }
+
   function toggleMute(layer: PenPageLayer) {
-    if (layer.kind === 'video') {
-      const mediaMuted = layer.mediaMuted === false ? true : false;
-      peekPenMediaController(`pen-layer:${layer.id}`)?.setClipAudio(
-        (layer.mediaGain ?? 100) / 100,
-        mediaMuted === false
-      );
-      onSectionChange(upsertLayer(section, { ...layer, mediaMuted }));
-      return;
-    }
-    onSectionChange(
-      upsertLayer(section, { ...layer, visible: layer.visible === false ? true : false })
+    if (layer.kind !== 'video') return;
+    const mediaMuted = layer.mediaMuted === false ? true : false;
+    peekPenMediaController(`pen-layer:${layer.id}`)?.setClipAudio(
+      (layer.mediaGain ?? 100) / 100,
+      mediaMuted === false
     );
+    onSectionChange(upsertLayer(section, { ...layer, mediaMuted }));
   }
 
   const tracksMax = timelineTracksMaxPx(groups.length);
@@ -1023,6 +1061,18 @@ export function SectionTimeline({
         onPointerDown={beginResize}
       />
       <div data-timeline-toolbar className="flex flex-nowrap items-center gap-1 overflow-x-auto px-2 py-0.5">
+        {scopeGroup ? (
+          <button
+            type="button"
+            aria-label="Leave group"
+            title="Leave group"
+            className="inline-flex h-6 shrink-0 items-center gap-1 rounded px-1 text-[12px] text-stone-700"
+            onClick={() => onEnterGroup?.(null)}
+          >
+            <span aria-hidden>‹</span>
+            {defaultLayerName(scopeGroup, section.layers || [])}
+          </button>
+        ) : null}
         <button
           type="button"
           aria-label={playing ? 'Pause' : 'Play'}
@@ -1247,52 +1297,76 @@ export function SectionTimeline({
             className="shrink-0 space-y-1 overflow-x-hidden overflow-y-auto"
             style={tracksStyle}
           >
-        {groups.map(({ trackId, depth, layers: trackLayers }) => {
+        {groups.map(({ trackId, layers: trackLayers, compound }) => {
           const groupLayer = trackLayers.find((item) => item.kind === 'group');
           const layer = trackLayers.find((item) => item.id === activeLayerId) ?? trackLayers[0]!;
           const rowDur = layerClockSpan(section, layer);
           const clock = widget ? duration : rowDur;
           const local = layer.kind === 'group' ? wrapTime(playheadSec, rowDur) : layerSampleTime(section, layer, playheadSec);
           const posed = sampleLayerAt(layer, local);
-          const clips = trackLayers.flatMap((item) =>
-            item.kind === 'group' ? [] : layerClips(item, rowDur).map((clip) => ({ clip, owner: item }))
-          );
+          const clips =
+            compound && groupLayer
+              ? [{ clip: { id: groupLayer.id, inSec: 0, outSec: rowDur }, owner: groupLayer }]
+              : trackLayers.flatMap((item) =>
+                  item.kind === 'group'
+                    ? []
+                    : layerClips(item, rowDur).map((clip) => ({ clip, owner: item }))
+                );
           const keys = trackLayers.flatMap((item) =>
             (item.motion?.keys || []).map((key) => ({ key, ownerId: item.id }))
           );
           const host = groupLayer ?? layer;
+          const selected = trackLayers.some((item) => item.id === activeLayerId);
+          const laneBorder = selected ? 'border-blue-600' : 'border-stone-300';
+          const shown = host.visible !== false;
+          const audioMuted = host.kind === 'video' ? host.mediaMuted !== false : false;
+          const canMute = host.kind === 'video';
           return (
             <div
               key={trackId}
               data-track-row={trackId}
+              data-track-selected={selected ? 'true' : 'false'}
               data-sampled-x={posed.x}
               className="space-y-1"
-              style={{ paddingLeft: depth ? 12 : 0 }}
             >
               <div className="flex items-stretch gap-1">
                 <button
                   type="button"
-                  aria-label={`Mute ${layer.id}`}
-                  title={
-                    (layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false)
-                      ? 'Unmute'
-                      : 'Mute'
-                  }
-                  aria-pressed={layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false}
+                  aria-label={shown ? `Hide ${host.id}` : `Show ${host.id}`}
+                  title={shown ? 'Hide' : 'Show'}
+                  aria-pressed={!shown}
                   className={`inline-flex w-6 shrink-0 items-center justify-center self-center ${
-                    (layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false)
-                      ? 'text-stone-700'
-                      : 'text-stone-400'
+                    shown ? 'text-stone-400' : 'text-stone-700'
                   }`}
-                  onClick={() => toggleMute(layer)}
+                  onClick={() => toggleVisible(host)}
                 >
-                  <SpeakerIcon
-                    muted={layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false}
-                  />
+                  {shown ? <EyeIcon /> : <EyeOffIcon />}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Mute ${host.id}`}
+                  title={audioMuted ? 'Unmute' : 'Mute'}
+                  aria-pressed={audioMuted}
+                  disabled={!canMute}
+                  className={`inline-flex w-6 shrink-0 items-center justify-center self-center ${
+                    canMute ? (audioMuted ? 'text-stone-700' : 'text-stone-400') : 'text-stone-300'
+                  }`}
+                  onClick={() => toggleMute(host)}
+                >
+                  <SpeakerIcon muted={audioMuted} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Reorder ${trackId}`}
+                  title="Reorder track"
+                  className="inline-flex w-6 shrink-0 cursor-grab items-center justify-center self-center text-stone-400 active:cursor-grabbing"
+                  onPointerDown={(event) => beginGrab(event, host, trackId)}
+                >
+                  <GrabberIcon />
                 </button>
                 <div
                   data-clip-lane
-                  className="relative h-8 min-w-0 flex-1 cursor-pointer rounded-md border border-blue-600 bg-white"
+                  className={`relative h-8 min-w-0 flex-1 cursor-pointer rounded-md border bg-white ${laneBorder}`}
                   onPointerDown={beginScrub}
                 >
                 {widget && clips.length === 0 ? (
@@ -1317,16 +1391,29 @@ export function SectionTimeline({
                   return (
                   <div
                     key={`${owner.id}-${clip.id}`}
-                    className="absolute bottom-0 top-0 overflow-hidden border border-blue-600 bg-white"
+                    className={`absolute bottom-0 top-0 overflow-hidden border bg-white ${
+                      selected && owner.id === activeLayerId ? 'border-blue-600' : 'border-stone-300'
+                    }`}
                     style={{
                       left: `${(clip.inSec / Math.max(rowDur, 0.01)) * 100}%`,
                       width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(rowDur, 0.01)) * 100)}%`,
-                      backgroundColor: playbackSrc ? undefined : owner.backgroundColor || '#e7e5e4',
-                      color: owner.textColor || undefined
+                      backgroundColor: playbackSrc ? undefined : owner.backgroundColor || '#e7e5e4'
                     }}
-                    onPointerDown={(e) =>
-                      beginMove(e, owner, (owner.clips?.length || 0) > 1 ? clip.id : undefined)
-                    }
+                    onDoubleClick={(event) => {
+                      if (!compound || !groupLayer) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onEnterGroup?.(groupLayer.id);
+                    }}
+                    onPointerDown={(e) => {
+                      if (compound && groupLayer) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onSelectLayer(groupLayer.id);
+                        return;
+                      }
+                      beginClipDrag(e, owner, clip.id, rowDur);
+                    }}
                   >
                     {playbackSrc ? (
                     <ClipDecor
@@ -1386,7 +1473,7 @@ export function SectionTimeline({
                       data-transition-join=""
                       aria-label="Transition"
                       title="Transition"
-                      className="absolute top-1/2 z-10 h-5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-blue-600 bg-white"
+                      className={`absolute top-1/2 z-10 h-5 -translate-x-1/2 -translate-y-1/2 rounded-sm border bg-white ${laneBorder}`}
                       style={{
                         left: `${(point.atSec / Math.max(rowDur, 0.01)) * 100}%`,
                         width: `${Math.max(2, (point.durationSec / Math.max(rowDur, 0.01)) * 100)}%`
@@ -1492,7 +1579,7 @@ export function SectionTimeline({
                       <SpeakerIcon muted={Boolean(track.muted)} />
                     </button>
                     <div
-                      className="relative h-5 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-md border border-blue-600 bg-white"
+                      className={`relative h-5 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-md border bg-white ${laneBorder}`}
                       onPointerDown={beginScrub}
                     >
                       <div
