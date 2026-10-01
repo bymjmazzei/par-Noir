@@ -1435,12 +1435,23 @@ export function SectionTimeline({
                       />
                     ) : (
                       <span
-                        data-clip-preview={owner.id}
-                        className="pointer-events-none absolute inset-0 flex items-center px-3 text-[11px]"
+                        data-clip-row
+                        className="pointer-events-none absolute inset-0 flex items-center gap-2 px-2 text-[11px]"
                       >
-                        {face?.text}
+                        <span
+                          data-clip-title={name}
+                          className={`max-w-[45%] shrink-0 truncate ${
+                            owner.id === activeLayerId ? 'font-semibold text-stone-800' : 'text-stone-500'
+                          }`}
+                        >
+                          {name}
+                        </span>
+                        <span data-clip-preview={owner.id} className="min-w-0 truncate text-stone-600">
+                          {face?.text}
+                        </span>
                       </span>
                     )}
+                    {playbackSrc || face?.svg ? (
                     <span
                       data-clip-title={name}
                       className={`pointer-events-none absolute left-3 top-0.5 z-[1] max-w-[90%] truncate text-[11px] ${
@@ -1449,6 +1460,7 @@ export function SectionTimeline({
                     >
                       {name}
                     </span>
+                    ) : null}
                     <button
                       type="button"
                       aria-label={`Trim start ${clip.id}`}

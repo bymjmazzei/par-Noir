@@ -101,6 +101,14 @@ describe('section timeline', () => {
     expect(html).toContain('title="Unmute"');
     expect(html).toContain('data-clip-title="Title"');
     expect(html).toContain('data-clip-preview="title"');
+    const rowAt = html.indexOf('data-clip-preview="title"');
+    const textRow = html.slice(Math.max(0, rowAt - 400), rowAt + 80);
+    expect(textRow.indexOf('data-clip-title="Title"')).toBeGreaterThan(-1);
+    expect(textRow.indexOf('data-clip-preview="title"')).toBeGreaterThan(
+      textRow.indexOf('data-clip-title="Title"')
+    );
+    expect(textRow).toContain('flex items-center gap-2');
+    expect(textRow).not.toContain('absolute left-3');
     expect(html).toContain('data-timeline-tracks');
     expect(html).toContain('data-timeline-resize');
     expect(html).toContain('aria-label="Resize timeline"');
@@ -109,7 +117,6 @@ describe('section timeline', () => {
     expect(timelineTracksMaxPx(1)).toBeNull();
     expect(timelineTracksMaxPx(3)).toBeNull();
     expect(timelineTracksMaxPx(4)).toBe(104);
-    expect(html).toContain('absolute left-3 top-0.5');
     expect(html).toContain('border-blue-600');
     expect(html).toContain('bg-white');
     expect(sampleLayerAt(section.layers![0]!, 1).x).toBe(80);

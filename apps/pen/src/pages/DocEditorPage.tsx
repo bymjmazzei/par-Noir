@@ -2780,15 +2780,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       ? `flex min-h-0 min-w-0 flex-1 bg-neutral-100 ${
                           pageView === 'vertical'
                             ? 'flex-col items-center overflow-x-hidden overflow-y-auto'
-                            : 'flex-row items-center justify-[safe_center] overflow-x-auto overflow-y-hidden'
+                            : 'flex-row items-center overflow-x-auto overflow-y-hidden'
                         }`
-                      : 'grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-neutral-100'
+                      : 'grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-1 overflow-auto bg-neutral-100'
                   }
                 >
                 <div
                   data-preview-center={pageLayout === 'flow' ? undefined : ''}
                   className={
-                    pageLayout === 'flow' ? 'contents' : 'h-max w-max justify-self-center self-center'
+                    pageLayout === 'flow' ? 'contents' : 'm-auto h-max w-max'
                   }
                 >
                 <div

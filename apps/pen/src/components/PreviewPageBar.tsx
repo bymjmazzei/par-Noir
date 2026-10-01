@@ -84,7 +84,7 @@ export function PreviewPageStrip({
         pageView === 'vertical'
           ? 'flex w-max max-w-full flex-col items-center'
           : pageView === 'horizontal'
-            ? 'flex h-full w-max flex-row items-center justify-center gap-3'
+            ? 'mx-auto flex h-full w-max shrink-0 flex-row items-center justify-center gap-3'
             : 'flex w-max flex-row items-stretch justify-center'
       }
       style={

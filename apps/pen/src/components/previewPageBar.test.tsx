@@ -154,6 +154,17 @@ describe('preview page toolbar', () => {
     expect(html).not.toContain('Scroll vertically');
   });
 
+  it('a horizontal page strip centers in the pane and keeps its width', () => {
+    const html = renderToStaticMarkup(
+      <PreviewPageStrip pageView="horizontal" pageCount={1}>
+        <div>page</div>
+      </PreviewPageStrip>
+    );
+    expect(html).toContain('mx-auto');
+    expect(html).toContain('w-max');
+    expect(html).toContain('shrink-0');
+  });
+
   it('flow vertical draws a page break between pages', () => {
     const html = renderToStaticMarkup(
       <PreviewPageStrip pageView="vertical" pageCount={2} pageBreak>
