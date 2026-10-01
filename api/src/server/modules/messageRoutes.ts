@@ -243,10 +243,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             /* optional */
           }
 
-          const realtimeChannel =
-            typeof messagePayload.channelClientId === 'string'
-              ? messagePayload.channelClientId
-              : undefined;
+          const realtimeChannel = channelClientId;
           emitRealtime(fromPnIdentifier, 'new_message', {
             messageId,
             throughway: true,
