@@ -1,12 +1,11 @@
 /**
  * Notification Routes
  * User notifications (list, unread count, read/read-all, delete, preferences)
- * backed by the owner's Drive metadata folder, plus mobile push token registration.
+ * backed by the owner's Drive metadata folder.
  */
 
 import express from 'express';
 import { safeClientErrorMessage } from '../utils/safeError';
-import { getBearerTokenPayload } from '../middleware/authMiddleware';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -473,52 +472,6 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         return res.status(500).json({
           error: 'server_error',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to update notification preferences'
-        });
-      }
-    });
-
-    // POST /api/push/register - Register device token for push notifications
-    app.post('/api/push/register', async (req, res) => {
-      try {
-        const tokenPayload = getBearerTokenPayload(req);
-        if (!tokenPayload?.pnIdentifier) {
-          return res.status(401).json({ error: 'unauthorized', error_description: 'Invalid or expired token' });
-        }
-        const { deviceToken, platform } = req.body;
-        if (!deviceToken || !platform || !['ios', 'android'].includes(platform)) {
-          return res.status(400).json({ error: 'deviceToken and platform (ios|android) required' });
-        }
-        const { PushService } = await import('./pushService');
-        await PushService.registerToken(tokenPayload.pnIdentifier, deviceToken, platform);
-        return res.json({ success: true });
-      } catch (error: any) {
-        console.error('Push register failed:', error);
-        return res.status(500).json({
-          error: 'server_error',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to register'
-        });
-      }
-    });
-
-    // DELETE /api/push/register - Unregister device token
-    app.delete('/api/push/register', async (req, res) => {
-      try {
-        const tokenPayload = getBearerTokenPayload(req);
-        if (!tokenPayload?.pnIdentifier) {
-          return res.status(401).json({ error: 'unauthorized', error_description: 'Invalid or expired token' });
-        }
-        const deviceToken = req.body?.deviceToken || req.query.deviceToken;
-        if (!deviceToken) {
-          return res.status(400).json({ error: 'deviceToken required' });
-        }
-        const { PushService } = await import('./pushService');
-        await PushService.unregisterToken(tokenPayload.pnIdentifier, deviceToken);
-        return res.json({ success: true });
-      } catch (error: any) {
-        console.error('Push unregister failed:', error);
-        return res.status(500).json({
-          error: 'server_error',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to unregister'
         });
       }
     });

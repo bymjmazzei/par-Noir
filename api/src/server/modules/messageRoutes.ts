@@ -226,22 +226,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
               payload: { envelope: attachmentEnvelope, envelopeContext: messageId }
             });
           }
-          // Notifications UI uses /api/notifications Sheets + push/new_message realtime —
-          // do not enqueue notification_row (browser never applied it; backlog starved chat).
-
-          try {
-            const { PushService } = await import('./pushService');
-            PushService.send(toPnIdentifier, {
-              title: 'New message',
-              body: 'You have a new message',
-              data: {
-                message_id: messageId,
-                mailbox: '1'
-              }
-            }).catch(() => undefined);
-          } catch {
-            /* optional */
-          }
+          // The recipient reads the sealed mailbox and the notifications sheet on their Drive.
 
           const realtimeChannel = channelClientId;
           emitRealtime(fromPnIdentifier, 'new_message', {

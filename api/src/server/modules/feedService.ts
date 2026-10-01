@@ -381,52 +381,28 @@ export class FeedService {
     const db = getDatabasePool();
     
     try {
-      // Get feed to find creator
       const feed = await this.getFeedById(feedId);
-      
-      // Check if already subscribed
-      const existing = await db.query(`
-        SELECT subscription_id FROM feed_subscriptions 
-        WHERE feed_id = $1 AND user_did = $2
-        LIMIT 1
-      `, [feedId, cacheActorId(userPnIdentifier)]);
-      
-      const isNewSubscription = existing.rows.length === 0;
       if (!feed) {
         throw new Error('Feed not found');
       }
 
       const creatorDid = feed.creatorId;
 
-      // Add to feed_subscriptions table (existing)
-      await db.query(`
-        INSERT INTO feed_subscriptions (feed_id, user_did)
-        VALUES ($1, $2)
-        ON CONFLICT (feed_id, user_did) DO NOTHING
-      `, [feedId, cacheActorId(userPnIdentifier)]);
+      try {
+        const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
+        await CreatorSubscriberStorage.storeSubscriberOnCreatorDrive(
+          creatorDid,
+          feedId,
+          userPnIdentifier,
+          creatorGoogleTokens
+        );
+      } catch (error) {
+        console.warn('Creator follower sheet was not updated:', error);
+      }
 
-      // Add to creator subscriber index (database)
       await db.query(`
-        INSERT INTO creator_subscriber_index (creator_did, subscriber_did, feed_id)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (creator_did, subscriber_did, feed_id) 
-        DO UPDATE SET subscribed_at = NOW()
-      `, [cacheActorId(creatorDid), cacheActorId(userPnIdentifier), feedId]);
-
-      const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
-      await CreatorSubscriberStorage.storeSubscriberOnCreatorDrive(
-        creatorDid,
-        feedId,
-        userPnIdentifier,
-        creatorGoogleTokens
-      );
-
-      // Update subscriber count
-      await db.query(`
-        UPDATE feeds 
-        SET subscriber_count = (
-          SELECT COUNT(*) FROM feed_subscriptions WHERE feed_id = $1
-        )
+        UPDATE feeds
+        SET subscriber_count = subscriber_count + 1
         WHERE feed_id = $1
       `, [feedId]);
 
@@ -453,32 +429,21 @@ export class FeedService {
 
       const creatorDid = feed.creatorId;
 
-      // Remove from feed_subscriptions table
-      await db.query(`
-        DELETE FROM feed_subscriptions 
-        WHERE feed_id = $1 AND user_did = $2
-      `, [feedId, cacheActorId(userPnIdentifier)]);
+      try {
+        const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
+        await CreatorSubscriberStorage.removeSubscriberFromCreatorDrive(
+          creatorDid,
+          feedId,
+          userPnIdentifier,
+          creatorGoogleTokens
+        );
+      } catch (error) {
+        console.warn('Creator follower sheet was not updated:', error);
+      }
 
-      // Remove from creator subscriber index
       await db.query(`
-        DELETE FROM creator_subscriber_index
-        WHERE creator_did = $1 AND subscriber_did = $2 AND feed_id = $3
-      `, [cacheActorId(creatorDid), cacheActorId(userPnIdentifier), feedId]);
-
-      const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
-      await CreatorSubscriberStorage.removeSubscriberFromCreatorDrive(
-        creatorDid,
-        feedId,
-        userPnIdentifier,
-        creatorGoogleTokens
-      );
-
-      // Update subscriber count
-      await db.query(`
-        UPDATE feeds 
-        SET subscriber_count = (
-          SELECT COUNT(*) FROM feed_subscriptions WHERE feed_id = $1
-        )
+        UPDATE feeds
+        SET subscriber_count = GREATEST(subscriber_count - 1, 0)
         WHERE feed_id = $1
       `, [feedId]);
 
@@ -492,63 +457,27 @@ export class FeedService {
   /**
    * Get creator's subscriber index (all users subscribed to creator's feeds)
    */
-  static async getCreatorSubscriberIndex(creatorDid: string): Promise<Array<{
+  static async getCreatorSubscriberIndex(_creatorDid: string): Promise<Array<{
     subscriberDid: string;
     feedId: string;
     subscribedAt: string;
     syncedToDrive: boolean;
   }>> {
-    const db = getDatabasePool();
-    
-    const result = await db.query<{
-      subscriber_did: string;
-      feed_id: string;
-      subscribed_at: string;
-      synced_to_drive: boolean;
-    }>(`
-      SELECT subscriber_did, feed_id, subscribed_at, synced_to_drive
-      FROM creator_subscriber_index
-      WHERE creator_did = $1
-      ORDER BY subscribed_at DESC
-    `, [cacheActorId(creatorDid)]);
-
-    return result.rows.map(row => ({
-      subscriberDid: row.subscriber_did,
-      feedId: row.feed_id,
-      subscribedAt: row.subscribed_at,
-      syncedToDrive: row.synced_to_drive
-    }));
+    return [];
   }
 
   /**
    * Check if user is subscribed to feed
    */
-  static async isSubscribed(feedId: string, userPnIdentifier: string): Promise<boolean> {
-    const db = getDatabasePool();
-    
-    const result = await db.query(`
-      SELECT 1 FROM feed_subscriptions 
-      WHERE feed_id = $1 AND user_did = $2
-      LIMIT 1
-      `, [feedId, cacheActorId(userPnIdentifier)]);
-
-    return result.rows.length > 0;
+  static async isSubscribed(_feedId: string, _userPnIdentifier: string): Promise<boolean> {
+    return false;
   }
 
   /**
    * Get user's subscriptions
    */
-  static async getUserSubscriptions(userPnIdentifier: string): Promise<Feed[]> {
-    const db = getDatabasePool();
-    
-    const result = await db.query<FeedRow>(`
-      SELECT f.* FROM feeds f
-      INNER JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
-      WHERE fs.user_did = $1
-      ORDER BY fs.subscribed_at DESC
-    `, [cacheActorId(userPnIdentifier)]);
-
-    return result.rows.map(row => this.rowToFeed(row));
+  static async getUserSubscriptions(_userPnIdentifier: string): Promise<Feed[]> {
+    return [];
   }
 
   /**

@@ -243,16 +243,8 @@ export class EngagementService {
   /**
    * Check if user has liked a file
    */
-  static async isLiked(fileId: string, userPnIdentifier: string): Promise<boolean> {
-    const db = getDatabasePool();
-    
-    const result = await db.query(`
-      SELECT 1 FROM engagement 
-      WHERE file_id = $1 AND user_did = $2 AND type = 'like'
-      LIMIT 1
-        `, [fileId, cacheActorId(userPnIdentifier)]);
-
-    return result.rows.length > 0;
+  static async isLiked(_fileId: string, _userPnIdentifier: string): Promise<boolean> {
+    return false;
   }
 
   /**
@@ -309,16 +301,8 @@ export class EngagementService {
   /**
    * Check if user has disliked a file
    */
-  static async isDisliked(fileId: string, userPnIdentifier: string): Promise<boolean> {
-    const db = getDatabasePool();
-    
-    const result = await db.query(`
-      SELECT 1 FROM engagement 
-      WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
-      LIMIT 1
-        `, [fileId, cacheActorId(userPnIdentifier)]);
-
-    return result.rows.length > 0;
+  static async isDisliked(_fileId: string, _userPnIdentifier: string): Promise<boolean> {
+    return false;
   }
 
   /**
@@ -639,8 +623,6 @@ export class EngagementService {
    * Record a share with bot detection and verification tracking
    */
   static async recordShare(fileId: string, userPnIdentifier: string): Promise<number> {
-    const db = getDatabasePool();
-    
     try {
       // Check verification status
       const isVerified = await this.isUserVerified(userPnIdentifier);
@@ -660,33 +642,9 @@ export class EngagementService {
         }
       }
 
-      const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
-      await db.query(
-        `
-        INSERT INTO engagement (
-          file_id, user_did, type, is_verified, bot_score,
-          actor_fund_monetizable, content_owner_fund_monetizable
-        )
-        VALUES ($1, $2, 'share', $3, $4, $5, $6)
-        ON CONFLICT (file_id, user_did, type) DO UPDATE SET
-          is_verified = EXCLUDED.is_verified,
-          bot_score = EXCLUDED.bot_score,
-          actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
-          content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
-      `,
-        [fileId, cacheActorId(userPnIdentifier), isVerified, botScore, fundFlags.actor, fundFlags.owner]
-      );
-
-      // Get share count
-      const countResult = await db.query(`
-        SELECT COUNT(*) as count FROM engagement 
-        WHERE file_id = $1 AND type = 'share'
-      `, [fileId]);
-
-      // Note: Activity logging and notifications are handled by API endpoints
-      // which have access to user credentials for Google Drive storage
-
-      return parseInt(countResult.rows[0].count, 10);
+      void isVerified;
+      void botScore;
+      return await this.adjustPublicEngagementCount(fileId, 'share', 1);
     } catch (error) {
       console.error('Failed to record share:', error);
       throw error;
@@ -697,8 +655,6 @@ export class EngagementService {
    * Toggle save for a file with bot detection and verification tracking
    */
   static async toggleSave(fileId: string, userPnIdentifier: string): Promise<{ saved: boolean; count: number }> {
-    const db = getDatabasePool();
-    
     try {
       // Check verification status
       const isVerified = await this.isUserVerified(userPnIdentifier);
@@ -718,48 +674,10 @@ export class EngagementService {
         }
       }
 
-      // Check if already saved
-      const existing = await db.query(`
-        SELECT engagement_id FROM engagement 
-        WHERE file_id = $1 AND user_did = $2 AND type = 'save'
-        LIMIT 1
-      `, [fileId, cacheActorId(userPnIdentifier)]);
-
-      if (existing.rows.length > 0) {
-        // Unsave - remove the engagement
-        await db.query(`
-          DELETE FROM engagement 
-          WHERE file_id = $1 AND user_did = $2 AND type = 'save'
-        `, [fileId, cacheActorId(userPnIdentifier)]);
-      } else {
-        const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
-        await db.query(
-          `
-          INSERT INTO engagement (
-            file_id, user_did, type, is_verified, bot_score,
-            actor_fund_monetizable, content_owner_fund_monetizable
-          )
-          VALUES ($1, $2, 'save', $3, $4, $5, $6)
-          ON CONFLICT (file_id, user_did, type) DO UPDATE SET
-            is_verified = EXCLUDED.is_verified,
-            bot_score = EXCLUDED.bot_score,
-            actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
-            content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
-        `,
-          [fileId, cacheActorId(userPnIdentifier), isVerified, botScore, fundFlags.actor, fundFlags.owner]
-        );
-      }
-
-      // Get updated count
-      const countResult = await db.query(`
-        SELECT COUNT(*) as count FROM engagement 
-        WHERE file_id = $1 AND type = 'save'
-      `, [fileId]);
-
-      const count = parseInt(countResult.rows[0].count, 10);
-      const saved = existing.rows.length === 0; // If it didn't exist, now it's saved
-
-      return { saved, count };
+      void isVerified;
+      void botScore;
+      const count = await this.adjustPublicEngagementCount(fileId, 'save', 1);
+      return { saved: true, count };
     } catch (error) {
       console.error('Failed to toggle save:', error);
       throw error;
@@ -769,16 +687,8 @@ export class EngagementService {
   /**
    * Check if user has saved a file
    */
-  static async isSaved(fileId: string, userPnIdentifier: string): Promise<boolean> {
-    const db = getDatabasePool();
-    
-    const result = await db.query(`
-      SELECT 1 FROM engagement 
-      WHERE file_id = $1 AND user_did = $2 AND type = 'save'
-      LIMIT 1
-        `, [fileId, cacheActorId(userPnIdentifier)]);
-
-    return result.rows.length > 0;
+  static async isSaved(_fileId: string, _userPnIdentifier: string): Promise<boolean> {
+    return false;
   }
 
   /**
@@ -786,15 +696,16 @@ export class EngagementService {
    */
   static async getEngagementStats(fileId: string): Promise<EngagementStats> {
     const db = getDatabasePool();
-    
+
     try {
       const result = await db.query(`
-        SELECT 
-          type,
-          COUNT(*) as count
-        FROM engagement
+        SELECT type, count
+        FROM engagement_public_counts
         WHERE file_id = $1
-        GROUP BY type
+        UNION ALL
+        SELECT 'comment' AS type, COUNT(*)::int AS count
+        FROM engagement
+        WHERE file_id = $1 AND type = 'comment'
       `, [fileId]);
 
       const stats: EngagementStats = {
@@ -1002,29 +913,9 @@ export class EngagementService {
   /**
    * Check which files a user has liked (bulk)
    */
-  static async getBulkLikedFiles(fileIds: string[], userPnIdentifier: string): Promise<Set<string>> {
-    const db = getDatabasePool();
-    const likedSet = new Set<string>();
-
-    if (fileIds.length === 0) {
-      return likedSet;
-    }
-
-    try {
-      const result = await db.query(`
-        SELECT file_id FROM engagement 
-        WHERE file_id = ANY($1::text[]) AND user_did = $2 AND type = 'like'
-      `, [fileIds, cacheActorId(userPnIdentifier)]);
-
-      result.rows.forEach(row => {
-        likedSet.add(row.file_id);
-      });
-
-      return likedSet;
-    } catch (error) {
-      console.error('Failed to get bulk liked files:', error);
-      return likedSet;
-    }
+  static async getBulkLikedFiles(fileIds: string[], _userPnIdentifier: string): Promise<Set<string>> {
+    void fileIds;
+    return new Set<string>();
   }
 
   /**
@@ -1040,13 +931,14 @@ export class EngagementService {
 
     try {
       const result = await db.query(`
-        SELECT 
-          file_id,
-          type,
-          COUNT(*) as count
-        FROM engagement
+        SELECT file_id, type, count
+        FROM engagement_public_counts
         WHERE file_id = ANY($1::text[])
-        GROUP BY file_id, type
+        UNION ALL
+        SELECT file_id, 'comment' AS type, COUNT(*)::int AS count
+        FROM engagement
+        WHERE file_id = ANY($1::text[]) AND type = 'comment'
+        GROUP BY file_id
       `, [fileIds]);
 
       // Initialize all files with zero stats
@@ -1085,70 +977,41 @@ export class EngagementService {
    * Used for event-driven updates when user likes/unlikes
    * Note: Individual user engagement is stored in Google Drive, this is only for public count aggregation
    */
-  static async toggleLikePublicCount(fileId: string, userPnIdentifier: string, liked: boolean): Promise<void> {
+  static async adjustPublicEngagementCount(
+    fileId: string,
+    type: 'like' | 'dislike' | 'share' | 'save',
+    delta: number
+  ): Promise<number> {
     const db = getDatabasePool();
-    
+    const result = await db.query(
+      `
+      INSERT INTO engagement_public_counts (file_id, type, count)
+      VALUES ($1, $2, GREATEST($3::int, 0))
+      ON CONFLICT (file_id, type) DO UPDATE
+        SET count = GREATEST(engagement_public_counts.count + $3::int, 0)
+      RETURNING count
+    `,
+      [fileId, type, delta]
+    );
+    return parseInt(result.rows[0].count, 10);
+  }
+
+  static async toggleLikePublicCount(fileId: string, liked: boolean): Promise<void> {
     try {
-      if (liked) {
-        const isVerified = await this.isUserVerified(userPnIdentifier);
-        let botScore = 0.0;
-        if (!isVerified) {
-          const botResult = await BotDetectionService.calculateBotScore(userPnIdentifier);
-          botScore = botResult.botScore;
-        }
-        const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
-        await db.query(
-          `
-          INSERT INTO engagement (
-            file_id, user_did, type, is_verified, bot_score,
-            actor_fund_monetizable, content_owner_fund_monetizable
-          )
-          VALUES ($1, $2, 'like', $3, $4, $5, $6)
-          ON CONFLICT (file_id, user_did, type) DO UPDATE SET
-            is_verified = EXCLUDED.is_verified,
-            bot_score = EXCLUDED.bot_score,
-            actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
-            content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
-        `,
-          [fileId, cacheActorId(userPnIdentifier), isVerified, botScore, fundFlags.actor, fundFlags.owner]
-        );
-      } else {
-        // Delete record to decrement count
-        await db.query(`
-          DELETE FROM engagement 
-          WHERE file_id = $1 AND user_did = $2 AND type = 'like'
-        `, [fileId, cacheActorId(userPnIdentifier)]);
-      }
+      await this.adjustPublicEngagementCount(fileId, 'like', liked ? 1 : -1);
     } catch (error) {
       console.error('Failed to update public like count:', error);
-      // Don't throw - counting is best effort, user engagement is in Google Drive
     }
   }
 
   /**
    * Update public dislike count (insert or delete record for counting)
    */
-  static async toggleDislikePublicCount(fileId: string, userPnIdentifier: string, disliked: boolean): Promise<void> {
-    const db = getDatabasePool();
-    
+  static async toggleDislikePublicCount(fileId: string, disliked: boolean): Promise<void> {
     try {
-      if (disliked) {
-        // Insert record to increment count
-        await db.query(`
-          INSERT INTO engagement (file_id, user_did, type)
-          VALUES ($1, $2, 'dislike')
-          ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, cacheActorId(userPnIdentifier)]);
-      } else {
-        // Delete record to decrement count
-        await db.query(`
-          DELETE FROM engagement 
-          WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
-        `, [fileId, cacheActorId(userPnIdentifier)]);
-      }
+      await this.adjustPublicEngagementCount(fileId, 'dislike', disliked ? 1 : -1);
     } catch (error) {
       console.error('Failed to update public dislike count:', error);
-      // Don't throw - counting is best effort
     }
   }
 

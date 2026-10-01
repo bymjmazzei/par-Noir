@@ -129,6 +129,85 @@ export async function removeDeviceFollowing(
   );
 }
 
+export async function upsertDeviceFollowing(
+  accessToken: string,
+  spreadsheetId: string,
+  targetType: 'user' | 'feed',
+  targetId: string,
+  fetchImpl?: typeof fetch
+): Promise<void> {
+  const rows = await readSheetValues(accessToken, spreadsheetId, 'Following!A2:C', fetchImpl);
+  const kept = rows.filter((row) => row[1] && row[1] !== targetId);
+  kept.push([targetType, targetId, new Date().toISOString()]);
+  await writeSheetValues(accessToken, spreadsheetId, 'Following!A2:C', kept, fetchImpl);
+}
+
+async function listDeviceEngagementFileIds(
+  accessToken: string,
+  spreadsheetId: string,
+  tab: 'Likes' | 'Dislikes',
+  fetchImpl?: typeof fetch
+): Promise<string[]> {
+  const rows = await readSheetValues(accessToken, spreadsheetId, `${tab}!A2:B`, fetchImpl);
+  return rows.map((row) => row[0]).filter((id) => Boolean(id));
+}
+
+async function setDeviceEngagementFile(
+  accessToken: string,
+  spreadsheetId: string,
+  tab: 'Likes' | 'Dislikes',
+  fileId: string,
+  present: boolean,
+  fetchImpl?: typeof fetch
+): Promise<void> {
+  const rows = await readSheetValues(accessToken, spreadsheetId, `${tab}!A2:B`, fetchImpl);
+  const kept = rows.filter((row) => row[0] && row[0] !== fileId);
+  if (present) kept.push([fileId, new Date().toISOString()]);
+  await writeSheetValues(
+    accessToken,
+    spreadsheetId,
+    `${tab}!A2:B`,
+    kept.length ? kept : [['', '']],
+    fetchImpl
+  );
+}
+
+export function listDeviceLikedFileIds(
+  accessToken: string,
+  spreadsheetId: string,
+  fetchImpl?: typeof fetch
+): Promise<string[]> {
+  return listDeviceEngagementFileIds(accessToken, spreadsheetId, 'Likes', fetchImpl);
+}
+
+export function setDeviceFileLiked(
+  accessToken: string,
+  spreadsheetId: string,
+  fileId: string,
+  liked: boolean,
+  fetchImpl?: typeof fetch
+): Promise<void> {
+  return setDeviceEngagementFile(accessToken, spreadsheetId, 'Likes', fileId, liked, fetchImpl);
+}
+
+export function listDeviceDislikedFileIds(
+  accessToken: string,
+  spreadsheetId: string,
+  fetchImpl?: typeof fetch
+): Promise<string[]> {
+  return listDeviceEngagementFileIds(accessToken, spreadsheetId, 'Dislikes', fetchImpl);
+}
+
+export function setDeviceFileDisliked(
+  accessToken: string,
+  spreadsheetId: string,
+  fileId: string,
+  disliked: boolean,
+  fetchImpl?: typeof fetch
+): Promise<void> {
+  return setDeviceEngagementFile(accessToken, spreadsheetId, 'Dislikes', fileId, disliked, fetchImpl);
+}
+
 export async function readDevicePreferences(
   accessToken: string,
   spreadsheetId: string,

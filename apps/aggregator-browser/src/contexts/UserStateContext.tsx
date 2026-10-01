@@ -291,60 +291,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     };
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
-  // Load tag preferences from backend when user unlocks (deferred — not needed for first feed paint)
-  useEffect(() => {
-    if (!userState.isUnlocked || !userState.pnIdentifier) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      void (async () => {
-        try {
-          const { PNOAuthService } = await import('../services/pnOAuthService');
-          const session = PNOAuthService.loadSession();
-          if (!session?.accessToken) {
-            return;
-          }
-
-          const response = await ownerGet(
-            `/api/users/${userState.pnIdentifier}/tag-preferences`
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.preferences && Array.isArray(data.preferences)) {
-              const subscribedTags: string[] = [];
-              const blockedTags: string[] = [];
-
-              data.preferences.forEach((pref: any) => {
-                if (pref.preference === 'like' || pref.preference === 'subscribe') {
-                  subscribedTags.push(pref.tagId);
-                } else if (pref.preference === 'dislike' || pref.preference === 'block') {
-                  blockedTags.push(pref.tagId);
-                }
-              });
-
-              setUserState((prev) => ({
-                ...prev,
-                preferences: {
-                  ...prev.preferences,
-                  subscribedSubjects: [...new Set([...prev.preferences.subscribedSubjects, ...subscribedTags])],
-                  blockedSubjects: [...new Set([...prev.preferences.blockedSubjects, ...blockedTags])],
-                },
-              }));
-            }
-          } else if (response.status === 404) {
-            console.log('Tag preferences endpoint not available, using local state');
-          }
-        } catch (error) {
-          console.warn('Failed to load tag preferences from backend:', error);
-        }
-      })();
-    }, 4000);
-
-    return () => clearTimeout(timer);
-  }, [userState.isUnlocked, userState.pnIdentifier]);
-
   // Check verified over_21 ZKP when user unlocks (NSFW eligibility)
   // Also retry after a delay to account for async permission storage
   useEffect(() => {
@@ -820,36 +766,22 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       };
     });
 
-    // Persist to backend if user is unlocked
     if (userState.isUnlocked && userState.pnIdentifier) {
       try {
-        const { PNOAuthService } = await import('../services/pnOAuthService');
-        const session = PNOAuthService.loadSession();
-        if (!session?.accessToken) {
-          console.warn('No access token, cannot save tag preference to backend');
-          return;
-        }
-
-        const response = await ownerFetch(
-          'POST',
-          `/api/users/${userState.pnIdentifier}/tag-preferences`,
-          {
-            tagId: normalizedSubject,
-            preference: 'subscribe',
-            action: 'preference_tile_yes',
-            confidence: 0.8
-          }
+        const { putDevicePreferences } = await import('../services/devicePreferences');
+        const currentSubjects = userState.preferences.subscribedSubjects || [];
+        const nextSubjects = currentSubjects.includes(normalizedSubject)
+          ? currentSubjects
+          : [...currentSubjects, normalizedSubject];
+        const nextBlocked = (userState.preferences.blockedSubjects || []).filter(
+          (subject) => subject !== normalizedSubject
         );
-
-        if (response.ok) {
-          console.log('✅ Saved tag preference to backend:', normalizedSubject);
-        } else if (response.status === 404) {
-          console.warn('Tag preferences endpoint not available, keeping local state only');
-        } else {
-          console.warn('Failed to save tag preference to backend:', response.status);
-        }
+        await putDevicePreferences(userState.pnIdentifier, {
+          subscribedSubjects: nextSubjects,
+          blockedSubjects: nextBlocked
+        });
       } catch (error) {
-        console.warn('Error saving tag preference to backend:', error);
+        console.warn('Error saving tag preference:', error);
       }
     }
   };
@@ -896,36 +828,22 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       };
     });
 
-    // Persist to backend if user is unlocked
     if (userState.isUnlocked && userState.pnIdentifier) {
       try {
-        const { PNOAuthService } = await import('../services/pnOAuthService');
-        const session = PNOAuthService.loadSession();
-        if (!session?.accessToken) {
-          console.warn('No access token, cannot save tag preference to backend');
-          return;
-        }
-
-        const response = await ownerFetch(
-          'POST',
-          `/api/users/${userState.pnIdentifier}/tag-preferences`,
-          {
-            tagId: normalizedSubject,
-            preference: 'block',
-            action: 'preference_tile_no',
-            confidence: 0.8
-          }
+        const { putDevicePreferences } = await import('../services/devicePreferences');
+        const currentBlocked = userState.preferences.blockedSubjects || [];
+        const nextBlocked = currentBlocked.includes(normalizedSubject)
+          ? currentBlocked
+          : [...currentBlocked, normalizedSubject];
+        const nextSubjects = (userState.preferences.subscribedSubjects || []).filter(
+          (subject) => subject !== normalizedSubject
         );
-
-        if (response.ok) {
-          console.log('✅ Saved tag preference to backend:', normalizedSubject);
-        } else if (response.status === 404) {
-          console.warn('Tag preferences endpoint not available, keeping local state only');
-        } else {
-          console.warn('Failed to save tag preference to backend:', response.status);
-        }
+        await putDevicePreferences(userState.pnIdentifier, {
+          subscribedSubjects: nextSubjects,
+          blockedSubjects: nextBlocked
+        });
       } catch (error) {
-        console.warn('Error saving tag preference to backend:', error);
+        console.warn('Error saving tag preference:', error);
       }
     }
   };

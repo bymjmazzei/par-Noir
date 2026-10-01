@@ -214,7 +214,6 @@ export async function registerSuccession(params: {
       await client.query(`UPDATE aggregator_media SET pn_identifier = $2 WHERE pn_identifier = $1`, [pred, succ]);
       await client.query(`UPDATE aggregator_notes SET pn_identifier = $2 WHERE pn_identifier = $1`, [pred, succ]);
       await client.query(`UPDATE aggregator_collections SET pn_identifier = $2 WHERE pn_identifier = $1`, [pred, succ]);
-      await client.query(`UPDATE device_tokens SET pn_identifier = $2 WHERE pn_identifier = $1`, [pred, succ]);
       await client.query(
         `UPDATE pn_owned_assets SET root_pn_identifier = $2, updated_at = NOW() WHERE root_pn_identifier = $1`,
         [pred, succ]

@@ -38,64 +38,11 @@ export class UserPreferenceService {
       metadata?: UserTagPreference['metadata'];
     }
   ): Promise<void> {
-    const db = getDatabasePool();
-    
-    try {
-      const confidence = options?.confidence ?? this.getDefaultConfidence(action);
-      const now = new Date().toISOString();
-      
-      // Check if preference already exists
-      const existing = await db.query(`
-        SELECT preference_id FROM user_tag_preferences 
-        WHERE user_did = $1 AND tag_id = $2
-        LIMIT 1
-      `, [userPnIdentifier, tagId]);
-
-      if (existing.rows.length > 0) {
-        // Update existing preference
-        await db.query(`
-          UPDATE user_tag_preferences 
-          SET preference = $1, 
-              action = $2,
-              confidence = $3,
-              source_file_id = $4,
-              metadata = $5,
-              updated_at = $6
-          WHERE user_did = $7 AND tag_id = $8
-        `, [
-          preference,
-          action,
-          confidence,
-          options?.sourceFileId || null,
-          options?.metadata ? JSON.stringify(options.metadata) : null,
-          now,
-          userPnIdentifier,
-          tagId
-        ]);
-      } else {
-        // Insert new preference
-        await db.query(`
-          INSERT INTO user_tag_preferences (
-            user_did, tag_id, preference, action, confidence, 
-            source_file_id, metadata, created_at, updated_at
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, [
-          userPnIdentifier,
-          tagId,
-          preference,
-          action,
-          confidence,
-          options?.sourceFileId || null,
-          options?.metadata ? JSON.stringify(options.metadata) : null,
-          now,
-          now
-        ]);
-      }
-    } catch (error) {
-      console.error('Failed to set tag preference:', error);
-      throw error;
-    }
+    void userPnIdentifier;
+    void tagId;
+    void preference;
+    void action;
+    void options;
   }
 
   /**

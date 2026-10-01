@@ -9,7 +9,7 @@ import { useUserState } from '../contexts/UserStateContext';
 
 import { API_ENDPOINT } from '../config/api';
 import { fetchBulkEngagementStats } from '../services/engagementBulkStatsClient';
-import { apiFetch, ownerGet } from '../services/ownerApiFetch';
+import { apiFetch } from '../services/ownerApiFetch';
 
 interface EngagementData {
   likes: Set<string>; // Set of file IDs that user has liked
@@ -133,13 +133,28 @@ export function useEngagement() {
     });
 
     try {
-      const { stats, likedFiles } = await fetchBulkEngagementStats(fileIds, viewerPn);
+      const { stats } = await fetchBulkEngagementStats(fileIds, viewerPn);
+      let likedFromSheet: string[] = [];
+      if (viewerPn) {
+        try {
+          const { sessionDriveFor } = await import('../services/sessionDrive');
+          const { listDeviceLikedFileIds } = await import('@par-noir/device-cloud-credentials');
+          const drive = await sessionDriveFor(viewerPn);
+          const sheetId = drive.index.sheetIds.engagement;
+          if (sheetId) {
+            const ids = await listDeviceLikedFileIds(drive.accessToken, sheetId);
+            likedFromSheet = ids.filter((id) => fileIds.includes(id));
+          }
+        } catch (error) {
+          console.warn('Failed to read like sheet:', error);
+        }
+      }
 
       setEngagement(prev => {
         const newLikes = new Set(prev.likes);
         const newShares = new Map(prev.shares);
 
-        likedFiles.forEach((fileId: string) => {
+        likedFromSheet.forEach((fileId: string) => {
           newLikes.add(fileId);
         });
 
@@ -178,11 +193,26 @@ export function useEngagement() {
 
   const toggleLike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
+      const { sessionDriveFor } = await import('../services/sessionDrive');
+      const { listDeviceLikedFileIds, setDeviceFileLiked } = await import('@par-noir/device-cloud-credentials');
+      const drive = await sessionDriveFor(userState.pnIdentifier);
+      const sheetId = drive.index.sheetIds.engagement;
+      const current = sheetId
+        ? await listDeviceLikedFileIds(drive.accessToken, sheetId)
+        : [...engagement.likes];
+      const liked = !current.includes(fileId);
+      if (sheetId) {
+        await setDeviceFileLiked(drive.accessToken, sheetId, fileId, liked);
+      }
       const response = await apiFetch('POST', `/api/engagement/${fileId}/like`, {
-        userPnIdentifier: userState.pnIdentifier
+        userPnIdentifier: userState.pnIdentifier,
+        liked
       });
 
       if (!response.ok) {
+        if (sheetId) {
+          await setDeviceFileLiked(drive.accessToken, sheetId, fileId, !liked).catch(() => undefined);
+        }
         const message = await parseEngagementApiError(response);
         console.error('Failed to toggle like:', message);
         throw new Error(message);
@@ -215,15 +245,30 @@ export function useEngagement() {
       }
       return { ...prev, likes: newLikes, dislikes: newDislikes };
     });
-  }, [userState.isUnlocked, userState.pnIdentifier]);
+  }, [userState.isUnlocked, userState.pnIdentifier, engagement.likes]);
 
   const toggleDislike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
+      const { sessionDriveFor } = await import('../services/sessionDrive');
+      const { listDeviceDislikedFileIds, setDeviceFileDisliked } = await import('@par-noir/device-cloud-credentials');
+      const drive = await sessionDriveFor(userState.pnIdentifier);
+      const sheetId = drive.index.sheetIds.engagement;
+      const current = sheetId
+        ? await listDeviceDislikedFileIds(drive.accessToken, sheetId)
+        : [...(engagement.dislikes || [])];
+      const disliked = !current.includes(fileId);
+      if (sheetId) {
+        await setDeviceFileDisliked(drive.accessToken, sheetId, fileId, disliked);
+      }
       const response = await apiFetch('POST', `/api/engagement/${fileId}/dislike`, {
-        userPnIdentifier: userState.pnIdentifier
+        userPnIdentifier: userState.pnIdentifier,
+        disliked
       });
 
       if (!response.ok) {
+        if (sheetId) {
+          await setDeviceFileDisliked(drive.accessToken, sheetId, fileId, !disliked).catch(() => undefined);
+        }
         const message = await parseEngagementApiError(response);
         console.error('Failed to toggle dislike:', message);
         throw new Error(message);
@@ -259,7 +304,7 @@ export function useEngagement() {
       }
       return { ...prev, likes: newLikes, dislikes: newDislikes };
     });
-  }, [userState.isUnlocked, userState.pnIdentifier]);
+  }, [userState.isUnlocked, userState.pnIdentifier, engagement.dislikes]);
 
   const isDisliked = useCallback((fileId: string): boolean => {
     return engagement.dislikes?.has(fileId) || false;
@@ -518,22 +563,21 @@ export function useEngagement() {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
     try {
-      const response = await ownerGet(
-        `/api/engagement/${fileId}/like?userPnIdentifier=${encodeURIComponent(userState.pnIdentifier)}`,
-        { pnIdentifier: userState.pnIdentifier }
-      );
-      if (response.ok) {
-        const result = await response.json();
-        setEngagement(prev => {
-          const newLikes = new Set(prev.likes);
-          if (result.liked) {
-            newLikes.add(fileId);
-          } else {
-            newLikes.delete(fileId);
-          }
-          return { ...prev, likes: newLikes };
-        });
-      }
+      const { sessionDriveFor } = await import('../services/sessionDrive');
+      const { listDeviceLikedFileIds } = await import('@par-noir/device-cloud-credentials');
+      const drive = await sessionDriveFor(userState.pnIdentifier);
+      const sheetId = drive.index.sheetIds.engagement;
+      if (!sheetId) return;
+      const ids = await listDeviceLikedFileIds(drive.accessToken, sheetId);
+      setEngagement(prev => {
+        const newLikes = new Set(prev.likes);
+        if (ids.includes(fileId)) {
+          newLikes.add(fileId);
+        } else {
+          newLikes.delete(fileId);
+        }
+        return { ...prev, likes: newLikes };
+      });
     } catch (error) {
       console.warn('Failed to load like status:', error);
     }

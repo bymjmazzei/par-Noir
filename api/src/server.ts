@@ -1069,6 +1069,8 @@ class ProductionServer {
           console.error('[mailbox] purge failed:', e)
         );
       }, 60 * 60 * 1000);
+      const { shrinkServerPersonRows } = await import('./server/modules/publicCacheMaintenance');
+      await shrinkServerPersonRows();
       const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
       const rewritten = await storageCredentialsService.rewriteCloudSecretsAtRest();
       if (rewritten > 0) {

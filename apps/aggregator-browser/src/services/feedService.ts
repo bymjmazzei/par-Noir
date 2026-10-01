@@ -5,7 +5,7 @@
 
 import { Feed, FeedCategory } from '../types/aggregator';
 import { PNOAuthService } from './pnOAuthService';
-import { apiFetch, apiGet, ownerGet } from './ownerApiFetch';
+import { apiFetch, apiGet } from './ownerApiFetch';
 
 import { API_ENDPOINT } from '../config/api';
 
@@ -185,17 +185,27 @@ export class FeedService {
    * Subscribe to feed - stores subscription on user's cloud storage (like connection index)
    */
   static async subscribeToFeed(feedId: string, userPnIdentifier: string): Promise<void> {
-    // Store subscription via API - backend will save to user's cloud storage
-    // Similar to how connection index is stored on user's Google Drive
+    const { sessionDriveFor } = await import('./sessionDrive');
+    const { listDeviceFollowing, upsertDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds.followers;
+    if (sheetId) {
+      const following = await listDeviceFollowing(drive.accessToken, sheetId);
+      const already = following.some(
+        (row) => row.targetType === 'feed' && row.targetPnIdentifier === feedId
+      );
+      if (already) return;
+    }
     const response = await apiFetch('POST', `/api/feeds/${feedId}/subscribe`, {
       userPnIdentifier
-      // Backend will store this subscription in the user's cloud storage (Google Drive)
-      // Similar to connection index storage pattern
     });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to subscribe to feed' }));
       throw new Error(error.error || 'Failed to subscribe to feed');
+    }
+    if (sheetId) {
+      await upsertDeviceFollowing(drive.accessToken, sheetId, 'feed', feedId);
     }
   }
 
@@ -203,7 +213,17 @@ export class FeedService {
    * Unsubscribe from feed - removes from user's cloud storage
    */
   static async unsubscribeFromFeed(feedId: string, userPnIdentifier: string): Promise<void> {
-    // Remove subscription via API - backend will remove from user's cloud storage
+    const { sessionDriveFor } = await import('./sessionDrive');
+    const { listDeviceFollowing, removeDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds.followers;
+    if (sheetId) {
+      const following = await listDeviceFollowing(drive.accessToken, sheetId);
+      const already = following.some(
+        (row) => row.targetType === 'feed' && row.targetPnIdentifier === feedId
+      );
+      if (!already) return;
+    }
     const response = await apiFetch('DELETE', `/api/feeds/${feedId}/subscribe`, {
       userPnIdentifier
     });
@@ -212,29 +232,38 @@ export class FeedService {
       const error = await response.json().catch(() => ({ error: 'Failed to unsubscribe from feed' }));
       throw new Error(error.error || 'Failed to unsubscribe from feed');
     }
+    if (sheetId) {
+      await removeDeviceFollowing(drive.accessToken, sheetId, feedId);
+    }
   }
 
   /**
    * Get user's subscriptions
    */
   static async getUserSubscriptions(userPnIdentifier: string): Promise<Feed[]> {
-    const token = await PNOAuthService.getValidAccessToken();
-    const response = await ownerGet(`/api/users/${userPnIdentifier}/subscriptions`, {
-      authToken: token ?? undefined,
-      pnIdentifier: userPnIdentifier
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        console.warn('[FeedService] subscriptions rate limited; using empty list');
-        return [];
-      }
-      const error = await response.json().catch(() => ({ error: 'Failed to get subscriptions' }));
-      throw new Error(error.error || 'Failed to get subscriptions');
+    try {
+      const { sessionDriveFor } = await import('./sessionDrive');
+      const { listDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
+      const drive = await sessionDriveFor(userPnIdentifier);
+      const sheetId = drive.index.sheetIds.followers;
+      if (!sheetId) return [];
+      const following = await listDeviceFollowing(drive.accessToken, sheetId);
+      const feedIds = following
+        .filter((row) => row.targetType === 'feed')
+        .map((row) => row.targetPnIdentifier);
+      const feeds = await Promise.all(
+        feedIds.map(async (id) => {
+          try {
+            return await this.getFeedById(id);
+          } catch {
+            return null;
+          }
+        })
+      );
+      return feeds.filter((feed): feed is Feed => feed !== null);
+    } catch {
+      return [];
     }
-
-    const data = await response.json();
-    return data.feeds || [];
   }
 
   /**

@@ -52,25 +52,11 @@ app.post('/api/engagement/:fileId/like', async (req: Request, res: Response) => 
       './socialMailboxService'
     );
     if (isDeviceCloudCustodyEnabled()) {
-      // Public aggregator only — no mailbox jobs for likes.
-      const aggregator = AggregatorMetadataServiceDB.getInstance();
-      const fileMetadata = await aggregator.getFileMetadata(fileId);
-      const fileOwnerDid = fileMetadata?.pnIdentifier;
-      const currentlyLiked = await EngagementService.isLiked(fileId, pnIdentifier);
-      const liked = !currentlyLiked;
-      await EngagementService.toggleLikePublicCount(fileId, pnIdentifier, liked);
-      if (liked && fileOwnerDid && fileOwnerDid !== pnIdentifier) {
-        try {
-          const { PushService } = await import('./pushService');
-          PushService.send(fileOwnerDid, {
-            title: 'New like',
-            body: 'Someone liked your post',
-            data: { file_id: fileId }
-          }).catch(() => undefined);
-        } catch {
-          /* optional */
-        }
+      if (typeof req.body?.liked !== 'boolean') {
+        return res.status(400).json({ error: 'liked boolean is required' });
       }
+      const liked = req.body.liked as boolean;
+      await EngagementService.toggleLikePublicCount(fileId, liked);
       const publicStats = await EngagementService.getEngagementStats(fileId);
       return res.json({ liked, count: publicStats.likes, delivery: 'public' });
     }
@@ -87,21 +73,12 @@ app.post('/api/engagement/:fileId/like', async (req: Request, res: Response) => 
   }
 });
 
-// GET /api/engagement/:fileId/like — Postgres row, same store the like POST writes.
-app.get('/api/engagement/:fileId/like', async (req: Request, res: Response) => {
-  try {
-    const { EngagementService } = await import('./engagementService');
-    const { fileId } = req.params;
-    const userPnIdentifier = req.query.userPnIdentifier;
-    if (!userPnIdentifier || typeof userPnIdentifier !== 'string') {
-      return res.status(400).json({ error: 'userPnIdentifier query parameter is required' });
-    }
-    const liked = await EngagementService.isLiked(fileId, userPnIdentifier);
-    return res.json({ liked });
-  } catch (error: any) {
-    console.error('Error checking like:', error);
-    return res.status(500).json({ error: 'Failed to check like', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
-  }
+// GET /api/engagement/:fileId/like — membership is the device engagement sheet.
+app.get('/api/engagement/:fileId/like', async (_req: Request, res: Response) => {
+  return res.status(409).json({
+    error: 'like_state_on_device',
+    message: 'Like membership is on the device engagement sheet.'
+  });
 });
 
 // POST /api/engagement/:fileId/dislike - Toggle dislike
@@ -116,29 +93,13 @@ app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) 
       return res.status(400).json({ error: 'userPnIdentifier is required' });
     }
 
-    const pnIdentifier = userPnIdentifier;
-
     const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
     if (isDeviceCloudCustodyEnabled()) {
-      // Public aggregator only — align with like/comment under custody (no actor Drive write).
-      const aggregator = AggregatorMetadataServiceDB.getInstance();
-      const fileMetadata = await aggregator.getFileMetadata(fileId);
-      const fileOwnerDid = fileMetadata?.pnIdentifier;
-      const currentlyDisliked = await EngagementService.isDisliked(fileId, pnIdentifier);
-      const disliked = !currentlyDisliked;
-      await EngagementService.toggleDislikePublicCount(fileId, pnIdentifier, disliked);
-      if (disliked && fileOwnerDid && fileOwnerDid !== pnIdentifier) {
-        try {
-          const { PushService } = await import('./pushService');
-          PushService.send(fileOwnerDid, {
-            title: 'Feedback on your post',
-            body: 'Someone reacted to your post',
-            data: { file_id: fileId }
-          }).catch(() => undefined);
-        } catch {
-          /* optional */
-        }
+      if (typeof req.body?.disliked !== 'boolean') {
+        return res.status(400).json({ error: 'disliked boolean is required' });
       }
+      const disliked = req.body.disliked as boolean;
+      await EngagementService.toggleDislikePublicCount(fileId, disliked);
       const publicStats = await EngagementService.getEngagementStats(fileId);
       return res.json({
         disliked,
@@ -161,19 +122,12 @@ app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) 
 });
 
 // GET /api/engagement/:fileId/dislike - Check if disliked
-app.get('/api/engagement/:fileId/dislike', async (req: Request, res: Response) => {
+app.get('/api/engagement/:fileId/dislike', async (_req: Request, res: Response) => {
   try {
-    const { EngagementService } = await import('./engagementService');
-    const { fileId } = req.params;
-    const { userPnIdentifier } = req.query;
-
-    if (!userPnIdentifier) {
-      return res.status(400).json({ error: 'userPnIdentifier query parameter is required' });
-    }
-
-    const disliked = await EngagementService.isDisliked(fileId, userPnIdentifier as string);
-
-    return res.json({ disliked });
+    return res.status(409).json({
+      error: 'dislike_state_on_device',
+      message: 'Dislike membership is on the device engagement sheet.'
+    });
   } catch (error: any) {
     console.error('Error checking dislike:', error);
     return res.status(500).json({ error: 'Failed to check dislike', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
@@ -222,21 +176,6 @@ app.post('/api/engagement/:fileId/comment', async (req: Request, res: Response) 
         });
       } catch (err) {
         console.warn('[engagement] refreshEngagementTopComments after comment failed:', err);
-      }
-      const ownerPn =
-        fileOwnerDid ||
-        (await AggregatorMetadataServiceDB.getInstance().getFileMetadata(fileId))?.pnIdentifier;
-      if (ownerPn && ownerPn !== pnIdentifier) {
-        try {
-          const { PushService } = await import('./pushService');
-          PushService.send(ownerPn, {
-            title: 'New comment',
-            body: 'Someone commented on your post',
-            data: { file_id: fileId, comment_id: comment.id }
-          }).catch(() => undefined);
-        } catch {
-          /* optional */
-        }
       }
       return res.json({
         success: true,
@@ -366,12 +305,8 @@ app.get('/api/engagement/user/:userPnIdentifier', async (req: Request, res: Resp
     const withoutPrefix = userPnIdentifier.startsWith('pn-') ? userPnIdentifier.substring(3) : userPnIdentifier;
     
     // Get all files the user has liked (check both formats for legacy data)
-    const likedResult = await db.query(`
-      SELECT DISTINCT file_id 
-      FROM engagement 
-      WHERE (user_did = $1 OR user_did = $2) AND type = 'like'
-    `, [withPrefix, withoutPrefix]);
-    
+    const likedFileIds: string[] = [];
+
     // Get all files the user has commented on (check both formats for legacy data)
     const commentedResult = await db.query(`
       SELECT DISTINCT file_id 
@@ -379,7 +314,6 @@ app.get('/api/engagement/user/:userPnIdentifier', async (req: Request, res: Resp
       WHERE (user_did = $1 OR user_did = $2) AND type = 'comment'
     `, [withPrefix, withoutPrefix]);
 
-    const likedFileIds = likedResult.rows.map(row => row.file_id);
     const commentedFileIds = commentedResult.rows.map(row => row.file_id);
 
     console.log(`📊 User engagement query: userPnIdentifier=${userPnIdentifier}, found ${likedFileIds.length} likes, ${commentedFileIds.length} comments`);

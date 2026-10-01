@@ -623,6 +623,15 @@ export async function initializeDatabase(): Promise<void> {
       ON engagement(file_id, user_did, type)
     `);
 
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS engagement_public_counts (
+        file_id VARCHAR(255) NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (file_id, type)
+      )
+    `);
+
     // User tag preferences table (for recommendation algorithm)
     await db.query(`
       CREATE TABLE IF NOT EXISTS user_tag_preferences (
