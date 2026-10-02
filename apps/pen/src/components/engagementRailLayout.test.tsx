@@ -9,19 +9,19 @@ describe('engagementRailLayout', () => {
   it('fills the lower half of a tall frame, with icons and gaps scaling together', () => {
     const frame = 900;
     const layout = engagementRailLayout(frame);
-    expect(layout.stackPx + layout.bottomPx).toBeCloseTo(frame / 2, 0);
-    expect(layout.iconPx).toBeGreaterThan(40);
+    expect(layout.stackPx).toBeCloseTo((frame / 2 - layout.bottomPx) * 0.9, 0);
+    expect(layout.iconPx).toBeGreaterThan(36);
     const narrower = engagementRailLayout(600);
     expect(narrower.iconPx).toBeLessThan(layout.iconPx);
     expect(narrower.gapPx / narrower.iconPx).toBeCloseTo(layout.gapPx / layout.iconPx);
-    expect(narrower.stackPx + narrower.bottomPx).toBeCloseTo(300, 0);
+    expect(narrower.stackPx).toBeCloseTo((300 - narrower.bottomPx) * 0.9, 0);
   });
 
   it('a short frame stays on the midpoint with smaller icons, not looser gaps', () => {
     const frame = 320;
     const layout = engagementRailLayout(frame);
     const tall = engagementRailLayout(900);
-    expect(layout.stackPx + layout.bottomPx).toBeCloseTo(frame / 2, 0);
+    expect(layout.stackPx).toBeCloseTo((frame / 2 - layout.bottomPx) * 0.9, 0);
     expect(layout.iconPx).toBeLessThan(tall.iconPx);
     expect(layout.gapPx / layout.iconPx).toBeCloseTo(tall.gapPx / tall.iconPx);
   });

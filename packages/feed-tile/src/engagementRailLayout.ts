@@ -7,8 +7,10 @@ const useFrameEffect = typeof window === 'undefined' ? useEffect : useLayoutEffe
 export const ENGAGEMENT_RAIL_SLOTS = 6;
 /** Gap stays a fraction of the icon so both grow and shrink together. */
 export const ENGAGEMENT_RAIL_GAP_RATIO = 0.28;
-/** Fallback before the frame is measured. About twice the previous 22px mark. */
-export const ENGAGEMENT_RAIL_ICON_PX = 44;
+/** The stack fills this fraction of the lower half. 0.9 is 10% under a full half-frame. */
+export const ENGAGEMENT_RAIL_SCALE = 0.9;
+/** Fallback before the frame is measured. */
+export const ENGAGEMENT_RAIL_ICON_PX = 40;
 export const ENGAGEMENT_RAIL_GAP_PX = ENGAGEMENT_RAIL_ICON_PX * ENGAGEMENT_RAIL_GAP_RATIO;
 
 /**
@@ -35,7 +37,7 @@ function stackFromIcon(iconPx: number): { gapPx: number; stackPx: number } {
 }
 
 /**
- * The icon stack fills the lower half of the feed frame.
+ * The icon stack fills most of the lower half of the feed frame.
  * Icon and gap scale together with the frame, so a resize does not only open the gaps.
  * `occupiedBottomPx` reserves a band already taken by caption or phone chrome.
  */
@@ -60,7 +62,7 @@ export function engagementRailLayout(
   const bottomPx = Math.min(requested, midpoint);
   const budget = Math.max(0, midpoint - bottomPx);
   const slots = ENGAGEMENT_RAIL_SLOTS + (ENGAGEMENT_RAIL_SLOTS - 1) * ENGAGEMENT_RAIL_GAP_RATIO;
-  const iconPx = slots > 0 ? budget / slots : 0;
+  const iconPx = slots > 0 ? (budget / slots) * ENGAGEMENT_RAIL_SCALE : 0;
   const { gapPx, stackPx } = stackFromIcon(iconPx);
   return { iconPx, gapPx, bottomPx, stackPx };
 }
