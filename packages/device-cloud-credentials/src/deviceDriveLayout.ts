@@ -33,6 +33,11 @@ export type DeviceDriveLayout = {
   integratorsRootId: string;
   messagesFolderId: string;
   inboxSheetId: string;
+  filesFolderId?: string;
+  contentFolderId?: string;
+  contentNotesFolderId?: string;
+  contentMediaFolderId?: string;
+  contentCollectionsFolderId?: string;
   sheetIds: Record<string, string>;
   conversationSheets: Record<string, string>;
 };
@@ -93,6 +98,16 @@ export async function ensureDeviceDriveLayout(
   }
   const inboxSheetId = await createSheet(accessToken, 'inbox', messagesFolderId, fetchImpl);
   sheetIds['owned-assets'] = await ensureDeviceOwnedAssetsSheet(accessToken, metadataFolderId, fetchImpl);
+  const filesFolderId = await createFolder(accessToken, 'files', pnFolderId, fetchImpl);
+  const contentFolderId = await createFolder(accessToken, 'content', pnFolderId, fetchImpl);
+  const contentNotesFolderId = await createFolder(accessToken, 'notes', contentFolderId, fetchImpl);
+  const contentMediaFolderId = await createFolder(accessToken, 'media', contentFolderId, fetchImpl);
+  const contentCollectionsFolderId = await createFolder(
+    accessToken,
+    'collections',
+    contentFolderId,
+    fetchImpl
+  );
   return {
     schemaVersion: 1,
     pnFolderId,
@@ -100,6 +115,11 @@ export async function ensureDeviceDriveLayout(
     integratorsRootId,
     messagesFolderId,
     inboxSheetId,
+    filesFolderId,
+    contentFolderId,
+    contentNotesFolderId,
+    contentMediaFolderId,
+    contentCollectionsFolderId,
     sheetIds,
     conversationSheets: {},
   };

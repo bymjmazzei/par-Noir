@@ -8,6 +8,7 @@ import { workerManager } from './workerManager';
 import { PNOAuthService } from './pnOAuthService';
 import { getEncryptionService } from './encryptionService';
 import { uploadStorageFile } from './storageApiClient';
+import { contentBlobParent, type ContentBlobClass } from './contentBlobParent';
 import { ownerFetch } from './ownerApiFetch';
 import { publishPublicShare } from './publicSharePublish';
 import { publishFeedPreviews } from './feedPreviewPublish';
@@ -30,7 +31,8 @@ async function publicShareFields(
   isPublic: boolean,
   accessToken: string,
   accountId: string,
-  envelopeFileName: string
+  envelopeFileName: string,
+  blobClass: ContentBlobClass = 'media'
 ): Promise<{ publicToken?: string; publicContentRef?: PublicContentRef }> {
   if (!isPublic) return {};
   if (!generation) {
@@ -41,6 +43,7 @@ async function publicShareFields(
     accessToken,
     accountId,
     envelopeFileName,
+    blobClass,
   });
   if (!published.publicToken || !published.publicContentRef) {
     throw new Error('Cannot publish publicly without publicToken and publicContentRef');
@@ -559,8 +562,8 @@ async function processTextPostUpload(
   const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
 
   const [fileResult, thumbnailResult] = await Promise.all([
-    uploadFile(base64File, `${fileName}.encrypted`, accessToken, task.accountId),
-    uploadFile(thumbnailBase64, `thumb_${fileName.replace('.note', '.png')}.encrypted`, accessToken, task.accountId)
+    uploadFile(base64File, `${fileName}.encrypted`, accessToken, task.accountId, { blobClass: 'notes' }),
+    uploadFile(thumbnailBase64, `thumb_${fileName.replace('.note', '.png')}.encrypted`, accessToken, task.accountId, { blobClass: 'notes' })
   ]);
 
   const fileId = fileResult?.id;
@@ -581,13 +584,15 @@ async function processTextPostUpload(
       isPublic,
       accessToken,
       task.accountId,
-      `public-envelope-${thumbnailFileId}.json`
+      `public-envelope-${thumbnailFileId}.json`,
+      'notes'
     );
     let feedPreviewFields: Record<string, unknown> = {};
     if (isPublic) {
       try {
         uploadQueueService.updateTaskProgress(task.id, 92);
         feedPreviewFields = await publishFeedPreviews({
+          blobClass: 'notes',
           file: thumbnailBlob,
           mimeType: 'image/png',
           fileId: thumbnailFileId,
@@ -629,7 +634,8 @@ async function processTextPostUpload(
       isPublic,
       accessToken,
       task.accountId,
-      `public-envelope-${fileId}.json`
+      `public-envelope-${fileId}.json`,
+      'notes'
     );
     await createMetadata(fileId, {
       name: fileName,
@@ -731,7 +737,7 @@ async function processMultiPageUpload(
 
   uploadQueueService.updateTaskStatus(task.id, 'uploading');
   const base64File = await blobToBase64(new Blob([JSON.stringify(packageData)], { type: 'application/json' }));
-  const fileResult = await uploadFile(base64File, `${fileName}.encrypted`, accessToken, task.accountId);
+  const fileResult = await uploadFile(base64File, `${fileName}.encrypted`, accessToken, task.accountId, { blobClass: 'collections' });
   const noteFileId = fileResult?.id;
 
   uploadQueueService.updateTaskProgress(task.id, 70);
@@ -762,7 +768,7 @@ async function processMultiPageUpload(
 
     const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
     const thumbnailFileName = `thumb_${task.metadata?.name || 'note-collection'}-page-${index + 1}.png.encrypted`;
-    const result = await uploadFile(thumbnailBase64, thumbnailFileName, accessToken, task.accountId);
+    const result = await uploadFile(thumbnailBase64, thumbnailFileName, accessToken, task.accountId, { blobClass: 'collections' });
     return { index, fileId: result?.id, shareToken: thumbnailShareToken };
   });
 
@@ -814,7 +820,7 @@ async function processMultiPageUpload(
 
     const collectionThumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(collectionThumbnailPackage)], { type: 'application/json' }));
     const collectionThumbnailFileName = `thumb_${task.metadata?.name || 'note-collection'}.png.encrypted`;
-    const collectionThumbnailResult = await uploadFile(collectionThumbnailBase64, collectionThumbnailFileName, accessToken, task.accountId);
+    const collectionThumbnailResult = await uploadFile(collectionThumbnailBase64, collectionThumbnailFileName, accessToken, task.accountId, { blobClass: 'collections' });
     collectionThumbnailFileId = collectionThumbnailResult?.id;
     
     uploadQueueService.updateTaskProgress(task.id, 90);
@@ -833,10 +839,12 @@ async function processMultiPageUpload(
         true,
         accessToken,
         task.accountId,
-        `public-envelope-${collectionThumbnailFileId}.json`
+        `public-envelope-${collectionThumbnailFileId}.json`,
+        'collections'
       );
       shareFields = share;
       feedPreviewFields = await publishFeedPreviews({
+        blobClass: 'collections',
         file: thumbnails[0].blob,
         mimeType: 'image/png',
         fileId: collectionThumbnailFileId,
@@ -854,9 +862,11 @@ async function processMultiPageUpload(
           true,
           accessToken,
           task.accountId,
-          `public-envelope-${pageResult.fileId}.json`
+          `public-envelope-${pageResult.fileId}.json`,
+          'collections'
         );
         const pagePreviews = await publishFeedPreviews({
+          blobClass: 'collections',
           file: pageBlob,
           mimeType: 'image/png',
           fileId: pageResult.fileId,
@@ -1039,7 +1049,7 @@ async function uploadFile(
   fileName: string,
   accessToken: string,
   accountId: string,
-  options?: { encrypt?: boolean; mimeType?: string; provider?: string }
+  options?: { encrypt?: boolean; mimeType?: string; provider?: string; blobClass?: ContentBlobClass }
 ): Promise<{ id: string }> {
   const encrypt = options?.encrypt !== false;
   const mimeType = options?.mimeType ?? 'application/json';
@@ -1048,13 +1058,16 @@ async function uploadFile(
   if (!pnIdentifier) {
     throw new Error('Unlock your pN to upload files');
   }
+  const blobClass = options?.blobClass || 'media';
+  const parentId = await contentBlobParent(pnIdentifier, blobClass);
 
   const { id } = await uploadStorageFile(accessToken, pnIdentifier, options?.provider || 'google_drive', {
     fileData: base64Data,
     fileName,
     mimeType,
     accountId,
-    encrypt
+    encrypt,
+    parents: [parentId]
   });
 
   return { id };

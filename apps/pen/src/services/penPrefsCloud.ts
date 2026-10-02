@@ -10,6 +10,7 @@ import {
   encryptMediaBytes
 } from '@par-noir/dm-crypto';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
+import { ensurePenRoot, penSessionDrive } from './penDriveLibrary';
 import {
   listPersonalTemplates,
   type PersonalTemplate
@@ -83,8 +84,15 @@ function applyMergedLocally(pn: string, merged: PenPrefsBlob): void {
   savePinnedCategoryIds(pn, merged.pinnedCategoryIds, { silent: true });
 }
 
-async function findPrefsFileId(pnIdentifier: string): Promise<string | null> {
-  const q = encodeURIComponent(`name='${PEN_PREFS_FILENAME}' and trashed=false`);
+async function penRootId(pnIdentifier: string): Promise<string> {
+  const drive = await penSessionDrive(pnIdentifier);
+  return ensurePenRoot(drive.accessToken, drive.index.pnFolderId);
+}
+
+async function findPrefsFileId(pnIdentifier: string, parentId: string): Promise<string | null> {
+  const q = encodeURIComponent(
+    `name='${PEN_PREFS_FILENAME}' and '${parentId}' in parents and trashed=false`
+  );
   const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=5`, { pnIdentifier });
   if (!res.ok) return null;
   const data = (await res.json()) as {
@@ -102,7 +110,8 @@ export async function pushPrefsCloud(params: {
   const keyB64 = prefsKeyB64(params.mlKemSecretKey);
   const envelope = await encryptMediaBytes(utf8Bytes(JSON.stringify(blob)), keyB64);
   const fileData = bytesToB64(utf8Bytes(envelope));
-  const existingId = await findPrefsFileId(params.pnIdentifier);
+  const rootId = await penRootId(params.pnIdentifier);
+  const existingId = await findPrefsFileId(params.pnIdentifier, rootId);
 
   if (existingId) {
     const res = await ownerFetch(
@@ -128,7 +137,8 @@ export async function pushPrefsCloud(params: {
       fileData,
       fileName: PEN_PREFS_FILENAME,
       mimeType: 'application/octet-stream',
-      encrypt: false
+      encrypt: false,
+      parents: [rootId]
     },
     { pnIdentifier: params.pnIdentifier }
   );
@@ -142,7 +152,8 @@ export async function pullAndMergePrefsCloud(params: {
   pnIdentifier: string;
   mlKemSecretKey: string;
 }): Promise<PenPrefsBlob | null> {
-  const fileId = await findPrefsFileId(params.pnIdentifier);
+  const rootId = await penRootId(params.pnIdentifier);
+  const fileId = await findPrefsFileId(params.pnIdentifier, rootId);
   if (!fileId) return null;
 
   const res = await ownerGet(

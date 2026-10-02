@@ -180,6 +180,12 @@ export async function deviceDriveCall(
       mimeType?: string;
       parents?: string[];
     };
+    if (!payload.parents || payload.parents.length === 0) {
+      return jsonResponse(400, {
+        error: 'drive_parent_required',
+        error_description: 'A file upload must name a folder inside the pN root.',
+      });
+    }
     const boundary = 'pn_device_drive';
     const meta = JSON.stringify({
       name: payload.fileName,

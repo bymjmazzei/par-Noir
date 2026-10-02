@@ -3,6 +3,7 @@ import { EncryptionManager } from '@par-noir/identity-crypto/browser';
 import { getEncryptionService } from '../services/encryptionService';
 import { ownerFetch } from './ownerApiFetch';
 import { publishPublicShare } from './publicSharePublish';
+import { contentBlobParent } from './contentBlobParent';
 import type { PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
 interface CollectionData {
@@ -125,6 +126,11 @@ export async function createCollection(
     });
 
     const encryptedFileName = `${fileName}.encrypted`;
+    const sessionForParent = PNOAuthService.loadSession();
+    if (!sessionForParent?.pnIdentifier) {
+      throw new Error('Unlock your pN to upload files');
+    }
+    const parentId = await contentBlobParent(sessionForParent.pnIdentifier, 'collections');
     const uploadResponse = await ownerFetch(
       'POST',
       '/api/drive/files',
@@ -132,7 +138,8 @@ export async function createCollection(
         fileData: base64File,
         fileName: encryptedFileName,
         mimeType: 'application/json', // Encrypted files are stored as JSON
-        accountId: accountId
+        accountId: accountId,
+        parents: [parentId]
       },
       { authToken: accessToken }
     );
@@ -162,6 +169,7 @@ export async function createCollection(
           accessToken,
           accountId,
           envelopeFileName: `public-envelope-${fileId}.json`,
+          blobClass: 'collections',
         });
         publicToken = published.publicToken;
         publicContentRef = published.publicContentRef;
@@ -195,6 +203,7 @@ export async function createCollection(
           name: metadata?.title || collectionData.title || 'Collection',
           collectionFileIds: collectionData.collectionFileIds,
           planId: 'floor',
+          blobClass: 'collections',
         });
       } catch (previewErr: any) {
         throw new Error(

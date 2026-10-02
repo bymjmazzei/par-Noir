@@ -12,6 +12,7 @@ import { API_ENDPOINT } from '../config/api';
 import { getCloudAccessTokenFromSession, shareDeviceDriveFile } from '@par-noir/device-cloud-credentials';
 import { ownerFetch } from './ownerApiFetch';
 import { uploadStorageFile } from './storageApiClient';
+import { contentBlobParent, type ContentBlobClass } from './contentBlobParent';
 import { PNOAuthService } from './pnOAuthService';
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -32,6 +33,7 @@ export async function publishPublicShare(params: {
   accountId: string;
   backend?: string;
   envelopeFileName?: string;
+  blobClass?: ContentBlobClass;
 }): Promise<{ publicToken: string; publicContentRef: PublicContentRef }> {
   const session = PNOAuthService.loadSession();
   const pnIdentifier = session?.pnIdentifier;
@@ -52,12 +54,14 @@ export async function publishPublicShare(params: {
     envelopeFileName: params.envelopeFileName,
     uploadEnvelope: async (blob, fileName) => {
       const base64 = await blobToBase64(blob);
+      const parentId = await contentBlobParent(pnIdentifier, params.blobClass || 'media');
       const { id } = await uploadStorageFile(params.accessToken, pnIdentifier, backend, {
         fileData: base64,
         fileName,
         mimeType: 'application/json',
         accountId: params.accountId,
         encrypt: false,
+        parents: [parentId],
       });
       const cloudToken = getCloudAccessTokenFromSession(pnIdentifier);
       const publicUrl =

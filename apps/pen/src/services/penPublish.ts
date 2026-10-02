@@ -550,9 +550,21 @@ async function readOwnAudioBytes(src: string, docId: string): Promise<Uint8Array
 }
 
 /** Upload each poster-owned lane. Licensed lanes are not copied. */
+async function publicFolderFor(
+  pnIdentifier: string,
+  docId: string,
+  explicit?: string
+): Promise<string> {
+  if (explicit) return explicit;
+  const { ensureDocChildFolder, penSessionDrive } = await import('./penDriveLibrary');
+  const drive = await penSessionDrive(pnIdentifier);
+  return ensureDocChildFolder(drive.accessToken, drive.index.pnFolderId, docId, 'public');
+}
+
 export async function uploadCompanionAudioFiles(params: {
   bundle: LocalDocBundle;
   request?: CloudRequest;
+  parentFolderId?: string;
   uploadCompanionAudio?: (bytes: Uint8Array, index: number, mime: string) => Promise<string>;
 }): Promise<{ fileIds: string[]; offsetsSec: number[]; gains: number[] }> {
   const plan = audioPublishPlan(params.bundle.sections);
@@ -566,11 +578,15 @@ export async function uploadCompanionAudioFiles(params: {
     const bytes = await readOwnAudioBytes(lane.src, docId);
     if (!bytes?.byteLength) continue;
     const mime = 'audio/mpeg';
+    if (!params.uploadCompanionAudio && !params.parentFolderId) {
+      throw new Error('public_folder_required');
+    }
     const fileId = params.uploadCompanionAudio
       ? await params.uploadCompanionAudio(bytes, i, mime)
       : (
           await publishPublicCloudFile({
             request: params.request,
+            parentFolderId: params.parentFolderId!,
             bytes,
             fileName: `pen-${docId}-audio-${i}.mp3`,
             title: `${title} audio ${i + 1}`,
@@ -611,18 +627,25 @@ export async function publishPostToOwnerCloud(params: {
   membership: boolean;
   connectReady?: boolean;
   request?: CloudRequest;
+  /** par-noir-pen/{docId}/public/. Resolved when omitted. */
+  parentFolderId?: string;
   video?: ComposedVideoPublish;
   mixed?: MixedPagesPublish;
   /** Test hook. Production uploads each own lane as its own audio file. */
   uploadCompanionAudio?: (bytes: Uint8Array, index: number, mime: string) => Promise<string>;
 }): Promise<{ fileId: string }> {
   if (!params.feedIds.length) throw new Error('feed_required');
+  const parentFolderId = await publicFolderFor(
+    params.pnIdentifier,
+    params.bundle.manifest.docId,
+    params.parentFolderId
+  );
   const licensing = licensingForPublish(params.bundle.manifest.licensing, params.bundle.manifest.ownerPnHash, {
     membership: params.membership,
     connectReady: params.connectReady,
     musicAsset: params.bundle.manifest.classId === 'library.music'
   });
-  const companion = await uploadCompanionAudioFiles(params);
+  const companion = await uploadCompanionAudioFiles({ ...params, parentFolderId });
   const base = {
     ...provenanceFor(params.bundle, licensing, params.feedIds),
     ...(companion.fileIds.length
@@ -644,6 +667,7 @@ export async function publishPostToOwnerCloud(params: {
     const bytes = new Uint8Array(await params.video.videoBlob.arrayBuffer());
     return publishPublicCloudFile({
       request: params.request,
+      parentFolderId,
       bytes,
       fileName: `pen-${params.bundle.manifest.docId}.video`,
       title: params.video.title,
@@ -668,6 +692,7 @@ export async function publishPostToOwnerCloud(params: {
         if (!video) throw new Error(`missing_video_${page.videoIndex}`);
         const uploaded = await publishPublicCloudFile({
           request: params.request,
+          parentFolderId,
           bytes: new Uint8Array(await video.videoBlob.arrayBuffer()),
           fileName: `pen-${params.bundle.manifest.docId}-${page.slug}.video`,
           title: `${params.mixed.title} — ${page.slug}`,
@@ -686,6 +711,7 @@ export async function publishPostToOwnerCloud(params: {
         const textPost = { content: page.content, style: page.style || {} };
         const uploaded = await publishPublicCloudFile({
           request: params.request,
+          parentFolderId,
           bytes: new TextEncoder().encode(JSON.stringify({ textPost, version: '1.0' })),
           fileName: `pen-${params.bundle.manifest.docId}-${page.slug}.json`,
           title: `${params.mixed.title} — ${page.slug}`,
@@ -703,6 +729,7 @@ export async function publishPostToOwnerCloud(params: {
     const poster = params.mixed.videos[0]?.posterBlob;
     return publishPublicCloudFile({
       request: params.request,
+      parentFolderId,
       bytes: new TextEncoder().encode(
         JSON.stringify({ collectionFileIds: childIds, title: params.mixed.title })
       ),
@@ -732,6 +759,7 @@ export async function publishPostToOwnerCloud(params: {
   const poster = await renderNotePoster(compiled.title, textPost.content);
   return publishPublicCloudFile({
     request: params.request,
+    parentFolderId,
     bytes: new TextEncoder().encode(
       JSON.stringify({ textPost, pages: compiled.pages, version: '1.0' })
     ),
@@ -760,6 +788,7 @@ export async function publishTemplateToOwnerCloud(params: {
   pnIdentifier: string;
   connectReady?: boolean;
   request?: CloudRequest;
+  parentFolderId?: string;
 }): Promise<{ fileId: string }> {
   if (!params.verified) throw new Error(PUBLIC_TEMPLATE_REQUIRES_VERIFICATION);
   const postFileId = params.bundle.manifest.publishedFileId;
@@ -769,6 +798,11 @@ export async function publishTemplateToOwnerCloud(params: {
     connectReady: params.connectReady,
     musicAsset: params.bundle.manifest.classId === 'library.music'
   });
+  const parentFolderId = await publicFolderFor(
+    params.pnIdentifier,
+    params.bundle.manifest.docId,
+    params.parentFolderId
+  );
   const compiled = await writeSocialPublishHandoff(params.bundle, {
     pnIdentifier: params.pnIdentifier,
     canPublishPublicTemplate: true,
@@ -785,6 +819,7 @@ export async function publishTemplateToOwnerCloud(params: {
   const kind = params.bundle.manifest.basedOnTemplateId ? 'remix' : 'template';
   return publishPublicCloudFile({
     request: params.request,
+    parentFolderId,
     bytes: new TextEncoder().encode(JSON.stringify(ir)),
     fileName: `pen-template-${params.bundle.manifest.docId}.json`,
     title: compiled.title,

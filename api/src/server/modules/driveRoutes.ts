@@ -114,8 +114,17 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
           try {
             const { loadPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
             const index = await loadPnDriveIndex(userIdentifier);
-            if (isPnDriveIndexComplete(index) && index.pnFolderId) {
-              finalQuery = `'${index.pnFolderId}' in parents and trashed=false`;
+            if (isPnDriveIndexComplete(index)) {
+              const blobIds = [
+                index.contentNotesFolderId,
+                index.contentMediaFolderId,
+                index.contentCollectionsFolderId,
+              ].filter((id): id is string => !!id);
+              if (blobIds.length > 0) {
+                finalQuery = `(${blobIds.map((id) => `'${id}' in parents`).join(' or ')}) and trashed=false`;
+              } else if (index.pnFolderId) {
+                finalQuery = `'${index.pnFolderId}' in parents and trashed=false`;
+              }
             }
           } catch {
             /* fall through to folder search */
@@ -322,8 +331,16 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
               driveCtx.metadataFolderId,
               driveCtx.pnFolderId
             );
-          } else if (!finalParents || finalParents.length === 0) {
-            finalParents = undefined;
+          } else if (driveCtx.isFirstParty) {
+            const { rejectPnRootFileParent } = await import('./driveFileParents');
+            const decided = rejectPnRootFileParent(finalParents, driveCtx.pnFolderId);
+            if (!decided.ok) {
+              return res.status(400).json({
+                error: 'drive_parent_required',
+                error_description: decided.error
+              });
+            }
+            finalParents = decided.parents;
           }
         } catch (siloErr) {
           if (siloErr instanceof IntegratorStorageError) {
@@ -331,78 +348,6 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
             return res.status(status).json(body);
           }
           throw siloErr;
-        }
-
-        // If no parents specified, find the pN folder and upload there (first-party only)
-        if ((!finalParents || finalParents.length === 0) && driveCtx.isFirstParty) {
-          if (pnIdentifier && accountId) {
-            try {
-              // driveCtx.accessToken is already resolved through resolveOwnerDriveToken;
-              // there is no second place to get one.
-              const accessToken: string | null = driveCtx.accessToken || null;
-              
-              if (accessToken) {
-                const { pnFolderDisplayName } = await import('./integratorStoragePaths');
-                const pnFolderName = pnFolderDisplayName(pnIdentifier);
-                // Prefer indexed folder id when available
-                try {
-                  const { loadPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
-                  const index = await loadPnDriveIndex(pnIdentifier);
-                  if (isPnDriveIndexComplete(index) && index.pnFolderId) {
-                    finalParents = [index.pnFolderId];
-                  }
-                } catch {
-                  /* fall through to search */
-                }
-                if (!finalParents || finalParents.length === 0) {
-                const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=10`;
-                
-                console.log(`[Upload] Searching for pN folder: "${pnFolderName}"`);
-                
-                const folderResponse = await fetch(folderSearchUrl, {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                  }
-                });
-                
-                if (folderResponse.ok) {
-                  const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                  const folderFiles = folderData.files || [];
-                  
-                  if (folderFiles.length > 0) {
-                    finalParents = [folderFiles[0].id];
-                    console.log(`[Upload] ✅ Found pN folder "${pnFolderName}" (ID: ${folderFiles[0].id}), uploading file there`);
-                  } else {
-                    // Fallback: try without "pn-" prefix
-                    const altFolderName = `par Noir - ${pnIdentifier}`;
-                    const altFolderSearchQuery = `name='${altFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                    const altFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altFolderSearchQuery)}&fields=files(id,name)&pageSize=10`;
-                    
-                    const altFolderResponse = await fetch(altFolderSearchUrl, {
-                      headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                      }
-                    });
-                    
-                    if (altFolderResponse.ok) {
-                      const altFolderData = await altFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                      const altFolderFiles = altFolderData.files || [];
-                      
-                      if (altFolderFiles.length > 0) {
-                        finalParents = [altFolderFiles[0].id];
-                        console.log(`[Upload] ✅ Found pN folder "${altFolderName}" (ID: ${altFolderFiles[0].id}), uploading file there`);
-                      }
-                    }
-                  }
-                }
-                }
-              }
-            } catch (folderError: any) {
-              console.warn(`[Upload] Error searching for pN folder:`, folderError?.message || folderError);
-              // Continue without folder - file will be uploaded to root
-            }
-          }
         }
 
         // Convert base64 to Buffer

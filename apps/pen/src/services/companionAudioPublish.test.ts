@@ -88,6 +88,7 @@ describe('companion audio publish', () => {
       feedIds: ['public'],
       pnIdentifier: 'pn',
       membership: false,
+      parentFolderId: 'public-folder',
       request,
       uploadCompanionAudio: async (_bytes, index) => {
         uploaded.push(`lane-${index}`);

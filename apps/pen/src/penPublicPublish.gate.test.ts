@@ -43,6 +43,7 @@ describe('Pen owner-cloud publish', () => {
 
     const result = await publishPublicCloudFile({
       request,
+      parentFolderId: 'public-folder',
       bytes: new TextEncoder().encode('{"textPost":{"content":"hi"}}'),
       fileName: 'pen-doc.json',
       title: 'Hi',
@@ -55,7 +56,8 @@ describe('Pen owner-cloud publish', () => {
     });
 
     expect(result.fileId).toBe('drive-1');
-    expect(calls.some((c) => c.method === 'POST' && c.path === '/api/drive/files')).toBe(true);
+    const upload = calls.find((c) => c.method === 'POST' && c.path === '/api/drive/files');
+    expect((upload?.body as { parents?: string[] } | undefined)?.parents).toEqual(['public-folder']);
     const put = calls.find((c) => c.method === 'PUT');
     expect(put?.path).toBe('/api/aggregator/metadata-index/drive-1');
     const body = put?.body as { feedIds?: string[]; penDocId?: string; penTemplateKind?: string };
@@ -147,7 +149,8 @@ describe('Pen owner-cloud publish', () => {
       templateLicensing: defaultLicensingRoot('owner'),
       verified: true,
       pnIdentifier: 'pn',
-      request
+      request,
+      parentFolderId: 'public-folder'
     });
     expect(published.fileId).toBe('tpl-1');
     const put = calls.find((c) => c.method === 'PUT');

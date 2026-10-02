@@ -607,6 +607,13 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     return folderId;
   }
 
+  /** Cabinet uploads. A child of the pN root, never the root itself. */
+  async ensureFilesFolder(pnIdentifier: string): Promise<string> {
+    const pnFolderId = await this.getOrCreateFolder('par Noir', pnIdentifier);
+    if (!pnFolderId || pnFolderId === 'NOT_CONNECTED') return pnFolderId;
+    return this.getOrCreateFolder('files', undefined, pnFolderId);
+  }
+
   async listFiles(folderId?: string, pnIdentifier?: string): Promise<StorageFile[]> {
     if (!this.token && !(await this.ensureAccessToken())) {
       console.warn('⚠️ [listFiles] Google Drive not connected - returning empty list');
@@ -620,39 +627,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     let resolvedFolderId = folderId;
     if (pnIdentifier && !resolvedFolderId) {
       try {
-        resolvedFolderId = await this.getOrCreateFolder('par Noir', pnIdentifier);
+        resolvedFolderId = await this.ensureFilesFolder(pnIdentifier);
       } catch (err) {
         console.error('❌ [listFiles] Failed to get/create folder:', err);
         resolvedFolderId = undefined;
-      }
-    }
-
-    if (!resolvedFolderId) {
-      try {
-        const folderSearchQuery = `name contains 'par Noir' and mimeType='${FOLDER_MIME}' and trashed=false and name!='_metadata'`;
-        const params = new URLSearchParams({
-          q: folderSearchQuery,
-          pageSize: '10'
-        });
-        const folderSearchResponse = await this.driveFetch(
-          'GET',
-          `/api/drive/files?${params.toString()}`,
-          undefined,
-          pnIdentifier
-        );
-        if (folderSearchResponse.ok) {
-          const folderData = (await folderSearchResponse.json()) as { files?: DriveApiFile[] };
-          const pnFolders = (folderData.files || []).filter(
-            (f) => f.name?.includes('par Noir') && f.name.includes('pn-') && !f.name.includes('_metadata')
-          );
-          if (pnFolders[0]?.id) {
-            resolvedFolderId = pnFolders[0].id;
-          } else if (folderData.files?.[0]?.id) {
-            resolvedFolderId = folderData.files[0].id;
-          }
-        }
-      } catch (e) {
-        console.error('❌ [listFiles] Error searching for folders:', e);
       }
     }
 
@@ -707,11 +685,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     const pnIdentifier =
       typeof metadata?.pnIdentifier === 'string' ? metadata.pnIdentifier : undefined;
     const targetFolderId =
-      folderId || (pnIdentifier ? this.pnFolderCache.get(pnIdentifier) : this.parNoirFolderId);
+      folderId || (pnIdentifier ? await this.ensureFilesFolder(pnIdentifier) : undefined);
 
-    if (!targetFolderId) {
-      const newFolderId = await this.getOrCreateFolder('par Noir', pnIdentifier);
-      return this.uploadFile(file, newFolderId, metadata);
+    if (!targetFolderId || targetFolderId === 'NOT_CONNECTED') {
+      throw new Error('Cabinet upload needs the files folder');
     }
 
     const fileName = metadata?.fileName || file.name;

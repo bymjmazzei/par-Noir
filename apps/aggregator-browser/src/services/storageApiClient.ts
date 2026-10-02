@@ -2,6 +2,8 @@ import { API_ENDPOINT } from '../config/api';
 import { accountsCacheService } from './accountsCacheService';
 import { apiGet, ownerFetch, ownerGet } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
+import { ensureOwnerBlobFolders } from '@par-noir/device-cloud-credentials';
+import { sessionDriveFor } from './sessionDrive';
 
 /** Canonical cache/API key for viewer storage accounts (bare id, no pn- prefix). */
 export function canonicalStorageAccountsPnId(pnIdentifier: string): string {
@@ -332,21 +334,46 @@ export async function listStorageFiles(
 ): Promise<ListedStorageFile[]> {
   const backend = normalizeBackend(provider);
   if (backend === 'google_drive') {
-    const q = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
-    const res = await ownerGet(`/api/drive/files${q}`, { authToken, pnIdentifier });
-    if (!res.ok) {
-      const err = await res.text().catch(() => 'Unknown error');
-      throw new Error(`Failed to list files: ${err}`);
+    const drive = await sessionDriveFor(pnIdentifier);
+    const folders = await ensureOwnerBlobFolders(drive.accessToken, drive.index);
+    const parentIds = [
+      folders.contentNotesFolderId,
+      folders.contentMediaFolderId,
+      folders.contentCollectionsFolderId,
+    ];
+    const listed: ListedStorageFile[] = [];
+    for (const parentId of parentIds) {
+      const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
+      const account = accountId ? `&accountId=${encodeURIComponent(accountId)}` : '';
+      const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=100${account}`, {
+        authToken,
+        pnIdentifier,
+      });
+      if (!res.ok) {
+        const err = await res.text().catch(() => 'Unknown error');
+        throw new Error(`Failed to list files: ${err}`);
+      }
+      const data = (await res.json()) as {
+        files?: Array<{
+          id: string;
+          name: string;
+          mimeType?: string;
+          size?: string;
+          modifiedTime?: string;
+        }>;
+      };
+      for (const file of data.files || []) {
+        listed.push({
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType || guessMimeType(file.name),
+          size: file.size || '0',
+          modifiedTime: file.modifiedTime,
+          accountId,
+        });
+      }
     }
-    const data = await res.json();
-    return (data.files || []).map((file: { id: string; name: string; mimeType?: string; size?: string; modifiedTime?: string }) => ({
-      id: file.id,
-      name: file.name,
-      mimeType: file.mimeType || guessMimeType(file.name),
-      size: file.size || '0',
-      modifiedTime: file.modifiedTime,
-      accountId
-    }));
+    return listed;
   }
 
   const q = new URLSearchParams({

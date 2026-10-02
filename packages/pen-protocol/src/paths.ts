@@ -41,6 +41,21 @@ export function docFontsDirPath(docId: string): string {
   return `${docRootPath(docId)}/fonts`;
 }
 
+/** Attached images and video (`*.penmedia`, gallery preview). */
+export function docMediaDirPath(docId: string): string {
+  return `${docRootPath(docId)}/media`;
+}
+
+/** Published envelope and owner-canonical feed preview copies. */
+export function docPublicDirPath(docId: string): string {
+  return `${docRootPath(docId)}/public`;
+}
+
+/** Pen media that could not be matched to a doc during root cleanup. */
+export function looseMediaDirPath(): string {
+  return `${PEN_ROOT}/_loose-media`;
+}
+
 export function docFontPath(docId: string, fontId: string): string {
   return `${docFontsDirPath(docId)}/${sanitizeSegment(fontId)}.penfont`;
 }

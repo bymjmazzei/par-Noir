@@ -20,4 +20,16 @@ describe('deviceDriveCall', () => {
     const body = (await res.json()) as { files: Array<{ id: string }> };
     expect(body.files[0].id).toBe('f1');
   });
+
+  it('refuses a file upload that does not name a parent folder', async () => {
+    const fetchImpl = vi.fn();
+    const res = await deviceDriveCall(
+      'POST',
+      '/api/drive/files',
+      { fileData: 'YQ==', fileName: 'a.txt' },
+      { accessToken: 'google-at', fetchImpl: fetchImpl as unknown as typeof fetch }
+    );
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

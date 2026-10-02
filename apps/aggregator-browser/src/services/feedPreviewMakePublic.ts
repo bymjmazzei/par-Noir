@@ -107,6 +107,7 @@ export async function publishFeedPreviewsForPublicVisual(params: {
   title?: string;
   collectionFileIds?: string[];
   planId?: string;
+  blobClass?: 'notes' | 'media' | 'collections' | 'files';
 }): Promise<PublishedFeedPreviews | Record<string, never>> {
   const mime = params.encryptedPackage.metadata?.originalMimeType || '';
   const kind = visualFeedPreviewKind({
@@ -146,6 +147,7 @@ export async function publishFeedPreviewsForPublicVisual(params: {
   }
 
   return publishFeedPreviews({
+    blobClass: params.blobClass,
     file: previewBlob,
     mimeType: previewMime,
     fileId: params.fileId,

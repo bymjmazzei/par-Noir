@@ -77,6 +77,7 @@ describe('text collection publish', () => {
       bundle: doc,
       feedIds: ['public', 'collections'],
       pnIdentifier: 'pn',
+      parentFolderId: 'public-folder',
       membership: false,
       request,
       mixed: handoff

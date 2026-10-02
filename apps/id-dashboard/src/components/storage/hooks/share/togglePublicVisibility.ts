@@ -370,7 +370,10 @@ export async function togglePublicVisibility(
         const backend = aggregatorService.getBackend(file.backend);
         let folderId: string | undefined;
         try {
-          folderId = await backend?.getOrCreateFolder?.('par Noir', metadataPnIdentifier);
+          const drive = backend as { ensureFilesFolder?: (pn: string) => Promise<string> } | undefined;
+          folderId = drive?.ensureFilesFolder
+            ? await drive.ensureFilesFolder(metadataPnIdentifier)
+            : await backend?.getOrCreateFolder?.('par Noir', metadataPnIdentifier);
         } catch {
           folderId = undefined;
         }
@@ -404,8 +407,13 @@ export async function togglePublicVisibility(
         }
         let folderId: string | undefined;
         try {
-          const backend = aggregatorService.getBackend(file.backend);
-          folderId = await backend?.getOrCreateFolder?.('par Noir', metadataPnIdentifier);
+          const backend = aggregatorService.getBackend(file.backend) as {
+            ensureFilesFolder?: (pn: string) => Promise<string>;
+            getOrCreateFolder?: (name: string, pn?: string) => Promise<string>;
+          };
+          folderId = backend?.ensureFilesFolder
+            ? await backend.ensureFilesFolder(metadataPnIdentifier)
+            : await backend?.getOrCreateFolder?.('par Noir', metadataPnIdentifier);
         } catch {
           folderId = undefined;
         }

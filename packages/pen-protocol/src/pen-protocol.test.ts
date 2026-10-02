@@ -50,6 +50,9 @@ import {
   fontsIndexPath,
   docFontsDirPath,
   docFontPath,
+  docMediaDirPath,
+  docPublicDirPath,
+  looseMediaDirPath,
   collectUsedCustomFonts,
   isCustomPenFont,
   PEN_SYSTEM_FONTS,
@@ -83,6 +86,9 @@ describe('pen paths', () => {
     expect(fontsIndexPath()).toBe('par-noir-pen/fonts.index.json');
     expect(docFontsDirPath('doc1')).toBe('par-noir-pen/doc1/fonts');
     expect(docFontPath('doc1', 'f1')).toBe('par-noir-pen/doc1/fonts/f1.penfont');
+    expect(docMediaDirPath('doc1')).toBe('par-noir-pen/doc1/media');
+    expect(docPublicDirPath('doc1')).toBe('par-noir-pen/doc1/public');
+    expect(looseMediaDirPath()).toBe('par-noir-pen/_loose-media');
   });
 });
 

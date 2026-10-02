@@ -422,6 +422,17 @@ export async function initializeGoogleDriveIndex(
     console.warn('[pnDriveInit] zkp-docs folder deferred:', (e as Error)?.message);
   }
 
+  setDriveInitProgress(normalized, 'folders', 'Moving files out of the pN root…', 86);
+  const { relocatePnRootBlobs } = await import('./storage/relocatePnRootBlobs');
+  const blobFolders = await withGoogleRetry('relocatePnRootBlobs', () =>
+    relocatePnRootBlobs({
+      accessToken,
+      pnIdentifier: normalized,
+      pnFolderId,
+      patchIndex: false,
+    })
+  );
+
   return {
     schemaVersion: PN_DRIVE_INDEX_SCHEMA_VERSION,
     pnFolderId,
@@ -430,6 +441,7 @@ export async function initializeGoogleDriveIndex(
     messagesFolderId,
     inboxSheetId,
     ...(zkpDocsFolderId ? { zkpDocsFolderId } : {}),
+    ...blobFolders,
     conversationSheets: {},
     sheetIds: {
       [PN_DRIVE_SHEET_KEYS.CONNECTIONS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.CONNECTIONS],

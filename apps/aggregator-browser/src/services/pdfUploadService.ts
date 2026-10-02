@@ -9,6 +9,8 @@ import { ownerFetch } from './ownerApiFetch';
 import { slimPublicTokenJson, type PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 import { publishFeedPreviews } from './feedPreviewPublish';
 import { publishPublicShare } from './publicSharePublish';
+import { contentBlobParent } from './contentBlobParent';
+import { PNOAuthService } from './pnOAuthService';
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -28,11 +30,16 @@ async function uploadFile(
   accountId: string,
   _accessToken: string
 ): Promise<{ id: string }> {
+  const session = PNOAuthService.loadSession();
+  const pnIdentifier = session?.pnIdentifier;
+  if (!pnIdentifier) throw new Error('Unlock your pN to upload files');
+  const parentId = await contentBlobParent(pnIdentifier, 'media');
   const response = await ownerFetch('POST', '/api/drive/files', {
     fileData: base64Data,
     fileName,
     mimeType: 'application/json',
     accountId,
+    parents: [parentId],
   });
 
   if (!response.ok) {

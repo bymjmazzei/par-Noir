@@ -245,6 +245,19 @@ async function writeNamedText(
   if (!res.ok) throw new Error(`file_create_failed_${res.status}`);
 }
 
+/** `media` or `public` under par-noir-pen/{docId}/. */
+export async function ensureDocChildFolder(
+  accessToken: string,
+  pnFolderId: string,
+  docId: string,
+  child: 'media' | 'public'
+): Promise<string> {
+  const root = await ensurePenRoot(accessToken, pnFolderId);
+  const docName = docRootPath(docId).split('/').pop() || sanitizeSegment(docId);
+  const docFolder = await ensureChildFolder(accessToken, root, docName);
+  return ensureChildFolder(accessToken, docFolder, child);
+}
+
 export async function ensurePenRoot(accessToken: string, pnFolderId: string): Promise<string> {
   const existing = await penRootFolderId(accessToken, pnFolderId);
   if (existing) return existing;

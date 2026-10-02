@@ -46,6 +46,13 @@ export interface PnDriveIndex {
   inboxSheetId: string;
   /** Private folder for Veriff/KYC encrypted images — not in Storage root listing or public indexes */
   zkpDocsFolderId?: string;
+  /** Dashboard cabinet. Files, never the pN root. */
+  filesFolderId?: string;
+  /** Parent of notes / media / collections blob folders. */
+  contentFolderId?: string;
+  contentNotesFolderId?: string;
+  contentMediaFolderId?: string;
+  contentCollectionsFolderId?: string;
   sheetIds: Record<string, string>;
   conversationSheets: Record<string, string>;
 }
@@ -144,6 +151,11 @@ export function readPnDriveIndex(credentials: Record<string, unknown> | null | u
     return null;
   }
   const zkpDocsFolderId = pickString(o.zkpDocsFolderId);
+  const filesFolderId = pickString(o.filesFolderId);
+  const contentFolderId = pickString(o.contentFolderId);
+  const contentNotesFolderId = pickString(o.contentNotesFolderId);
+  const contentMediaFolderId = pickString(o.contentMediaFolderId);
+  const contentCollectionsFolderId = pickString(o.contentCollectionsFolderId);
   return {
     schemaVersion: PN_DRIVE_INDEX_SCHEMA_VERSION,
     pnFolderId,
@@ -152,6 +164,11 @@ export function readPnDriveIndex(credentials: Record<string, unknown> | null | u
     messagesFolderId,
     inboxSheetId,
     ...(zkpDocsFolderId ? { zkpDocsFolderId } : {}),
+    ...(filesFolderId ? { filesFolderId } : {}),
+    ...(contentFolderId ? { contentFolderId } : {}),
+    ...(contentNotesFolderId ? { contentNotesFolderId } : {}),
+    ...(contentMediaFolderId ? { contentMediaFolderId } : {}),
+    ...(contentCollectionsFolderId ? { contentCollectionsFolderId } : {}),
     sheetIds,
     conversationSheets,
   };
@@ -193,6 +210,11 @@ export function mergePnDriveIndex(
     integratorsRootId: '',
     messagesFolderId: '',
     inboxSheetId: '',
+    filesFolderId: undefined,
+    contentFolderId: undefined,
+    contentNotesFolderId: undefined,
+    contentMediaFolderId: undefined,
+    contentCollectionsFolderId: undefined,
     sheetIds: {},
     conversationSheets: {},
   };
@@ -204,6 +226,12 @@ export function mergePnDriveIndex(
     messagesFolderId: patch.messagesFolderId ?? base.messagesFolderId,
     inboxSheetId: patch.inboxSheetId ?? base.inboxSheetId,
     zkpDocsFolderId: patch.zkpDocsFolderId ?? base.zkpDocsFolderId,
+    filesFolderId: patch.filesFolderId ?? base.filesFolderId,
+    contentFolderId: patch.contentFolderId ?? base.contentFolderId,
+    contentNotesFolderId: patch.contentNotesFolderId ?? base.contentNotesFolderId,
+    contentMediaFolderId: patch.contentMediaFolderId ?? base.contentMediaFolderId,
+    contentCollectionsFolderId:
+      patch.contentCollectionsFolderId ?? base.contentCollectionsFolderId,
     sheetIds: { ...base.sheetIds, ...(patch.sheetIds ?? {}) },
     conversationSheets: { ...base.conversationSheets, ...(patch.conversationSheets ?? {}) },
   };

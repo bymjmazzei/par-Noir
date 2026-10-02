@@ -269,7 +269,13 @@ export function useDriveUpload({
         throw new Error(`Cannot upload file: pN identifier generation failed. ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
 
-      const folderId = await backend.getOrCreateFolder('par Noir', pnIdentifier);
+      const folderId =
+        typeof (backend as { ensureFilesFolder?: (pn: string) => Promise<string> }).ensureFilesFolder ===
+        'function'
+          ? await (backend as { ensureFilesFolder: (pn: string) => Promise<string> }).ensureFilesFolder(
+              pnIdentifier
+            )
+          : await backend.getOrCreateFolder('par Noir', pnIdentifier);
       console.log(`📁 [Upload] Uploading to folder ID: ${folderId.substring(0, 12)}...`);
 
         // Upload encrypted file

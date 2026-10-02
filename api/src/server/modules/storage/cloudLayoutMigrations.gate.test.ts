@@ -6,6 +6,7 @@
 import {
   CURRENT_CLOUD_LAYOUT_VERSION,
   MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
+  MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2,
   getLayoutStatus,
   isCloudLayoutCurrent,
   stampCloudLayoutCurrent,
@@ -37,7 +38,10 @@ describe('cloudLayoutMigrations status', () => {
     const status = getLayoutStatus(credentials);
     expect(status.complete).toBe(false);
     expect(status.required).toBe(CURRENT_CLOUD_LAYOUT_VERSION);
-    expect(status.pending.map((p) => p.id)).toContain(MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1);
+    expect(status.pending.map((p) => p.id)).toEqual([
+      MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
+      MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2,
+    ]);
   });
 
   it('is current after stampCloudLayoutCurrent', () => {
@@ -47,7 +51,10 @@ describe('cloudLayoutMigrations status', () => {
     const status = getLayoutStatus(credentials);
     expect(status.complete).toBe(true);
     expect(status.pending).toEqual([]);
-    expect(status.appliedMigrations).toContain(MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1);
+    expect(status.appliedMigrations).toEqual([
+      MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
+      MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2,
+    ]);
     expect(status.current).toBe(CURRENT_CLOUD_LAYOUT_VERSION);
   });
 

@@ -6,6 +6,7 @@ import { getPublishTier, r2ObjectKey } from '@par-noir/aggregator-domain';
 import { encodeFeedPreviewsForPublish, type EncodedPreview, encodeFeedPosterPlaceholder } from './feedPreviewEncode';
 import { uploadStorageFile } from './storageApiClient';
 import { ownerFetch } from './ownerApiFetch';
+import { contentBlobParent, type ContentBlobClass } from './contentBlobParent';
 import { PNOAuthService } from './pnOAuthService';
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -37,15 +38,18 @@ async function ensureOwnerCanonical(
   accessToken: string,
   accountId: string,
   mimeType: string,
-  pnIdentifier: string
+  pnIdentifier: string,
+  blobClass: ContentBlobClass
 ): Promise<{ objectId: string; publicUrl: string; backend: string }> {
   const base64 = await blobToBase64(blob);
+  const parentId = await contentBlobParent(pnIdentifier, blobClass);
   const uploaded = await uploadStorageFile(accessToken, pnIdentifier, 'google_drive', {
     fileData: base64,
     fileName,
     mimeType,
     accountId,
     encrypt: false,
+    parents: [parentId],
   });
   const { getCloudAccessTokenFromSession, shareDeviceDriveFile } = await import(
     '@par-noir/device-cloud-credentials'
@@ -97,6 +101,7 @@ export async function publishFeedPreviews(params: {
   accountId: string;
   planId?: PublishTierId | string;
   onProgress?: (msg: string) => void;
+  blobClass?: ContentBlobClass;
 }): Promise<PublishedFeedPreviews> {
   const session = PNOAuthService.loadSession();
   const pnIdentifier = session?.pnIdentifier;
@@ -142,6 +147,7 @@ async function uploadOneVariant(params: {
   planId: string;
   pnIdentifier: string;
   encoded: EncodedPreview;
+  blobClass?: ContentBlobClass;
 }): Promise<FeedPreviewObjectRef> {
   const { encoded, fileId, accessToken, accountId, planId, pnIdentifier } = params;
   const presignRes = await ownerFetch(
@@ -169,7 +175,8 @@ async function uploadOneVariant(params: {
     accessToken,
     accountId,
     encoded.contentType,
-    pnIdentifier
+    pnIdentifier,
+    params.blobClass || 'media'
   );
 
   const ref: FeedPreviewObjectRef = {

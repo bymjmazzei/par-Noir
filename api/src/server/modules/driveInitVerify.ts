@@ -67,14 +67,23 @@ export async function verifyPnDriveLayout(
   const accessToken = token.access_token;
   const missing: string[] = [];
 
-  const folderChecks: Array<{ id: string; label: string }> = [
+  const folderChecks: Array<{ id: string | undefined; label: string }> = [
     { id: index.pnFolderId, label: 'pnFolder' },
     { id: index.metadataFolderId, label: 'metadataFolder' },
     { id: index.integratorsRootId, label: 'integratorsRoot' },
     { id: index.messagesFolderId, label: 'messagesFolder' },
+    { id: index.filesFolderId, label: 'filesFolder' },
+    { id: index.contentFolderId, label: 'contentFolder' },
+    { id: index.contentNotesFolderId, label: 'contentNotesFolder' },
+    { id: index.contentMediaFolderId, label: 'contentMediaFolder' },
+    { id: index.contentCollectionsFolderId, label: 'contentCollectionsFolder' },
   ];
 
   for (const { id, label } of folderChecks) {
+    if (!id) {
+      missing.push(label);
+      continue;
+    }
     if (!(await driveFileExistsAndNotTrashed(accessToken, id, label))) {
       missing.push(label);
     }

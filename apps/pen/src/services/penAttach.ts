@@ -6,6 +6,7 @@
 import { encryptMediaBytes, decryptMediaBytes, isDmEnvelope } from '@par-noir/dm-crypto';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
 import { loadDocKey, mintDocKey } from './penDocCrypto';
+import { ensureDocChildFolder, penSessionDrive } from './penDriveLibrary';
 
 export function pickDeviceImageFile(): Promise<File | null> {
   return new Promise((resolve) => {
@@ -136,6 +137,14 @@ export async function uploadBytesAsPenMedia(params: {
   docId: string;
 }): Promise<string | null> {
   try {
+    if (!params.pnIdentifier) return null;
+    const drive = await penSessionDrive(params.pnIdentifier);
+    const parentId = await ensureDocChildFolder(
+      drive.accessToken,
+      drive.index.pnFolderId,
+      params.docId,
+      'media'
+    );
     const docKey = mintDocKey(params.docId);
     const plain = new Uint8Array(await params.blob.arrayBuffer());
     const envelope = await encryptMediaBytes(plain, docKey);
@@ -147,7 +156,8 @@ export async function uploadBytesAsPenMedia(params: {
         fileData: base64,
         fileName: params.fileName,
         mimeType: 'application/octet-stream',
-        encrypt: false
+        encrypt: false,
+        parents: [parentId]
       },
       { pnIdentifier: params.pnIdentifier }
     );

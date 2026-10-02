@@ -40,13 +40,15 @@ async function uploadDriveFile(
   request: CloudRequest,
   fileName: string,
   mimeType: string,
-  base64: string
+  base64: string,
+  parentFolderId: string
 ): Promise<string> {
   const res = await request('POST', '/api/drive/files', {
     fileData: base64,
     fileName,
     mimeType,
-    encrypt: false
+    encrypt: false,
+    parents: [parentFolderId]
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
@@ -64,6 +66,7 @@ async function uploadFeedVariant(params: {
   variant: 'poster' | 'sd';
   blob: Blob;
   contentType: string;
+  parentFolderId: string;
 }): Promise<FeedPreviewObjectRef> {
   const byteSize = params.blob.size;
   const presignRes = await params.request('POST', '/api/aggregator/feed-media/presign-upload', {
@@ -89,7 +92,8 @@ async function uploadFeedVariant(params: {
     params.request,
     `feed-preview-${params.fileId}-${params.variant}`,
     params.contentType,
-    await blobToBase64(params.blob)
+    await blobToBase64(params.blob),
+    params.parentFolderId
   );
   const pn = loadPenSession()?.pnIdentifier;
   const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
@@ -137,6 +141,8 @@ export async function publishPublicCloudFile(params: {
   /** When set, a public video row also gets an SD preview (API requires it). */
   videoForSd?: Blob;
   videoContentType?: string;
+  /** par-noir-pen/{docId}/public/ */
+  parentFolderId: string;
 }): Promise<{ fileId: string }> {
   const request = params.request || defaultCloudRequest();
   const generation = await sealPublicShareFromBytes({
@@ -154,7 +160,8 @@ export async function publishPublicCloudFile(params: {
         request,
         fileName,
         'application/json',
-        await blobToBase64(blob)
+        await blobToBase64(blob),
+        params.parentFolderId
       );
       const pn = loadPenSession()?.pnIdentifier;
       const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
@@ -172,7 +179,8 @@ export async function publishPublicCloudFile(params: {
       fileId,
       variant: 'poster',
       blob: params.poster,
-      contentType: posterType
+      contentType: posterType,
+      parentFolderId: params.parentFolderId
     });
   }
 
@@ -187,7 +195,8 @@ export async function publishPublicCloudFile(params: {
         fileId,
         variant: 'sd',
         blob: sdBlob,
-        contentType: sdType
+        contentType: sdType,
+        parentFolderId: params.parentFolderId
       });
     }
   }

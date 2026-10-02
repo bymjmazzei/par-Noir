@@ -12,6 +12,16 @@ let gateIsKeyed = false;
 /** When set, Case B (firstDeviceKeyedAt present) — unkeyed overwrite must deny. */
 let gateFirstDeviceKeyedAt: string | undefined;
 
+jest.mock('./relocatePnRootBlobs', () => ({
+  relocatePnRootBlobs: jest.fn(async () => ({
+    filesFolderId: 'files',
+    contentFolderId: 'content',
+    contentNotesFolderId: 'notes',
+    contentMediaFolderId: 'media',
+    contentCollectionsFolderId: 'collections',
+  })),
+}));
+
 jest.mock('../deviceCapabilityService', () => {
   const DEVICE_CAPABILITIES = {
     driveRead: 'drive.read',
@@ -131,6 +141,7 @@ import { MessageSheetsService } from '../messageSheetsService';
 import {
   CURRENT_CLOUD_LAYOUT_VERSION,
   MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
+  MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2,
 } from './cloudLayoutMigrations';
 import { PN_DRIVE_SHEET_KEYS, REQUIRED_PN_DRIVE_SHEET_KEYS } from '../pnDriveIndex';
 
@@ -581,7 +592,10 @@ describe('storage credentials routes', () => {
         credentials: {
           pnDriveIndex: completePnDriveIndex(),
           cloudLayoutVersion: CURRENT_CLOUD_LAYOUT_VERSION,
-          appliedMigrations: [MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1],
+          appliedMigrations: [
+            MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
+            MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2,
+          ],
         },
       });
 

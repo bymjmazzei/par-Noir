@@ -10,11 +10,14 @@ import { isPnDriveIndexComplete, readPnDriveIndex } from '../pnDriveIndex';
 import { storageCredentialsService } from '../storageCredentialsService';
 import { isPortableSocialCloud } from './storageProviderUtils';
 
-export const CURRENT_CLOUD_LAYOUT_VERSION = 1 as const;
+export const CURRENT_CLOUD_LAYOUT_VERSION = 2 as const;
 
 export const MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1 = 'inbox_channel_client_id_v1' as const;
+export const MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2 = 'root_blobs_out_of_pn_root_v2' as const;
 
-export type CloudLayoutMigrationId = typeof MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1;
+export type CloudLayoutMigrationId =
+  | typeof MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1
+  | typeof MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2;
 
 export type CloudLayoutPending = { id: string; description: string };
 
@@ -90,6 +93,29 @@ export const CLOUD_LAYOUT_MIGRATIONS: CloudLayoutMigration[] = [
         ctx.pnIdentifier,
         ctx.accountId
       );
+    },
+  },
+  {
+    id: MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2,
+    version: 2,
+    description: 'Move loose files out of the pN root into files/, content/, and par-noir-pen/',
+    run: async (ctx) => {
+      const portable = await isPortableSocialCloud(ctx.pnIdentifier);
+      if (portable) return;
+      const index = readPnDriveIndex(ctx.credentials);
+      if (!isPnDriveIndexComplete(index) || !index.pnFolderId?.trim()) {
+        throw new Error('DRIVE_NOT_INITIALIZED');
+      }
+      if (!ctx.token?.access_token) {
+        throw new Error('CLOUD_TOKEN_REQUIRED');
+      }
+      const { relocatePnRootBlobs } = await import('./relocatePnRootBlobs');
+      await relocatePnRootBlobs({
+        accessToken: ctx.token.access_token,
+        pnIdentifier: ctx.pnIdentifier,
+        pnFolderId: index.pnFolderId,
+        patchIndex: true,
+      });
     },
   },
 ];
