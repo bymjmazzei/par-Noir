@@ -1,9 +1,9 @@
 /**
- * Object adjustment icons on the page preview bar — apply only to the active layer
- * (page frame = layer 0, or an overlay object).
- * Page (layer 0): background only. Overlay objects: BG + shadow + blur + blend + opacity + stroke.
+ * Layer settings on the page preview bar — one dropdown for the active layer
+ * (page frame = layer 0, or an overlay object). Wrap stays a toggle on the bar.
+ * Page (layer 0): background only. Overlay objects: background, shadow, blur, blend, opacity, and stroke.
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   attachMediaToLayer,
   layerShadowCss,
@@ -17,7 +17,7 @@ import {
   type PenStrokeStyle
 } from '@par-noir/pen-protocol';
 import { ActionBindStrip } from './ActionBindStrip';
-import { ColorBlock, ColorSliders } from './PanelValueControls';
+import { parseCssColor } from './PanelValueControls';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
 import { isPenMediaSrcRef, resolvePenMediaSrc } from '../services/penLocalMedia';
@@ -28,7 +28,6 @@ export type ObjectToolTarget =
   | { kind: 'layer'; layer: PenPageLayer };
 
 type BgMode = 'color' | 'gradient' | 'image' | 'video';
-type OpenTool = 'bg' | 'shadow' | 'blur' | 'blend' | 'opacity' | 'stroke' | null;
 
 const BLEND_MODES = [
   'normal',
@@ -43,60 +42,163 @@ const BLEND_MODES = [
   'exclusion'
 ] as const;
 
-function ToolButton({
-  title,
-  active,
-  onClick,
-  children
+const RANGE_CLASS =
+  'mt-1 h-1 w-full cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-1 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:bg-stone-500';
+
+function colorHex(value: string): string {
+  const parsed = parseCssColor(value);
+  const channel = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
+  return `#${channel(parsed.r)}${channel(parsed.g)}${channel(parsed.b)}`;
+}
+
+function modeLabel(mode: string): string {
+  return mode
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function ValueRow({
+  label,
+  ariaLabel,
+  value,
+  min,
+  max,
+  display,
+  open,
+  onToggle,
+  onChange
 }: {
-  title: string;
-  active?: boolean;
+  label: string;
+  ariaLabel?: string;
+  value: number;
+  min: number;
+  max: number;
+  display: string;
+  open: boolean;
+  onToggle: () => void;
+  onChange: (next: number) => void;
+}) {
+  const span = max - min || 1;
+  const pct = Math.min(100, Math.max(0, ((value - min) / span) * 100));
+  const name = ariaLabel ?? label;
+  return (
+    <div>
+      <div className="flex h-5 items-center gap-1">
+        <span className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500">{label}</span>
+        <button
+          type="button"
+          aria-label={name}
+          aria-expanded={open}
+          className="text-[13px] tabular-nums text-stone-700"
+          onClick={onToggle}
+        >
+          {display}
+        </button>
+      </div>
+      {open ? (
+        <input
+          aria-label={`${name} slider`}
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={RANGE_CLASS}
+          style={{ background: `linear-gradient(to right, #a8a29e ${pct}%, #e7e5e4 ${pct}%)` }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ColorBox({
+  label,
+  ariaLabel,
+  value,
+  onChange
+}: {
+  label: string;
+  ariaLabel?: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const hex = colorHex(value);
+  return (
+    <div className="flex h-5 items-center gap-1">
+      <span className="min-w-0 flex-1 truncate text-[13px] text-stone-500">{label}</span>
+      <input
+        aria-label={ariaLabel ?? label}
+        type="color"
+        value={hex}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-4 w-4 cursor-pointer appearance-none border border-stone-300 p-0 [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
+        style={{ backgroundColor: hex }}
+      />
+    </div>
+  );
+}
+
+function ChoiceLine({
+  label,
+  selected,
+  onClick
+}: {
+  label: string;
+  selected: boolean;
   onClick: () => void;
-  children: ReactNode;
 }) {
   return (
     <button
       type="button"
-      title={title}
-      aria-label={title}
-      aria-pressed={active}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded ${
-        active ? 'bg-neutral-100 text-black' : 'text-neutral-500 hover:text-black'
+      aria-pressed={selected}
+      className={`block w-full py-0.5 text-left text-[13px] ${
+        selected ? 'font-semibold text-stone-800' : 'text-stone-500'
       }`}
       onClick={onClick}
     >
-      {children}
+      {label}
     </button>
   );
 }
 
-function Popover({
-  open,
-  onClose,
-  children
-}: {
-  open: boolean;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (ref.current?.contains(e.target as Node)) return;
-      onClose();
-    }
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open, onClose]);
-  if (!open) return null;
+function FillIcon({ mode }: { mode: BgMode | 'none' }) {
+  if (mode === 'none') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
+        <path d="M7 17L17 7" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    );
+  }
+  if (mode === 'color') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden>
+        <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (mode === 'gradient') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden>
+        <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" opacity="0.25" />
+        <path d="M4 20L20 4" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    );
+  }
+  if (mode === 'image') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+        <path d="M3 15l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   return (
-    <div
-      ref={ref}
-      className="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-neutral-200 bg-white p-3 shadow-lg"
-    >
-      {children}
-    </div>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="2" />
+      <path d="M10 9l6 3-6 3V9z" fill="currentColor" />
+    </svg>
   );
 }
 
@@ -159,9 +261,11 @@ export function LayerObjectToolbar({
   /** Widget color and stroke live in the side pane. */
   hideObjectTools?: boolean;
 }) {
-  const [open, setOpen] = useState<OpenTool>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [slider, setSlider] = useState<string | null>(null);
   const [cloudOpen, setCloudOpen] = useState(false);
   const [fileKind, setFileKind] = useState<'image' | 'video'>('image');
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const isPage = target.kind === 'page';
   const layer = target.kind === 'layer' ? target.layer : null;
@@ -256,11 +360,86 @@ export function LayerObjectToolbar({
   const strokeStyle = (layer?.strokeStyle || 'solid') as PenStrokeStyle;
   const strokeAlign = (layer?.strokeAlign || 'center') as PenStrokeAlign;
 
-  function toggle(tool: Exclude<OpenTool, null>) {
-    setOpen(open === tool ? null : tool);
+  function closePanel() {
+    setPanelOpen(false);
+    setSlider(null);
+  }
+
+  function toggleSlider(id: string) {
+    setSlider((current) => (current === id ? null : id));
+  }
+
+  function chooseFill(mode: BgMode | 'none') {
+    if (mode === 'none') {
+      patchPage({
+        backgroundColor: 'transparent',
+        backgroundGradient: undefined,
+        backgroundImage: undefined,
+        backgroundVideo: undefined
+      });
+      return;
+    }
+    if (mode === 'color') {
+      if (isPage) {
+        patchPage({
+          backgroundColor: '#ffffff',
+          backgroundGradient: undefined,
+          backgroundImage: undefined,
+          backgroundVideo: undefined
+        });
+      } else {
+        patchLayer({
+          backgroundGradient: undefined,
+          backgroundImage: undefined,
+          backgroundVideo: undefined,
+          backgroundColor: fill.color || '#ffffff'
+        });
+      }
+      return;
+    }
+    if (mode === 'gradient') {
+      const gradient = 'linear-gradient(135deg, #111111 0%, #666666 100%)';
+      if (isPage) {
+        patchPage({
+          backgroundGradient: gradient,
+          backgroundImage: undefined,
+          backgroundVideo: undefined,
+          backgroundColor: 'transparent'
+        });
+      } else {
+        patchLayer({
+          backgroundGradient: gradient,
+          backgroundImage: undefined,
+          backgroundVideo: undefined,
+          backgroundColor: undefined
+        });
+      }
+      return;
+    }
+    setFileKind(mode);
+    setCloudOpen(true);
+    closePanel();
   }
 
   const isAction = layer?.kind === 'embed' || layer?.kind === 'interactive';
+  const showBackground = !hideObjectTools;
+  const showChrome = !isPage && !isGroup && !hideObjectTools;
+  const showBlend = !isPage && !isGroup;
+  const showPanel = showBackground || showBlend;
+
+  useEffect(() => {
+    if (!panelOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      closePanel();
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [panelOpen]);
+
+  const fillChoices: Array<BgMode | 'none'> = isPage
+    ? ['none', 'color', 'gradient', 'image', 'video']
+    : ['color', 'gradient', 'image', 'video'];
 
   return (
     <div className="relative flex max-w-full flex-wrap items-center gap-0.5">
@@ -272,60 +451,230 @@ export function LayerObjectToolbar({
           onSectionChange={onSectionChange}
         />
       )}
-      {!hideObjectTools && (
-        <ToolButton title="Background" active={open === 'bg'} onClick={() => toggle('bg')}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
-            <path d="M3 15l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          </svg>
-        </ToolButton>
-      )}
-      {!isPage && !isGroup && (
-        <>
-          {!hideObjectTools && (
-            <>
-          <ToolButton title="Shadow" active={open === 'shadow'} onClick={() => toggle('shadow')}>
+      {showPanel && (
+        <div ref={menuRef} className="relative">
+          <button
+            type="button"
+            title="Layer"
+            aria-label="Layer"
+            aria-expanded={panelOpen}
+            aria-pressed={panelOpen}
+            className={`inline-flex h-7 w-7 items-center justify-center rounded ${
+              panelOpen ? 'bg-neutral-100 text-black' : 'text-neutral-500 hover:text-black'
+            }`}
+            onClick={() => {
+              if (panelOpen) closePanel();
+              else setPanelOpen(true);
+            }}
+          >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <rect x="5" y="5" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="2" />
-              <path d="M9 15h8v8H9z" fill="currentColor" opacity="0.25" />
+              <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
-          </ToolButton>
-          <ToolButton title="Blur" active={open === 'blur'} onClick={() => toggle('blur')}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" strokeDasharray="2 2" />
-            </svg>
-          </ToolButton>
-            </>
-          )}
-          <ToolButton title="Blend" active={open === 'blend'} onClick={() => toggle('blend')}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <circle cx="9" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
-              <circle cx="15" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
-            </svg>
-          </ToolButton>
-          {!hideObjectTools && (
-            <>
-          <ToolButton title="Opacity" active={open === 'opacity'} onClick={() => toggle('opacity')}>
-            <span className="text-[10px] font-bold">{Math.round(opacity)}</span>
-          </ToolButton>
-          <ToolButton title="Stroke" active={open === 'stroke'} onClick={() => toggle('stroke')}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <rect
-                x="4"
-                y="4"
-                width="16"
-                height="16"
-                rx="1"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeDasharray="3 2"
-                fill="none"
-              />
-            </svg>
-          </ToolButton>
-            </>
-          )}
-        </>
+          </button>
+          {panelOpen ? (
+            <div
+              data-layer-menu
+              className="absolute left-0 top-full z-50 mt-1 max-h-80 w-56 overflow-y-auto rounded-md border border-stone-200 bg-white p-2 shadow-lg"
+            >
+              {showBackground && (
+                <div className="flex items-center gap-0.5">
+                  {fillChoices.map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-label={mode === 'none' ? 'No background' : modeLabel(mode)}
+                      aria-pressed={fill.mode === mode}
+                      title={mode === 'none' ? 'No background' : modeLabel(mode)}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded ${
+                        fill.mode === mode ? 'bg-neutral-100 text-black' : 'text-neutral-500 hover:text-black'
+                      }`}
+                      onClick={() => chooseFill(mode)}
+                    >
+                      <FillIcon mode={mode} />
+                    </button>
+                  ))}
+                </div>
+              )}
+              {showBackground && fill.mode === 'color' && (
+                <ColorBox
+                  label="Color"
+                  ariaLabel="Background color"
+                  value={fill.color || '#ffffff'}
+                  onChange={(next) => {
+                    if (isPage) patchPage({ backgroundColor: next });
+                    else patchLayer({ backgroundColor: next, backgroundGradient: undefined });
+                  }}
+                />
+              )}
+              {showBackground && fill.mode === 'gradient' && (
+                <label className="mt-1 flex h-5 items-center gap-1">
+                  <span className="shrink-0 text-[13px] text-stone-500">Gradient</span>
+                  <input
+                    aria-label="Gradient"
+                    type="text"
+                    className="min-w-0 flex-1 bg-transparent text-right text-[13px] text-stone-700 outline-none"
+                    value={fill.gradient}
+                    onChange={(e) => {
+                      if (isPage) patchPage({ backgroundGradient: e.target.value });
+                      else patchLayer({ backgroundGradient: e.target.value });
+                    }}
+                  />
+                </label>
+              )}
+              {showChrome && (
+                <div className="mt-2">
+                  <div className="text-[13px] text-stone-800">Shadow</div>
+                  <ColorBox
+                    label="Color"
+                    ariaLabel="Shadow color"
+                    value={shadowColor || '#000000'}
+                    onChange={(next) => patchLayer({ shadowColor: next, textShadow: undefined })}
+                  />
+                  <ValueRow
+                    label="Blur"
+                    ariaLabel="Shadow blur"
+                    value={shadowBlur}
+                    min={0}
+                    max={40}
+                    display={`${shadowBlur}px`}
+                    open={slider === 'shadow-blur'}
+                    onToggle={() => toggleSlider('shadow-blur')}
+                    onChange={(next) => patchLayer({ shadowBlur: next, textShadow: undefined })}
+                  />
+                  <ValueRow
+                    label="X"
+                    value={shadowX}
+                    min={-30}
+                    max={30}
+                    display={`${shadowX}px`}
+                    open={slider === 'shadow-x'}
+                    onToggle={() => toggleSlider('shadow-x')}
+                    onChange={(next) => patchLayer({ shadowOffsetX: next, textShadow: undefined })}
+                  />
+                  <ValueRow
+                    label="Y"
+                    value={shadowY}
+                    min={-30}
+                    max={30}
+                    display={`${shadowY}px`}
+                    open={slider === 'shadow-y'}
+                    onToggle={() => toggleSlider('shadow-y')}
+                    onChange={(next) => patchLayer({ shadowOffsetY: next, textShadow: undefined })}
+                  />
+                </div>
+              )}
+              {showChrome && (
+                <div className="mt-2">
+                  <ValueRow
+                    label="Blur"
+                    value={blurVal}
+                    min={0}
+                    max={24}
+                    display={`${blurVal}px`}
+                    open={slider === 'blur'}
+                    onToggle={() => toggleSlider('blur')}
+                    onChange={(next) => patchLayer({ blur: next || undefined })}
+                  />
+                </div>
+              )}
+              {showBlend && (
+                <div className="mt-2">
+                  <ValueRow
+                    label="Blend"
+                    value={blendAmount}
+                    min={0}
+                    max={100}
+                    display={`${Math.round(blendAmount)}%`}
+                    open={slider === 'blend'}
+                    onToggle={() => toggleSlider('blend')}
+                    onChange={(next) => patchLayer({ blendAmount: next })}
+                  />
+                  {BLEND_MODES.map((mode) => (
+                    <ChoiceLine
+                      key={mode}
+                      label={modeLabel(mode)}
+                      selected={blendMode === mode}
+                      onClick={() => patchLayer({ mixBlendMode: mode })}
+                    />
+                  ))}
+                </div>
+              )}
+              {showChrome && (
+                <div className="mt-2">
+                  <ValueRow
+                    label="Opacity"
+                    value={opacity}
+                    min={0}
+                    max={100}
+                    display={`${Math.round(opacity)}%`}
+                    open={slider === 'opacity'}
+                    onToggle={() => toggleSlider('opacity')}
+                    onChange={(next) => patchLayer({ opacity: next })}
+                  />
+                </div>
+              )}
+              {showChrome && (
+                <div className="mt-2">
+                  <div className="text-[13px] text-stone-800">Stroke</div>
+                  <ColorBox
+                    label="Color"
+                    ariaLabel="Stroke color"
+                    value={strokeColor || '#000000'}
+                    onChange={(next) =>
+                      patchLayer({
+                        strokeColor: next,
+                        strokeWidth: strokeWidth || 1
+                      })
+                    }
+                  />
+                  <ValueRow
+                    label="Width"
+                    value={strokeWidth}
+                    min={0}
+                    max={24}
+                    display={`${strokeWidth}px`}
+                    open={slider === 'stroke-width'}
+                    onToggle={() => toggleSlider('stroke-width')}
+                    onChange={(next) =>
+                      patchLayer({
+                        strokeWidth: next || undefined,
+                        strokeColor: next ? strokeColor || '#000000' : undefined
+                      })
+                    }
+                  />
+                  {(['solid', 'dashed', 'dotted'] as PenStrokeStyle[]).map((style) => (
+                    <ChoiceLine
+                      key={style}
+                      label={modeLabel(style)}
+                      selected={strokeStyle === style}
+                      onClick={() =>
+                        patchLayer({
+                          strokeStyle: style,
+                          strokeWidth: strokeWidth || 1,
+                          strokeColor: strokeColor || '#000000'
+                        })
+                      }
+                    />
+                  ))}
+                  {(['inside', 'center', 'outside'] as PenStrokeAlign[]).map((align) => (
+                    <ChoiceLine
+                      key={align}
+                      label={modeLabel(align)}
+                      selected={strokeAlign === align}
+                      onClick={() =>
+                        patchLayer({
+                          strokeAlign: align,
+                          strokeWidth: strokeWidth || 1,
+                          strokeColor: strokeColor || '#000000'
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
       )}
       {!isPage && !isGroup && (
           <button
@@ -352,326 +701,6 @@ export function LayerObjectToolbar({
           </button>
       )}
 
-      <Popover open={open === 'bg'} onClose={() => setOpen(null)}>
-        <div className="space-y-2 text-[11px]">
-          <div className="font-bold uppercase tracking-wide text-neutral-400">Background</div>
-          <div className="flex flex-wrap gap-1">
-            {isPage && (
-              <button
-                type="button"
-                className={`rounded px-2 py-1 ${
-                  fill.mode === 'none' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-700'
-                }`}
-                onClick={() =>
-                  patchPage({
-                    backgroundColor: 'transparent',
-                    backgroundGradient: undefined,
-                    backgroundImage: undefined,
-                    backgroundVideo: undefined
-                  })
-                }
-              >
-                None
-              </button>
-            )}
-            {(['color', 'gradient', 'image', 'video'] as BgMode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={`rounded px-2 py-1 capitalize ${
-                  fill.mode === m ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-700'
-                }`}
-                onClick={() => {
-                  if (m === 'color') {
-                    if (isPage) {
-                      patchPage({
-                        backgroundColor: '#ffffff',
-                        backgroundGradient: undefined,
-                        backgroundImage: undefined,
-                        backgroundVideo: undefined
-                      });
-                    } else {
-                      patchLayer({
-                        backgroundGradient: undefined,
-                        backgroundImage: undefined,
-                        backgroundVideo: undefined,
-                        backgroundColor: fill.color || '#ffffff'
-                      });
-                    }
-                  } else if (m === 'gradient') {
-                    const g = 'linear-gradient(135deg, #111111 0%, #666666 100%)';
-                    if (isPage) {
-                      patchPage({
-                        backgroundGradient: g,
-                        backgroundImage: undefined,
-                        backgroundVideo: undefined,
-                        backgroundColor: 'transparent'
-                      });
-                    } else {
-                      patchLayer({
-                        backgroundGradient: g,
-                        backgroundImage: undefined,
-                        backgroundVideo: undefined,
-                        backgroundColor: undefined
-                      });
-                    }
-                  } else {
-                    setFileKind(m);
-                    setCloudOpen(true);
-                    setOpen(null);
-                  }
-                }}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-          {(fill.mode === 'color' || fill.mode === 'gradient') && (
-            <ColorSliders
-              label="Color"
-              value={fill.color || '#ffffff'}
-              onChange={(next) => {
-                if (isPage) patchPage({ backgroundColor: next });
-                else patchLayer({ backgroundColor: next, backgroundGradient: undefined });
-              }}
-            />
-          )}
-          {fill.mode === 'gradient' && (
-            <label className="block space-y-1">
-              <span className="text-neutral-500">Gradient CSS</span>
-              <input
-                type="text"
-                className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px]"
-                value={fill.gradient}
-                onChange={(e) => {
-                  if (isPage) patchPage({ backgroundGradient: e.target.value });
-                  else patchLayer({ backgroundGradient: e.target.value });
-                }}
-              />
-            </label>
-          )}
-          {(fill.mode === 'image' || fill.mode === 'video') && (
-            <button
-              type="button"
-              className="font-bold text-black hover:opacity-60"
-              onClick={() => {
-                setFileKind(fill.mode === 'video' ? 'video' : 'image');
-                setCloudOpen(true);
-                setOpen(null);
-              }}
-            >
-              Replace {fill.mode}…
-            </button>
-          )}
-        </div>
-      </Popover>
-
-      <Popover open={open === 'shadow'} onClose={() => setOpen(null)}>
-        <div className="space-y-2 text-[11px]">
-          <div className="font-bold uppercase tracking-wide text-neutral-400">Shadow</div>
-          <ColorBlock
-            label="Color"
-            value={shadowColor || '#000000'}
-            onChange={(next) => patchLayer({ shadowColor: next, textShadow: undefined })}
-          />
-          <label className="block">
-            <div className="mb-0.5 flex justify-between text-neutral-500">
-              <span>Blur</span>
-              <span>{shadowBlur}px</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={40}
-              value={shadowBlur}
-              onChange={(e) =>
-                patchLayer({ shadowBlur: Number(e.target.value), textShadow: undefined })
-              }
-              className="w-full"
-            />
-          </label>
-          <label className="block">
-            <div className="mb-0.5 flex justify-between text-neutral-500">
-              <span>X</span>
-              <span>{shadowX}px</span>
-            </div>
-            <input
-              type="range"
-              min={-30}
-              max={30}
-              value={shadowX}
-              onChange={(e) =>
-                patchLayer({ shadowOffsetX: Number(e.target.value), textShadow: undefined })
-              }
-              className="w-full"
-            />
-          </label>
-          <label className="block">
-            <div className="mb-0.5 flex justify-between text-neutral-500">
-              <span>Y</span>
-              <span>{shadowY}px</span>
-            </div>
-            <input
-              type="range"
-              min={-30}
-              max={30}
-              value={shadowY}
-              onChange={(e) =>
-                patchLayer({ shadowOffsetY: Number(e.target.value), textShadow: undefined })
-              }
-              className="w-full"
-            />
-          </label>
-        </div>
-      </Popover>
-
-      <Popover open={open === 'blur'} onClose={() => setOpen(null)}>
-        <div className="space-y-2 text-[11px]">
-          <div className="font-bold uppercase tracking-wide text-neutral-400">Blur</div>
-          <label className="block">
-            <div className="mb-0.5 flex justify-between text-neutral-500">
-              <span>Amount</span>
-              <span>{blurVal}px</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={24}
-              value={blurVal}
-              onChange={(e) => patchLayer({ blur: Number(e.target.value) || undefined })}
-              className="w-full"
-            />
-          </label>
-        </div>
-      </Popover>
-
-      <Popover open={open === 'blend'} onClose={() => setOpen(null)}>
-        <div className="space-y-2 text-[11px]">
-          <div className="font-bold uppercase tracking-wide text-neutral-400">Blend</div>
-          <select
-            className="w-full rounded border border-neutral-200 px-2 py-1"
-            value={blendMode}
-            onChange={(e) => patchLayer({ mixBlendMode: e.target.value })}
-          >
-            {BLEND_MODES.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <label className="block">
-            <div className="mb-0.5 flex justify-between text-neutral-500">
-              <span>Amount</span>
-              <span>{Math.round(blendAmount)}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={blendAmount}
-              onChange={(e) => patchLayer({ blendAmount: Number(e.target.value) })}
-              className="w-full"
-            />
-          </label>
-        </div>
-      </Popover>
-
-      <Popover open={open === 'opacity'} onClose={() => setOpen(null)}>
-        <div className="space-y-2 text-[11px]">
-          <div className="font-bold uppercase tracking-wide text-neutral-400">Opacity</div>
-          <label className="block">
-            <div className="mb-0.5 flex justify-between text-neutral-500">
-              <span>Value</span>
-              <span>{Math.round(opacity)}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={opacity}
-              onChange={(e) => patchLayer({ opacity: Number(e.target.value) })}
-              className="w-full"
-            />
-          </label>
-        </div>
-      </Popover>
-
-      <Popover open={open === 'stroke'} onClose={() => setOpen(null)}>
-        <div className="space-y-2 text-[11px]">
-          <div className="font-bold uppercase tracking-wide text-neutral-400">Stroke</div>
-          <ColorBlock
-            label="Color"
-            value={strokeColor || '#000000'}
-            onChange={(next) =>
-              patchLayer({
-                strokeColor: next,
-                strokeWidth: strokeWidth || 1
-              })
-            }
-          />
-          <label className="block space-y-1">
-            <span className="text-neutral-500">Style</span>
-            <select
-              className="w-full rounded border border-neutral-200 px-2 py-1"
-              value={strokeStyle}
-              onChange={(e) =>
-                patchLayer({
-                  strokeStyle: e.target.value as PenStrokeStyle,
-                  strokeWidth: strokeWidth || 1,
-                  strokeColor: strokeColor || '#000000'
-                })
-              }
-            >
-              <option value="solid">Solid</option>
-              <option value="dashed">Dashed</option>
-              <option value="dotted">Dotted</option>
-            </select>
-          </label>
-          <label className="block">
-            <div className="mb-0.5 flex justify-between text-neutral-500">
-              <span>Width</span>
-              <span>{strokeWidth}px</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={24}
-              value={strokeWidth}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                patchLayer({
-                  strokeWidth: v || undefined,
-                  strokeColor: v ? strokeColor || '#000000' : undefined
-                });
-              }}
-              className="w-full"
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-neutral-500">Align</span>
-            <div className="flex gap-1">
-              {(['inside', 'center', 'outside'] as PenStrokeAlign[]).map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  className={`flex-1 rounded px-1 py-1 capitalize ${
-                    strokeAlign === a ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-700'
-                  }`}
-                  onClick={() =>
-                    patchLayer({
-                      strokeAlign: a,
-                      strokeWidth: strokeWidth || 1,
-                      strokeColor: strokeColor || '#000000'
-                    })
-                  }
-                >
-                  {a}
-                </button>
-              ))}
-            </div>
-          </label>
-        </div>
-      </Popover>
 
       <CloudFeedMediaPicker
         open={cloudOpen}

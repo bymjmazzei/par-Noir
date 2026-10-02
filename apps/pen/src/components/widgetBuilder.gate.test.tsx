@@ -40,7 +40,9 @@ describe('widget preview builder', () => {
     expect(strip).not.toMatch(/Time mode|Clock time|HTML snippet|Field name/);
     expect(page).toMatch(/hideObjectTools=\{isWidgetDoc\}/);
     const toolbar = readFileSync(resolve(root, 'LayerObjectToolbar.tsx'), 'utf8');
-    expect(toolbar).toMatch(/title="Blend"/);
+    expect(toolbar).toMatch(/title="Layer"/);
+    expect(toolbar).toMatch(/data-layer-menu/);
+    expect(toolbar).not.toMatch(/title="Blend"/);
     expect(toolbar).toMatch(/hideObjectTools/);
     const blend = renderToStaticMarkup(
       <LayerObjectToolbar
@@ -63,7 +65,8 @@ describe('widget preview builder', () => {
         onSectionChange={() => undefined}
       />
     );
-    expect(blend).toContain('title="Blend"');
+    expect(blend).toContain('title="Layer"');
+    expect(blend).not.toContain('title="Blend"');
     expect(blend).not.toContain('title="Shadow"');
     expect(blend).not.toContain('title="Opacity"');
     const collab = readFileSync(resolve(root, '../services/penCollab.ts'), 'utf8');
