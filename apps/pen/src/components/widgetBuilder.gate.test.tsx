@@ -43,6 +43,7 @@ describe('widget preview builder', () => {
     expect(toolbar).toMatch(/title="Layer"/);
     expect(toolbar).toMatch(/data-layer-menu/);
     expect(toolbar).toMatch(/label="Background"/);
+    expect(toolbar).toMatch(/Edit layer title/);
     expect(toolbar).toMatch(/AlignIcon/);
     expect(toolbar).not.toMatch(/title="Blend"/);
     expect(toolbar).toMatch(/hideObjectTools/);

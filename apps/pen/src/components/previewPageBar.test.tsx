@@ -352,15 +352,19 @@ describe('preview page toolbar', () => {
         onToggleViewLock={() => undefined}
       />
     );
-    const engagement = html.indexOf('aria-label="Overlay engagement bar"');
+    const landscape = html.indexOf('aria-label="Landscape"');
     const scroll = html.indexOf('aria-label="Scroll vertically"');
+    const engagement = html.indexOf('aria-label="Overlay engagement bar"');
     const lock = html.indexOf('aria-label="Lock view"');
-    expect(engagement).toBeGreaterThan(-1);
-    expect(html.indexOf('aria-label="Landscape"')).toBeLessThan(engagement);
-    expect(engagement).toBeLessThan(scroll);
-    expect(scroll).toBeLessThan(lock);
+    expect(landscape).toBeGreaterThan(-1);
+    expect(landscape).toBeLessThan(scroll);
+    expect(scroll).toBeLessThan(engagement);
+    expect(engagement).toBeLessThan(lock);
     expect(html.slice(engagement, lock)).toContain('aria-pressed="true"');
-    expect(html).toContain('Engagement');
+    expect(html.slice(engagement, lock)).toContain('M19 14c1.49-1.46');
+    expect(html.slice(engagement, lock)).toContain('>0<');
+    expect(html).not.toContain('>Engagement<');
+    expect(html).not.toContain('>Lock<');
   });
 
   it('paints the engagement guide on each page, and on a screen strip only at the right edge', () => {

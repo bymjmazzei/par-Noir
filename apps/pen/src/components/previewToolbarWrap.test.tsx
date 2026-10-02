@@ -35,6 +35,12 @@ describe('preview toolbar wrap', () => {
       />
     );
     expect(html).toContain('aria-label="Page size"');
+    const title = html.indexOf('>Body<');
+    const layers = html.indexOf('aria-label="Layers"');
+    const adjustments = html.indexOf('title="Layer"');
+    expect(title).toBeGreaterThan(-1);
+    expect(title).toBeLessThan(layers);
+    expect(layers).toBeLessThan(adjustments);
     expect(html).toContain('flex shrink-0 flex-wrap items-center gap-2');
     expect(html).toContain('max-w-full shrink-0 flex-wrap items-center gap-1');
     expect(html).toContain('max-w-full flex-wrap items-center gap-0.5');

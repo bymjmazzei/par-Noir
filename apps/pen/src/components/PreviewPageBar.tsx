@@ -18,6 +18,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { pageFrameStyle } from './LayerObjectToolbar';
+import { IconLock } from './icons/PenIcons';
 
 const THUMB_W = 280;
 
@@ -590,8 +591,8 @@ export function OrientationChoices({
   onToggleEngagementGuide?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1">
+    <div className="flex border-l border-neutral-200">
+      <div className="flex flex-col gap-1 p-1">
         <div className="flex items-center gap-1" role="group" aria-label="Orientation">
           {ORIENTATIONS.map((orientation) => (
             <button
@@ -613,20 +614,6 @@ export function OrientationChoices({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          aria-label="Overlay engagement bar"
-          title="Overlay the social engagement bar"
-          aria-pressed={engagementGuide}
-          className={`ml-auto rounded px-2 py-1 text-[11px] font-medium ${
-            engagementGuide ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
-          }`}
-          onClick={onToggleEngagementGuide}
-        >
-          Engagement
-        </button>
-      </div>
-      <div className="flex items-center gap-1">
         <div className="flex items-center gap-1" role="group" aria-label="Scroll">
           {SCROLLS.map((view) => (
             <button
@@ -648,17 +635,34 @@ export function OrientationChoices({
             </button>
           ))}
         </div>
+      </div>
+      <div className="flex flex-col gap-1 border-l border-neutral-200 p-1">
+        <button
+          type="button"
+          aria-label="Overlay engagement bar"
+          title="Overlay the social engagement bar"
+          aria-pressed={engagementGuide}
+          className={`flex h-7 items-center gap-0.5 rounded px-1 ${
+            engagementGuide ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+          }`}
+          onClick={onToggleEngagementGuide}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+          </svg>
+          <span className="text-[11px] tabular-nums">0</span>
+        </button>
         <button
           type="button"
           aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
           title={viewLocked ? 'Unlock view' : 'Lock view'}
           aria-pressed={viewLocked}
-          className={`ml-auto rounded px-2 py-1 text-[11px] font-medium ${
-            viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
+          className={`flex h-7 w-7 items-center justify-center rounded ${
+            viewLocked ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
           }`}
           onClick={onToggleViewLock}
         >
-          {viewLocked ? 'Locked' : 'Lock'}
+          <IconLock width={14} height={14} />
         </button>
       </div>
     </div>

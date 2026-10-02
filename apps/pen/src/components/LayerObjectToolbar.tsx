@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   attachMediaToLayer,
+  defaultLayerName,
   layerShadowCss,
   layerStrokeStyle,
   patchLayerStyle,
@@ -349,6 +350,9 @@ export function LayerObjectToolbar({
   const [slider, setSlider] = useState<string | null>(null);
   const [cloudOpen, setCloudOpen] = useState(false);
   const [fileKind, setFileKind] = useState<'image' | 'video'>('image');
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const cancelRename = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isPage = target.kind === 'page';
@@ -449,6 +453,25 @@ export function LayerObjectToolbar({
     setOpenSection(null);
     setOpenLine(null);
     setSlider(null);
+    setRenaming(false);
+  }
+
+  function startRename() {
+    if (!layer) return;
+    setNameDraft(defaultLayerName(layer, section.layers || []));
+    setRenaming(true);
+  }
+
+  function commitRename() {
+    if (cancelRename.current) {
+      cancelRename.current = false;
+      setRenaming(false);
+      return;
+    }
+    if (!layer) return;
+    const next = nameDraft.trim();
+    patchLayer({ name: next || undefined });
+    setRenaming(false);
   }
 
   function toggleSection(id: string) {
@@ -572,6 +595,41 @@ export function LayerObjectToolbar({
               data-layer-menu
               className="absolute right-0 top-full z-50 mt-1 max-h-80 w-56 overflow-y-auto rounded-md border border-stone-200 bg-white p-2 shadow-lg"
             >
+              {layer &&
+                (renaming ? (
+                  <input
+                    aria-label="Layer title"
+                    autoFocus
+                    className="mb-1 h-5 w-full bg-transparent text-[13px] text-stone-800 outline-none"
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') {
+                        cancelRename.current = true;
+                        e.currentTarget.blur();
+                      }
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    aria-label="Edit layer title"
+                    className="mb-1 inline-flex h-5 w-5 items-center justify-center text-stone-500 hover:text-stone-800"
+                    onClick={startRename}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path
+                        d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinejoin="round"
+                      />
+                      <path d="M13.5 6.5l3 3" stroke="currentColor" strokeWidth="1.6" />
+                    </svg>
+                  </button>
+                ))}
               {showBackground && (
                 <SectionRow
                   label="Background"

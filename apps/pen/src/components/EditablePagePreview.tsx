@@ -75,7 +75,7 @@ import {
   layerPreviewStyle,
   pageFrameStyle
 } from './LayerObjectToolbar';
-import { PreviewOrientationMenu } from './PreviewPageBar';
+import { OrientationChoices } from './PreviewPageBar';
 import { PageGuides } from './PageGuides';
 import { PageSheetColumn } from './PageSheetColumn';
 import { LayerMediaContent } from './LayerMediaContent';
@@ -906,7 +906,8 @@ export function EditablePagePreview({
               {pageSizeChoice.label}
             </button>
             {pageSizeOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 max-h-[min(24rem,70vh)] w-56 overflow-auto rounded-md border border-neutral-200 bg-white p-2 shadow-lg">
+              <div className="absolute left-0 top-full z-50 mt-1 flex items-start rounded-md border border-neutral-200 bg-white shadow-lg">
+                <div className="max-h-[min(24rem,70vh)] w-56 overflow-auto p-2">
                 {PAGE_SIZE_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
@@ -977,21 +978,22 @@ export function EditablePagePreview({
                     </label>
                   </div>
                 )}
+                </div>
+                {pageView && onPageOrientation && onPageView && onToggleViewLock && (
+                  <OrientationChoices
+                    pageOrientation={pageOrientation}
+                    pageView={pageView}
+                    viewLocked={viewLocked}
+                    engagementGuide={engagementGuide}
+                    onPageOrientation={onPageOrientation}
+                    onPageView={onPageView}
+                    onToggleViewLock={onToggleViewLock}
+                    onToggleEngagementGuide={onToggleEngagementGuide}
+                  />
+                )}
               </div>
             )}
           </div>
-        )}
-        {pageView && onPageOrientation && onPageView && onToggleViewLock && (
-          <PreviewOrientationMenu
-            pageOrientation={pageOrientation}
-            pageView={pageView}
-            viewLocked={viewLocked}
-            engagementGuide={engagementGuide}
-            onPageOrientation={onPageOrientation}
-            onPageView={onPageView}
-            onToggleViewLock={onToggleViewLock}
-            onToggleEngagementGuide={onToggleEngagementGuide}
-          />
         )}
         <div className="relative shrink-0">
           <button
@@ -1047,6 +1049,23 @@ export function EditablePagePreview({
         )}
 
         <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center gap-1">
+          <span className="max-w-[10rem] truncate px-1 text-[11px] font-bold text-neutral-500">
+            {layersButtonTitle}
+          </span>
+          <button
+            ref={layersBtnRef}
+            type="button"
+            aria-expanded={layersOpen}
+            aria-pressed={layersOpen}
+            aria-label="Layers"
+            title="Layers"
+            className={`inline-flex h-6 w-6 items-center justify-center rounded ${
+              layersOpen ? 'text-black' : 'text-neutral-500 hover:text-black'
+            }`}
+            onClick={() => setLayersOpen((o) => !o)}
+          >
+            <IconLayers className="shrink-0" />
+          </button>
           <LayerObjectToolbar
             target={
               pageActive || !activeObject
@@ -1064,21 +1083,6 @@ export function EditablePagePreview({
             hideActionBind={hideActionBind}
             hideObjectTools={hideObjectTools}
           />
-          <button
-            ref={layersBtnRef}
-            type="button"
-            aria-expanded={layersOpen}
-            aria-pressed={layersOpen}
-            aria-label={layersButtonTitle}
-            title={layersButtonTitle}
-            className={`inline-flex max-w-[10rem] items-center gap-1 truncate px-1 text-[11px] font-bold ${
-              layersOpen ? 'text-black' : 'text-neutral-500 hover:text-black'
-            }`}
-            onClick={() => setLayersOpen((o) => !o)}
-          >
-            <IconLayers className="shrink-0" />
-            <span className="truncate">{layersButtonTitle}</span>
-          </button>
         </div>
       </div>
       <LayersPopover
