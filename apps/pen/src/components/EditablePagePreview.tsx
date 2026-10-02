@@ -105,7 +105,7 @@ export function ResolvedPageBackground({
     kind === 'video'
       ? playback === 'publish'
         ? publishPlaybackSrc({ videoSrc, backgroundVideo: src })
-        : editorPlaybackSrc({ editProxySrc })
+        : editorPlaybackSrc({ editProxySrc, videoSrc, backgroundVideo: src })
       : src;
   const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
   if (!playSrc || !resolved) return null;

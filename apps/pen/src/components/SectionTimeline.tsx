@@ -16,6 +16,7 @@ import {
 } from '@par-noir/feed-tile';
 import {
   applyTransitionPreset,
+  applyVideoFileDuration,
   defaultLayerName,
   docToPlainText,
   editorPlaybackSrc,
@@ -30,6 +31,7 @@ import {
   moveClipToTrack,
   publishPlaybackSrc,
   reorderTimelineLayer,
+  raiseTimelineTo,
   resolveTimelineDuration,
   sampleLayerAt,
   sanitizeWidgetMarkup,
@@ -37,6 +39,7 @@ import {
   spanLeavingKey,
   splitLayerAt,
   trackJoinPoints,
+  type TrackJoinPoint,
   timeLayerCaption,
   toggleKeyframeAt,
   upsertLayer,
@@ -568,6 +571,42 @@ function placeVideo(master: HTMLVideoElement, at: number, force = false) {
   }
 }
 
+/** Reads a video file's length once so the clip is the file, not the clock. */
+function VideoFileDuration({
+  layerId,
+  src,
+  docId,
+  session,
+  onDuration
+}: {
+  layerId: string;
+  src: string;
+  docId?: string;
+  session?: PenSession | null;
+  onDuration: (layerId: string, seconds: number) => void;
+}) {
+  const { resolved } = useResolvedMediaSrc(src, { docId, session });
+  const report = useRef(onDuration);
+  report.current = onDuration;
+  useEffect(() => {
+    if (!resolved) return;
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    const finish = () => {
+      const seconds = video.duration;
+      if (Number.isFinite(seconds) && seconds > 0) report.current(layerId, seconds);
+    };
+    video.addEventListener('loadedmetadata', finish);
+    video.src = resolved;
+    return () => {
+      video.removeEventListener('loadedmetadata', finish);
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [resolved, layerId]);
+  return null;
+}
+
 /** Holds a resolved clip URL so Play can start the shared player in the click. */
 function RememberVideoSrc({
   layerId,
@@ -658,14 +697,30 @@ export function SectionTimeline({
   const graphsReady = Boolean(active && playheadBetweenKeys(active, activeLocal));
   const leaving = active ? spanLeavingKey(active, activeLocal) : null;
   const [zoom, setZoom] = useState(1);
+  const scaleHostRef = useRef<HTMLDivElement>(null);
+  const [hostWidth, setHostWidth] = useState(0);
+  useEffect(() => {
+    const el = scaleHostRef.current;
+    if (!el) return;
+    const measure = () => setHostWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const introSec =
+    scopeGroup?.durationSec && scopeGroup.durationSec > 0 ? scopeGroup.durationSec : duration;
+  const playSpan = widget ? introSec : duration;
+  const layerLoops =
+    widget &&
+    (section.layers || []).some((item) => Boolean(item.motion?.loop) && (item.motion?.keys?.length || 0) > 0);
+  const pxPerSec = 96 * zoom;
+  const naturalPx = Math.max(playSpan, 0.01) * pxPerSec;
+  const scaleWidthPx = Math.max(hostWidth, naturalPx);
+  const viewSpan = scaleWidthPx / Math.max(pxPerSec, 0.01);
   const [graphsOpen, setGraphsOpen] = useState(false);
   const graphsRef = useRef<HTMLDivElement>(null);
-  const [joinMenu, setJoinMenu] = useState<null | {
-    trackId: string;
-    atSec: number;
-    fromId: string;
-    toId: string;
-  }>(null);
+  const [joinMenu, setJoinMenu] = useState<TrackJoinPoint | null>(null);
   const playheadRef = useRef(playheadSec);
   const playingRef = useRef(playing);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -786,11 +841,19 @@ export function SectionTimeline({
       if (!playingRef.current) return;
       const dt = (now - last) / 1000;
       last = now;
-      const next = Math.min(duration, playheadRef.current + dt);
+      const raw = playheadRef.current + dt;
+      if (layerLoops) {
+        playheadRef.current = raw;
+        onPlayhead(raw);
+        driveRef.current('tick', raw);
+        frame = requestAnimationFrame(tick);
+        return;
+      }
+      const next = Math.min(playSpan, raw);
       playheadRef.current = next;
       onPlayhead(next);
-      driveRef.current(next >= duration ? 'pause' : 'tick', next);
-      if (next >= duration) {
+      driveRef.current(next >= playSpan ? 'pause' : 'tick', next);
+      if (next >= playSpan) {
         playingRef.current = false;
         onPlaying(false);
         return;
@@ -799,10 +862,10 @@ export function SectionTimeline({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, duration, onPlayhead, onPlaying]);
+  }, [playing, playSpan, layerLoops, onPlayhead, onPlaying]);
 
   function seekTo(time: number) {
-    const next = Math.min(duration, Math.max(0, time));
+    const next = Math.min(viewSpan, Math.max(0, time));
     playingRef.current = false;
     playheadRef.current = next;
     onPlaying(false);
@@ -815,7 +878,7 @@ export function SectionTimeline({
     const lane = scale.querySelector('[data-clip-lane]');
     const rect = lane instanceof HTMLElement ? lane.getBoundingClientRect() : scale.getBoundingClientRect();
     const ratio = (clientX - rect.left) / Math.max(1, rect.width);
-    seekTo(Math.min(1, Math.max(0, ratio)) * duration);
+    seekTo(Math.min(1, Math.max(0, ratio)) * viewSpan);
   }
 
   function beginScrub(event: ReactPointerEvent<HTMLElement>) {
@@ -851,7 +914,7 @@ export function SectionTimeline({
   }
 
   function setTrim(layer: PenPageLayer, edge: 'in' | 'out', ratio: number, clipId?: string) {
-    const span = layerClockSpan(section, layer);
+    const span = viewSpan;
     const minGap = 0.1;
     const clips = layer.clips?.length ? layer.clips : null;
     if (clips && clipId) {
@@ -870,14 +933,14 @@ export function SectionTimeline({
               const at = Math.max(item.inSec + minGap, Math.min(span, Math.max(0, ratio * span)));
               return { ...item, outSec: at };
             });
-      onSectionChange(
-        upsertLayer(section, {
-          ...layer,
-          clips: nextClips,
-          inSec: Math.min(...nextClips.map((item) => item.inSec)),
-          outSec: Math.max(...nextClips.map((item) => item.outSec))
-        })
-      );
+      const trimmed = upsertLayer(section, {
+        ...layer,
+        clips: nextClips,
+        inSec: Math.min(...nextClips.map((item) => item.inSec)),
+        outSec: Math.max(...nextClips.map((item) => item.outSec))
+      });
+      const end = Math.max(...nextClips.map((item) => item.outSec));
+      onSectionChange(edge === 'out' ? raiseTimelineTo(trimmed, end) : trimmed);
       return;
     }
     const inn = layer.inSec ?? 0;
@@ -894,8 +957,8 @@ export function SectionTimeline({
       );
       return;
     }
-    const at = Math.max(inn + minGap, Math.min(span, Math.max(0, ratio * span)));
-    onSectionChange(upsertLayer(section, { ...layer, outSec: at }));
+    const at = Math.max(inn + minGap, Math.max(0, ratio * span));
+    onSectionChange(raiseTimelineTo(upsertLayer(section, { ...layer, outSec: at }), at));
   }
 
   function beginTrim(
@@ -1019,7 +1082,7 @@ export function SectionTimeline({
     onSectionChange(
       applyTransitionPreset(section, joinMenu.fromId, joinMenu.toId, preset, {
         atSec: joinMenu.atSec,
-        durationSec: 0.5
+        durationSec: joinMenu.durationSec
       })
     );
     const start = Math.max(0, joinMenu.atSec - 0.05);
@@ -1220,6 +1283,47 @@ export function SectionTimeline({
             </div>
           ) : null}
         </div>
+        {widget ? (
+          <label className="flex items-center gap-1 text-[12px] text-stone-600">
+            Intro
+            <input
+              aria-label="Intro length"
+              type="number"
+              min={0.1}
+              step={0.1}
+              className="w-14 rounded border border-stone-200 bg-white px-1 py-0.5 tabular-nums"
+              value={Math.round(playSpan * 10) / 10}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                const next = Number.isFinite(value) && value > 0 ? value : undefined;
+                if (scopeGroup) {
+                  setGroupDuration(scopeGroup, value);
+                  return;
+                }
+                onSectionChange({ ...section, timelineDurationSec: next });
+              }}
+            />
+          </label>
+        ) : null}
+        {widget && (active?.motion?.keys?.length || 0) > 0 ? (
+          <label className="flex items-center gap-1 text-[12px] text-stone-600">
+            <input
+              aria-label="Loop layer"
+              type="checkbox"
+              checked={Boolean(active?.motion?.loop)}
+              onChange={(event) => {
+                if (!active?.motion) return;
+                onSectionChange(
+                  upsertLayer(section, {
+                    ...active,
+                    motion: { ...active.motion, loop: event.target.checked }
+                  })
+                );
+              }}
+            />
+            Loop
+          </label>
+        ) : null}
         </div>
         <div className="flex shrink-0 items-center justify-center gap-1">
         <button
@@ -1229,7 +1333,7 @@ export function SectionTimeline({
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600"
           onClick={() => {
             const next = !playing;
-            const at = next && playheadSec >= duration - 0.05 ? 0 : playheadSec;
+            const at = next && playheadSec >= playSpan - 0.05 ? 0 : playheadSec;
             playheadRef.current = at;
             playingRef.current = next;
             if (at !== playheadSec) onPlayhead(at);
@@ -1249,7 +1353,7 @@ export function SectionTimeline({
           )}
         </button>
         <span className="shrink-0 text-[13px] tabular-nums text-stone-700">
-          {formatTime(playheadSec)} / {formatTime(duration)}
+          {formatTime(layerLoops ? wrapTime(playheadSec, playSpan) : playheadSec)} / {formatTime(playSpan)}
         </span>
         </div>
         <div className="flex items-center justify-end gap-1 text-stone-500">
@@ -1258,7 +1362,7 @@ export function SectionTimeline({
             aria-label="Zoom out"
             title="Zoom out"
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center"
-            onClick={() => setZoom((value) => Math.max(1, Math.round((value - 0.5) * 10) / 10))}
+            onClick={() => setZoom((value) => Math.max(0.25, Math.round((value - 0.5) * 10) / 10))}
           >
             <Magnify plus={false} />
           </button>
@@ -1266,7 +1370,7 @@ export function SectionTimeline({
             aria-label="Zoom"
             title="Zoom"
             type="range"
-            min={1}
+            min={0.25}
             max={Math.max(8, Math.ceil(duration / 2))}
             step={0.1}
             value={zoom}
@@ -1302,19 +1406,19 @@ export function SectionTimeline({
           </button>
         </div>
       </div>
-      <div className="min-w-0 shrink-0 overflow-x-auto px-2 pb-2">
+      <div ref={scaleHostRef} className="min-w-0 shrink-0 overflow-x-auto px-2 pb-2">
         <div
           data-timeline-scale
           className="relative"
-          style={{ width: `${Math.max(duration, 0.01) * 96 * zoom}px`, minWidth: '100%' }}
+          style={{ width: `${scaleWidthPx}px` }}
         >
           <div className="relative mb-1 h-6 cursor-ew-resize" onPointerDown={beginScrub}>
-            {timelineMarks(duration, zoom).map((mark) => (
+            {timelineMarks(viewSpan, zoom).map((mark) => (
               <span
                 key={mark.t}
                 data-tick={mark.major ? 'major' : 'minor'}
                 className="absolute top-0"
-                style={{ left: trackLeft(mark.t, duration) }}
+                style={{ left: trackLeft(mark.t, viewSpan) }}
               >
                 <span className={`block w-px ${mark.major ? 'h-2.5 bg-stone-500' : 'h-1.5 bg-stone-300'}`} />
                 {mark.major ? (
@@ -1336,7 +1440,6 @@ export function SectionTimeline({
           const groupLayer = trackLayers.find((item) => item.kind === 'group');
           const layer = trackLayers.find((item) => item.id === activeLayerId) ?? trackLayers[0]!;
           const rowDur = layerClockSpan(section, layer);
-          const clock = widget ? duration : rowDur;
           const local = layer.kind === 'group' ? wrapTime(playheadSec, rowDur) : layerSampleTime(section, layer, playheadSec);
           const posed = sampleLayerAt(layer, local);
           const clips =
@@ -1413,6 +1516,12 @@ export function SectionTimeline({
                   </span>
                 ) : null}
                 {clips.map(({ clip, owner }) => {
+                  const pendingFile =
+                    owner.kind === 'video' &&
+                    owner.outSec == null &&
+                    owner.sourceDurationSec == null &&
+                    !(owner.clips && owner.clips.length);
+                  if (pendingFile) return null;
                   const playbackSrc =
                     owner.kind === 'video'
                       ? playback === 'publish'
@@ -1430,8 +1539,8 @@ export function SectionTimeline({
                       selected && owner.id === activeLayerId ? 'border-blue-600' : 'border-stone-300'
                     }`}
                     style={{
-                      left: `${(clip.inSec / Math.max(rowDur, 0.01)) * 100}%`,
-                      width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(rowDur, 0.01)) * 100)}%`,
+                      left: `${(clip.inSec / Math.max(viewSpan, 0.01)) * 100}%`,
+                      width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(viewSpan, 0.01)) * 100)}%`,
                       backgroundColor: playbackSrc ? undefined : owner.backgroundColor || '#e7e5e4'
                     }}
                     onDoubleClick={(event) => {
@@ -1447,7 +1556,7 @@ export function SectionTimeline({
                         onSelectLayer(groupLayer.id);
                         return;
                       }
-                      beginClipDrag(e, owner, clip.id, rowDur);
+                      beginClipDrag(e, owner, clip.id, viewSpan);
                     }}
                   >
                     {playbackSrc ? (
@@ -1496,22 +1605,28 @@ export function SectionTimeline({
                       {name}
                     </span>
                     ) : null}
-                    <button
-                      type="button"
-                      aria-label={`Trim start ${clip.id}`}
-                      className="absolute bottom-0 left-0 top-0 w-1.5 cursor-ew-resize bg-blue-600"
-                      onPointerDown={(e) => beginTrim(e, owner, 'in', clip.id)}
-                    />
-                    <button
-                      type="button"
-                      aria-label={`Trim end ${clip.id}`}
-                      className="absolute bottom-0 right-0 top-0 w-1.5 cursor-ew-resize bg-blue-600"
-                      onPointerDown={(e) => beginTrim(e, owner, 'out', clip.id)}
-                    />
+                    {widget ? null : (
+                      <button
+                        type="button"
+                        aria-label={`Trim start ${clip.id}`}
+                        className="absolute bottom-0 left-0 top-0 w-1.5 cursor-ew-resize bg-blue-600"
+                        onPointerDown={(e) => beginTrim(e, owner, 'in', clip.id)}
+                      />
+                    )}
+                    {widget ? null : (
+                      <button
+                        type="button"
+                        aria-label={`Trim end ${clip.id}`}
+                        className="absolute bottom-0 right-0 top-0 w-1.5 cursor-ew-resize bg-blue-600"
+                        onPointerDown={(e) => beginTrim(e, owner, 'out', clip.id)}
+                      />
+                    )}
                   </div>
                   );
                 })}
-                {trackJoinPoints(section)
+                {widget
+                  ? null
+                  : trackJoinPoints(section)
                   .filter((point) => point.trackId === trackId)
                   .map((point) => (
                     <button
@@ -1520,10 +1635,11 @@ export function SectionTimeline({
                       data-transition-join=""
                       aria-label="Transition"
                       title="Transition"
-                      className={`absolute top-1/2 z-10 h-5 -translate-x-1/2 -translate-y-1/2 rounded-sm border bg-white ${laneBorder}`}
+                      className={`absolute top-1/2 z-10 h-5 -translate-x-1/2 -translate-y-1/2 rounded-sm border bg-stone-400 ${laneBorder}`}
                       style={{
-                        left: `${(point.atSec / Math.max(rowDur, 0.01)) * 100}%`,
-                        width: `${Math.max(2, (point.durationSec / Math.max(rowDur, 0.01)) * 100)}%`
+                        left: `${(point.atSec / Math.max(viewSpan, 0.01)) * 100}%`,
+                        width: `${(point.durationSec / Math.max(viewSpan, 0.01)) * 100}%`,
+                        minWidth: '8px'
                       }}
                       onPointerDown={(event) => {
                         event.stopPropagation();
@@ -1536,8 +1652,30 @@ export function SectionTimeline({
                   <div
                     data-transition-menu=""
                     className="absolute bottom-full z-30 mb-1 flex -translate-x-1/2 gap-1 rounded-md border border-stone-200 bg-white p-1 shadow-lg"
-                    style={{ left: `${(joinMenu.atSec / Math.max(rowDur, 0.01)) * 100}%` }}
+                    style={{ left: `${(joinMenu.atSec / Math.max(viewSpan, 0.01)) * 100}%` }}
                   >
+                    <label className="flex w-14 flex-col items-center gap-0.5 text-[10px] text-stone-600">
+                      Sec
+                      <input
+                        aria-label="Transition length"
+                        type="number"
+                        min={0.1}
+                        step={0.1}
+                        value={joinMenu.durationSec}
+                        className="w-12 rounded border border-stone-200 px-1 py-0.5 text-center tabular-nums"
+                        onChange={(event) => {
+                          const durationSec = Math.max(1 / 30, Number(event.target.value) || 0.5);
+                          const incoming = (section.layers || []).find((item) => item.id === joinMenu.toId);
+                          const preset = incoming?.transitionIn?.preset ?? 'crossfade';
+                          onSectionChange(
+                            applyTransitionPreset(section, joinMenu.fromId, joinMenu.toId, preset, {
+                              durationSec
+                            })
+                          );
+                          setJoinMenu({ ...joinMenu, durationSec });
+                        }}
+                      />
+                    </label>
                     {TRANSITION_PRESETS.map((preset) => (
                       <button
                         key={preset.id}
@@ -1562,7 +1700,7 @@ export function SectionTimeline({
                       className={`absolute top-1/2 z-10 flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center ${
                         selected ? 'text-stone-700' : 'text-stone-400'
                       }`}
-                      style={{ left: `${(key.t / Math.max(clock, 0.01)) * 100}%` }}
+                      style={{ left: `${(key.t / Math.max(viewSpan, 0.01)) * 100}%` }}
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
@@ -1578,7 +1716,7 @@ export function SectionTimeline({
                 })}
                 </div>
               </div>
-              {groupLayer ? (
+              {groupLayer && !widget ? (
                 <label className="flex items-center gap-1 text-[13px] text-stone-600">
                   Loop
                   <input
@@ -1606,7 +1744,25 @@ export function SectionTimeline({
                   />
                 );
               })}
-              {trackLayers.flatMap((owner) => (owner.audioTracks || []).map((track) => {
+              {trackLayers.map((item) => {
+                const original = publishPlaybackSrc(item);
+                if (item.kind !== 'video' || !original || item.sourceDurationSec) return null;
+                return (
+                  <VideoFileDuration
+                    key={`file-duration-${item.id}`}
+                    layerId={item.id}
+                    src={original}
+                    docId={docId}
+                    session={session}
+                    onDuration={(id, seconds) => {
+                      onSectionChange(applyVideoFileDuration(section, id, seconds));
+                    }}
+                  />
+                );
+              })}
+              {widget
+                ? null
+                : trackLayers.flatMap((owner) => (owner.audioTracks || []).map((track) => {
                 const offset = track.offsetSec || 0;
                 return (
                   <div key={track.id} data-audio-lane={track.id} className="flex items-stretch gap-1">
@@ -1632,8 +1788,8 @@ export function SectionTimeline({
                       <div
                         className="absolute bottom-0 top-0 bg-white"
                         style={{
-                          left: `${(offset / Math.max(rowDur, 0.01)) * 100}%`,
-                          width: `${Math.max(8, 100 - (offset / Math.max(rowDur, 0.01)) * 100)}%`
+                          left: `${(offset / Math.max(viewSpan, 0.01)) * 100}%`,
+                          width: `${Math.max(8, 100 - (offset / Math.max(viewSpan, 0.01)) * 100)}%`
                         }}
                       >
                         <LaneWave src={track.src} docId={docId} session={session} />
@@ -1680,7 +1836,12 @@ export function SectionTimeline({
             data-timeline-playhead
             title="Playhead"
             className="absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
-            style={{ left: trackLeft(playheadSec, duration) }}
+            style={{
+              left: trackLeft(
+                layerLoops ? wrapTime(playheadSec, playSpan) : Math.min(playheadSec, viewSpan),
+                viewSpan
+              )
+            }}
             onPointerDown={beginScrub}
           >
             <div className="pointer-events-none mx-auto h-full w-1 bg-stone-600" />

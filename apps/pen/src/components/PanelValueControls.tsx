@@ -135,6 +135,36 @@ export function ColorSliders({
   );
 }
 
+function colorToHex(value: string): string {
+  const parsed = parseCssColor(value);
+  const channel = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
+  return `#${channel(parsed.r)}${channel(parsed.g)}${channel(parsed.b)}`;
+}
+
+/** A color block. Shadow and stroke use this instead of a hue slider. */
+export function ColorBlock({
+  label,
+  value,
+  onChange
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <label className="block text-[11px]">
+      <span className="mb-1 block font-semibold uppercase tracking-wide text-stone-400">{label}</span>
+      <input
+        aria-label={`${label} color`}
+        type="color"
+        value={colorToHex(value)}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-8 w-full cursor-pointer rounded border border-stone-300 bg-white p-0.5"
+      />
+    </label>
+  );
+}
+
 function Popover({
   open,
   onClose,

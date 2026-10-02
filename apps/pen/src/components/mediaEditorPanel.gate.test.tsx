@@ -71,7 +71,7 @@ describe('media and widget panels', () => {
     );
     expect(widget.split('data-media-timeline')[0]).not.toContain('type="range"');
     expect(widget).toContain('>Fill<');
-    expect(widget).toContain('#0f766e');
+    expect(widget).toContain('rgba(15, 118, 110, 1)');
     expect(widget).toContain('>Trigger<');
   });
 

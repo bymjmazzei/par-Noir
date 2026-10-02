@@ -440,6 +440,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return layer && layerOpensWidgetEditor(layer) ? layer : null;
   }, [section, activeLayerId]);
 
+  const introPlayKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!bundle || !section) return;
+    if (!isWidgetDoc && !widgetEditorLayer) return;
+    const key = `${bundle.manifest.docId}:${section.slug}:${widgetEditorLayer?.id || 'page'}`;
+    if (introPlayKey.current === key) return;
+    introPlayKey.current = key;
+    setPlayheadSec(0);
+    setTimelinePlaying(true);
+  }, [bundle, section, isWidgetDoc, widgetEditorLayer]);
+
   const socialActionLayer = useMemo(() => {
     if (!section || isPageLayerId(activeLayerId) || widgetEditorLayer) return null;
     const layer = section.layers?.find((l) => l.id === activeLayerId);
@@ -2113,7 +2124,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     const fromTemplate = template?.sections.find((item) => item.slug === slug);
     return {
       slug,
-      title: fromTemplate?.title || `Page ${index + 1}`,
+      title:
+        fromTemplate?.title && fromTemplate.title !== 'Body'
+          ? fromTemplate.title
+          : `Page ${index + 1}`,
       section: bundle.sections.find((item) => item.slug === slug)
     };
   });

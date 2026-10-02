@@ -18,7 +18,6 @@ import {
   applyTransitionPreset,
   attachMediaToLayer,
   clampMediaCrop,
-  editorPlaybackSrc,
   mediaFilterCss,
   mergeMediaFilter,
   layerSampleTime,
@@ -36,14 +35,12 @@ import { peekPenMediaController } from '@par-noir/feed-tile';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { SectionTimeline } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
-import { ColorSwatchButton } from './PanelValueControls';
 import { probeMediaAspect } from '../services/penAttach';
 import lookSwatch from '../assets/look-apple.jpg';
-import { resolvePenMediaSrc, ingestInlineMediaSrc, putLocalMedia } from '../services/penLocalMedia';
-import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
+import { resolvePenMediaSrc, putLocalMedia } from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
 
-type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'brush' | 'speed' | 'tracks' | 'transitions';
+type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'speed' | 'tracks' | 'transitions';
 
 const TABS: Array<{ id: ToolTab; label: string }> = [
   { id: 'basic', label: 'Basic' },
@@ -52,7 +49,6 @@ const TABS: Array<{ id: ToolTab; label: string }> = [
   { id: 'crop', label: 'Crop' },
   { id: 'mask', label: 'Mask' },
   { id: 'transitions', label: 'Transitions' },
-  { id: 'brush', label: 'Draw' },
   { id: 'speed', label: 'Speed' },
   { id: 'tracks', label: 'Audio' }
 ];
@@ -342,12 +338,6 @@ export function MediaEditorPanel({
   }
 
   const attached = layer.kind === 'video' ? layer.videoSrc || layer.backgroundVideo : layer.imageSrc;
-  const playbackRef = layer.kind === 'video' ? editorPlaybackSrc(layer) : attached;
-  const { resolved: brushSrc } = useResolvedMediaSrc(playbackRef, { docId, session });
-  const { resolved: brushOverlay } = useResolvedMediaSrc(layer.paintOverlaySrc, {
-    docId,
-    session
-  });
   const cropping = tab === 'crop';
   const nextClip = followingClip(section, layer);
   return (
@@ -605,7 +595,30 @@ export function MediaEditorPanel({
         </div>
 
         {tab === 'transitions' && (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <label className="flex items-center gap-1 text-[13px] text-stone-500">
+              Sec
+              <input
+                aria-label="Transition length"
+                type="number"
+                min={0.1}
+                step={0.1}
+                disabled={!nextClip}
+                className="w-14 rounded border border-stone-200 bg-white px-1 py-0.5 tabular-nums disabled:text-stone-300"
+                value={nextClip?.transitionIn?.durationSec ?? 0.5}
+                onChange={(event) => {
+                  if (!nextClip) return;
+                  const durationSec = Math.max(1 / 30, Number(event.target.value) || 0.5);
+                  const preset = nextClip.transitionIn?.preset ?? 'crossfade';
+                  onSectionChange(
+                    applyTransitionPreset(section, layer.id, nextClip.id, preset, {
+                      atSec: nextClip.inSec ?? layer.outSec ?? playheadSec,
+                      durationSec
+                    })
+                  );
+                }}
+              />
+            </label>
             {(
               [
                 ['crossfade', 'Fade'],
@@ -625,7 +638,7 @@ export function MediaEditorPanel({
                   onSectionChange(
                     applyTransitionPreset(section, layer.id, nextClip.id, preset, {
                       atSec: nextClip.inSec ?? layer.outSec ?? playheadSec,
-                      durationSec: 0.5
+                      durationSec: nextClip.transitionIn?.durationSec ?? 0.5
                     })
                   );
                 }}
@@ -634,25 +647,6 @@ export function MediaEditorPanel({
               </button>
             ))}
           </div>
-        )}
-
-        {tab === 'brush' && brushSrc && (
-          <BrushEditor
-            src={brushSrc}
-            kind={layer.kind === 'video' ? 'video' : 'image'}
-            frame={frameStyle(layer)}
-            overlaySrc={brushOverlay || undefined}
-            onCommit={(dataUrl) => {
-              if (!docId) {
-                patch({ paintOverlaySrc: dataUrl });
-                return;
-              }
-              void ingestInlineMediaSrc({ docId, src: dataUrl }).then((ref) => {
-                patch({ paintOverlaySrc: ref || undefined });
-              });
-            }}
-            onClear={() => patch({ paintOverlaySrc: undefined })}
-          />
         )}
 
         <div className={tab === 'tracks' ? 'space-y-3' : 'hidden'}>
@@ -942,136 +936,6 @@ function CropMarquee({
             }}
           />
         ))}
-      </div>
-    </div>
-  );
-}
-
-function BrushEditor({
-  src,
-  kind,
-  frame,
-  overlaySrc,
-  onCommit,
-  onClear
-}: {
-  src: string;
-  kind: 'image' | 'video';
-  frame: CSSProperties;
-  overlaySrc?: string;
-  onCommit: (dataUrl: string) => void;
-  onClear: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-  const [brushSize, setBrushSize] = useState(8);
-  const [brushColor, setBrushColor] = useState('#ff3b30');
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (overlaySrc) {
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      };
-      img.src = overlaySrc;
-    }
-  }, [overlaySrc, src]);
-
-  function paintAt(clientX: number, clientY: number) {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((clientY - rect.top) / rect.height) * canvas.height;
-    ctx.fillStyle = brushColor;
-    ctx.beginPath();
-    ctx.arc(x, y, brushSize, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function commit() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    onCommit(canvas.toDataURL('image/png'));
-  }
-
-  const ratio = typeof frame.aspectRatio === 'string' ? frame.aspectRatio : '16 / 9';
-  const [rw, rh] = ratio.split('/').map((n) => Number(n.trim()) || 1);
-
-  return (
-    <div className="space-y-2">
-      <InspectorSlider
-        label="Size"
-        min={2}
-        max={40}
-        neutral={8}
-        value={brushSize}
-        display={`${brushSize}`}
-        onChange={setBrushSize}
-      />
-      <div className="flex flex-wrap items-center gap-2">
-        <ColorSwatchButton label="Brush color" value={brushColor} onChange={setBrushColor} />
-        <button
-          type="button"
-          className="px-1 py-1 text-[13px] font-semibold text-stone-700"
-          onClick={commit}
-        >
-          Apply strokes
-        </button>
-        <button
-          type="button"
-          className="px-1 py-1 text-[13px] text-stone-500"
-          onClick={onClear}
-        >
-          Clear
-        </button>
-      </div>
-      <div
-        className="relative overflow-hidden bg-stone-200"
-        style={frame}
-      >
-        {kind === 'video' ? (
-          <video
-            src={src}
-            className="absolute inset-0 h-full w-full object-contain opacity-80"
-            muted
-            loop
-            autoPlay
-            playsInline
-          />
-        ) : (
-          <img
-            src={src}
-            alt=""
-            className="absolute inset-0 h-full w-full object-contain opacity-80"
-            draggable={false}
-          />
-        )}
-        <canvas
-          ref={canvasRef}
-          width={Math.round(640 * (rw / Math.max(rw, rh)))}
-          height={Math.round(640 * (rh / Math.max(rw, rh)))}
-          className="absolute inset-0 h-full w-full cursor-crosshair"
-          onPointerDown={(e) => {
-            drawing.current = true;
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
-            paintAt(e.clientX, e.clientY);
-          }}
-          onPointerMove={(e) => {
-            if (!drawing.current) return;
-            paintAt(e.clientX, e.clientY);
-          }}
-          onPointerUp={() => {
-            drawing.current = false;
-          }}
-        />
       </div>
     </div>
   );

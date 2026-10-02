@@ -3,7 +3,9 @@ import { copyWidgetLayersIntoSection } from './layers.js';
 import {
   applyLayoutAtPlayhead,
   applyTransitionPreset,
+  applyVideoFileDuration,
   joinLayerToTrack,
+  layerClips,
   layerMediaTime,
   reorderTimelineLayer,
   trackJoinPoints,
@@ -176,6 +178,23 @@ describe('sampleLayerAt', () => {
     const at = sampleSectionLayers(doc, 3).find((item) => item.id === 'mark');
     expect(at?.x).toBe(10);
     expect(sectionHasMotion(doc)).toBe(true);
+  });
+
+  it('holds the intro end unless the layer loops', () => {
+    const keys = [
+      { t: 0, x: 0 },
+      { t: 1, x: 10, ease: 'linear' as const }
+    ];
+    const held = section([
+      layer({ id: 'g', kind: 'group', durationSec: 2, w: 100, h: 80 }),
+      layer({ id: 'mark', parentGroupId: 'g', motion: { keys } })
+    ]);
+    const looping = section([
+      layer({ id: 'g', kind: 'group', durationSec: 2, w: 100, h: 80 }),
+      layer({ id: 'mark', parentGroupId: 'g', motion: { keys, loop: true } })
+    ]);
+    expect(sampleSectionLayers(held, 2.5).find((item) => item.id === 'mark')?.x).toBe(10);
+    expect(sampleSectionLayers(looping, 2.5).find((item) => item.id === 'mark')?.x).toBe(5);
   });
 });
 
@@ -411,19 +430,59 @@ describe('timeline tracks', () => {
   });
 });
 
+describe('video file length', () => {
+  it('sizes a new video to the file and grows a shorter clock', () => {
+    const doc = section([layer({ id: 'clip', kind: 'video', videoSrc: 'penlocal:a' })]);
+    doc.timelineDurationSec = 5;
+    const next = applyVideoFileDuration(doc, 'clip', 12);
+    const clip = next.layers?.find((item) => item.id === 'clip');
+    expect(clip?.inSec).toBe(0);
+    expect(clip?.outSec).toBe(12);
+    expect(clip?.sourceDurationSec).toBe(12);
+    expect(resolveTimelineDuration(next)).toBe(12);
+    expect(layerClips(clip!, 12)[0]?.outSec).toBe(12);
+  });
+
+  it('leaves a longer clock in place and does not rewrite a trim', () => {
+    const doc = section([
+      layer({
+        id: 'clip',
+        kind: 'video',
+        videoSrc: 'penlocal:a',
+        inSec: 1,
+        outSec: 3,
+        sourceDurationSec: 8
+      })
+    ]);
+    doc.timelineDurationSec = 20;
+    const next = applyVideoFileDuration(doc, 'clip', 8);
+    expect(next.layers?.[0]?.outSec).toBe(3);
+    expect(resolveTimelineDuration(next)).toBe(20);
+    const fresh = section([layer({ id: 'text', kind: 'text' })]);
+    expect(layerClips(fresh.layers![0]!, 5)[0]?.outSec).toBe(5);
+  });
+});
+
 describe('splitLayerAt', () => {
-  it('cuts one clip into two pieces on the same track', () => {
+  it('cuts one clip into two layers on the same track', () => {
     const doc = section([
       layer({ id: 'clip', kind: 'video', videoSrc: 'penlocal:a', inSec: 0, outSec: 4 })
     ]);
     const next = splitLayerAt(doc, 'clip', 1.5);
-    expect(next.layers).toHaveLength(1);
-    const clips = next.layers?.[0]?.clips || [];
-    expect(clips).toHaveLength(2);
-    expect(clips[0]?.outSec).toBe(1.5);
-    expect(clips[1]?.inSec).toBe(1.5);
-    expect(clips[1]?.outSec).toBe(4);
-    expect(layerMediaTime(next.layers![0]!, 1.5, 1, 4)).toBeCloseTo(1.5);
+    expect(next.layers).toHaveLength(2);
+    const left = next.layers?.find((item) => item.id === 'clip');
+    const right = next.layers?.find((item) => item.id !== 'clip');
+    expect(left?.outSec).toBe(1.5);
+    expect(left?.clips).toBeUndefined();
+    expect(right?.inSec).toBe(1.5);
+    expect(right?.outSec).toBe(4);
+    expect(right?.sourceInSec).toBe(1.5);
+    expect(right?.videoSrc).toBe('penlocal:a');
+    expect(right?.timelineTrackId).toBe(left?.timelineTrackId);
+    expect(trackJoinPoints(next)).toEqual([
+      { trackId: 'clip', atSec: 1.5, fromId: 'clip', toId: right!.id, durationSec: 0.5 }
+    ]);
+    expect(layerMediaTime(right!, 1.5, 1, 4)).toBeCloseTo(1.5);
     expect(doc.layers).toHaveLength(1);
   });
 

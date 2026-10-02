@@ -510,6 +510,7 @@ export function WidgetEditorPanel({
       )}
       </div>
       <SectionTimeline
+        mode="widget"
         section={section}
         activeLayerId={layer?.id ?? null}
         playheadSec={playheadSec}

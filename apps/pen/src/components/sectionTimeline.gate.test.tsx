@@ -93,7 +93,8 @@ describe('section timeline', () => {
     expect(html).toContain('data-tick="major"');
     expect(html).toContain('aria-label="Mute title"');
     expect(html).toContain('aria-label="Mute voice"');
-    expect(html).toContain('aria-label="Trim start clip"');
+    expect(html).toContain('data-track-row="clip"');
+    expect(html).not.toContain('aria-label="Trim start clip"');
     expect(html).toContain('data-timeline-toolbar');
     expect(html).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
     expect(html).not.toContain('flex-wrap items-center gap-2');

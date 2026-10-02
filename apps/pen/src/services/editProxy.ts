@@ -223,7 +223,12 @@ async function buildProxy(params: {
   if (ready.has(key)) return ready.get(key) || null;
   if (failed.has(key)) return null;
   try {
-    const url = await playableUrl(params.docId, params.originalRef, params.session);
+    let url: string | null;
+    try {
+      url = await playableUrl(params.docId, params.originalRef, params.session);
+    } catch {
+      return null;
+    }
     if (!url) return null;
     const encoded = await encodeEditProxyBlob(url);
     if (encoded === 'reuse') {

@@ -11,11 +11,12 @@ describe('edit proxy refs', () => {
     expect(publishPlaybackSrc(layer)).toBe('penmedia:original');
   });
 
-  it('does not select the original while the proxy is missing', () => {
+  it('plays the original while the proxy is missing', () => {
     const layer = { videoSrc: 'penmedia:original', backgroundVideo: 'penmedia:bg' };
-    expect(editorPlaybackSrc(layer)).toBeUndefined();
+    expect(editorPlaybackSrc(layer)).toBe('penmedia:original');
     expect(publishPlaybackSrc(layer)).toBe('penmedia:original');
     expect(publishPlaybackSrc({ backgroundVideo: 'penmedia:bg' })).toBe('penmedia:bg');
+    expect(editorPlaybackSrc({ backgroundVideo: 'penmedia:bg' })).toBe('penmedia:bg');
   });
 
   it('keeps the edit proxy when the clip is reversed', () => {

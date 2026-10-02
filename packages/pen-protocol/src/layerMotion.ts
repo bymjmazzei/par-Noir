@@ -188,16 +188,30 @@ export function wrapTime(time: number, duration: number): number {
   return wrapped;
 }
 
-/** Page time for a layer. Children of a timed widget group loop on that clock. */
+/** Intro clock for a keyed layer: the parent group's length, or the section clock. */
+function layerIntroSec(section: PenSectionContent, layer: PenPageLayer): number {
+  if (layer.parentGroupId) {
+    const group = (section.layers || []).find((item) => item.id === layer.parentGroupId);
+    if (group?.durationSec && group.durationSec > 0) return group.durationSec;
+  }
+  if (!(layer.motion?.keys?.length)) return 0;
+  return resolveTimelineDuration(section);
+}
+
+/**
+ * Page time for a layer. A keyed layer plays its intro once and holds the end pose.
+ * motion.loop wraps that same intro.
+ */
 export function layerSampleTime(
   section: PenSectionContent,
   layer: PenPageLayer,
   pageTime: number
 ): number {
-  if (layer.kind === 'group' || !layer.parentGroupId) return pageTime;
-  const group = (section.layers || []).find((item) => item.id === layer.parentGroupId);
-  if (!group?.durationSec || group.durationSec <= 0) return pageTime;
-  return wrapTime(pageTime, group.durationSec);
+  if (layer.kind === 'group') return pageTime;
+  const intro = layerIntroSec(section, layer);
+  if (!(intro > 0) || !(layer.motion?.keys?.length)) return pageTime;
+  if (layer.motion.loop) return wrapTime(pageTime, intro);
+  return Math.min(Math.max(0, pageTime), intro);
 }
 
 /** Clock length for one layer. Group children use the group's loop. */
@@ -210,14 +224,22 @@ export function layerClockSpan(section: PenSectionContent, layer: PenPageLayer):
   return resolveTimelineDuration(section);
 }
 
-/** Pieces on one track. A layer with no clips is a single piece. */
+/** Pieces on one track. A layer with no clips is a single piece. A video is the file, not the clock. */
 export function layerClips(layer: PenPageLayer, span: number): PenTimelineClip[] {
   if (layer.clips && layer.clips.length) return layer.clips;
+  const inn = layer.inSec ?? 0;
+  let out = layer.outSec;
+  if (out == null) {
+    out =
+      layer.kind === 'video' && layer.sourceDurationSec != null
+        ? inn + layer.sourceDurationSec
+        : span;
+  }
   return [
     {
       id: layer.id,
-      inSec: layer.inSec ?? 0,
-      outSec: layer.outSec ?? span,
+      inSec: inn,
+      outSec: Math.max(inn, out),
       sourceInSec: layer.sourceInSec
     }
   ];
@@ -302,8 +324,8 @@ export function trackJoinPoints(section: PenSectionContent): TrackJoinPoint[] {
 }
 
 /**
- * Split the piece under the playhead into two pieces on the same track.
- * The right piece continues the file instead of starting over.
+ * Split the piece under the playhead into two layers on the same track.
+ * The right layer continues the file instead of starting over.
  */
 export function splitLayerAt(
   section: PenSectionContent,
@@ -319,23 +341,35 @@ export function splitLayerAt(
   const clips = layerClips(layer, span);
   const hit = clips.find((clip) => time > clip.inSec + 0.05 && time < clip.outSec - 0.05);
   if (!hit) return section;
-  const right: PenTimelineClip = {
-    id: `clip_${Math.random().toString(36).slice(2, 10)}`,
+  const rightSource = (hit.sourceInSec ?? 0) + (time - hit.inSec);
+  const trackId = layer.timelineTrackId || layer.id;
+  const rightId = `layer_${Math.random().toString(36).slice(2, 10)}`;
+  const remaining = clips.flatMap((clip) =>
+    clip.id === hit.id ? [{ ...clip, outSec: time }] : [clip]
+  );
+  const leftSingle = remaining.length === 1 ? remaining[0]! : null;
+  const left: PenPageLayer = {
+    ...layer,
+    timelineTrackId: trackId,
+    clips: leftSingle ? undefined : remaining,
+    inSec: leftSingle ? leftSingle.inSec : Math.min(...remaining.map((clip) => clip.inSec)),
+    outSec: leftSingle ? leftSingle.outSec : Math.max(...remaining.map((clip) => clip.outSec)),
+    sourceInSec: leftSingle ? leftSingle.sourceInSec : layer.sourceInSec
+  };
+  const right: PenPageLayer = {
+    ...layer,
+    id: rightId,
+    timelineTrackId: trackId,
+    clips: undefined,
     inSec: time,
     outSec: hit.outSec,
-    sourceInSec: (hit.sourceInSec ?? 0) + (time - hit.inSec)
-  };
-  const nextClips = clips.flatMap((clip) =>
-    clip.id === hit.id ? [{ ...clip, outSec: time }, right] : [clip]
-  );
-  const nextLayer: PenPageLayer = {
-    ...layer,
-    clips: nextClips,
-    inSec: Math.min(...nextClips.map((clip) => clip.inSec)),
-    outSec: Math.max(...nextClips.map((clip) => clip.outSec))
+    sourceInSec: rightSource > 0 ? rightSource : undefined,
+    transitionIn: undefined,
+    zIndex: layer.zIndex + 1
   };
   const next = layers.slice();
-  next[index] = nextLayer;
+  next[index] = left;
+  next.splice(index + 1, 0, right);
   return { ...section, layers: next };
 }
 
@@ -482,6 +516,49 @@ export function sampleSectionLayers(
 
 export function sectionHasMotion(section: PenSectionContent | null | undefined): boolean {
   return (section?.layers || []).some((layer) => (layer.motion?.keys?.length || 0) > 0);
+}
+
+/** Grow the section clock when a clip ends past it. A shorter clip leaves the clock alone. */
+export function raiseTimelineTo(section: PenSectionContent, sec: number): PenSectionContent {
+  if (!Number.isFinite(sec) || !(sec > 0)) return section;
+  const current = resolveTimelineDuration(section);
+  if (sec <= current + 0.001) return section;
+  return { ...section, timelineDurationSec: sec };
+}
+
+/**
+ * Remember a video file's length. The first time, the clip becomes that length
+ * and the clock grows when the file is longer.
+ */
+export function applyVideoFileDuration(
+  section: PenSectionContent,
+  layerId: string,
+  fileDurationSec: number
+): PenSectionContent {
+  if (!Number.isFinite(fileDurationSec) || !(fileDurationSec > 0)) return section;
+  const layers = section.layers || [];
+  const layer = layers.find((item) => item.id === layerId);
+  if (!layer || layer.kind !== 'video') return section;
+  if (layer.sourceDurationSec != null) {
+    const end = layer.outSec ?? (layer.inSec ?? 0) + layer.sourceDurationSec;
+    return raiseTimelineTo(section, end);
+  }
+  const hasClips = Boolean(layer.clips && layer.clips.length);
+  const hasOut = layer.outSec != null;
+  const inSec = layer.inSec ?? 0;
+  const nextLayers = layers.map((item) => {
+    if (item.id !== layerId) return item;
+    if (hasClips || hasOut) return { ...item, sourceDurationSec: fileDurationSec };
+    return {
+      ...item,
+      sourceDurationSec: fileDurationSec,
+      inSec,
+      outSec: inSec + fileDurationSec
+    };
+  });
+  const updated = nextLayers.find((item) => item.id === layerId)!;
+  const end = updated.outSec ?? inSec + fileDurationSec;
+  return raiseTimelineTo({ ...section, layers: nextLayers }, end);
 }
 
 export function resolveTimelineDuration(

@@ -17,7 +17,7 @@ import {
   type PenStrokeStyle
 } from '@par-noir/pen-protocol';
 import { ActionBindStrip } from './ActionBindStrip';
-import { ColorSliders } from './PanelValueControls';
+import { ColorBlock, ColorSliders } from './PanelValueControls';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
 import { isPenMediaSrcRef, resolvePenMediaSrc } from '../services/penLocalMedia';
@@ -469,7 +469,7 @@ export function LayerObjectToolbar({
       <Popover open={open === 'shadow'} onClose={() => setOpen(null)}>
         <div className="space-y-2 text-[11px]">
           <div className="font-bold uppercase tracking-wide text-neutral-400">Shadow</div>
-          <ColorSliders
+          <ColorBlock
             label="Color"
             value={shadowColor || '#000000'}
             onChange={(next) => patchLayer({ shadowColor: next, textShadow: undefined })}
@@ -599,7 +599,7 @@ export function LayerObjectToolbar({
       <Popover open={open === 'stroke'} onClose={() => setOpen(null)}>
         <div className="space-y-2 text-[11px]">
           <div className="font-bold uppercase tracking-wide text-neutral-400">Stroke</div>
-          <ColorSliders
+          <ColorBlock
             label="Color"
             value={strokeColor || '#000000'}
             onChange={(next) =>

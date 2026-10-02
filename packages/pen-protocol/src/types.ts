@@ -118,7 +118,7 @@ export interface PenPageLayer {
   videoSrc?: string;
   /**
    * Smaller file the editor decodes. The original stays on videoSrc / backgroundVideo.
-   * Omitted until the proxy exists — the editor does not fall back to the original.
+   * Until the proxy exists, the editor plays the original.
    */
   editProxySrc?: string;
   /**
@@ -248,13 +248,15 @@ export interface PenPageLayer {
   outSec?: number;
   /** File time that plays when the clock reaches inSec. Omit to start at the head of the file. */
   sourceInSec?: number;
+  /** Length of the video file. The clip uses this instead of the section clock. */
+  sourceDurationSec?: number;
   /** Pieces on this track after a cut. Absent means one piece from inSec to outSec. */
   clips?: PenTimelineClip[];
   /** Layers that share this id sit on one timeline row and play in order. */
   timelineTrackId?: string;
   /** Blend into this clip from the previous one on the same track. Not a keyframe. */
   transitionIn?: PenClipTransition;
-  /** Widget group loop length. Child key times are local to this clock. */
+  /** Widget intro length. Child key times are local to this clock. */
   durationSec?: number;
   /** Sparse keyframes. Absent means the layer stays at its rest pose. */
   motion?: PenLayerMotion;
@@ -294,6 +296,8 @@ export interface PenLayerKeyframe {
 
 export interface PenLayerMotion {
   keys: PenLayerKeyframe[];
+  /** Repeat the intro while the page is open. Absent plays once and holds the end pose. */
+  loop?: boolean;
 }
 
 /** One timeline lane. Own bytes (`src`) or a licensed public doc (`licensedDocId`). */

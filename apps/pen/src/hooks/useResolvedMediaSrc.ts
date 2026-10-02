@@ -29,6 +29,8 @@ export function useResolvedMediaSrc(
 
   useEffect(() => {
     let cancelled = false;
+    let timer = 0;
+    let attempt = 0;
     if (!src) {
       setResolved(null);
       setLoading(false);
@@ -40,7 +42,7 @@ export function useResolvedMediaSrc(
       return;
     }
     setLoading(true);
-    void (async () => {
+    const load = async () => {
       try {
         let url = await resolvePenMediaSrc(src, opts?.docId);
         if (!url && isPenMediaRef(src) && opts?.docId && opts.session) {
@@ -59,21 +61,30 @@ export function useResolvedMediaSrc(
             url = put.blobUrl;
           }
         }
-        if (!cancelled) {
-          setResolved(url);
-          setLoading(false);
+        if (cancelled) return;
+        setResolved(url);
+        setLoading(false);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '';
+        if (!cancelled && message === 'doc_key_required' && attempt < 5) {
+          attempt += 1;
+          timer = window.setTimeout(() => {
+            void load();
+          }, 300);
+          return;
         }
-      } catch {
         if (!cancelled) {
           setResolved(null);
           setLoading(false);
         }
       }
-    })();
+    };
+    void load();
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [src, opts?.docId, opts?.session?.pnIdentifier]);
+  }, [src, opts?.docId, opts?.session?.pnIdentifier, opts?.session?.accessToken]);
 
   return { resolved, loading };
 }
