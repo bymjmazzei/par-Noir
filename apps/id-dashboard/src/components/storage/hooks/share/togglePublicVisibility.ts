@@ -371,7 +371,7 @@ export async function togglePublicVisibility(
         let folderId: string | undefined;
         try {
           const drive = backend as { ensureFilesFolder?: (pn: string) => Promise<string> } | undefined;
-          folderId = drive?.ensureFilesFolder
+          folderId = drive?.ensureFilesFolder && metadataPnIdentifier
             ? await drive.ensureFilesFolder(metadataPnIdentifier)
             : await backend?.getOrCreateFolder?.('par Noir', metadataPnIdentifier);
         } catch {
@@ -411,7 +411,7 @@ export async function togglePublicVisibility(
             ensureFilesFolder?: (pn: string) => Promise<string>;
             getOrCreateFolder?: (name: string, pn?: string) => Promise<string>;
           };
-          folderId = backend?.ensureFilesFolder
+          folderId = backend?.ensureFilesFolder && metadataPnIdentifier
             ? await backend.ensureFilesFolder(metadataPnIdentifier)
             : await backend?.getOrCreateFolder?.('par Noir', metadataPnIdentifier);
         } catch {
