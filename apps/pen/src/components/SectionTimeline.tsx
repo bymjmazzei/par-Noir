@@ -723,6 +723,8 @@ export function SectionTimeline({
   const viewSpan = scaleWidthPx / Math.max(pxPerSec, 0.01);
   const [graphsOpen, setGraphsOpen] = useState(false);
   const graphsRef = useRef<HTMLDivElement>(null);
+  const graphPopRef = useRef<HTMLDivElement>(null);
+  const [graphAnchor, setGraphAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const [joinMenu, setJoinMenu] = useState<TrackJoinPoint | null>(null);
   const playheadRef = useRef(playheadSec);
   const playingRef = useRef(playing);
@@ -751,9 +753,36 @@ export function SectionTimeline({
     if (!graphsReady) setGraphsOpen(false);
   }, [graphsReady]);
   useEffect(() => {
+    if (!graphsOpen) {
+      setGraphAnchor(null);
+      return;
+    }
+    const root = rootRef.current;
+    const anchor = graphsRef.current;
+    if (!root || !anchor) return;
+    const place = () => {
+      const rootBox = root.getBoundingClientRect();
+      const box = anchor.getBoundingClientRect();
+      setGraphAnchor({
+        left: box.left - rootBox.left,
+        bottom: rootBox.bottom - box.top + 4
+      });
+    };
+    place();
+    const toolbar = anchor.closest('[data-timeline-toolbar]');
+    toolbar?.addEventListener('scroll', place);
+    window.addEventListener('resize', place);
+    return () => {
+      toolbar?.removeEventListener('scroll', place);
+      window.removeEventListener('resize', place);
+    };
+  }, [graphsOpen]);
+  useEffect(() => {
     if (!graphsOpen) return;
     function onDoc(event: MouseEvent) {
-      if (graphsRef.current?.contains(event.target as Node)) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (graphsRef.current?.contains(target) || graphPopRef.current?.contains(target)) return;
       setGraphsOpen(false);
     }
     document.addEventListener('mousedown', onDoc);
@@ -1163,7 +1192,7 @@ export function SectionTimeline({
     <div
       ref={rootRef}
       data-media-timeline
-      className="min-w-0 shrink-0 select-none bg-stone-50"
+      className="relative min-w-0 shrink-0 select-none bg-stone-50"
     >
       <div
         data-timeline-resize
@@ -1267,39 +1296,6 @@ export function SectionTimeline({
               <path d="M2 14 C6 14 10 2 14 2" fill="none" stroke="currentColor" strokeWidth="1.5" />
             </svg>
           </button>
-          {graphsOpen && leaving ? (
-            <div
-              data-keyframe-graphs
-              className="absolute bottom-full left-0 z-30 mb-1 flex max-w-[16rem] gap-1 overflow-x-auto rounded-md border border-stone-200 bg-white p-1 shadow-lg"
-            >
-              {GRAPH_CURVES.map((curve) => {
-                const selected = (leaving.ease ?? 'linear') === curve.id;
-                return (
-                  <button
-                    key={curve.id}
-                    type="button"
-                    aria-pressed={selected}
-                    className={`flex w-14 shrink-0 flex-col items-center gap-0.5 px-1 py-1 text-[11px] ${
-                      selected ? 'font-semibold text-stone-700' : 'text-stone-400'
-                    }`}
-                    onClick={() => chooseEase(curve.id)}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                      <path
-                        d={curve.d}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    {curve.label}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
         </div>
         {widget ? (
           <label className="flex items-center gap-1 text-[12px] text-stone-600">
@@ -1424,6 +1420,41 @@ export function SectionTimeline({
           </button>
         </div>
       </div>
+      {graphsOpen && leaving && graphAnchor ? (
+        <div
+          ref={graphPopRef}
+          data-keyframe-graphs
+          className="absolute z-50 flex max-w-[16rem] gap-1 overflow-x-auto rounded-md border border-stone-200 bg-white p-1 shadow-lg"
+          style={{ left: graphAnchor.left, bottom: graphAnchor.bottom }}
+        >
+          {GRAPH_CURVES.map((curve) => {
+            const selected = (leaving.ease ?? 'linear') === curve.id;
+            return (
+              <button
+                key={curve.id}
+                type="button"
+                aria-pressed={selected}
+                className={`flex w-14 shrink-0 flex-col items-center gap-0.5 px-1 py-1 text-[11px] ${
+                  selected ? 'font-semibold text-stone-700' : 'text-stone-400'
+                }`}
+                onClick={() => chooseEase(curve.id)}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                  <path
+                    d={curve.d}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                {curve.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       <div ref={scaleHostRef} className="min-w-0 shrink-0 overflow-x-auto px-2 pb-2">
         <div
           data-timeline-scale

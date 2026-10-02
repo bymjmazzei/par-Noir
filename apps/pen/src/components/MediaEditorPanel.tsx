@@ -406,7 +406,7 @@ export function MediaEditorPanel({
       <ActiveSettingContext.Provider value={{ id: activeSetting, setId: setActiveSetting }}>
       <div
         data-media-settings
-        className="max-h-[5.75rem] min-h-0 shrink overflow-y-auto px-3"
+        className="relative z-10 max-h-[5.75rem] min-h-0 shrink overflow-y-auto px-3"
       >
         <div className={tab === 'basic' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <InspectorSlider

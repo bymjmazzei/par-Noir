@@ -478,6 +478,18 @@ describe('section timeline', () => {
     expect(inside).not.toContain('data-track-row="solo"');
   });
 
+  it('lifts the keyframe graph above the settings panel', () => {
+    const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
+    const graph = timeline.indexOf('data-keyframe-graphs');
+    const scale = timeline.indexOf('data-timeline-scale\n');
+    expect(graph).toBeGreaterThan(timeline.indexOf('aria-label="Delete clip"'));
+    expect(graph).toBeLessThan(scale);
+    expect(timeline.slice(timeline.indexOf('aria-label="Delete clip"'), graph)).not.toContain('overflow-x-auto');
+    expect(timeline.slice(graph, graph + 280)).toContain('z-50');
+    const settings = readFileSync(resolve(__dirname, './MediaEditorPanel.tsx'), 'utf8');
+    expect(settings).toMatch(/data-media-settings[\s\S]{0,120}z-10/);
+  });
+
   it('mounts the timeline under the text editor', () => {
     const page = readFileSync(resolve(__dirname, '../pages/DocEditorPage.tsx'), 'utf8');
     const writing = page.indexOf('writingEnabled && canvasSection && section');
