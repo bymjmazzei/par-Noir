@@ -4,7 +4,12 @@
  * Count badges sit on the icon corner (FeedEngagementSidebar layout).
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  engagementRailLayout,
+  PHONE_OVERLAY_BOTTOM_FRACTION,
+  useFeedFrameHeight
+} from '@par-noir/feed-tile';
 import {
   fetchEngagementStats,
   fetchViewerLiked,
@@ -94,6 +99,20 @@ export function TemplateEngagementRail({
   buildSlot?: ReactNode;
 }) {
   const live = placement === 'aside' && !readOnly && Boolean(fileId) && unlocked;
+  const railRef = useRef<HTMLDivElement>(null);
+  const frameHeight = useFeedFrameHeight(railRef);
+  const overlay = placement === 'overlay';
+  const layout = engagementRailLayout(
+    frameHeight,
+    overlay && frameHeight > 0 ? frameHeight * PHONE_OVERLAY_BOTTOM_FRACTION : undefined
+  );
+  const overlayStyle: CSSProperties | undefined = overlay
+    ? {
+        gap: layout.gapPx,
+        bottom: layout.bottomPx,
+        ['--pen-rail-icon' as string]: `${layout.iconPx}px`
+      }
+    : undefined;
   const [stats, setStats] = useState<PenEngagementStats>({
     likes: 0,
     comments: 0,
@@ -168,7 +187,12 @@ export function TemplateEngagementRail({
         : 'pen-template-engagement-rail pen-template-engagement-rail--aside pen-template-engagement-rail--readonly';
 
   return (
-    <div className={rootClass} aria-hidden={placement === 'overlay' || !live ? true : undefined}>
+    <div
+      ref={railRef}
+      className={rootClass}
+      style={overlayStyle}
+      aria-hidden={placement === 'overlay' || !live ? true : undefined}
+    >
       {buildSlot ? <div className="pen-template-engagement-build-slot">{buildSlot}</div> : null}
       <div className="pen-template-engagement-creator" title={authorLabel}>
         <span className="pen-template-engagement-avatar">{creatorInitials(authorLabel)}</span>

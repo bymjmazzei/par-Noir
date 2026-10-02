@@ -80,6 +80,12 @@ export function PenPhoneBrowseChrome({
         </div>
       </div>
       {engagement}
+      <div className="pen-phone-caption" data-pen-phone-caption="" aria-hidden>
+        <p className="pen-phone-caption-title">Morning light</p>
+        <p className="pen-phone-caption-body">
+          A quiet frame from the feed, the way it will read once this post is live.
+        </p>
+      </div>
       <div className="pen-phone-bottom-nav" aria-hidden>
         <span className="pen-phone-bottom-nav-item is-active" title="Home">
           <Home className="pen-phone-bottom-nav-icon" />

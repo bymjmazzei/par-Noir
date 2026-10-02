@@ -26,9 +26,11 @@ interface ProfileActionMenuProps {
   onMessage?: (creatorId: string) => void;
   indexedFiles?: IndexedFile[]; // Optional: for loading profile images
   isOwner?: boolean; // Optional: whether this is the owner's profile
+  /** Matches the engagement action icons. The circle does not grow past this. */
+  iconPx?: number;
 }
 
-export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexedFiles = [], isOwner = false }: ProfileActionMenuProps) {
+export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexedFiles = [], isOwner = false, iconPx = 22 }: ProfileActionMenuProps) {
   const { userState, getDisplayName, updateDisplayName, setUserDisplayName } = useUserState();
   const { success, error: showError, toasts, removeToast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
@@ -564,29 +566,44 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
             return newState;
           });
         }}
-        className="flex flex-col items-center space-y-1 group cursor-pointer"
+        className="relative flex items-center justify-center group cursor-pointer"
         title="Profile actions"
         type="button"
+        style={{ width: iconPx, height: iconPx }}
       >
-        <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden flex items-center justify-center border-2 border-white/20 touch-manipulation bg-black/15" style={{ filter: 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6))' }}>
+        <div
+          className="relative rounded-full overflow-hidden flex items-center justify-center border-2 border-white/20 touch-manipulation bg-black/15"
+          style={{
+            width: iconPx,
+            height: iconPx,
+            filter: 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6))'
+          }}
+        >
           {profileImageUrl && !profileImageLoading ? (
-            <img 
-              src={profileImageUrl} 
+            <img
+              src={profileImageUrl}
               alt={displayName}
               className="w-full h-full object-cover"
             />
           ) : (
-            <User className="h-6 w-6 md:h-7 md:w-7 text-white fill-white" />
+            <User
+              className="text-white fill-white"
+              style={{ width: iconPx * 0.62, height: iconPx * 0.62 }}
+            />
           )}
           {attestedPublicName && (
             <BadgeCheck
-              className="absolute bottom-0 right-0 w-4 h-4 md:w-5 md:h-5 text-blue-400 bg-black rounded-full"
+              className="absolute bottom-0 right-0 text-blue-400 bg-black rounded-full"
+              style={{ width: iconPx * 0.36, height: iconPx * 0.36 }}
               aria-label="Verified public name"
             />
           )}
         </div>
         {attestedPublicName && (
-          <span className="text-[10px] md:text-xs text-white font-medium max-w-[4.5rem] truncate drop-shadow">
+          <span
+            className="absolute left-1/2 top-full max-w-[4.5rem] -translate-x-1/2 truncate font-medium text-white drop-shadow"
+            style={{ fontSize: Math.max(7, iconPx * 0.36), marginTop: 1 }}
+          >
             {attestedPublicName}
           </span>
         )}

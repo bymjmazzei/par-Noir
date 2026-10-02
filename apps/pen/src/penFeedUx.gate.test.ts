@@ -54,17 +54,24 @@ describe('pen feed UX chrome', () => {
     expect(css).toMatch(
       /\.pen-template-engagement-count\s*\{[\s\S]*?position:\s*absolute[\s\S]*?bottom:\s*-0\.25rem/
     );
-    // Overlay is phone-chrome sibling scaled with cqh (not 60% / fixed rem)
+    // Overlay shares one icon size and stays off a fixed 60% height.
     expect(css).not.toMatch(
       /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?(?:max-)?height:\s*60%/
     );
     expect(css).toMatch(/\.pen-feed-phone-screen\s*\{[\s\S]*?container-type:\s*size/);
+    expect(css).toMatch(/\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?right:\s*2cqw/);
+    expect(css).toMatch(/--pen-rail-icon:\s*22px/);
     expect(css).toMatch(
-      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?right:\s*2cqw[\s\S]*?gap:\s*2cqh/
+      /\.pen-template-engagement-rail--overlay \.pen-template-engagement-avatar\s*\{[\s\S]*?width:\s*var\(--pen-rail-icon\)/
     );
     expect(css).toMatch(
-      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?bottom:\s*calc\(8cqh \+ 5cqh\)/
+      /\.pen-template-engagement-rail--overlay \.pen-template-engagement-icon-wrap[\s\S]*?width:\s*var\(--pen-rail-icon\)/
     );
+    expect(css).not.toMatch(/width:\s*6cqh/);
+    expect(css).toMatch(
+      /\.pen-social-live-preview-stage \.pen-feed-phone--landscape\s*\{[\s\S]*?100cqh \* 16 \/ 9/
+    );
+    expect(css).toMatch(/\.pen-phone-caption\s*\{/);
     expect(css).toMatch(/\.pen-feed-phone-chrome\s*\{/);
     expect(css).toMatch(/\.pen-phone-feed-rail\s*\{[\s\S]*?height:\s*6cqh/);
     expect(css).toMatch(/\.pen-phone-bottom-nav\s*\{[\s\S]*?height:\s*8cqh/);

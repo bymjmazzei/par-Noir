@@ -3,7 +3,8 @@
  * TikTok-style vertical engagement buttons on the right side of feed posts
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { engagementRailLayout, useFeedFrameHeight } from '@par-noir/feed-tile';
 import { Heart, MessageCircle, Bookmark, MoreVertical, Flag } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
@@ -71,7 +72,15 @@ export function FeedEngagementSidebar({
   const [showLikers, setShowLikers] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
+  const railRef = useRef<HTMLDivElement>(null);
   const LONG_PRESS_MS = 450;
+  const frameHeight = useFeedFrameHeight(railRef);
+  const rail = engagementRailLayout(frameHeight);
+  const iconStyle: CSSProperties = { width: rail.iconPx, height: rail.iconPx };
+  const countStyle: CSSProperties = {
+    filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+    fontSize: Math.max(8, rail.iconPx * 0.45)
+  };
   
   // Get creatorId - pnIdentifier is primary, others are compatibility fallbacks
   const creatorId = (file as any).pnIdentifier ||
@@ -244,19 +253,19 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div 
-      className="absolute right-2 md:right-4 flex flex-col items-center z-20 pointer-events-auto" 
-      style={{ 
-        gap: '16px',
-        // Position just a few pixels above the bottom bar (caption bar)
-        // Minimal gap - accounts for bottom bar height plus small separation
-        bottom: 'calc(32px + env(safe-area-inset-bottom, 0px) + 8px)'
+    <div
+      ref={railRef}
+      className="absolute right-2 flex flex-col items-center z-20 pointer-events-auto"
+      style={{
+        gap: rail.gapPx,
+        bottom: `calc(${rail.bottomPx}px + env(safe-area-inset-bottom, 0px))`
       }}
     >
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <ProfileActionMenu
           creatorId={creatorId}
+          iconPx={rail.iconPx}
           onViewProfile={() => {
             onCreatorClick?.(creatorId);
           }}
@@ -281,19 +290,20 @@ export function FeedEngagementSidebar({
           {!userState.isUnlocked && (
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
-          <Heart 
-            className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
+          <Heart
+            className={`transition-colors ${
               isLiked
                 ? 'text-red-500'
                 : 'text-white'
-            }`} 
+            }`}
             fill={isLiked ? 'red' : 'white'}
-            style={{ 
-              fill: isLiked ? 'red' : 'white', 
+            style={{
+              ...iconStyle,
+              fill: isLiked ? 'red' : 'white',
               filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
             }}
           />
-          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+          <span className="absolute -bottom-1 -left-1 text-white font-medium min-w-[1rem] text-center" style={countStyle}>
             {likes.toLocaleString()}
           </span>
         </div>
@@ -329,16 +339,17 @@ export function FeedEngagementSidebar({
           {!userState.isUnlocked && (
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
-          <MessageCircle 
-            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+          <MessageCircle
+            className="text-white transition-colors"
             fill="white"
-            style={{ 
-              fill: 'white', 
-              transform: 'scaleX(-1)', 
+            style={{
+              ...iconStyle,
+              fill: 'white',
+              transform: 'scaleX(-1)',
               filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
             }}
           />
-          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+          <span className="absolute -bottom-1 -left-1 text-white font-medium min-w-[1rem] text-center" style={countStyle}>
             {comments.toLocaleString()}
           </span>
         </div>
@@ -355,19 +366,20 @@ export function FeedEngagementSidebar({
           {!userState.isUnlocked && (
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
-          <Bookmark 
-            className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
+          <Bookmark
+            className={`transition-colors ${
               isSaved
                 ? 'text-yellow-400'
                 : 'text-white'
-            }`} 
+            }`}
             fill={isSaved ? 'yellow' : 'white'}
-            style={{ 
-              fill: isSaved ? 'yellow' : 'white', 
+            style={{
+              ...iconStyle,
+              fill: isSaved ? 'yellow' : 'white',
               filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
             }}
           />
-          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+          <span className="absolute -bottom-1 -left-1 text-white font-medium min-w-[1rem] text-center" style={countStyle}>
             {formatEngagementCount(saves)}
           </span>
         </div>
@@ -380,18 +392,17 @@ export function FeedEngagementSidebar({
         title="Share"
       >
         <div className="relative">
-          <svg 
-            className="h-6 w-6 md:h-7 md:w-7"
+          <svg
             viewBox="0 0 223.87 199.31"
             fill="none"
-            style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            style={{ ...iconStyle, filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
           >
             <path 
               d="M0,90.56c2.45-9.18,8.97-10.47,16.68-13.68C82.51,49.42,150.89,27.58,216.79.2c3.35-.69,7.2.32,7.08,4.26l-69.12,188.52c-4.53,6.91-14.09,7.87-21.04,4.25-20.64-14.84-41-30.05-61.77-44.72-.7-.5-1.69.21-1.23-1.72L207.08,15.94,52.13,137.23,4.07,102.91l-4.07-7.38v-4.98Z" 
               fill="white"
             />
           </svg>
-          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+          <span className="absolute -bottom-1 -left-1 text-white font-medium min-w-[1rem] text-center" style={countStyle}>
             {formatEngagementCount(shares)}
           </span>
         </div>
@@ -404,10 +415,10 @@ export function FeedEngagementSidebar({
           className="flex flex-col items-center space-y-1 group"
           title="Bookmark"
         >
-          <Bookmark 
-            className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" 
+          <Bookmark
+            className="text-white group-hover:text-yellow-400 transition-colors"
             fill="white"
-            style={{ fill: 'white' }}
+            style={{ ...iconStyle, fill: 'white' }}
           />
         </button>
       )}
@@ -426,8 +437,8 @@ export function FeedEngagementSidebar({
           title="Report copyright"
         >
           <Flag
-            className="h-6 w-6 md:h-7 md:w-7 text-white/80 hover:text-amber-400 transition-colors"
-            style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            className="text-white/80 hover:text-amber-400 transition-colors"
+            style={{ ...iconStyle, filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
           />
         </button>
       )}
@@ -443,24 +454,27 @@ export function FeedEngagementSidebar({
           className="flex flex-col items-center space-y-1 group"
           title="More options"
         >
-          <MoreVertical 
-            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+          <MoreVertical
+            className="text-white transition-colors"
             fill="white"
-            style={{ fill: 'white' }}
+            style={{ ...iconStyle, fill: 'white' }}
           />
         </button>
       )}
 
       {/* Views Count - At the bottom */}
-      <div className="flex flex-col items-center justify-center" style={{ width: '1.75rem' }}>
-        <span className="text-sm md:text-base text-white font-medium text-center leading-tight" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+      <div className="flex flex-col items-center justify-center" style={{ width: rail.iconPx, height: rail.iconPx }}>
+        <span
+          className="text-white font-medium text-center leading-none"
+          style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))', fontSize: Math.max(8, rail.iconPx * 0.5) }}
+        >
           {formatEngagementCount(views)}
         </span>
-        <span 
-          className="text-white font-medium text-center leading-tight whitespace-nowrap"
-          style={{ 
+        <span
+          className="text-white font-medium text-center leading-none whitespace-nowrap"
+          style={{
             filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
-            fontSize: 'clamp(0.5rem, 1.5vw, 0.625rem)',
+            fontSize: Math.max(6, rail.iconPx * 0.32),
             transform: 'scaleX(0.9)',
             transformOrigin: 'center'
           }}

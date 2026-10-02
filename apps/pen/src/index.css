@@ -1075,22 +1075,9 @@ body {
   line-height: 1.25;
 }
 
-/* Lift browse caption above in-phone bottom nav; soft separation from body */
+/* Phone chrome paints the feed title and caption. Hide the tile's own copy. */
 .pen-feed-phone-poster .pen-feed-tile-caption {
-  bottom: 8cqh;
-  padding: 2cqh 4cqw 1cqh;
-  right: 18cqw;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 100%);
-}
-
-.pen-feed-phone-poster .pen-feed-tile-caption-title {
-  font-size: 2.4cqh;
-  line-height: 1.2;
-}
-
-.pen-feed-phone-poster .pen-feed-tile-caption-body {
-  font-size: 2cqh;
-  line-height: 1.25;
+  display: none;
 }
 
 .pen-feed-phone-chrome {
@@ -1203,6 +1190,41 @@ body {
   height: 3.2cqh;
 }
 
+/* Lower-left title and caption. Preview chrome only — not part of the page. */
+.pen-phone-caption {
+  position: absolute;
+  left: 3cqw;
+  right: 18cqw;
+  bottom: 8cqh;
+  z-index: 20;
+  max-height: 10cqh;
+  overflow: hidden;
+  pointer-events: none;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.pen-phone-caption-title {
+  margin: 0;
+  font-size: 2.2cqh;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pen-phone-caption-body {
+  margin: 0.3cqh 0 0;
+  font-size: 1.7cqh;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.92);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Outside the template tile — catalog feed/modal; overlay on phone chrome */
 .pen-template-engagement-rail {
   position: relative;
@@ -1224,15 +1246,16 @@ body {
 }
 
 .pen-template-engagement-rail--overlay {
+  --pen-rail-icon: 22px;
   position: absolute;
   right: 2cqw;
-  /* above bottom nav (8cqh) + browse-like offset */
-  bottom: calc(8cqh + 5cqh);
+  /* JS sets bottom from the phone frame so the stack stays above the caption. */
+  bottom: 20%;
   top: auto;
   z-index: 30;
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
-  gap: 2cqh;
+  gap: 6px;
   padding: 0;
   box-sizing: border-box;
 }
@@ -1262,13 +1285,13 @@ body {
 }
 
 .pen-template-engagement-rail--overlay .pen-template-engagement-avatar {
-  width: 6cqh;
-  height: 6cqh;
-  font-size: 1.6cqh;
+  width: var(--pen-rail-icon);
+  height: var(--pen-rail-icon);
+  font-size: calc(var(--pen-rail-icon) * 0.38);
   background: rgba(255, 255, 255, 0.22);
   color: #fff;
   backdrop-filter: blur(4px);
-  border: 0.25cqh solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .pen-template-engagement-stat {
@@ -1297,14 +1320,10 @@ body {
   display: block;
 }
 
-.pen-template-engagement-rail--overlay .pen-template-engagement-icon-wrap {
-  width: 3.5cqh;
-  height: 3.5cqh;
-}
-
+.pen-template-engagement-rail--overlay .pen-template-engagement-icon-wrap,
 .pen-template-engagement-rail--overlay .pen-template-engagement-icon-wrap svg {
-  width: 3.5cqh;
-  height: 3.5cqh;
+  width: var(--pen-rail-icon);
+  height: var(--pen-rail-icon);
 }
 
 button.pen-template-engagement-stat {
@@ -1338,12 +1357,12 @@ button.pen-template-engagement-stat.is-liked {
   pointer-events: none;
 }
 
-.pen-template-engagement-rail--overlay .pen-template-engagement-count {
+.pen-template-engagement-rail--overlay .pen-template-engagement-icon-wrap .pen-template-engagement-count {
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
-  font-size: 1.6cqh;
-  bottom: -0.8cqh;
-  left: -0.6cqh;
+  font-size: calc(var(--pen-rail-icon) * 0.42);
+  bottom: calc(var(--pen-rail-icon) * -0.12);
+  left: calc(var(--pen-rail-icon) * -0.12);
 }
 
 .pen-template-engagement-builds {
@@ -1356,8 +1375,9 @@ button.pen-template-engagement-stat.is-liked {
 }
 
 .pen-template-engagement-rail--overlay .pen-template-engagement-builds {
-  width: 4cqh;
-  gap: 0.4cqh;
+  width: var(--pen-rail-icon);
+  height: var(--pen-rail-icon);
+  gap: 0;
 }
 
 .pen-template-engagement-builds .pen-template-engagement-count {
@@ -1370,8 +1390,9 @@ button.pen-template-engagement-stat.is-liked {
 }
 
 .pen-template-engagement-rail--overlay .pen-template-engagement-builds .pen-template-engagement-count {
-  font-size: 1.6cqh;
+  font-size: calc(var(--pen-rail-icon) * 0.4);
   filter: none;
+  color: #fff;
 }
 
 .pen-template-engagement-builds-label {
@@ -1383,7 +1404,8 @@ button.pen-template-engagement-stat.is-liked {
 }
 
 .pen-template-engagement-rail--overlay .pen-template-engagement-builds-label {
-  font-size: 1.2cqh;
+  font-size: calc(var(--pen-rail-icon) * 0.28);
+  color: #fff;
 }
 
 .pen-template-engagement-build-slot {
@@ -2502,7 +2524,7 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-social-live-preview-stage .pen-feed-phone--landscape {
-  width: min(100%, 36rem);
+  width: min(100%, 36rem, calc(100cqh * 16 / 9));
   height: auto;
   max-height: 100%;
   margin-inline: auto;
