@@ -30,10 +30,25 @@ export interface PenFlowBlock {
   children?: PenFlowBlock[];
 }
 
+/** Top-level blocks of a layer-0 story assigned to one paper frame. */
+export interface PenStoryRange {
+  /** Inclusive index into the story doc's top-level blocks. */
+  startBlock: number;
+  /** Exclusive index. */
+  endBlock: number;
+}
+
 export interface PenSectionContent {
   slug: string;
   /** TipTap JSON document — sole rich-text SoT for flow / primary text. */
   doc: PenTipTapNode;
+  /**
+   * Layer-0 story shared by paper frames. The story doc lives on the first
+   * frame. Later frames keep layers and an empty doc.
+   */
+  storyId?: string;
+  /** Blocks of the story doc this frame shows. Absent until the editor measures. */
+  storyRange?: PenStoryRange;
   /** Optional page layers (text boxes, images) for editable page preview. */
   layers?: PenPageLayer[];
   /**

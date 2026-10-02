@@ -114,19 +114,37 @@ type LegacySection = {
   blocks?: PenFlowBlock[];
 };
 
+function storyFields(sec: PenSectionContent): Pick<PenSectionContent, 'storyId' | 'storyRange'> {
+  const out: Pick<PenSectionContent, 'storyId' | 'storyRange'> = {};
+  if (sec.storyId) out.storyId = sec.storyId;
+  const range = sec.storyRange;
+  if (
+    range &&
+    Number.isFinite(range.startBlock) &&
+    Number.isFinite(range.endBlock)
+  ) {
+    out.storyRange = {
+      startBlock: range.startBlock,
+      endBlock: range.endBlock
+    };
+  }
+  return out;
+}
+
 /** Normalize any stored section to TipTap-doc SoT. */
 export function normalizeSection(raw: LegacySection | PenSectionContent): PenSectionContent {
   const sec = raw as PenSectionContent;
   const layers = Array.isArray(sec.layers) ? sec.layers : undefined;
   const layerGeom = sec.layerGeom === 'px' ? 'px' : undefined;
+  const story = storyFields(sec);
   if (raw && isTipTapDoc(sec.doc)) {
-    return { slug: raw.slug, doc: sec.doc, layers, layerGeom };
+    return { slug: raw.slug, doc: sec.doc, layers, layerGeom, ...story };
   }
   const legacy = raw as LegacySection;
   if (Array.isArray(legacy.blocks)) {
-    return { slug: legacy.slug, doc: blocksToTipTapDoc(legacy.blocks), layers, layerGeom };
+    return { slug: legacy.slug, doc: blocksToTipTapDoc(legacy.blocks), layers, layerGeom, ...story };
   }
-  return { ...emptySection(raw?.slug || 'body'), layers, layerGeom };
+  return { ...emptySection(raw?.slug || 'body'), layers, layerGeom, ...story };
 }
 
 export function normalizeSections(

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -977,7 +977,12 @@ export function PageCanvas({
   flowWorkspaceHeightPx,
   pageSize,
   pnIdentifier = '',
-  compact = false
+  compact = false,
+  flowing = false,
+  onBlockHeights,
+  focusBlockIndex = null,
+  focusBlockKey,
+  frameStartBlocks
 }: {
   section: PenSectionContent;
   /** Writing tree label — Body section title or selected overlay object name. */
@@ -993,6 +998,14 @@ export function PageCanvas({
   pnIdentifier?: string;
   /** Side-pane face editor. Skips the page sheet so controls below stay reachable. */
   compact?: boolean;
+  /** Layer 0 of a paper doc: this editor holds the whole story. */
+  flowing?: boolean;
+  onBlockHeights?: (heights: number[]) => void;
+  /** Top-level block the preview page starts on. */
+  focusBlockIndex?: number | null;
+  focusBlockKey?: string;
+  /** First block index of each frame, including 0. */
+  frameStartBlocks?: number[];
 }) {
   const editor = useEditor({
     extensions: [
@@ -1050,6 +1063,57 @@ export function PageCanvas({
     }
   }, [section.slug, section.doc, editor]);
 
+  const columnRef = useRef<HTMLDivElement>(null);
+  const heightsRef = useRef(onBlockHeights);
+  heightsRef.current = onBlockHeights;
+  const frameStartsRef = useRef(frameStartBlocks);
+  frameStartsRef.current = frameStartBlocks;
+  const frameKey = (frameStartBlocks || []).join(',');
+  const [sheetHeight, setSheetHeight] = useState(480);
+  const [breakTops, setBreakTops] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (!flowing) return;
+    const root = columnRef.current;
+    if (!root) return;
+    const measure = () => {
+      const prose = root.querySelector('.ProseMirror');
+      if (!prose) return;
+      const blocks = Array.from(prose.children) as HTMLElement[];
+      const heights = blocks.map((el) => {
+        const style = getComputedStyle(el);
+        const margin =
+          (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+        return Math.round(el.offsetHeight + margin);
+      });
+      heightsRef.current?.(heights);
+      const tops: number[] = [];
+      for (const start of frameStartsRef.current || []) {
+        if (start <= 0) continue;
+        const el = blocks[start];
+        if (el) tops.push(el.offsetTop);
+      }
+      setBreakTops((prev) =>
+        prev.length === tops.length && prev.every((value, index) => value === tops[index])
+          ? prev
+          : tops
+      );
+      const outer = Math.max(480, Math.round(prose.scrollHeight + 64));
+      setSheetHeight((prev) => (prev === outer ? prev : outer));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [flowing, editor, section.doc, frameKey]);
+
+  useEffect(() => {
+    if (!flowing || !focusBlockKey) return;
+    const prose = columnRef.current?.querySelector('.ProseMirror');
+    const el = prose?.children[focusBlockIndex ?? 0] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'start' });
+  }, [flowing, focusBlockKey, focusBlockIndex]);
+
   const flowW = flowWorkspaceWidthPx;
   const flowH = flowWorkspaceHeightPx;
   const open = flowW == null;
@@ -1080,10 +1144,27 @@ export function PageCanvas({
           flowWorkspaceWidthPx={flowW}
           flowWorkspaceHeightPx={flowH}
           pageSize={pageSize}
-          contentOuterHeightPx={480}
+          contentOuterHeightPx={flowing ? sheetHeight : 480}
+          suppressPageBreaks={flowing}
           className={open ? 'min-h-full shadow-none' : 'min-h-full'}
         >
-          <div className="px-10 py-8">
+          <div ref={columnRef} className="relative px-10 py-8">
+            {flowing
+              ? breakTops.map((top, index) => (
+                  <div
+                    key={`frame-${index}-${top}`}
+                    aria-hidden
+                    className="pointer-events-none absolute left-0 right-0 z-[2] flex items-center"
+                    style={{ top: top - 6, height: 12 }}
+                  >
+                    <div className="h-px flex-1 bg-neutral-300" />
+                    <span className="shrink-0 px-2 text-[9px] font-medium uppercase tracking-wider text-neutral-400">
+                      Page {index + 2}
+                    </span>
+                    <div className="h-px flex-1 bg-neutral-300" />
+                  </div>
+                ))
+              : null}
             <EditorContent editor={editor} />
           </div>
         </PageSheetColumn>

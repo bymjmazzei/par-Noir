@@ -27,7 +27,12 @@ export function PageSheetColumn({
   /** Open flow stretches to the pane. A stacked page uses its own height. */
   fitParent = true,
   /** Fill the preview slot. Content does not grow the page past the panel. */
-  containInParent = false
+  containInParent = false,
+  /**
+   * Paper story: the writing column grows with the text. Frame marks are
+   * drawn by the editor, not as equal bands that cut through a block.
+   */
+  suppressPageBreaks = false
 }: {
   pageLayout: PenPageLayout | undefined;
   flowWorkspaceWidthPx?: number | null;
@@ -44,6 +49,7 @@ export function PageSheetColumn({
   bare?: boolean;
   fitParent?: boolean;
   containInParent?: boolean;
+  suppressPageBreaks?: boolean;
 }) {
   const dims = pageSheetDims(pageLayout, {
     widthPx: flowWorkspaceWidthPx,
@@ -52,10 +58,10 @@ export function PageSheetColumn({
   });
   const pageH = dims.paged ? dims.pageHeightPx : null;
   const pages =
-    dims.paged && pageH
-      ? printPageCount(Math.max(contentOuterHeightPx, pageH), pageH)
-      : 1;
-  const flowMinH = !dims.paged
+    suppressPageBreaks || !dims.paged || !pageH
+      ? 1
+      : printPageCount(Math.max(contentOuterHeightPx, pageH), pageH);
+  const flowMinH = !dims.paged || suppressPageBreaks
     ? Math.max(
         contentOuterHeightPx,
         dims.pageHeightPx || 0,
@@ -63,7 +69,7 @@ export function PageSheetColumn({
       )
     : 0;
   const stackHeight =
-    dims.paged && pageH ? pages * pageH : Math.max(flowMinH, 240);
+    dims.paged && pageH && !suppressPageBreaks ? pages * pageH : Math.max(flowMinH, 240);
 
   return (
     <div
@@ -94,7 +100,7 @@ export function PageSheetColumn({
       }}
       onClick={onClick}
     >
-      {dims.paged && pageH && !containInParent
+      {dims.paged && pageH && !containInParent && !suppressPageBreaks
         ? Array.from({ length: pages }, (_, i) => (
             <div
               key={i}
@@ -118,7 +124,7 @@ export function PageSheetColumn({
       >
         {children}
       </div>
-      {dims.paged && pageH && !containInParent
+      {dims.paged && pageH && !containInParent && !suppressPageBreaks
         ? Array.from({ length: pages - 1 }, (_, i) => (
             <div
               key={`break-${i}`}

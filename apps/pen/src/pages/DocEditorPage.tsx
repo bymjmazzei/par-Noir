@@ -29,6 +29,19 @@ import {
   attachNotary,
   adjacentPageSlug,
   appendDocPage,
+  appendChapter,
+  appendStoryFrame,
+  applyStoryRanges,
+  assignBlocksToFrames,
+  ensureLayer0Stories,
+  frameSlugForBlock,
+  layer0DocForSection,
+  layer0Flows,
+  listLayer0Stories,
+  paperContentHeightPx,
+  rangesForFrameCount,
+  removeStoryFrame,
+  storyForSlug,
   matchPageSize,
   orientPageSize,
   pageSwipeAxisForView,
@@ -525,6 +538,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     };
   }, [bundle, session]);
 
+  const flowsBody = layer0Flows(bundle?.manifest.classId, bundle?.manifest.pageLayout);
+
   const canvasSection = useMemo(() => {
     if (!section) return undefined;
     if (!isPageLayerId(activeLayerId)) {
@@ -540,8 +555,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       // Non-text object: do not bind TipTap to Body under that object's name
       return undefined;
     }
+    if (flowsBody && section.storyId && bundle) {
+      const story = storyForSlug(bundle.sections, bundle.manifest.toc, section.slug);
+      const anchor = story
+        ? bundle.sections.find((item) => item.slug === story.anchorSlug)
+        : undefined;
+      if (anchor) return { ...section, slug: anchor.slug, doc: normalizeSection(anchor).doc };
+    }
     return section;
-  }, [section, activeLayerId]);
+  }, [section, activeLayerId, flowsBody, bundle]);
 
   const writingEnabled = useMemo(() => {
     if (!section) return false;
@@ -610,8 +632,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       if (layer?.kind === 'text') return getTextLayerDoc(layer);
       return undefined;
     }
+    if (flowsBody && section.storyId && bundle) {
+      const story = storyForSlug(bundle.sections, bundle.manifest.toc, section.slug);
+      const anchor = story
+        ? bundle.sections.find((item) => item.slug === story.anchorSlug)
+        : undefined;
+      if (anchor) return normalizeSection(anchor).doc;
+    }
     return section.doc;
-  }, [section, activeLayerId]);
+  }, [section, activeLayerId, flowsBody, bundle]);
 
   const sectionTitle = useMemo(() => {
     const fromTpl = template?.sections.find((s) => s.slug === activeSlug)?.title;
@@ -631,7 +660,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     if (!section || !bundle) return;
     let updated = section;
     if (isPageLayerId(activeLayerId)) {
-      updated = { ...section, doc: nextDoc };
+      if (flowsBody && section.storyId) {
+        const story = storyForSlug(bundle.sections, bundle.manifest.toc, section.slug);
+        const anchor = story
+          ? bundle.sections.find((item) => item.slug === story.anchorSlug)
+          : undefined;
+        updated = { ...(anchor || section), doc: nextDoc };
+      } else {
+        updated = { ...section, doc: nextDoc };
+      }
     } else if (activeLayerId) {
       try {
         updated = setTextLayerDoc(normalizeSection(section), activeLayerId, nextDoc, {
@@ -651,6 +688,61 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const onEditorReady = useCallback((ed: Editor | null) => setEditor(ed), []);
 
   const pageLayout: PenPageLayout = bundle?.manifest.pageLayout || 'flow';
+
+  useEffect(() => {
+    if (!flowsBody) return;
+    const current = bundleRef.current;
+    if (!current) return;
+    const next = ensureLayer0Stories(current.sections, current.manifest.toc, true);
+    if (next === current.sections) return;
+    persist({
+      ...current,
+      sections: next,
+      manifest: { ...current.manifest, updatedAt: new Date().toISOString() }
+    });
+  }, [flowsBody, bundle]);
+
+  function onStoryBlockHeights(heights: number[]) {
+    const current = bundleRef.current;
+    if (!current || !flowsBody || !isPageLayerId(activeLayerId)) return;
+    const story = storyForSlug(current.sections, current.manifest.toc, activeSlugRef.current);
+    if (!story) return;
+    const contentH = paperContentHeightPx(
+      current.manifest.pageLayout,
+      resolvePagePaddingPx(current.manifest.pagePresentation?.padding),
+      {
+        widthPx: current.manifest.flowWorkspaceWidthPx,
+        heightPx: current.manifest.flowWorkspaceHeightPx,
+        sizeId: current.manifest.pageSize
+      }
+    );
+    if (contentH <= 0 || !heights.length) return;
+    const rounded = heights.map((height) => Math.round(height));
+    const packed = assignBlocksToFrames(rounded, contentH);
+    let sections = current.sections;
+    let toc = current.manifest.toc;
+    if (packed.length > story.slugs.length) {
+      for (let i = story.slugs.length; i < packed.length; i += 1) {
+        const added = appendStoryFrame(sections, toc, story.storyId);
+        if (!added) break;
+        sections = added.sections;
+        toc = added.toc;
+      }
+    }
+    const frameCount = toc.filter(
+      (slug) => sections.find((item) => item.slug === slug)?.storyId === story.storyId
+    ).length;
+    const { ranges } = rangesForFrameCount(rounded, contentH, frameCount);
+    const ranged = applyStoryRanges(sections, toc, story.storyId, ranges);
+    if (ranged === sections && toc === current.manifest.toc) return;
+    const next = {
+      ...current,
+      sections: ranged,
+      manifest: { ...current.manifest, toc, updatedAt: new Date().toISOString() }
+    };
+    bundleRef.current = next;
+    persist(next);
+  }
 
   const bumpHistoryUi = useCallback(() => {
     setHistoryUi({
@@ -888,6 +980,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     };
     if (opts?.draft !== false) {
       // Stage in memory; autosave / Save draft flushes to local store.
+      bundleRef.current = stamped;
       setBundle({ ...stamped });
       setDirty(true);
       scheduleLedgerPush(stamped);
@@ -2231,7 +2324,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }
 
   const addPreviewPage = () => {
-    const added = appendDocPage(bundle.sections, bundle.manifest.toc);
+    const story = flowsBody
+      ? storyForSlug(bundle.sections, bundle.manifest.toc, activeSlug)
+      : undefined;
+    const added = story
+      ? appendStoryFrame(bundle.sections, bundle.manifest.toc, story.storyId)
+      : appendDocPage(bundle.sections, bundle.manifest.toc);
+    if (!added) return;
     persist({
       ...bundle,
       sections: added.sections,
@@ -2244,6 +2343,21 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       }
     });
     setActiveSlug(added.slug);
+  };
+
+  const addChapter = () => {
+    const added = appendChapter(bundle.sections, bundle.manifest.toc);
+    persist({
+      ...bundle,
+      sections: added.sections,
+      manifest: {
+        ...bundle.manifest,
+        toc: added.toc,
+        updatedAt: new Date().toISOString()
+      }
+    });
+    setActiveSlug(added.slug);
+    setActiveLayerId(PAGE_LAYER_ID);
   };
 
   const setPreviewPageView = (next: typeof pageView) => {
@@ -2285,7 +2399,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   };
 
   const deletePreviewPage = (slug: string) => {
-    const removed = removeDocPage(bundle.sections, bundle.manifest.toc, slug);
+    const removed = flowsBody
+      ? removeStoryFrame(bundle.sections, bundle.manifest.toc, slug)
+      : removeDocPage(bundle.sections, bundle.manifest.toc, slug);
     if (!removed) return;
     persist({
       ...bundle,
@@ -2525,12 +2641,37 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   activeSlug={activeSlug}
                   onSelectDocumentSection={setActiveSlug}
                   allowAddPage={
-                    bundle.manifest.classId === 'social.collection' ||
-                    bundle.manifest.docType === 'collection' ||
-                    template?.publishContentClass === 'collection' ||
-                    getClass(bundle.manifest.classId)?.parentId === 'library'
+                    !flowsBody &&
+                    (bundle.manifest.classId === 'social.collection' ||
+                      bundle.manifest.docType === 'collection' ||
+                      template?.publishContentClass === 'collection' ||
+                      getClass(bundle.manifest.classId)?.parentId === 'library')
                   }
                   onAddPage={addPreviewPage}
+                  flowingStory={flowsBody && isPageLayerId(activeLayerId)}
+                  chapters={listLayer0Stories(bundle.sections, bundle.manifest.toc)}
+                  activeStoryId={
+                    storyForSlug(bundle.sections, bundle.manifest.toc, activeSlug)?.storyId
+                  }
+                  onSelectChapter={(slug) => {
+                    setActiveSlug(slug);
+                    setActiveLayerId(PAGE_LAYER_ID);
+                  }}
+                  onAddChapter={flowsBody ? addChapter : undefined}
+                  partFrameSlug={(index) => {
+                    const story = storyForSlug(bundle.sections, bundle.manifest.toc, activeSlug);
+                    if (!story) return undefined;
+                    return frameSlugForBlock(
+                      bundle.sections,
+                      bundle.manifest.toc,
+                      story.storyId,
+                      index
+                    );
+                  }}
+                  onSelectFrame={(slug) => {
+                    setActiveSlug(slug);
+                    setActiveLayerId(PAGE_LAYER_ID);
+                  }}
                 />
                 <div className="ml-auto flex items-center gap-1">
                   {(getClass(bundle.manifest.classId)?.parentId === 'social' ||
@@ -2739,7 +2880,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           ) : writingEnabled && canvasSection && section ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <PageCanvas
-                key={`${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`}
+                key={
+                  flowsBody && isPageLayerId(activeLayerId)
+                    ? `story:${section.storyId || activeSlug}:${session.pnIdentifier}:${historyEpoch}`
+                    : `${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`
+                }
                 section={canvasSection}
                 sectionTitle={writingLabel}
                 pageLayout={pageLayout}
@@ -2747,6 +2892,21 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 flowWorkspaceHeightPx={bundle.manifest.flowWorkspaceHeightPx}
                 pageSize={bundle.manifest.pageSize}
                 pnIdentifier={session.pnIdentifier}
+                flowing={flowsBody && isPageLayerId(activeLayerId)}
+                focusBlockIndex={section.storyRange?.startBlock ?? 0}
+                focusBlockKey={
+                  flowsBody && isPageLayerId(activeLayerId) ? activeSlug : undefined
+                }
+                frameStartBlocks={
+                  flowsBody
+                    ? (storyForSlug(bundle.sections, bundle.manifest.toc, activeSlug)?.slugs || []).map(
+                        (slug) =>
+                          bundle.sections.find((item) => item.slug === slug)?.storyRange
+                            ?.startBlock ?? 0
+                      )
+                    : undefined
+                }
+                onBlockHeights={onStoryBlockHeights}
                 onEditorReady={onEditorReady}
                 onChange={(next) => {
                   persistWritingDoc(next.doc);
@@ -3140,8 +3300,19 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   }
                 >
                   {previewPages.map((page, index) => {
-                    const pageSection = page.section;
-                    if (!pageSection) return null;
+                    const storedSection = page.section;
+                    if (!storedSection) return null;
+                    const pageSection =
+                      flowsBody && storedSection.storyId
+                        ? {
+                            ...storedSection,
+                            doc: layer0DocForSection(
+                              bundle.sections,
+                              bundle.manifest.toc,
+                              storedSection
+                            )
+                          }
+                        : storedSection;
                     const active = page.slug === activeSlug;
                     const pageOrigin = previewStrip.origin(index);
                     const pageGuideSpan = guideSpanFor(
@@ -3269,10 +3440,20 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                                 commitWidgetSection(next);
                                 return;
                               }
+                              const stored = bundle.sections.find((item) => item.slug === next.slug);
+                              const saved =
+                                flowsBody && stored?.storyId
+                                  ? {
+                                      ...next,
+                                      doc: stored.doc,
+                                      storyId: stored.storyId,
+                                      storyRange: stored.storyRange
+                                    }
+                                  : next;
                               persist({
                                 ...bundle,
                                 sections: bundle.sections.map((s) =>
-                                  s.slug === next.slug ? next : s
+                                  s.slug === saved.slug ? saved : s
                                 ),
                                 manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
                               });
@@ -3367,7 +3548,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           >
             <EditablePagePreview
               manifest={bundle.manifest}
-              section={section}
+              section={
+                flowsBody && section.storyId
+                  ? {
+                      ...section,
+                      doc: layer0DocForSection(bundle.sections, bundle.manifest.toc, section)
+                    }
+                  : section
+              }
               activeLayerId={PAGE_LAYER_ID}
               session={session}
               onSelectLayer={() => undefined}

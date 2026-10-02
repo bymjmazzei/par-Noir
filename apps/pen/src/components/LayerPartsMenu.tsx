@@ -29,7 +29,14 @@ export function LayerPartsMenu({
   activeSlug,
   onSelectDocumentSection,
   allowAddPage,
-  onAddPage
+  onAddPage,
+  flowingStory = false,
+  chapters,
+  activeStoryId,
+  onSelectChapter,
+  onAddChapter,
+  partFrameSlug,
+  onSelectFrame
 }: {
   doc: PenTipTapNode | undefined;
   editor: Editor | null;
@@ -41,6 +48,14 @@ export function LayerPartsMenu({
   /** Collections / multipage — append a page. */
   allowAddPage?: boolean;
   onAddPage?: () => void;
+  /** Layer 0 of a paper doc: outline the story, not the page list. */
+  flowingStory?: boolean;
+  chapters?: { storyId: string; anchorSlug: string; label: string }[];
+  activeStoryId?: string;
+  onSelectChapter?: (anchorSlug: string) => void;
+  onAddChapter?: () => void;
+  partFrameSlug?: (blockIndex: number) => string | undefined;
+  onSelectFrame?: (slug: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [activePartId, setActivePartId] = useState('block:0');
@@ -52,9 +67,10 @@ export function LayerPartsMenu({
 
   const parts = useMemo(() => listLayerParts(doc), [doc]);
   const activePart: LayerPart = parts.find((p) => p.id === activePartId) || parts[0]!;
-  const showDocument = Boolean(
-    (documentSections && documentSections.length > 1) || allowAddPage
-  );
+  const showDocument =
+    !flowingStory &&
+    Boolean((documentSections && documentSections.length > 1) || allowAddPage);
+  const showChapters = Boolean(flowingStory && ((chapters && chapters.length > 1) || onAddChapter));
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +102,8 @@ export function LayerPartsMenu({
   function jumpToPart(part: LayerPart) {
     setActivePartId(part.id);
     setOpen(false);
+    const slug = flowingStory ? partFrameSlug?.(part.index) : undefined;
+    if (slug) onSelectFrame?.(slug);
     if (!editor) return;
     let targetPos = 1;
     let i = 0;
@@ -199,6 +217,44 @@ export function LayerPartsMenu({
       )}
       {open && (
         <div className="absolute left-0 top-full z-30 mt-1 min-w-[14rem] max-w-[20rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
+          {showChapters && (
+            <>
+              <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                Chapters
+              </div>
+              {chapters && chapters.length > 1
+                ? chapters.map((chapter) => (
+                    <button
+                      key={chapter.storyId}
+                      type="button"
+                      className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-[12px] ${
+                        chapter.storyId === activeStoryId
+                          ? 'bg-sky-50 font-medium text-sky-950'
+                          : 'text-stone-700 hover:bg-stone-50'
+                      }`}
+                      onClick={() => {
+                        onSelectChapter?.(chapter.anchorSlug);
+                        setOpen(false);
+                      }}
+                    >
+                      <span className="truncate">{chapter.label}</span>
+                    </button>
+                  ))
+                : null}
+              {onAddChapter && (
+                <button
+                  type="button"
+                  className="flex w-full px-2.5 py-1.5 text-left text-[12px] font-medium text-sky-800 hover:bg-sky-50"
+                  onClick={() => {
+                    onAddChapter();
+                    setOpen(false);
+                  }}
+                >
+                  + New chapter
+                </button>
+              )}
+            </>
+          )}
           {showDocument && (
             <>
               <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">

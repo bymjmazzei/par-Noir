@@ -1,6 +1,7 @@
 import type { PenPagePresentation, PenSectionContent, PenTipTapNode } from './types.js';
 import type { PenTemplate } from './templates.js';
 import { requireTemplate } from './templates.js';
+import { layer0DocForSection } from './bodyStory.js';
 import {
   docToPlainText,
   emptySection,
@@ -228,27 +229,46 @@ export function compileDocumentToNote(input: {
   docId?: string;
 }): CompileToNoteResult {
   const template = input.template ?? requireTemplate(input.templateId);
-  const bySlug = new Map(
-    input.sections.map((s) => {
-      const n = normalizeSection(s);
-      return [n.slug, n] as const;
-    })
-  );
+  const originals = input.sections.map((s) => normalizeSection(s));
+  const toc = originals.map((s) => s.slug);
+  const sliced = (section: PenSectionContent): PenSectionContent =>
+    section.storyId
+      ? { ...section, doc: layer0DocForSection(originals, toc, section) }
+      : section;
+  const bySlug = new Map(originals.map((s) => [s.slug, sliced(s)] as const));
   const pages: CompiledNotePage[] = [];
+  const emitted = new Set<string>();
   for (const sec of template.sections) {
     const body = bySlug.get(sec.slug);
     const normalized = body || emptySection(sec.slug);
     const text = sectionPlainTextForCompile(normalized);
     if (!text && sec.required) {
-      throw new Error(`missing_required_section:${sec.slug}`);
+      const storyId = originals.find((s) => s.slug === sec.slug)?.storyId;
+      const storyHasText = storyId
+        ? originals.some((s) => s.storyId === storyId && docToPlainText(sliced(s).doc).trim())
+        : false;
+      if (!storyHasText) throw new Error(`missing_required_section:${sec.slug}`);
     }
     if (text) {
+      emitted.add(sec.slug);
       pages.push({
         content: text,
         style: pageStyleForSection(normalized, input.pagePresentation),
         doc: normalized.doc?.content?.length ? normalized.doc : tipTapFromPlain(text)
       });
     }
+  }
+  for (const sec of originals) {
+    if (!sec.storyId || emitted.has(sec.slug)) continue;
+    const normalized = sliced(sec);
+    const text = sectionPlainTextForCompile(normalized);
+    if (!text) continue;
+    emitted.add(sec.slug);
+    pages.push({
+      content: text,
+      style: pageStyleForSection(normalized, input.pagePresentation),
+      doc: normalized.doc?.content?.length ? normalized.doc : tipTapFromPlain(text)
+    });
   }
   if (pages.length === 0) {
     pages.push({
