@@ -42,6 +42,8 @@ describe('widget preview builder', () => {
     const toolbar = readFileSync(resolve(root, 'LayerObjectToolbar.tsx'), 'utf8');
     expect(toolbar).toMatch(/title="Layer"/);
     expect(toolbar).toMatch(/data-layer-menu/);
+    expect(toolbar).toMatch(/label="Background"/);
+    expect(toolbar).toMatch(/AlignIcon/);
     expect(toolbar).not.toMatch(/title="Blend"/);
     expect(toolbar).toMatch(/hideObjectTools/);
     const blend = renderToStaticMarkup(

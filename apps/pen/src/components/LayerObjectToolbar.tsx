@@ -3,7 +3,7 @@
  * (page frame = layer 0, or an overlay object). Wrap stays a toggle on the bar.
  * Page (layer 0): background only. Overlay objects: background, shadow, blur, blend, opacity, and stroke.
  */
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   attachMediaToLayer,
   layerShadowCss,
@@ -162,6 +162,88 @@ function ChoiceLine({
   );
 }
 
+function SectionRow({
+  label,
+  summary,
+  open,
+  onToggle,
+  children
+}: {
+  label: string;
+  summary?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex h-5 w-full items-center gap-1"
+        onClick={onToggle}
+      >
+        <span className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500">{label}</span>
+        {summary ? <span className="truncate text-[13px] text-stone-700">{summary}</span> : null}
+      </button>
+      {open ? <div className="pb-1 pl-2">{children}</div> : null}
+    </div>
+  );
+}
+
+function LineMenu({
+  label,
+  value,
+  open,
+  onToggle,
+  children
+}: {
+  label: string;
+  value: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex h-5 w-full items-center gap-1"
+        onClick={onToggle}
+      >
+        <span className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500">{label}</span>
+        <span className="truncate text-[13px] text-stone-700">{value}</span>
+      </button>
+      {open ? <div className="pl-2">{children}</div> : null}
+    </div>
+  );
+}
+
+function AlignIcon({ align }: { align: PenStrokeAlign }) {
+  if (align === 'inside') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="3" y="3" width="18" height="18" stroke="currentColor" strokeWidth="1" opacity="0.35" />
+        <rect x="7" y="7" width="10" height="10" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    );
+  }
+  if (align === 'outside') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="2" y="2" width="20" height="20" stroke="currentColor" strokeWidth="2" />
+        <rect x="7" y="7" width="10" height="10" stroke="currentColor" strokeWidth="1" opacity="0.35" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="5" y="5" width="14" height="14" stroke="currentColor" strokeWidth="3" />
+    </svg>
+  );
+}
+
 function FillIcon({ mode }: { mode: BgMode | 'none' }) {
   if (mode === 'none') {
     return (
@@ -262,6 +344,8 @@ export function LayerObjectToolbar({
   hideObjectTools?: boolean;
 }) {
   const [panelOpen, setPanelOpen] = useState(false);
+  const [openSection, setOpenSection] = useState<string | null>(null);
+  const [openLine, setOpenLine] = useState<string | null>(null);
   const [slider, setSlider] = useState<string | null>(null);
   const [cloudOpen, setCloudOpen] = useState(false);
   const [fileKind, setFileKind] = useState<'image' | 'video'>('image');
@@ -362,7 +446,19 @@ export function LayerObjectToolbar({
 
   function closePanel() {
     setPanelOpen(false);
+    setOpenSection(null);
+    setOpenLine(null);
     setSlider(null);
+  }
+
+  function toggleSection(id: string) {
+    setOpenSection((current) => (current === id ? null : id));
+    setOpenLine(null);
+    setSlider(null);
+  }
+
+  function toggleLine(id: string) {
+    setOpenLine((current) => (current === id ? null : id));
   }
 
   function toggleSlider(id: string) {
@@ -477,53 +573,62 @@ export function LayerObjectToolbar({
               className="absolute left-0 top-full z-50 mt-1 max-h-80 w-56 overflow-y-auto rounded-md border border-stone-200 bg-white p-2 shadow-lg"
             >
               {showBackground && (
-                <div className="flex items-center gap-0.5">
-                  {fillChoices.map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      aria-label={mode === 'none' ? 'No background' : modeLabel(mode)}
-                      aria-pressed={fill.mode === mode}
-                      title={mode === 'none' ? 'No background' : modeLabel(mode)}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded ${
-                        fill.mode === mode ? 'bg-neutral-100 text-black' : 'text-neutral-500 hover:text-black'
-                      }`}
-                      onClick={() => chooseFill(mode)}
-                    >
-                      <FillIcon mode={mode} />
-                    </button>
-                  ))}
-                </div>
-              )}
-              {showBackground && fill.mode === 'color' && (
-                <ColorBox
-                  label="Color"
-                  ariaLabel="Background color"
-                  value={fill.color || '#ffffff'}
-                  onChange={(next) => {
-                    if (isPage) patchPage({ backgroundColor: next });
-                    else patchLayer({ backgroundColor: next, backgroundGradient: undefined });
-                  }}
-                />
-              )}
-              {showBackground && fill.mode === 'gradient' && (
-                <label className="mt-1 flex h-5 items-center gap-1">
-                  <span className="shrink-0 text-[13px] text-stone-500">Gradient</span>
-                  <input
-                    aria-label="Gradient"
-                    type="text"
-                    className="min-w-0 flex-1 bg-transparent text-right text-[13px] text-stone-700 outline-none"
-                    value={fill.gradient}
-                    onChange={(e) => {
-                      if (isPage) patchPage({ backgroundGradient: e.target.value });
-                      else patchLayer({ backgroundGradient: e.target.value });
-                    }}
-                  />
-                </label>
+                <SectionRow
+                  label="Background"
+                  summary={fill.mode === 'none' ? 'None' : modeLabel(fill.mode)}
+                  open={openSection === 'background'}
+                  onToggle={() => toggleSection('background')}
+                >
+                  <div className="flex items-center gap-0.5">
+                    {fillChoices.map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        aria-label={mode === 'none' ? 'No background' : modeLabel(mode)}
+                        aria-pressed={fill.mode === mode}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded ${
+                          fill.mode === mode ? 'bg-neutral-100 text-black' : 'text-neutral-500 hover:text-black'
+                        }`}
+                        onClick={() => chooseFill(mode)}
+                      >
+                        <FillIcon mode={mode} />
+                      </button>
+                    ))}
+                  </div>
+                  {fill.mode === 'color' && (
+                    <ColorBox
+                      label="Color"
+                      ariaLabel="Background color"
+                      value={fill.color || '#ffffff'}
+                      onChange={(next) => {
+                        if (isPage) patchPage({ backgroundColor: next });
+                        else patchLayer({ backgroundColor: next, backgroundGradient: undefined });
+                      }}
+                    />
+                  )}
+                  {fill.mode === 'gradient' && (
+                    <label className="flex h-5 items-center gap-1">
+                      <span className="shrink-0 text-[13px] text-stone-500">Gradient</span>
+                      <input
+                        aria-label="Gradient"
+                        type="text"
+                        className="min-w-0 flex-1 bg-transparent text-right text-[13px] text-stone-700 outline-none"
+                        value={fill.gradient}
+                        onChange={(e) => {
+                          if (isPage) patchPage({ backgroundGradient: e.target.value });
+                          else patchLayer({ backgroundGradient: e.target.value });
+                        }}
+                      />
+                    </label>
+                  )}
+                </SectionRow>
               )}
               {showChrome && (
-                <div className="mt-2">
-                  <div className="text-[13px] text-stone-800">Shadow</div>
+                <SectionRow
+                  label="Shadow"
+                  open={openSection === 'shadow'}
+                  onToggle={() => toggleSection('shadow')}
+                >
                   <ColorBox
                     label="Color"
                     ariaLabel="Shadow color"
@@ -561,26 +666,30 @@ export function LayerObjectToolbar({
                     onToggle={() => toggleSlider('shadow-y')}
                     onChange={(next) => patchLayer({ shadowOffsetY: next, textShadow: undefined })}
                   />
-                </div>
+                </SectionRow>
               )}
               {showChrome && (
-                <div className="mt-2">
-                  <ValueRow
-                    label="Blur"
-                    value={blurVal}
-                    min={0}
-                    max={24}
-                    display={`${blurVal}px`}
-                    open={slider === 'blur'}
-                    onToggle={() => toggleSlider('blur')}
-                    onChange={(next) => patchLayer({ blur: next || undefined })}
-                  />
-                </div>
+                <ValueRow
+                  label="Blur"
+                  value={blurVal}
+                  min={0}
+                  max={24}
+                  display={`${blurVal}px`}
+                  open={slider === 'blur'}
+                  onToggle={() => toggleSlider('blur')}
+                  onChange={(next) => patchLayer({ blur: next || undefined })}
+                />
               )}
               {showBlend && (
-                <div className="mt-2">
+                <SectionRow
+                  label="Blend"
+                  summary={modeLabel(blendMode)}
+                  open={openSection === 'blend'}
+                  onToggle={() => toggleSection('blend')}
+                >
                   <ValueRow
-                    label="Blend"
+                    label="Amount"
+                    ariaLabel="Blend amount"
                     value={blendAmount}
                     min={0}
                     max={100}
@@ -589,33 +698,41 @@ export function LayerObjectToolbar({
                     onToggle={() => toggleSlider('blend')}
                     onChange={(next) => patchLayer({ blendAmount: next })}
                   />
-                  {BLEND_MODES.map((mode) => (
-                    <ChoiceLine
-                      key={mode}
-                      label={modeLabel(mode)}
-                      selected={blendMode === mode}
-                      onClick={() => patchLayer({ mixBlendMode: mode })}
-                    />
-                  ))}
-                </div>
+                  <LineMenu
+                    label="Mode"
+                    value={modeLabel(blendMode)}
+                    open={openLine === 'blend-mode'}
+                    onToggle={() => toggleLine('blend-mode')}
+                  >
+                    {BLEND_MODES.map((mode) => (
+                      <ChoiceLine
+                        key={mode}
+                        label={modeLabel(mode)}
+                        selected={blendMode === mode}
+                        onClick={() => patchLayer({ mixBlendMode: mode })}
+                      />
+                    ))}
+                  </LineMenu>
+                </SectionRow>
               )}
               {showChrome && (
-                <div className="mt-2">
-                  <ValueRow
-                    label="Opacity"
-                    value={opacity}
-                    min={0}
-                    max={100}
-                    display={`${Math.round(opacity)}%`}
-                    open={slider === 'opacity'}
-                    onToggle={() => toggleSlider('opacity')}
-                    onChange={(next) => patchLayer({ opacity: next })}
-                  />
-                </div>
+                <ValueRow
+                  label="Opacity"
+                  value={opacity}
+                  min={0}
+                  max={100}
+                  display={`${Math.round(opacity)}%`}
+                  open={slider === 'opacity'}
+                  onToggle={() => toggleSlider('opacity')}
+                  onChange={(next) => patchLayer({ opacity: next })}
+                />
               )}
               {showChrome && (
-                <div className="mt-2">
-                  <div className="text-[13px] text-stone-800">Stroke</div>
+                <SectionRow
+                  label="Stroke"
+                  open={openSection === 'stroke'}
+                  onToggle={() => toggleSection('stroke')}
+                >
                   <ColorBox
                     label="Color"
                     ariaLabel="Stroke color"
@@ -642,35 +759,55 @@ export function LayerObjectToolbar({
                       })
                     }
                   />
-                  {(['solid', 'dashed', 'dotted'] as PenStrokeStyle[]).map((style) => (
-                    <ChoiceLine
-                      key={style}
-                      label={modeLabel(style)}
-                      selected={strokeStyle === style}
-                      onClick={() =>
-                        patchLayer({
-                          strokeStyle: style,
-                          strokeWidth: strokeWidth || 1,
-                          strokeColor: strokeColor || '#000000'
-                        })
-                      }
-                    />
-                  ))}
-                  {(['inside', 'center', 'outside'] as PenStrokeAlign[]).map((align) => (
-                    <ChoiceLine
-                      key={align}
-                      label={modeLabel(align)}
-                      selected={strokeAlign === align}
-                      onClick={() =>
-                        patchLayer({
-                          strokeAlign: align,
-                          strokeWidth: strokeWidth || 1,
-                          strokeColor: strokeColor || '#000000'
-                        })
-                      }
-                    />
-                  ))}
-                </div>
+                  <LineMenu
+                    label="Style"
+                    value={modeLabel(strokeStyle)}
+                    open={openLine === 'stroke-style'}
+                    onToggle={() => toggleLine('stroke-style')}
+                  >
+                    {(['solid', 'dashed', 'dotted'] as PenStrokeStyle[]).map((style) => (
+                      <ChoiceLine
+                        key={style}
+                        label={modeLabel(style)}
+                        selected={strokeStyle === style}
+                        onClick={() =>
+                          patchLayer({
+                            strokeStyle: style,
+                            strokeWidth: strokeWidth || 1,
+                            strokeColor: strokeColor || '#000000'
+                          })
+                        }
+                      />
+                    ))}
+                  </LineMenu>
+                  <div className="flex h-5 items-center gap-1">
+                    <span className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500">Align</span>
+                    <span className="flex items-center gap-0.5">
+                      {(['inside', 'center', 'outside'] as PenStrokeAlign[]).map((align) => (
+                        <button
+                          key={align}
+                          type="button"
+                          aria-label={modeLabel(align)}
+                          aria-pressed={strokeAlign === align}
+                          className={`inline-flex h-5 w-5 items-center justify-center rounded ${
+                            strokeAlign === align
+                              ? 'bg-neutral-100 text-black'
+                              : 'text-neutral-500 hover:text-black'
+                          }`}
+                          onClick={() =>
+                            patchLayer({
+                              strokeAlign: align,
+                              strokeWidth: strokeWidth || 1,
+                              strokeColor: strokeColor || '#000000'
+                            })
+                          }
+                        >
+                          <AlignIcon align={align} />
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                </SectionRow>
               )}
             </div>
           ) : null}
