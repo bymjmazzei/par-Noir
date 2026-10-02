@@ -570,7 +570,7 @@ export function LayerObjectToolbar({
           {panelOpen ? (
             <div
               data-layer-menu
-              className="absolute left-0 top-full z-50 mt-1 max-h-80 w-56 overflow-y-auto rounded-md border border-stone-200 bg-white p-2 shadow-lg"
+              className="absolute right-0 top-full z-50 mt-1 max-h-80 w-56 overflow-y-auto rounded-md border border-stone-200 bg-white p-2 shadow-lg"
             >
               {showBackground && (
                 <SectionRow
@@ -698,21 +698,21 @@ export function LayerObjectToolbar({
                     onToggle={() => toggleSlider('blend')}
                     onChange={(next) => patchLayer({ blendAmount: next })}
                   />
-                  <LineMenu
-                    label="Mode"
-                    value={modeLabel(blendMode)}
-                    open={openLine === 'blend-mode'}
-                    onToggle={() => toggleLine('blend-mode')}
-                  >
-                    {BLEND_MODES.map((mode) => (
-                      <ChoiceLine
-                        key={mode}
-                        label={modeLabel(mode)}
-                        selected={blendMode === mode}
-                        onClick={() => patchLayer({ mixBlendMode: mode })}
-                      />
-                    ))}
-                  </LineMenu>
+                  <label className="flex h-5 items-center gap-1">
+                    <span className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500">Mode</span>
+                    <select
+                      aria-label="Blend mode"
+                      className="max-w-[8rem] truncate bg-transparent text-right text-[13px] text-stone-700 outline-none"
+                      value={blendMode}
+                      onChange={(e) => patchLayer({ mixBlendMode: e.target.value })}
+                    >
+                      {BLEND_MODES.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {modeLabel(mode)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </SectionRow>
               )}
               {showChrome && (
