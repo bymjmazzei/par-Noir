@@ -2,34 +2,33 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import {
-  ENGAGEMENT_RAIL_GAP_PX,
-  ENGAGEMENT_RAIL_ICON_PX,
-  engagementRailLayout
-} from '@par-noir/feed-tile';
+import { engagementRailLayout } from '@par-noir/feed-tile';
 import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
 
 describe('engagementRailLayout', () => {
-  it('keeps a tall frame at the compact size under the midpoint', () => {
+  it('fills the lower half of a tall frame, with icons and gaps scaling together', () => {
     const frame = 900;
     const layout = engagementRailLayout(frame);
-    expect(layout.iconPx).toBe(ENGAGEMENT_RAIL_ICON_PX);
-    expect(layout.gapPx).toBe(ENGAGEMENT_RAIL_GAP_PX);
-    expect(layout.stackPx + layout.bottomPx).toBeLessThanOrEqual(frame / 2);
+    expect(layout.stackPx + layout.bottomPx).toBeCloseTo(frame / 2, 0);
+    expect(layout.iconPx).toBeGreaterThan(40);
+    const narrower = engagementRailLayout(600);
+    expect(narrower.iconPx).toBeLessThan(layout.iconPx);
+    expect(narrower.gapPx / narrower.iconPx).toBeCloseTo(layout.gapPx / layout.iconPx);
+    expect(narrower.stackPx + narrower.bottomPx).toBeCloseTo(300, 0);
   });
 
-  it('shrinks a short frame so the stack and offset stay at the midpoint', () => {
-    const frame = 220;
+  it('a short frame stays on the midpoint with smaller icons, not looser gaps', () => {
+    const frame = 320;
     const layout = engagementRailLayout(frame);
-    expect(layout.iconPx).toBeLessThan(ENGAGEMENT_RAIL_ICON_PX);
-    expect(layout.gapPx).toBeLessThan(ENGAGEMENT_RAIL_GAP_PX);
-    expect(layout.iconPx / ENGAGEMENT_RAIL_ICON_PX).toBeCloseTo(layout.gapPx / ENGAGEMENT_RAIL_GAP_PX);
-    expect(layout.stackPx + layout.bottomPx).toBeLessThanOrEqual(frame / 2 + 0.01);
+    const tall = engagementRailLayout(900);
+    expect(layout.stackPx + layout.bottomPx).toBeCloseTo(frame / 2, 0);
+    expect(layout.iconPx).toBeLessThan(tall.iconPx);
+    expect(layout.gapPx / layout.iconPx).toBeCloseTo(tall.gapPx / tall.iconPx);
   });
 
   it('uses one size for the profile circle and the action icons', () => {
     const layout = engagementRailLayout(800);
-    expect(layout.iconPx).toBe(ENGAGEMENT_RAIL_ICON_PX);
+    expect(layout.iconPx).toBeGreaterThan(0);
     expect(layout).not.toHaveProperty('avatarPx');
     const guide = readFileSync(
       resolve(__dirname, '../../../../packages/feed-tile/src/PublishedEngagementBar.tsx'),

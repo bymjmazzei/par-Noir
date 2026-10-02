@@ -255,7 +255,7 @@ export function FeedEngagementSidebar({
   return (
     <div
       ref={railRef}
-      className="absolute right-2 flex flex-col items-center z-20 pointer-events-auto"
+      className="feed-engagement-rail absolute right-2 flex flex-col items-center z-20 pointer-events-auto"
       style={{
         gap: rail.gapPx,
         bottom: `calc(${rail.bottomPx}px + env(safe-area-inset-bottom, 0px))`

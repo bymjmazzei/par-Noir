@@ -60,7 +60,7 @@ describe('pen feed UX chrome', () => {
     );
     expect(css).toMatch(/\.pen-feed-phone-screen\s*\{[\s\S]*?container-type:\s*size/);
     expect(css).toMatch(/\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?right:\s*2cqw/);
-    expect(css).toMatch(/--pen-rail-icon:\s*22px/);
+    expect(css).toMatch(/--pen-rail-icon:\s*44px/);
     expect(css).toMatch(
       /\.pen-template-engagement-rail--overlay \.pen-template-engagement-avatar\s*\{[\s\S]*?width:\s*var\(--pen-rail-icon\)/
     );

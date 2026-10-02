@@ -5,8 +5,11 @@ const useFrameEffect = typeof window === 'undefined' ? useEffect : useLayoutEffe
 
 /** Profile, like, comment, save, share, views. */
 export const ENGAGEMENT_RAIL_SLOTS = 6;
-export const ENGAGEMENT_RAIL_ICON_PX = 22;
-export const ENGAGEMENT_RAIL_GAP_PX = 6;
+/** Gap stays a fraction of the icon so both grow and shrink together. */
+export const ENGAGEMENT_RAIL_GAP_RATIO = 0.28;
+/** Fallback before the frame is measured. About twice the previous 22px mark. */
+export const ENGAGEMENT_RAIL_ICON_PX = 44;
+export const ENGAGEMENT_RAIL_GAP_PX = ENGAGEMENT_RAIL_ICON_PX * ENGAGEMENT_RAIL_GAP_RATIO;
 
 /**
  * Phone chrome keeps the rail above the bottom nav and the caption band.
@@ -24,16 +27,16 @@ export type EngagementRailLayout = {
   stackPx: number;
 };
 
-function naturalStackPx(): number {
-  return (
-    ENGAGEMENT_RAIL_SLOTS * ENGAGEMENT_RAIL_ICON_PX +
-    (ENGAGEMENT_RAIL_SLOTS - 1) * ENGAGEMENT_RAIL_GAP_PX
-  );
+function stackFromIcon(iconPx: number): { gapPx: number; stackPx: number } {
+  const gapPx = iconPx * ENGAGEMENT_RAIL_GAP_RATIO;
+  const stackPx =
+    ENGAGEMENT_RAIL_SLOTS * iconPx + (ENGAGEMENT_RAIL_SLOTS - 1) * gapPx;
+  return { gapPx, stackPx };
 }
 
 /**
- * Compact rail that never crosses the midpoint of the feed frame.
- * Tall frames keep the preferred icon and gap. Short frames scale both down together.
+ * The icon stack fills the lower half of the feed frame.
+ * Icon and gap scale together with the frame, so a resize does not only open the gaps.
  * `occupiedBottomPx` reserves a band already taken by caption or phone chrome.
  */
 export function engagementRailLayout(
@@ -41,13 +44,13 @@ export function engagementRailLayout(
   occupiedBottomPx?: number
 ): EngagementRailLayout {
   const height = Number.isFinite(frameHeightPx) ? Math.max(0, frameHeightPx) : 0;
-  const natural = naturalStackPx();
   if (height <= 0) {
+    const { gapPx, stackPx } = stackFromIcon(ENGAGEMENT_RAIL_ICON_PX);
     return {
       iconPx: ENGAGEMENT_RAIL_ICON_PX,
-      gapPx: ENGAGEMENT_RAIL_GAP_PX,
+      gapPx,
       bottomPx: occupiedBottomPx == null ? 40 : Math.max(0, occupiedBottomPx),
-      stackPx: natural
+      stackPx
     };
   }
 
@@ -56,13 +59,10 @@ export function engagementRailLayout(
   const requested = occupiedBottomPx == null ? preferredBottom : Math.max(0, occupiedBottomPx);
   const bottomPx = Math.min(requested, midpoint);
   const budget = Math.max(0, midpoint - bottomPx);
-  const scale = natural > 0 && budget < natural ? budget / natural : 1;
-  return {
-    iconPx: ENGAGEMENT_RAIL_ICON_PX * scale,
-    gapPx: ENGAGEMENT_RAIL_GAP_PX * scale,
-    bottomPx,
-    stackPx: natural * scale
-  };
+  const slots = ENGAGEMENT_RAIL_SLOTS + (ENGAGEMENT_RAIL_SLOTS - 1) * ENGAGEMENT_RAIL_GAP_RATIO;
+  const iconPx = slots > 0 ? budget / slots : 0;
+  const { gapPx, stackPx } = stackFromIcon(iconPx);
+  return { iconPx, gapPx, bottomPx, stackPx };
 }
 
 /** A collapsed card footer is not a feed frame. Short phones still count. */

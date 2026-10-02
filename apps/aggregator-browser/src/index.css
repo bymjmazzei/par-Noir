@@ -70,6 +70,12 @@ body {
     touch-action: manipulation;
   }
 
+  /* The rail sizes its own icons. A 44px floor only opens the gaps. */
+  .feed-engagement-rail button {
+    min-height: 0;
+    min-width: 0;
+  }
+
   /* Prevent text selection on swipe */
   .feed-item {
     -webkit-user-select: none;
