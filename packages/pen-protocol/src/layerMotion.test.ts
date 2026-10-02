@@ -8,6 +8,8 @@ import {
   layerClips,
   layerMediaTime,
   reorderTimelineLayer,
+  closeTrackGaps,
+  clearClipTransition,
   trackJoinPoints,
   resolveTimelineDuration,
   sampleLayerAt,
@@ -419,7 +421,54 @@ describe('timeline tracks', () => {
     ]);
     const joined = joinLayerToTrack(doc, 'b', 'a');
     expect(trackJoinPoints(joined)).toEqual([
-      { trackId: 'a', atSec: 2, fromId: 'a', toId: 'b', durationSec: 0.5 }
+      { trackId: 'a', atSec: 2, fromId: 'a', toId: 'b', durationSec: 0.5, preset: null }
+    ]);
+  });
+
+  it('keeps a join across a gap and reports a preset only after one is stored', () => {
+    const gapped = section([
+      layer({ id: 'a', kind: 'video', inSec: 0, outSec: 2, timelineTrackId: 'main' }),
+      layer({ id: 'b', kind: 'video', inSec: 5, outSec: 8, timelineTrackId: 'main' })
+    ]);
+    expect(trackJoinPoints(gapped)).toEqual([
+      { trackId: 'main', atSec: 3.5, fromId: 'a', toId: 'b', durationSec: 0.5, preset: null }
+    ]);
+    const faded = applyTransitionPreset(gapped, 'a', 'b', 'crossfade', { durationSec: 0.4 });
+    expect(trackJoinPoints(faded)[0]?.preset).toBe('crossfade');
+    expect(clearClipTransition(faded, 'b').layers?.find((item) => item.id === 'b')?.transitionIn).toBeUndefined();
+  });
+
+  it('closes gaps on the main track and leaves an overlay gap', () => {
+    const doc = section([
+      layer({ id: 'a', kind: 'video', inSec: 0, outSec: 2, timelineTrackId: 'main', zIndex: 1 }),
+      layer({ id: 'b', kind: 'video', inSec: 5, outSec: 8, timelineTrackId: 'main', zIndex: 1 }),
+      layer({ id: 'over', kind: 'video', inSec: 1, outSec: 2, timelineTrackId: 'over', zIndex: 2 })
+    ]);
+    const next = closeTrackGaps(doc, 'main');
+    const a = next.layers?.find((item) => item.id === 'a');
+    const b = next.layers?.find((item) => item.id === 'b');
+    const over = next.layers?.find((item) => item.id === 'over');
+    expect(a?.inSec).toBe(0);
+    expect(a?.outSec).toBe(2);
+    expect(b?.inSec).toBe(2);
+    expect(b?.outSec).toBe(5);
+    expect(over?.inSec).toBe(1);
+    expect(over?.outSec).toBe(2);
+    const packed = section([
+      layer({
+        id: 'row',
+        kind: 'video',
+        timelineTrackId: 'main',
+        clips: [
+          { id: 'left', inSec: 1, outSec: 2 },
+          { id: 'right', inSec: 4, outSec: 6 }
+        ]
+      })
+    ]);
+    const closed = closeTrackGaps(packed, 'main');
+    expect(closed.layers?.[0]?.clips?.map((clip) => [clip.id, clip.inSec, clip.outSec])).toEqual([
+      ['left', 1, 2],
+      ['right', 2, 4]
     ]);
   });
 
@@ -480,7 +529,7 @@ describe('splitLayerAt', () => {
     expect(right?.videoSrc).toBe('penlocal:a');
     expect(right?.timelineTrackId).toBe(left?.timelineTrackId);
     expect(trackJoinPoints(next)).toEqual([
-      { trackId: 'clip', atSec: 1.5, fromId: 'clip', toId: right!.id, durationSec: 0.5 }
+      { trackId: 'clip', atSec: 1.5, fromId: 'clip', toId: right!.id, durationSec: 0.5, preset: null }
     ]);
     expect(layerMediaTime(right!, 1.5, 1, 4)).toBeCloseTo(1.5);
     expect(doc.layers).toHaveLength(1);

@@ -286,9 +286,11 @@ export type TrackJoinPoint = {
   fromId: string;
   toId: string;
   durationSec: number;
+  /** Incoming blend. Null is a cut. */
+  preset: PenTransitionPreset | null;
 };
 
-/** Where two clips on one track meet, including the middle of an overlap. */
+/** One point between each consecutive pair on a track, including a gap. */
 export function trackJoinPoints(section: PenSectionContent): TrackJoinPoint[] {
   const layers = (section.layers || []).filter(
     (layer) => layer.kind !== 'guide' && layer.kind !== 'group' && !layer.parentGroupId
@@ -309,14 +311,14 @@ export function trackJoinPoints(section: PenSectionContent): TrackJoinPoint[] {
       const to = ordered[i + 1]!;
       const fromEnd = from.outSec ?? from.inSec ?? 0;
       const toStart = to.inSec ?? 0;
-      if (toStart > fromEnd + 0.05) continue;
-      const atSec = toStart < fromEnd ? (toStart + fromEnd) / 2 : toStart;
+      const preset = to.transitionIn?.preset ?? null;
       points.push({
         trackId,
-        atSec,
+        atSec: (fromEnd + toStart) / 2,
         fromId: from.id,
         toId: to.id,
-        durationSec: to.transitionIn?.durationSec ?? 0.5
+        durationSec: to.transitionIn?.durationSec ?? 0.5,
+        preset: preset === 'cut' ? null : preset
       });
     }
   }
@@ -800,6 +802,86 @@ function packClips(clips: PenTimelineClip[], movedId: string): PenTimelineClip[]
   return next;
 }
 
+type TrackPiece = {
+  layerId: string;
+  clipId: string | null;
+  inSec: number;
+  outSec: number;
+  order: number;
+};
+
+/**
+ * Abut finite pieces on one track. The first keeps its start.
+ * Each later piece starts where the previous ends.
+ */
+export function closeTrackGaps(section: PenSectionContent, trackId: string): PenSectionContent {
+  const layers = section.layers || [];
+  const pieces: TrackPiece[] = [];
+  let order = 0;
+  for (const layer of layers) {
+    if (layer.kind === 'guide' || layer.kind === 'group') continue;
+    if (layerTrackId(layer) !== trackId) continue;
+    if (layer.clips?.length) {
+      for (const clip of layer.clips) {
+        pieces.push({
+          layerId: layer.id,
+          clipId: clip.id,
+          inSec: clip.inSec,
+          outSec: clip.outSec,
+          order
+        });
+        order += 1;
+      }
+      continue;
+    }
+    if (layer.outSec == null) continue;
+    pieces.push({
+      layerId: layer.id,
+      clipId: null,
+      inSec: layer.inSec ?? 0,
+      outSec: layer.outSec,
+      order
+    });
+    order += 1;
+  }
+  if (pieces.length < 2) return section;
+  pieces.sort((a, b) => a.inSec - b.inSec || a.order - b.order);
+  let cursor = pieces[0]!.inSec;
+  const placed = pieces.map((piece) => {
+    const duration = Math.max(0.05, piece.outSec - piece.inSec);
+    const next = { ...piece, inSec: cursor, outSec: cursor + duration };
+    cursor += duration;
+    return next;
+  });
+  const unchanged = placed.every((piece, index) => {
+    const prev = pieces[index]!;
+    return piece.inSec === prev.inSec && piece.outSec === prev.outSec;
+  });
+  if (unchanged) return section;
+  const byLayer = new Map<string, TrackPiece[]>();
+  for (const piece of placed) {
+    const list = byLayer.get(piece.layerId) || [];
+    list.push(piece);
+    byLayer.set(piece.layerId, list);
+  }
+  return {
+    ...section,
+    layers: layers.map((layer) => {
+      const updates = byLayer.get(layer.id);
+      if (!updates) return layer;
+      if (layer.clips?.length) {
+        const clips = layer.clips.map((clip) => {
+          const hit = updates.find((piece) => piece.clipId === clip.id);
+          return hit ? { ...clip, inSec: hit.inSec, outSec: hit.outSec } : clip;
+        });
+        return writeLayerClips(layer, clips);
+      }
+      const hit = updates[0]!;
+      return { ...layer, inSec: hit.inSec, outSec: hit.outSec };
+    })
+  };
+}
+
 function writeLayerClips(layer: PenPageLayer, clips: PenTimelineClip[]): PenPageLayer {
   if (!layer.clips?.length && clips.length === 1) {
     const only = clips[0]!;
@@ -998,6 +1080,21 @@ export function deleteClipAt(
       const start = item.inSec ?? 0;
       if (start + 0.001 < hit.outSec) return item;
       return shiftLayerClock(item, -gap);
+    })
+  };
+}
+
+/** Drop the blend on the incoming clip so the join is a cut. */
+export function clearClipTransition(section: PenSectionContent, toId: string): PenSectionContent {
+  const layers = section.layers || [];
+  if (!layers.some((layer) => layer.id === toId && layer.transitionIn)) return section;
+  return {
+    ...section,
+    layers: layers.map((layer) => {
+      if (layer.id !== toId || !layer.transitionIn) return layer;
+      const next = { ...layer };
+      delete next.transitionIn;
+      return next;
     })
   };
 }

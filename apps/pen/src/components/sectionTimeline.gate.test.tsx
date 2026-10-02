@@ -182,8 +182,84 @@ describe('section timeline', () => {
       />
     );
     expect(html).toContain('data-transition-join');
+    expect(html).toContain('data-transition-preset="none"');
+    expect(html).toContain('bg-black');
+    expect(html).not.toContain('bg-stone-400');
     expect(html).toContain('data-clip-title="One"');
     expect(html).toContain('aria-label="Mute a"');
+    const faded = renderToStaticMarkup(
+      <SectionTimeline
+        section={{
+          ...joined,
+          layers: joined.layers?.map((item) =>
+            item.id === 'b' ? { ...item, transitionIn: { preset: 'crossfade', durationSec: 0.4 } } : item
+          )
+        }}
+        activeLayerId="a"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(faded).toContain('data-transition-preset="crossfade"');
+    expect(faded).toContain('bg-stone-400');
+    expect(faded).toContain('>Fade<');
+  });
+
+  it('marks the bottom row as the main track and outlines only its clips', () => {
+    const timed: PenSectionContent = {
+      ...emptySection('body'),
+      timelineDurationSec: 10,
+      layers: [
+        {
+          id: 'over',
+          kind: 'text',
+          x: 0,
+          y: 0,
+          w: 40,
+          h: 20,
+          zIndex: 2,
+          name: 'Over'
+        },
+        {
+          id: 'base',
+          kind: 'video',
+          x: 0,
+          y: 40,
+          w: 80,
+          h: 40,
+          zIndex: 1,
+          name: 'Base',
+          inSec: 1,
+          outSec: 3
+        }
+      ]
+    };
+    const html = renderToStaticMarkup(
+      <SectionTimeline
+        section={timed}
+        activeLayerId="base"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html.match(/data-track-role="main"/g)).toHaveLength(1);
+    expect(html).toMatch(/data-track-row="base"[^>]*data-track-role="main"/);
+    expect(html).toMatch(/data-track-row="over"[^>]*data-track-role="overlay"/);
+    expect(html).toContain('data-track-label="Main"');
+    expect(html).toContain('>Main<');
+    const highlight = html.slice(html.indexOf('data-track-highlight'));
+    expect(highlight.startsWith('data-track-highlight')).toBe(true);
+    expect(highlight.slice(0, highlight.indexOf('>'))).toContain('left:10%');
+    expect(highlight.slice(0, highlight.indexOf('>'))).toContain('width:20%');
+    expect(html).not.toMatch(/data-clip-lane[^>]*border-blue-600/);
   });
 
   it('gives a widget group one track and a solo layer its own', () => {

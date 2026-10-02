@@ -16,6 +16,8 @@ import {
 } from '@par-noir/feed-tile';
 import {
   applyTransitionPreset,
+  clearClipTransition,
+  closeTrackGaps,
   applyVideoFileDuration,
   defaultLayerName,
   docToPlainText,
@@ -683,6 +685,7 @@ export function SectionTimeline({
   const widget = mode === 'widget';
   const duration = resolveTimelineDuration(section);
   const groups = timelineTracks(section, scopeGroupId);
+  const mainTrackId = groups[groups.length - 1]?.trackId ?? null;
   const scopeGroup = scopeGroupId
     ? (section.layers || []).find((layer) => layer.id === scopeGroupId && layer.kind === 'group')
     : null;
@@ -913,9 +916,14 @@ export function SectionTimeline({
     onSectionChange(upsertLayer(section, { ...layer, durationSec }));
   }
 
+  function commitTrack(next: PenSectionContent, trackId: string) {
+    onSectionChange(trackId === mainTrackId ? closeTrackGaps(next, trackId) : next);
+  }
+
   function setTrim(layer: PenPageLayer, edge: 'in' | 'out', ratio: number, clipId?: string) {
     const span = viewSpan;
     const minGap = 0.1;
+    const trackId = layer.timelineTrackId || layer.id;
     const clips = layer.clips?.length ? layer.clips : null;
     if (clips && clipId) {
       const clip = clips.find((item) => item.id === clipId);
@@ -940,7 +948,7 @@ export function SectionTimeline({
         outSec: Math.max(...nextClips.map((item) => item.outSec))
       });
       const end = Math.max(...nextClips.map((item) => item.outSec));
-      onSectionChange(edge === 'out' ? raiseTimelineTo(trimmed, end) : trimmed);
+      commitTrack(edge === 'out' ? raiseTimelineTo(trimmed, end) : trimmed, trackId);
       return;
     }
     const inn = layer.inSec ?? 0;
@@ -948,17 +956,18 @@ export function SectionTimeline({
     if (edge === 'in') {
       const at = Math.min(out - minGap, Math.max(0, ratio * span));
       const source = Math.max(0, (layer.sourceInSec ?? 0) + (at - inn));
-      onSectionChange(
+      commitTrack(
         upsertLayer(section, {
           ...layer,
           inSec: at,
           sourceInSec: source > 0 ? source : undefined
-        })
+        }),
+        trackId
       );
       return;
     }
     const at = Math.max(inn + minGap, Math.max(0, ratio * span));
-    onSectionChange(raiseTimelineTo(upsertLayer(section, { ...layer, outSec: at }), at));
+    commitTrack(raiseTimelineTo(upsertLayer(section, { ...layer, outSec: at }), at), trackId);
   }
 
   function beginTrim(
@@ -1066,15 +1075,24 @@ export function SectionTimeline({
       const trackId = hit?.getAttribute('data-track-row');
       const own = scopeGroupId && layer.kind === 'group' ? layer.id : layer.timelineTrackId || layer.id;
       if (trackId && trackId !== own) {
-        const next = moveClipToTrack(section, layer.id, clipId, trackId);
+        let next = moveClipToTrack(section, layer.id, clipId, trackId);
+        if (own === mainTrackId) next = closeTrackGaps(next, own);
+        if (trackId === mainTrackId) next = closeTrackGaps(next, trackId);
         onSectionChange(next);
         return;
       }
       const delta = ((ev.clientX - startX) / Math.max(1, width)) * span;
-      onSectionChange(moveClipBy(section, layer.id, clipId, delta));
+      const moved = moveClipBy(section, layer.id, clipId, delta);
+      onSectionChange(own === mainTrackId ? closeTrackGaps(moved, own) : moved);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+  }
+
+  function clearJoin() {
+    if (!joinMenu) return;
+    onSectionChange(clearClipTransition(section, joinMenu.toId));
+    setJoinMenu(null);
   }
 
   function assignJoin(preset: PenTransitionPreset) {
@@ -1455,7 +1473,9 @@ export function SectionTimeline({
           );
           const host = groupLayer ?? layer;
           const selected = trackLayers.some((item) => item.id === activeLayerId);
-          const laneBorder = selected ? 'border-blue-600' : 'border-stone-300';
+          const role = trackId === mainTrackId ? 'main' : 'overlay';
+          const clipStart = clips.length ? Math.min(...clips.map((item) => item.clip.inSec)) : 0;
+          const clipEnd = clips.length ? Math.max(...clips.map((item) => item.clip.outSec)) : 0;
           const shown = host.visible !== false;
           const audioMuted = host.kind === 'video' ? host.mediaMuted !== false : false;
           const canMute = host.kind === 'video';
@@ -1463,6 +1483,7 @@ export function SectionTimeline({
             <div
               key={trackId}
               data-track-row={trackId}
+              data-track-role={role}
               data-track-selected={selected ? 'true' : 'false'}
               data-sampled-x={posed.x}
               className="space-y-1"
@@ -1504,9 +1525,19 @@ export function SectionTimeline({
                 </button>
                 <div
                   data-clip-lane
-                  className={`relative h-8 min-w-0 flex-1 cursor-pointer rounded-md border bg-white ${laneBorder}`}
+                  className="relative h-8 min-w-0 flex-1 cursor-pointer rounded-md border border-stone-300 bg-white"
                   onPointerDown={beginScrub}
                 >
+                {selected && clipEnd > clipStart ? (
+                  <div
+                    data-track-highlight=""
+                    className="pointer-events-none absolute bottom-0 top-0 z-[3] border-2 border-blue-600"
+                    style={{
+                      left: `${(clipStart / Math.max(viewSpan, 0.01)) * 100}%`,
+                      width: `${((clipEnd - clipStart) / Math.max(viewSpan, 0.01)) * 100}%`
+                    }}
+                  />
+                ) : null}
                 {widget && clips.length === 0 ? (
                   <span
                     data-clip-title={defaultLayerName(host, section.layers || [])}
@@ -1535,9 +1566,7 @@ export function SectionTimeline({
                   return (
                   <div
                     key={`${owner.id}-${clip.id}`}
-                    className={`absolute bottom-0 top-0 overflow-hidden border bg-white ${
-                      selected && owner.id === activeLayerId ? 'border-blue-600' : 'border-stone-300'
-                    }`}
+                    className="absolute bottom-0 top-0 overflow-hidden border border-stone-300 bg-white"
                     style={{
                       left: `${(clip.inSec / Math.max(viewSpan, 0.01)) * 100}%`,
                       width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(viewSpan, 0.01)) * 100)}%`,
@@ -1628,26 +1657,30 @@ export function SectionTimeline({
                   ? null
                   : trackJoinPoints(section)
                   .filter((point) => point.trackId === trackId)
-                  .map((point) => (
+                  .map((point) => {
+                    const titled = TRANSITION_PRESETS.find((item) => item.id === point.preset);
+                    return (
                     <button
                       key={`${point.fromId}-${point.toId}`}
                       type="button"
                       data-transition-join=""
-                      aria-label="Transition"
-                      title="Transition"
-                      className={`absolute top-1/2 z-10 h-5 -translate-x-1/2 -translate-y-1/2 rounded-sm border bg-stone-400 ${laneBorder}`}
-                      style={{
-                        left: `${(point.atSec / Math.max(viewSpan, 0.01)) * 100}%`,
-                        width: `${(point.durationSec / Math.max(viewSpan, 0.01)) * 100}%`,
-                        minWidth: '8px'
-                      }}
+                      data-transition-preset={titled ? titled.id : 'none'}
+                      aria-label={titled ? `Transition ${titled.label}` : 'Transition'}
+                      title={titled ? titled.label : 'Transition'}
+                      className={`absolute top-1/2 z-20 flex h-5 min-w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm px-1 text-[10px] leading-none ${
+                        titled ? 'bg-stone-400 text-stone-800' : 'bg-black'
+                      }`}
+                      style={{ left: `${(point.atSec / Math.max(viewSpan, 0.01)) * 100}%` }}
                       onPointerDown={(event) => {
                         event.stopPropagation();
                         event.preventDefault();
                         setJoinMenu(point);
                       }}
-                    />
-                  ))}
+                    >
+                      {titled ? titled.label : null}
+                    </button>
+                    );
+                  })}
                 {joinMenu?.trackId === trackId ? (
                   <div
                     data-transition-menu=""
@@ -1676,6 +1709,13 @@ export function SectionTimeline({
                         }}
                       />
                     </label>
+                    <button
+                      type="button"
+                      className="flex w-12 flex-col items-center justify-center gap-0.5 text-[10px] text-stone-600"
+                      onClick={clearJoin}
+                    >
+                      None
+                    </button>
                     {TRANSITION_PRESETS.map((preset) => (
                       <button
                         key={preset.id}
@@ -1716,6 +1756,11 @@ export function SectionTimeline({
                 })}
                 </div>
               </div>
+              {role === 'main' ? (
+                <div data-track-label="Main" className="pl-[5.25rem] text-[11px] leading-none text-stone-500">
+                  Main
+                </div>
+              ) : null}
               {groupLayer && !widget ? (
                 <label className="flex items-center gap-1 text-[13px] text-stone-600">
                   Loop
@@ -1782,7 +1827,7 @@ export function SectionTimeline({
                       <SpeakerIcon muted={Boolean(track.muted)} />
                     </button>
                     <div
-                      className={`relative h-5 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-md border bg-white ${laneBorder}`}
+                      className="relative h-5 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-md border border-stone-300 bg-white"
                       onPointerDown={beginScrub}
                     >
                       <div
