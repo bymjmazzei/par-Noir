@@ -15,7 +15,8 @@ import {
   type PenMediaController
 } from '@par-noir/feed-tile';
 import {
-  applyMotionPreset,
+  readLayerAnimation,
+  setLayerAnimation,
   applyTransitionPreset,
   clearClipTransition,
   closeTrackGaps,
@@ -47,8 +48,9 @@ import {
   toggleKeyframeAt,
   upsertLayer,
   wrapTime,
+  type PenAnimationSlot,
+  type PenAnimationStyle,
   type PenKeyframeEase,
-  type PenMotionPreset,
   type PenPageLayer,
   type PenSectionContent,
   type PenTransitionPreset
@@ -242,7 +244,8 @@ const TRANSITION_PRESETS: Array<{ id: PenTransitionPreset; label: string }> = [
   { id: 'slide', label: 'Slide' },
   { id: 'push', label: 'Push' },
   { id: 'dip', label: 'Dip' },
-  { id: 'zoom', label: 'Zoom' }
+  { id: 'zoom', label: 'Zoom' },
+  { id: 'unfold', label: 'Unfold' }
 ];
 
 const decorCache = new Map<string, { frames: string[]; wave: number[] }>();
@@ -387,7 +390,7 @@ function TransitionSketch({ preset }: { preset: PenTransitionPreset }) {
       />
       <span
         className="absolute inset-y-1 right-1 w-4 bg-blue-300"
-        style={{ transform: preset === 'zoom' ? 'scale(0.7)' : slide ? 'translateX(6px)' : undefined }}
+        style={{ transform: preset === 'zoom' || preset === 'unfold' ? 'scale(0.7)' : slide ? 'translateX(6px)' : undefined }}
       />
     </span>
   );
@@ -651,22 +654,24 @@ export function timelineTracksMaxPx(trackCount: number): number | null {
   );
 }
 
-const ANIMATION_CHOICES: Array<[PenMotionPreset, string]> = [
-  ['in', 'In'],
-  ['out', 'Out'],
-  ['both', 'Both'],
+const ANIMATION_STYLES: Array<[PenAnimationStyle, string]> = [
+  ['fade', 'Fade'],
   ['rise', 'Rise'],
-  ['pop', 'Pop']
+  ['drop', 'Drop'],
+  ['slideLeft', 'Slide left'],
+  ['slideRight', 'Slide right'],
+  ['zoom', 'Zoom'],
+  ['pop', 'Pop'],
+  ['unfold', 'Unfold']
 ];
 
-export function animationChoicesFor(layer: PenPageLayer): Array<[PenMotionPreset, string]> {
-  if (layer.kind === 'guide') return [];
-  return ANIMATION_CHOICES.filter(([preset]) =>
-    preset === 'rise' || preset === 'pop' ? layer.kind === 'text' : true
-  );
-}
+const ANIMATION_SLOTS: Array<[PenAnimationSlot, string]> = [
+  ['in', 'In'],
+  ['out', 'Out'],
+  ['both', 'Both']
+];
 
-export function AnimationChoices({
+export function AnimationPicker({
   layer,
   section,
   onSectionChange
@@ -675,33 +680,51 @@ export function AnimationChoices({
   section: PenSectionContent;
   onSectionChange: (next: PenSectionContent) => void;
 }) {
-  const choices = animationChoicesFor(layer);
-  if (!choices.length) return null;
+  const [slot, setSlot] = useState<PenAnimationSlot>('in');
+  const spec = readLayerAnimation(layer.motion?.animation);
+  const selected = spec.both ? (slot === 'both' ? spec.both : undefined) : spec[slot];
   return (
-    <div className="flex flex-wrap items-center gap-1" data-animations="">
-      <button
-        type="button"
-        aria-label="Animation None"
-        aria-pressed={!layer.motion?.animation}
-        className={`px-1 py-1 text-[13px] ${layer.motion?.animation ? 'text-stone-400' : 'font-semibold text-stone-700'}`}
-        onClick={() => onSectionChange(upsertLayer(section, applyMotionPreset(layer, null)))}
-      >
-        None
-      </button>
-      {choices.map(([preset, label]) => (
+    <div data-animation-picker="" className="flex min-w-0 flex-col gap-1">
+      <div className="flex gap-1" role="tablist">
+        {ANIMATION_SLOTS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-label={`Animation ${label}`}
+            aria-selected={slot === id}
+            className={`px-1 py-0.5 text-[13px] ${slot === id ? 'font-semibold text-stone-700' : 'text-stone-400'}`}
+            onClick={() => setSlot(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1">
         <button
-          key={preset}
           type="button"
-          aria-label={`Animation ${label}`}
-          aria-pressed={layer.motion?.animation === preset}
-          className={`px-1 py-1 text-[13px] ${
-            layer.motion?.animation === preset ? 'font-semibold text-stone-700' : 'text-stone-400'
-          }`}
-          onClick={() => onSectionChange(upsertLayer(section, applyMotionPreset(layer, preset)))}
+          aria-label="Animation None"
+          aria-pressed={!selected}
+          className={`px-1 py-1 text-[13px] ${selected ? 'text-stone-400' : 'font-semibold text-stone-700'}`}
+          onClick={() => onSectionChange(upsertLayer(section, setLayerAnimation(layer, slot, null)))}
         >
-          {label}
+          None
         </button>
-      ))}
+        {ANIMATION_STYLES.map(([style, label]) => (
+          <button
+            key={style}
+            type="button"
+            aria-label={`Animation ${label}`}
+            aria-pressed={selected === style}
+            className={`px-1 py-1 text-[13px] ${
+              selected === style ? 'font-semibold text-stone-700' : 'text-stone-400'
+            }`}
+            onClick={() => onSectionChange(upsertLayer(section, setLayerAnimation(layer, slot, style)))}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -786,6 +809,10 @@ export function SectionTimeline({
   const graphPopRef = useRef<HTMLDivElement>(null);
   const [graphAnchor, setGraphAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const [joinMenu, setJoinMenu] = useState<TrackJoinPoint | null>(null);
+  const [joinAnchor, setJoinAnchor] = useState<{ left: number; bottom: number } | null>(null);
+  const [animOpen, setAnimOpen] = useState(false);
+  const [animAnchor, setAnimAnchor] = useState<{ left: number; bottom: number } | null>(null);
+  const animRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef(playheadSec);
   const playingRef = useRef(playing);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -848,6 +875,19 @@ export function SectionTimeline({
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [graphsOpen]);
+  useEffect(() => {
+    if (!animOpen) return;
+    function onDoc(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (animRef.current?.contains(target) || target instanceof Element && target.closest('[data-animation-picker]')) {
+        return;
+      }
+      setAnimOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [animOpen]);
   useEffect(() => {
     if (!joinMenu) return;
     function onDoc(event: MouseEvent) {
@@ -1357,8 +1397,30 @@ export function SectionTimeline({
             </svg>
           </button>
         </div>
-        {showAnimations && active ? (
-          <AnimationChoices layer={active} section={section} onSectionChange={onSectionChange} />
+        {showAnimations && active && active.kind !== 'guide' ? (
+          <div ref={animRef} className="relative">
+            <button
+              type="button"
+              aria-label="Animations"
+              aria-expanded={animOpen}
+              className={`inline-flex h-6 shrink-0 items-center px-1 text-[12px] ${
+                animOpen ? 'font-semibold text-stone-800' : 'text-stone-500'
+              }`}
+              onClick={() => {
+                const root = rootRef.current?.getBoundingClientRect();
+                const box = animRef.current?.getBoundingClientRect();
+                if (root && box) {
+                  setAnimAnchor({
+                    left: box.left - root.left,
+                    bottom: root.bottom - box.top + 4
+                  });
+                }
+                setAnimOpen((open) => !open);
+              }}
+            >
+              Animations
+            </button>
+          </div>
         ) : null}
         {widget ? (
           <label className="flex items-center gap-1 text-[12px] text-stone-600">
@@ -1516,6 +1578,63 @@ export function SectionTimeline({
               </button>
             );
           })}
+        </div>
+      ) : null}
+      {animOpen && active && animAnchor ? (
+        <div
+          data-animation-picker=""
+          className="absolute z-50 max-w-[18rem] rounded-md border border-stone-200 bg-white p-1 shadow-lg"
+          style={{ left: animAnchor.left, bottom: animAnchor.bottom }}
+        >
+          <AnimationPicker layer={active} section={section} onSectionChange={onSectionChange} />
+        </div>
+      ) : null}
+      {joinMenu && joinAnchor ? (
+        <div
+          data-transition-menu=""
+          className="absolute z-50 flex -translate-x-1/2 gap-1 rounded-md border border-stone-200 bg-white p-1 shadow-lg"
+          style={{ left: joinAnchor.left, bottom: joinAnchor.bottom }}
+        >
+          <label className="flex w-14 flex-col items-center gap-0.5 text-[10px] text-stone-600">
+            Sec
+            <input
+              aria-label="Transition length"
+              type="number"
+              min={0.1}
+              step={0.1}
+              value={joinMenu.durationSec}
+              className="w-12 rounded border border-stone-200 px-1 py-0.5 text-center tabular-nums"
+              onChange={(event) => {
+                const durationSec = Math.max(1 / 30, Number(event.target.value) || 0.5);
+                const incoming = (section.layers || []).find((item) => item.id === joinMenu.toId);
+                const preset = incoming?.transitionIn?.preset ?? 'crossfade';
+                onSectionChange(
+                  applyTransitionPreset(section, joinMenu.fromId, joinMenu.toId, preset, {
+                    durationSec
+                  })
+                );
+                setJoinMenu({ ...joinMenu, durationSec });
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="flex w-12 flex-col items-center justify-center gap-0.5 text-[10px] text-stone-600"
+            onClick={clearJoin}
+          >
+            None
+          </button>
+          {TRANSITION_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className="flex w-12 flex-col items-center gap-0.5 text-[10px] text-stone-600"
+              onClick={() => assignJoin(preset.id)}
+            >
+              <TransitionSketch preset={preset.id} />
+              {preset.label}
+            </button>
+          ))}
         </div>
       ) : null}
       <div ref={scaleHostRef} className="min-w-0 shrink-0 overflow-x-auto px-2 pb-2">
@@ -1768,6 +1887,14 @@ export function SectionTimeline({
                       onPointerDown={(event) => {
                         event.stopPropagation();
                         event.preventDefault();
+                        const root = rootRef.current?.getBoundingClientRect();
+                        const box = event.currentTarget.getBoundingClientRect();
+                        if (root) {
+                          setJoinAnchor({
+                            left: box.left - root.left + box.width / 2,
+                            bottom: root.bottom - box.top + 4
+                          });
+                        }
                         setJoinMenu(point);
                       }}
                     >
@@ -1775,54 +1902,6 @@ export function SectionTimeline({
                     </button>
                     );
                   })}
-                {joinMenu?.trackId === trackId ? (
-                  <div
-                    data-transition-menu=""
-                    className="absolute bottom-full z-30 mb-1 flex -translate-x-1/2 gap-1 rounded-md border border-stone-200 bg-white p-1 shadow-lg"
-                    style={{ left: `${(joinMenu.atSec / Math.max(viewSpan, 0.01)) * 100}%` }}
-                  >
-                    <label className="flex w-14 flex-col items-center gap-0.5 text-[10px] text-stone-600">
-                      Sec
-                      <input
-                        aria-label="Transition length"
-                        type="number"
-                        min={0.1}
-                        step={0.1}
-                        value={joinMenu.durationSec}
-                        className="w-12 rounded border border-stone-200 px-1 py-0.5 text-center tabular-nums"
-                        onChange={(event) => {
-                          const durationSec = Math.max(1 / 30, Number(event.target.value) || 0.5);
-                          const incoming = (section.layers || []).find((item) => item.id === joinMenu.toId);
-                          const preset = incoming?.transitionIn?.preset ?? 'crossfade';
-                          onSectionChange(
-                            applyTransitionPreset(section, joinMenu.fromId, joinMenu.toId, preset, {
-                              durationSec
-                            })
-                          );
-                          setJoinMenu({ ...joinMenu, durationSec });
-                        }}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="flex w-12 flex-col items-center justify-center gap-0.5 text-[10px] text-stone-600"
-                      onClick={clearJoin}
-                    >
-                      None
-                    </button>
-                    {TRANSITION_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        className="flex w-12 flex-col items-center gap-0.5 text-[10px] text-stone-600"
-                        onClick={() => assignJoin(preset.id)}
-                      >
-                        <TransitionSketch preset={preset.id} />
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
                 {keys.map(({ key, ownerId }) => {
                   const selected = Math.abs(key.t - local) <= KEYFRAME_EPSILON_SEC;
                   return (

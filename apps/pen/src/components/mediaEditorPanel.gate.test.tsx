@@ -50,7 +50,9 @@ describe('media and widget panels', () => {
     expect(media).toContain('>Animations<');
     expect(media).not.toContain('>Transitions<');
     expect(media).toContain('aria-label="Animation In"');
-    expect(media).not.toContain('aria-label="Animation Rise"');
+    expect(media).toContain('aria-label="Animation Out"');
+    expect(media).toContain('aria-label="Animation Both"');
+    expect(media).toContain('aria-label="Animation Zoom"');
     const textLayer = renderToStaticMarkup(
       <MediaEditorPanel
         layer={{ ...portrait, kind: 'text', textDoc: { type: 'doc', content: [] } }}
@@ -58,7 +60,7 @@ describe('media and widget panels', () => {
         onSectionChange={() => undefined}
       />
     );
-    expect(textLayer).toContain('aria-label="Animation Rise"');
+    expect(textLayer).toContain('aria-label="Animation Zoom"');
     expect(textLayer).toContain('aria-label="Animation Pop"');
     expect(media).toContain('Grade');
     expect(media).toContain('Brightness');

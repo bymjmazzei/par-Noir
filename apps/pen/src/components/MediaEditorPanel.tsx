@@ -32,7 +32,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { peekPenMediaController } from '@par-noir/feed-tile';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
-import { AnimationChoices, SectionTimeline } from './SectionTimeline';
+import { AnimationPicker, SectionTimeline } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
 import { probeMediaAspect } from '../services/penAttach';
 import lookSwatch from '../assets/look-apple.jpg';
@@ -593,7 +593,7 @@ export function MediaEditorPanel({
         </div>
 
         <div className={tab === 'animations' ? 'flex flex-wrap items-center gap-1' : 'hidden'}>
-          <AnimationChoices layer={layer} section={section} onSectionChange={onSectionChange} />
+          <AnimationPicker layer={layer} section={section} onSectionChange={onSectionChange} />
         </div>
 
         <div className={tab === 'tracks' ? 'space-y-3' : 'hidden'}>

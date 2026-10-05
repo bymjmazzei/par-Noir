@@ -85,7 +85,7 @@ export type PenWidgetElement = 'svg' | 'text' | 'button' | 'time' | 'html' | 'in
 export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
 export type PenStrokeAlign = 'inside' | 'outside' | 'center';
 
-export type PenTransitionPreset = 'cut' | 'crossfade' | 'slide' | 'push' | 'dip' | 'zoom';
+export type PenTransitionPreset = 'cut' | 'crossfade' | 'slide' | 'push' | 'dip' | 'zoom' | 'unfold';
 
 /** One blend where this clip meets the previous clip on its track. */
 export interface PenClipTransition {
@@ -296,12 +296,34 @@ export interface PenLayerKeyframe {
 
 export type PenMotionPreset = 'in' | 'out' | 'both' | 'rise' | 'pop';
 
+export type PenAnimationStyle =
+  | 'fade'
+  | 'rise'
+  | 'drop'
+  | 'slideLeft'
+  | 'slideRight'
+  | 'zoom'
+  | 'pop'
+  | 'unfold';
+
+export type PenAnimationSlot = 'in' | 'out' | 'both';
+
+/** Styles on the intro, the outro, or a combo that owns both. */
+export interface PenLayerAnimation {
+  in?: PenAnimationStyle;
+  out?: PenAnimationStyle;
+  both?: PenAnimationStyle;
+}
+
 export interface PenLayerMotion {
   keys: PenLayerKeyframe[];
   /** Repeat the intro while the page is open. Absent plays once and holds the end pose. */
   loop?: boolean;
-  /** In, Out, Both, Rise, or Pop. Sampled at playback. Not drawn as timeline keys. */
-  animation?: PenMotionPreset;
+  /**
+   * Sampled at playback. Not drawn as timeline keys.
+   * A string is an older fade, rise, or pop choice.
+   */
+  animation?: PenMotionPreset | PenLayerAnimation;
 }
 
 /** One timeline lane. Own bytes (`src`) or a licensed public doc (`licensedDocId`). */

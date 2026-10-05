@@ -6,10 +6,13 @@
 import { mergeMediaFilter } from './mediaStyle.js';
 import type {
   PenKeyframeEase,
+  PenLayerAnimation,
   PenLayerKeyframe,
   PenLayerMotion,
   PenMediaCrop,
   PenMotionPreset,
+  PenAnimationSlot,
+  PenAnimationStyle,
   PenMediaFilter,
   PenPageLayer,
   PenSectionContent,
@@ -472,6 +475,13 @@ function blendTransition(
     const toScale = to.mediaScale ?? 100;
     nextFrom.mediaScale = fromScale + (140 - fromScale) * e;
     nextTo.mediaScale = 60 + (toScale - 60) * e;
+  } else if (kind === 'unfold') {
+    const width = Math.max(1, to.w);
+    const w = Math.max(1, width * e);
+    nextTo.w = w;
+    nextTo.x = to.x + (width - w) / 2;
+    nextFrom.opacity = (from.opacity ?? 100) * (1 - e);
+    nextTo.opacity = (to.opacity ?? 100) * e;
   } else {
     const width = from.w;
     nextFrom.x = from.x - width * e;
@@ -616,7 +626,7 @@ export function spanLeavingKey(layer: PenPageLayer, time: number): PenLayerKeyfr
 export const MOTION_PRESET_SEC = 0.4;
 
 const RISE_PX = 28;
-const POP_SCALE = 0.82;
+const SLIDE_PX = 48;
 
 function presetWindow(layer: PenPageLayer, spanSec?: number): { start: number; end: number; dur: number } {
   const start = layer.inSec ?? 0;
@@ -625,90 +635,190 @@ function presetWindow(layer: PenPageLayer, spanSec?: number): { start: number; e
   return { start, end, dur: Math.min(MOTION_PRESET_SEC, span / 2) };
 }
 
-function animationKeys(layer: PenPageLayer, preset: PenMotionPreset, spanSec?: number): PenLayerKeyframe[] {
-  const { start, end, dur } = presetWindow(layer, spanSec);
-  const keys: PenLayerKeyframe[] = [];
-  const fadeIn = preset === 'in' || preset === 'both' || preset === 'rise';
-  const fadeOut = preset === 'out' || preset === 'both';
-  if (fadeIn) {
-    keys.push({ t: start, opacity: 0, ease: 'easeOut' });
-    keys.push({ t: start + dur, opacity: 100 });
+/** Older single-name choices still play. Rise and Pop stay an intro. */
+export function readLayerAnimation(animation: PenLayerMotion['animation']): PenLayerAnimation {
+  if (!animation) return {};
+  if (typeof animation === 'string') {
+    if (animation === 'rise') return { in: 'rise' };
+    if (animation === 'pop') return { in: 'pop' };
+    if (animation === 'out') return { out: 'fade' };
+    if (animation === 'both') return { both: 'fade' };
+    if (animation === 'in') return { in: 'fade' };
+    return {};
   }
-  if (fadeOut) {
-    keys.push({ t: end - dur, opacity: 100, ease: 'easeIn' });
-    keys.push({ t: end, opacity: 0 });
-  }
-  if (preset === 'rise') {
-    keys.push({ t: start, y: layer.y + RISE_PX, ease: 'easeOut' });
-    keys.push({ t: start + dur, y: layer.y });
-  }
-  if (preset === 'pop') {
-    const w = Math.max(1, layer.w * POP_SCALE);
-    const h = Math.max(1, layer.h * POP_SCALE);
-    keys.push({
-      t: start,
-      w,
-      h,
-      x: layer.x + (layer.w - w) / 2,
-      y: layer.y + (layer.h - h) / 2,
-      ease: 'easeOut'
-    });
-    keys.push({ t: start + dur, w: layer.w, h: layer.h, x: layer.x, y: layer.y });
-  }
-  return keys;
+  return animation;
 }
 
-const ANIMATION_CHANNELS: Record<PenMotionPreset, Array<'opacity' | 'x' | 'y' | 'w' | 'h'>> = {
-  in: ['opacity'],
-  out: ['opacity'],
-  both: ['opacity'],
-  rise: ['opacity', 'y'],
-  pop: ['x', 'y', 'w', 'h']
-};
+function stylePair(layer: PenPageLayer, style: PenAnimationStyle): { from: PenLayerKeyframe; to: PenLayerKeyframe } {
+  const from: PenLayerKeyframe = { t: 0 };
+  const to: PenLayerKeyframe = { t: 0 };
+  const fades = style !== 'pop';
+  if (fades) {
+    from.opacity = 0;
+    to.opacity = 100;
+  }
+  if (style === 'rise') {
+    from.y = layer.y + RISE_PX;
+    to.y = layer.y;
+  } else if (style === 'drop') {
+    from.y = layer.y - RISE_PX;
+    to.y = layer.y;
+  } else if (style === 'slideLeft') {
+    from.x = layer.x + SLIDE_PX;
+    to.x = layer.x;
+  } else if (style === 'slideRight') {
+    from.x = layer.x - SLIDE_PX;
+    to.x = layer.x;
+  } else if (style === 'zoom' || style === 'pop') {
+    const scale = style === 'zoom' ? 0.72 : 0.82;
+    const w = Math.max(1, layer.w * scale);
+    const h = Math.max(1, layer.h * scale);
+    from.w = w;
+    from.h = h;
+    from.x = layer.x + (layer.w - w) / 2;
+    from.y = layer.y + (layer.h - h) / 2;
+    to.w = layer.w;
+    to.h = layer.h;
+    to.x = layer.x;
+    to.y = layer.y;
+  } else if (style === 'unfold') {
+    const w = 1;
+    from.w = w;
+    from.x = layer.x + (layer.w - w) / 2;
+    to.w = layer.w;
+    to.x = layer.x;
+  }
+  return { from, to };
+}
 
-function overlayAnimation(
+function placedPair(
+  pair: { from: PenLayerKeyframe; to: PenLayerKeyframe },
+  fromT: number,
+  toT: number,
+  reverse: boolean
+): PenLayerKeyframe[] {
+  const startPose = reverse ? pair.to : pair.from;
+  const endPose = reverse ? pair.from : pair.to;
+  return [
+    { ...startPose, t: fromT, ease: reverse ? 'easeIn' : 'easeOut' },
+    { ...endPose, t: toT }
+  ];
+}
+
+function foldAnimKeys(keys: PenLayerKeyframe[]): PenLayerKeyframe[] {
+  const merged = new Map<number, PenLayerKeyframe>();
+  for (const key of keys) {
+    const t = quantizeTime(key.t);
+    const prev = merged.get(t);
+    merged.set(t, prev ? { ...prev, ...key, t } : { ...key, t });
+  }
+  return [...merged.values()].sort((a, b) => a.t - b.t);
+}
+
+function keysForSpec(layer: PenPageLayer, spec: PenLayerAnimation, spanSec?: number): PenLayerKeyframe[] {
+  const { start, end, dur } = presetWindow(layer, spanSec);
+  const keys: PenLayerKeyframe[] = [];
+  const add = (style: PenAnimationStyle | undefined, slot: PenAnimationSlot) => {
+    if (!style) return;
+    const pair = stylePair(layer, style);
+    if (slot === 'out') keys.push(...placedPair(pair, end - dur, end, true));
+    else keys.push(...placedPair(pair, start, start + dur, false));
+    if (slot === 'both') keys.push(...placedPair(pair, end - dur, end, true));
+  };
+  if (spec.both) add(spec.both, 'both');
+  else {
+    add(spec.in, 'in');
+    add(spec.out, 'out');
+  }
+  return foldAnimKeys(keys);
+}
+
+function overlayFromKeys(
   rest: PenPageLayer,
   posed: PenPageLayer,
-  preset: PenMotionPreset,
-  time: number,
-  spanSec?: number
+  keys: PenLayerKeyframe[],
+  time: number
 ): PenPageLayer {
-  const keys = animationKeys(rest, preset, spanSec);
+  if (!keys.length) return posed;
   const next = posed === rest ? { ...posed } : posed;
-  for (const prop of ANIMATION_CHANNELS[preset]) {
+  for (const prop of ['opacity', 'x', 'y', 'w', 'h'] as const) {
+    if (!keys.some((key) => key[prop] !== undefined)) continue;
     const value = sampleNumeric(keys, (key) => key[prop], time);
     if (value !== undefined) next[prop] = value;
   }
   return next;
 }
 
+function overlayAnimation(
+  rest: PenPageLayer,
+  posed: PenPageLayer,
+  animation: PenLayerMotion['animation'],
+  time: number,
+  spanSec?: number
+): PenPageLayer {
+  const spec = readLayerAnimation(animation);
+  if (!spec.in && !spec.out && !spec.both) return posed;
+  return overlayFromKeys(rest, posed, keysForSpec(rest, spec, spanSec), time);
+}
+
 function motionKeeping(layer: PenPageLayer, keys: PenLayerKeyframe[]): PenLayerMotion | undefined {
   const loop = layer.motion?.loop;
   const animation = layer.motion?.animation;
-  if (!keys.length && !loop && !animation) return undefined;
+  const spec = readLayerAnimation(animation);
+  const hasAnimation = Boolean(spec.in || spec.out || spec.both || typeof animation === 'string');
+  if (!keys.length && !loop && !hasAnimation) return undefined;
   return {
     keys,
     ...(loop ? { loop: true } : {}),
-    ...(animation ? { animation } : {})
+    ...(hasAnimation && animation ? { animation } : {})
   };
 }
 
-/** Stores In, Out, Both, Rise, or Pop. Does not write timeline keys. Null clears it. */
-export function applyMotionPreset(
+/** Sets one slot. Both clears In and Out. In or Out clears Both. Null clears that slot. */
+export function setLayerAnimation(
   layer: PenPageLayer,
-  preset: PenMotionPreset | null
+  slot: PenAnimationSlot,
+  style: PenAnimationStyle | null
 ): PenPageLayer {
+  const next: PenLayerAnimation = { ...readLayerAnimation(layer.motion?.animation) };
+  if (slot === 'both') {
+    delete next.in;
+    delete next.out;
+    if (style) next.both = style;
+    else delete next.both;
+  } else if (style) {
+    delete next.both;
+    next[slot] = style;
+  } else {
+    delete next[slot];
+  }
+  const has = Boolean(next.in || next.out || next.both);
   const keys = layer.motion?.keys || [];
   const loop = layer.motion?.loop;
-  if (!preset && !keys.length && !loop) return { ...layer, motion: undefined };
+  if (!has && !keys.length && !loop) return { ...layer, motion: undefined };
   return {
     ...layer,
     motion: {
       keys,
       ...(loop ? { loop: true } : {}),
-      ...(preset ? { animation: preset } : {})
+      ...(has ? { animation: next } : {})
     }
   };
+}
+
+/** Older call. Writes a fade in that slot, or Rise/Pop as an intro. Null clears the animation. */
+export function applyMotionPreset(
+  layer: PenPageLayer,
+  preset: PenMotionPreset | null
+): PenPageLayer {
+  if (preset === 'rise') return setLayerAnimation(layer, 'in', 'rise');
+  if (preset === 'pop') return setLayerAnimation(layer, 'in', 'pop');
+  if (preset === 'out') return setLayerAnimation(layer, 'out', 'fade');
+  if (preset === 'both') return setLayerAnimation(layer, 'both', 'fade');
+  if (preset === 'in') return setLayerAnimation(layer, 'in', 'fade');
+  let cleared = setLayerAnimation(layer, 'in', null);
+  cleared = setLayerAnimation(cleared, 'out', null);
+  return setLayerAnimation(cleared, 'both', null);
 }
 
 /** Set the curve on the span that contains `time`. Does not add or move keys. */

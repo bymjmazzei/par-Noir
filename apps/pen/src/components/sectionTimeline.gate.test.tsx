@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, sampleLayerAt, type PenSectionContent } from '@par-noir/pen-protocol';
-import { SectionTimeline, shouldSeekTimelineVideo, timelineTracksMaxPx } from './SectionTimeline';
+import { AnimationPicker, SectionTimeline, shouldSeekTimelineVideo, timelineTracksMaxPx } from './SectionTimeline';
 
 const section: PenSectionContent = {
   ...emptySection('body'),
@@ -67,7 +67,8 @@ describe('section timeline', () => {
     expect(html).toMatch(/aria-label="Graph"[^>]*disabled=""/);
     expect(html).not.toContain('data-keyframe-graphs');
     expect(html).toContain('data-keyframe="title:0"');
-    expect(html).toContain('aria-label="Animation Rise"');
+    expect(html).toContain('aria-label="Animations"');
+    expect(html).not.toContain('data-animation-picker');
     const between = renderToStaticMarkup(
       <SectionTimeline
         section={section}
@@ -531,8 +532,8 @@ describe('section timeline', () => {
     );
     expect(html).not.toContain('data-keyframe="fade:');
     expect(html).toContain('data-keyframe="marked:1"');
-    expect(html).toContain('aria-label="Animation In"');
-    expect(html).not.toContain('aria-label="Animation Rise"');
+    expect(html).toContain('aria-label="Animations"');
+    expect(html).not.toContain('data-animation-picker');
     const text = renderToStaticMarkup(
       <SectionTimeline
         section={animated}
@@ -545,9 +546,29 @@ describe('section timeline', () => {
         onSectionChange={() => undefined}
       />
     );
-    expect(text).toContain('aria-label="Animation Rise"');
-    expect(text).toContain('aria-label="Animation Pop"');
+    expect(text).toContain('aria-label="Animations"');
     expect(text.match(/data-keyframe="[^"]+"/g)).toEqual(['data-keyframe="marked:1"']);
+    const picker = renderToStaticMarkup(
+      <AnimationPicker
+        layer={animated.layers![0]!}
+        section={animated}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(picker).toContain('aria-label="Animation In"');
+    expect(picker).toContain('aria-label="Animation Out"');
+    expect(picker).toContain('aria-label="Animation Both"');
+    expect(picker).toContain('aria-label="Animation Zoom"');
+  });
+
+  it('keeps the transition menu on the timeline root', () => {
+    const source = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
+    const menu = source.indexOf('data-transition-menu');
+    const lane = source.indexOf('data-clip-lane');
+    expect(menu).toBeGreaterThan(-1);
+    expect(lane).toBeGreaterThan(menu);
+    expect(source).toContain("label: 'Fade'");
+    expect(source).toContain("label: 'Unfold'");
   });
 
   it('mounts the timeline under the text editor', () => {

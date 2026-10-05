@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { copyWidgetLayersIntoSection } from './layers.js';
 import {
   applyLayoutAtPlayhead,
-  applyMotionPreset,
   applyTransitionPreset,
   applyVideoFileDuration,
   joinLayerToTrack,
@@ -17,6 +16,7 @@ import {
   sampleSectionLayers,
   sectionHasMotion,
   setKeyframeEase,
+  setLayerAnimation,
   detachClipAsLayer,
   moveClipBy,
   moveClipToTrack,
@@ -322,6 +322,9 @@ describe('transition presets', () => {
     const zoomed = applyTransitionPreset(seq, 'a', 'b', 'zoom', { durationSec: 0.4 });
     const end = sampleSectionLayers(zoomed, 2.2);
     expect(end.find((item) => item.id === 'a')?.mediaScale).toBeCloseTo(140);
+    const unfolded = applyTransitionPreset(seq, 'a', 'b', 'unfold', { durationSec: 0.4 });
+    const opening = sampleSectionLayers(unfolded, 2);
+    expect(opening.find((item) => item.id === 'b')?.w).toBeLessThan(80);
   });
 });
 
@@ -602,27 +605,26 @@ describe('copyWidgetLayersIntoSection motion', () => {
     expect(sampleLayerAt(kid!, 1).x).toBe(66);
   });
 
-  it('In is invisible at the start and visible after 0.4s', () => {
+  it('Fade In is invisible at the start and visible after 0.4s', () => {
     const host = section([layer({ id: 't', opacity: 100, motion: { keys: [{ t: 1, x: 8 }] } })]);
-    const faded = applyMotionPreset(host.layers![0]!, 'in');
-    expect(faded.motion?.animation).toBe('in');
+    const faded = setLayerAnimation(host.layers![0]!, 'in', 'fade');
+    expect(faded.motion?.animation).toEqual({ in: 'fade' });
     expect(faded.motion?.keys).toEqual([{ t: 1, x: 8 }]);
     expect(sampleLayerAt(faded, 0).opacity).toBe(0);
     expect(sampleLayerAt(faded, 0.4).opacity).toBe(100);
     expect(sampleLayerAt(faded, 1).x).toBe(8);
-    const out = applyMotionPreset(host.layers![0]!, 'out');
-    expect(sampleLayerAt(out, 0).opacity).toBe(100);
-    expect(sampleLayerAt(out, 5).opacity).toBe(0);
-    const both = applyMotionPreset(host.layers![0]!, 'both');
-    expect(sampleLayerAt(both, 0).opacity).toBe(0);
-    expect(sampleLayerAt(both, 5).opacity).toBe(0);
-    const rise = applyMotionPreset(host.layers![0]!, 'rise');
-    expect(rise.motion?.keys).toEqual([{ t: 1, x: 8 }]);
-    expect(sampleLayerAt(rise, 0.4).y).toBe(0);
-    const pop = applyMotionPreset(host.layers![0]!, 'pop');
-    expect(sampleLayerAt(pop, 0).w).toBeLessThan(40);
-    expect(sampleLayerAt(pop, 0.4).w).toBe(40);
-    expect(sampleLayerAt(pop, 0.4).h).toBe(20);
-    expect(applyMotionPreset(faded, null).motion?.animation).toBeUndefined();
+    const legacy = layer({ id: 'old', opacity: 100, motion: { keys: [], animation: 'in' } });
+    expect(sampleLayerAt(legacy, 0).opacity).toBe(0);
+    expect(sampleLayerAt(legacy, 0.4).opacity).toBe(100);
+    const zoom = setLayerAnimation(host.layers![0]!, 'in', 'zoom');
+    expect(sampleLayerAt(zoom, 0).w).toBeLessThan(40);
+    expect(sampleLayerAt(zoom, 0.4).w).toBe(40);
+    const withOut = setLayerAnimation(zoom, 'out', 'fade');
+    expect(withOut.motion?.animation).toEqual({ in: 'zoom', out: 'fade' });
+    const combo = setLayerAnimation(withOut, 'both', 'rise');
+    expect(combo.motion?.animation).toEqual({ both: 'rise' });
+    expect(sampleLayerAt(combo, 0).opacity).toBe(0);
+    expect(sampleLayerAt(combo, 0.4).y).toBe(0);
+    expect(sampleLayerAt(combo, 5).opacity).toBe(0);
   });
 });
