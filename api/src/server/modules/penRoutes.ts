@@ -411,6 +411,45 @@ export function setupPenRoutes(
     }
   });
 
+  app.get('/api/pen/stickers/search', async (req: Request, res: Response) => {
+    try {
+      if (!requireFirstPartyOAuthClient(req, res)) return;
+      const key = process.env.GIPHY_API_KEY?.trim();
+      if (!key) return res.status(503).json({ error: 'giphy_unconfigured' });
+      const q = String(req.query.q || '').trim().slice(0, 50);
+      const endpoint = q
+        ? `https://api.giphy.com/v1/stickers/search?api_key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&limit=20&rating=g`
+        : `https://api.giphy.com/v1/stickers/trending?api_key=${encodeURIComponent(key)}&limit=20&rating=g`;
+      const upstream = await fetch(endpoint);
+      if (!upstream.ok) return res.status(502).json({ error: 'giphy_failed' });
+      const body = (await upstream.json()) as {
+        data?: Array<{ id?: string; title?: string; images?: Record<string, { url?: string }> }>;
+      };
+      const results = (body.data || [])
+        .map((row) => {
+          const raw = row.images?.fixed_height?.url || row.images?.original?.url || '';
+          let url = '';
+          try {
+            const parsed = new URL(raw);
+            if (
+              parsed.protocol === 'https:' &&
+              (parsed.hostname === 'giphy.com' || parsed.hostname.endsWith('.giphy.com'))
+            ) {
+              url = parsed.toString();
+            }
+          } catch {
+            url = '';
+          }
+          if (!url) return null;
+          return { id: String(row.id || url), title: String(row.title || 'Sticker'), url };
+        })
+        .filter((row): row is { id: string; title: string; url: string } => Boolean(row));
+      return res.json({ results });
+    } catch (e) {
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
+    }
+  });
+
   app.get('/api/pen/templates', async (req: Request, res: Response) => {
     try {
       if (!requireFirstPartyOAuthClient(req, res)) return;

@@ -67,6 +67,7 @@ describe('section timeline', () => {
     expect(html).toMatch(/aria-label="Graph"[^>]*disabled=""/);
     expect(html).not.toContain('data-keyframe-graphs');
     expect(html).toContain('data-keyframe="title:0"');
+    expect(html).toContain('aria-label="Animation Rise"');
     const between = renderToStaticMarkup(
       <SectionTimeline
         section={section}
@@ -488,6 +489,65 @@ describe('section timeline', () => {
     expect(timeline.slice(graph, graph + 280)).toContain('z-50');
     const settings = readFileSync(resolve(__dirname, './MediaEditorPanel.tsx'), 'utf8');
     expect(settings).toMatch(/data-media-settings[\s\S]{0,120}z-10/);
+  });
+
+  it('draws a hand key and not the animation setting', () => {
+    const animated: PenSectionContent = {
+      ...emptySection('body'),
+      layers: [
+        {
+          id: 'fade',
+          kind: 'image',
+          x: 0,
+          y: 0,
+          w: 40,
+          h: 40,
+          zIndex: 1,
+          motion: { keys: [], animation: 'in' }
+        },
+        {
+          id: 'marked',
+          kind: 'text',
+          x: 0,
+          y: 0,
+          w: 40,
+          h: 20,
+          zIndex: 2,
+          motion: { keys: [{ t: 1, x: 4 }], animation: 'rise' }
+        }
+      ]
+    };
+    const html = renderToStaticMarkup(
+      <SectionTimeline
+        section={animated}
+        activeLayerId="fade"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html).not.toContain('data-keyframe="fade:');
+    expect(html).toContain('data-keyframe="marked:1"');
+    expect(html).toContain('aria-label="Animation In"');
+    expect(html).not.toContain('aria-label="Animation Rise"');
+    const text = renderToStaticMarkup(
+      <SectionTimeline
+        section={animated}
+        activeLayerId="marked"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(text).toContain('aria-label="Animation Rise"');
+    expect(text).toContain('aria-label="Animation Pop"');
+    expect(text.match(/data-keyframe="[^"]+"/g)).toEqual(['data-keyframe="marked:1"']);
   });
 
   it('mounts the timeline under the text editor', () => {

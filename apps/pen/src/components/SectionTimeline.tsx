@@ -15,6 +15,7 @@ import {
   type PenMediaController
 } from '@par-noir/feed-tile';
 import {
+  applyMotionPreset,
   applyTransitionPreset,
   clearClipTransition,
   closeTrackGaps,
@@ -47,6 +48,7 @@ import {
   upsertLayer,
   wrapTime,
   type PenKeyframeEase,
+  type PenMotionPreset,
   type PenPageLayer,
   type PenSectionContent,
   type PenTransitionPreset
@@ -649,6 +651,61 @@ export function timelineTracksMaxPx(trackCount: number): number | null {
   );
 }
 
+const ANIMATION_CHOICES: Array<[PenMotionPreset, string]> = [
+  ['in', 'In'],
+  ['out', 'Out'],
+  ['both', 'Both'],
+  ['rise', 'Rise'],
+  ['pop', 'Pop']
+];
+
+export function animationChoicesFor(layer: PenPageLayer): Array<[PenMotionPreset, string]> {
+  if (layer.kind === 'guide') return [];
+  return ANIMATION_CHOICES.filter(([preset]) =>
+    preset === 'rise' || preset === 'pop' ? layer.kind === 'text' : true
+  );
+}
+
+export function AnimationChoices({
+  layer,
+  section,
+  onSectionChange
+}: {
+  layer: PenPageLayer;
+  section: PenSectionContent;
+  onSectionChange: (next: PenSectionContent) => void;
+}) {
+  const choices = animationChoicesFor(layer);
+  if (!choices.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1" data-animations="">
+      <button
+        type="button"
+        aria-label="Animation None"
+        aria-pressed={!layer.motion?.animation}
+        className={`px-1 py-1 text-[13px] ${layer.motion?.animation ? 'text-stone-400' : 'font-semibold text-stone-700'}`}
+        onClick={() => onSectionChange(upsertLayer(section, applyMotionPreset(layer, null)))}
+      >
+        None
+      </button>
+      {choices.map(([preset, label]) => (
+        <button
+          key={preset}
+          type="button"
+          aria-label={`Animation ${label}`}
+          aria-pressed={layer.motion?.animation === preset}
+          className={`px-1 py-1 text-[13px] ${
+            layer.motion?.animation === preset ? 'font-semibold text-stone-700' : 'text-stone-400'
+          }`}
+          onClick={() => onSectionChange(upsertLayer(section, applyMotionPreset(layer, preset)))}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function SectionTimeline({
   section,
   activeLayerId,
@@ -663,7 +720,8 @@ export function SectionTimeline({
   onReverse,
   mode = 'media',
   scopeGroupId = null,
-  onEnterGroup
+  onEnterGroup,
+  showAnimations = true
 }: {
   section: PenSectionContent;
   activeLayerId: string | null;
@@ -681,6 +739,8 @@ export function SectionTimeline({
   /** When set, the timeline is that group's own tracks. */
   scopeGroupId?: string | null;
   onEnterGroup?: (id: string | null) => void;
+  /** Media editor shows these on its Animations tab instead. */
+  showAnimations?: boolean;
 }) {
   const widget = mode === 'widget';
   const duration = resolveTimelineDuration(section);
@@ -1297,6 +1357,9 @@ export function SectionTimeline({
             </svg>
           </button>
         </div>
+        {showAnimations && active ? (
+          <AnimationChoices layer={active} section={section} onSectionChange={onSectionChange} />
+        ) : null}
         {widget ? (
           <label className="flex items-center gap-1 text-[12px] text-stone-600">
             Intro
@@ -1490,7 +1553,7 @@ export function SectionTimeline({
           const layer = trackLayers.find((item) => item.id === activeLayerId) ?? trackLayers[0]!;
           const rowDur = layerClockSpan(section, layer);
           const local = layer.kind === 'group' ? wrapTime(playheadSec, rowDur) : layerSampleTime(section, layer, playheadSec);
-          const posed = sampleLayerAt(layer, local);
+          const posed = sampleLayerAt(layer, local, rowDur);
           const clips =
             compound && groupLayer
               ? [{ clip: { id: groupLayer.id, inSec: 0, outSec: rowDur }, owner: groupLayer }]

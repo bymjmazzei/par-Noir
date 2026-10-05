@@ -294,10 +294,14 @@ export interface PenLayerKeyframe {
   mediaCrop?: PenMediaCrop;
 }
 
+export type PenMotionPreset = 'in' | 'out' | 'both' | 'rise' | 'pop';
+
 export interface PenLayerMotion {
   keys: PenLayerKeyframe[];
   /** Repeat the intro while the page is open. Absent plays once and holds the end pose. */
   loop?: boolean;
+  /** In, Out, Both, Rise, or Pop. Sampled at playback. Not drawn as timeline keys. */
+  animation?: PenMotionPreset;
 }
 
 /** One timeline lane. Own bytes (`src`) or a licensed public doc (`licensedDocId`). */

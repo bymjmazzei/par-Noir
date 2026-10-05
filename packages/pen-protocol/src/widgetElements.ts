@@ -5,7 +5,7 @@
  */
 
 import { PEN_WIDGET_ACTION_KIND } from './outbox.js';
-import { upsertLayer } from './layers.js';
+import { createGroupLayer, upsertLayer } from './layers.js';
 import {
   pollIsClosed,
   pollLayers,
@@ -211,6 +211,58 @@ export function placeWidgetLayer(
     };
   }
   return { section: upsertLayer(section, layer), layerId: id };
+}
+
+export type PageWidgetPreset = 'poll' | 'countdown' | 'link';
+
+function labeled(
+  section: PenSectionContent,
+  layerId: string,
+  label: string
+): PenSectionContent {
+  const layer = (section.layers || []).find((item) => item.id === layerId);
+  if (!layer) return section;
+  return upsertLayer(section, { ...layer, name: label, label, textDoc: plainDoc(label) });
+}
+
+/** Poll, Countdown, or Link: one group, placed with the existing widget elements. */
+export function placePageWidget(
+  section: PenSectionContent,
+  preset: PageWidgetPreset
+): { section: PenSectionContent; groupId: string } {
+  const peers = section.layers || [];
+  const zIndex = peers.reduce((m, layer) => Math.max(m, layer.zIndex), 0) + 1;
+  const title = preset === 'poll' ? 'Poll' : preset === 'countdown' ? 'Countdown' : 'Link';
+  const group = createGroupLayer({
+    name: title,
+    x: 24,
+    y: 24,
+    w: preset === 'poll' ? 220 : 180,
+    h: preset === 'poll' ? 96 : 48,
+    zIndex
+  });
+  let next = upsertLayer(section, group);
+  if (preset === 'poll') {
+    const yes = placeWidgetLayer(next, group.id, 'button');
+    next = setButtonTrigger(labeled(yes.section, yes.layerId, 'Yes'), yes.layerId, 'poll.vote');
+    const no = placeWidgetLayer(next, group.id, 'button');
+    next = setButtonTrigger(labeled(no.section, no.layerId, 'No'), no.layerId, 'poll.vote');
+  } else if (preset === 'countdown') {
+    const placed = placeWidgetLayer(next, group.id, 'time');
+    const layer = placed.section.layers?.find((item) => item.id === placed.layerId);
+    next = layer
+      ? upsertLayer(placed.section, {
+          ...layer,
+          name: 'Countdown',
+          timeFace: 'countdown',
+          closesAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        })
+      : placed.section;
+  } else {
+    const placed = placeWidgetLayer(next, group.id, 'button');
+    next = setButtonTrigger(labeled(placed.section, placed.layerId, 'Open'), placed.layerId, 'cta.open');
+  }
+  return { section: next, groupId: group.id };
 }
 
 export function duplicateButton(section: PenSectionContent, buttonId: string): PenSectionContent {

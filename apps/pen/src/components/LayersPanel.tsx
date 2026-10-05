@@ -16,7 +16,11 @@ import {
   attachMediaToLayer,
   createGroupFromSelection,
   createTextLayer,
+  createTextLookLayer,
+  placePageWidget,
   placeWidgetLayer,
+  type PenTextLook,
+  type PageWidgetPreset,
   defaultLayerName,
   distributeLayers,
   normalizeSection,
@@ -34,6 +38,7 @@ import {
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { ActionLayerMenu } from './ActionLayerMenu';
+import { SoundCatalogMenu } from './SoundCatalogMenu';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
 
@@ -122,6 +127,8 @@ export function LayersPopover({
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
+  const [stickerOpen, setStickerOpen] = useState(false);
+  const [soundOpen, setSoundOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [mediaKind, setMediaKind] = useState<'image' | 'video'>('image');
 
@@ -197,6 +204,24 @@ export function LayersPopover({
     return layersFrontFirst.reduce((m, l) => Math.max(m, l.zIndex), 0);
   }
 
+  function addLook(look: PenTextLook) {
+    const layer = createTextLookLayer(look, {
+      x: 12,
+      y: 12 + (layersFrontFirst.length % 4) * 8,
+      zIndex: maxZ() + 1
+    });
+    commit(upsertLayer(prepared, layer));
+    onSelectLayer(layer.id);
+    onSelectedIdsChange([layer.id]);
+  }
+
+  function addWholeWidget(preset: PageWidgetPreset) {
+    const placed = placePageWidget(prepared, preset);
+    commit(placed.section);
+    onSelectLayer(placed.groupId);
+    onSelectedIdsChange([placed.groupId]);
+  }
+
   function addTextLayer() {
     const n = allLayers.filter((l) => l.kind !== 'group').length + 1;
     const layer = createTextLayer({
@@ -239,6 +264,7 @@ export function LayersPopover({
     onSelectLayer(groupId);
     onSelectedIdsChange([groupId]);
     setActionOpen(false);
+    setStickerOpen(false);
   }
 
   function onCreateGroup() {
@@ -424,7 +450,7 @@ export function LayersPopover({
           {addOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-8 z-50 max-h-64 w-40 overflow-auto rounded border border-neutral-200 bg-white py-1 shadow-lg"
+              className="absolute right-0 top-8 z-50 max-h-80 w-44 overflow-auto rounded border border-neutral-200 bg-white py-1 shadow-lg"
             >
               <button
                 type="button"
@@ -437,6 +463,27 @@ export function LayersPopover({
               >
                 New text layer
               </button>
+              {(
+                [
+                  ['title', 'Title'],
+                  ['caption', 'Caption'],
+                  ['quote', 'Quote'],
+                  ['label', 'Label']
+                ] as const
+              ).map(([look, label]) => (
+                <button
+                  key={look}
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                  onClick={() => {
+                    addLook(look);
+                    setAddOpen(false);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
               <button
                 type="button"
                 role="menuitem"
@@ -492,6 +539,48 @@ export function LayersPopover({
               >
                 Import widget
               </button>
+              {(
+                [
+                  ['poll', 'Poll'],
+                  ['countdown', 'Countdown'],
+                  ['link', 'Link']
+                ] as const
+              ).map(([preset, label]) => (
+                <button
+                  key={preset}
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                  onClick={() => {
+                    addWholeWidget(preset);
+                    setAddOpen(false);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  setAddOpen(false);
+                  setStickerOpen(true);
+                }}
+              >
+                Sticker
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  setAddOpen(false);
+                  setSoundOpen(true);
+                }}
+              >
+                Sound
+              </button>
             </div>
           )}
         </div>
@@ -503,6 +592,27 @@ export function LayersPopover({
           section={prepared}
           onInserted={insertWidget}
           onCancel={() => setActionOpen(false)}
+        />
+      )}
+      {stickerOpen && (
+        <ActionLayerMenu
+          classId="widgets.sticker"
+          session={session}
+          docId={docId}
+          section={prepared}
+          onInserted={insertWidget}
+          onCancel={() => setStickerOpen(false)}
+        />
+      )}
+      {soundOpen && (
+        <SoundCatalogMenu
+          section={prepared}
+          activeLayerId={activeLayerId}
+          onSectionChange={(next) => {
+            commit(next);
+            setSoundOpen(false);
+          }}
+          onCancel={() => setSoundOpen(false)}
         />
       )}
       <CloudFeedMediaPicker

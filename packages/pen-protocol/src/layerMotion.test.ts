@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { copyWidgetLayersIntoSection } from './layers.js';
 import {
   applyLayoutAtPlayhead,
+  applyMotionPreset,
   applyTransitionPreset,
   applyVideoFileDuration,
   joinLayerToTrack,
@@ -599,5 +600,29 @@ describe('copyWidgetLayersIntoSection motion', () => {
     expect(kid?.motion?.keys).toHaveLength(2);
     expect(kid?.x).toBe(16);
     expect(sampleLayerAt(kid!, 1).x).toBe(66);
+  });
+
+  it('In is invisible at the start and visible after 0.4s', () => {
+    const host = section([layer({ id: 't', opacity: 100, motion: { keys: [{ t: 1, x: 8 }] } })]);
+    const faded = applyMotionPreset(host.layers![0]!, 'in');
+    expect(faded.motion?.animation).toBe('in');
+    expect(faded.motion?.keys).toEqual([{ t: 1, x: 8 }]);
+    expect(sampleLayerAt(faded, 0).opacity).toBe(0);
+    expect(sampleLayerAt(faded, 0.4).opacity).toBe(100);
+    expect(sampleLayerAt(faded, 1).x).toBe(8);
+    const out = applyMotionPreset(host.layers![0]!, 'out');
+    expect(sampleLayerAt(out, 0).opacity).toBe(100);
+    expect(sampleLayerAt(out, 5).opacity).toBe(0);
+    const both = applyMotionPreset(host.layers![0]!, 'both');
+    expect(sampleLayerAt(both, 0).opacity).toBe(0);
+    expect(sampleLayerAt(both, 5).opacity).toBe(0);
+    const rise = applyMotionPreset(host.layers![0]!, 'rise');
+    expect(rise.motion?.keys).toEqual([{ t: 1, x: 8 }]);
+    expect(sampleLayerAt(rise, 0.4).y).toBe(0);
+    const pop = applyMotionPreset(host.layers![0]!, 'pop');
+    expect(sampleLayerAt(pop, 0).w).toBeLessThan(40);
+    expect(sampleLayerAt(pop, 0.4).w).toBe(40);
+    expect(sampleLayerAt(pop, 0.4).h).toBe(20);
+    expect(applyMotionPreset(faded, null).motion?.animation).toBeUndefined();
   });
 });

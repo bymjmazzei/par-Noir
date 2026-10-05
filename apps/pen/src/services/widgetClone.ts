@@ -21,13 +21,14 @@ export async function clonePublishedWidget(input: {
   title: string;
   sections: PenSectionContent[];
   mintSheet?: MintTrackingSheet;
+  classId?: 'widgets.widget' | 'widgets.sticker';
 }): Promise<{ bundle: LocalDocBundle; cloudPath: string; personalId: string }> {
   const sections = input.sections.map(stripPollSpreadsheetFromSection);
   const templateId = `pubwidget_${input.fileId}`;
   const template: PenTemplate = {
     id: templateId,
-    classId: 'widgets.widget',
-    docType: 'widget',
+    classId: input.classId || 'widgets.widget',
+    docType: input.classId === 'widgets.sticker' ? 'sticker' : 'widget',
     version: '1',
     title: input.title,
     description: 'Public template',

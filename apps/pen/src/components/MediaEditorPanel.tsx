@@ -15,7 +15,6 @@ import {
   FULL_MEDIA_CROP,
   MEDIA_FILTER_PRESETS,
   applyCropWindow,
-  applyTransitionPreset,
   attachMediaToLayer,
   clampMediaCrop,
   mediaFilterCss,
@@ -33,14 +32,14 @@ import {
 } from '@par-noir/pen-protocol';
 import { peekPenMediaController } from '@par-noir/feed-tile';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
-import { SectionTimeline } from './SectionTimeline';
+import { AnimationChoices, SectionTimeline } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
 import { probeMediaAspect } from '../services/penAttach';
 import lookSwatch from '../assets/look-apple.jpg';
 import { resolvePenMediaSrc, putLocalMedia } from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
 
-type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'speed' | 'tracks' | 'transitions';
+type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'speed' | 'tracks' | 'animations';
 
 const TABS: Array<{ id: ToolTab; label: string }> = [
   { id: 'basic', label: 'Basic' },
@@ -48,7 +47,7 @@ const TABS: Array<{ id: ToolTab; label: string }> = [
   { id: 'filters', label: 'Look' },
   { id: 'crop', label: 'Crop' },
   { id: 'mask', label: 'Mask' },
-  { id: 'transitions', label: 'Transitions' },
+  { id: 'animations', label: 'Animations' },
   { id: 'speed', label: 'Speed' },
   { id: 'tracks', label: 'Audio' }
 ];
@@ -339,7 +338,6 @@ export function MediaEditorPanel({
 
   const attached = layer.kind === 'video' ? layer.videoSrc || layer.backgroundVideo : layer.imageSrc;
   const cropping = tab === 'crop';
-  const nextClip = followingClip(section, layer);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-stone-100">
       <div className="shrink-0 px-3">
@@ -594,60 +592,9 @@ export function MediaEditorPanel({
           />
         </div>
 
-        {tab === 'transitions' && (
-          <div className="flex flex-wrap items-center gap-1">
-            <label className="flex items-center gap-1 text-[13px] text-stone-500">
-              Sec
-              <input
-                aria-label="Transition length"
-                type="number"
-                min={0.1}
-                step={0.1}
-                disabled={!nextClip}
-                className="w-14 rounded border border-stone-200 bg-white px-1 py-0.5 tabular-nums disabled:text-stone-300"
-                value={nextClip?.transitionIn?.durationSec ?? 0.5}
-                onChange={(event) => {
-                  if (!nextClip) return;
-                  const durationSec = Math.max(1 / 30, Number(event.target.value) || 0.5);
-                  const preset = nextClip.transitionIn?.preset ?? 'crossfade';
-                  onSectionChange(
-                    applyTransitionPreset(section, layer.id, nextClip.id, preset, {
-                      atSec: nextClip.inSec ?? layer.outSec ?? playheadSec,
-                      durationSec
-                    })
-                  );
-                }}
-              />
-            </label>
-            {(
-              [
-                ['crossfade', 'Fade'],
-                ['slide', 'Slide'],
-                ['push', 'Push'],
-                ['dip', 'Dip'],
-                ['zoom', 'Zoom']
-              ] as const
-            ).map(([preset, label]) => (
-              <button
-                key={preset}
-                type="button"
-                disabled={!nextClip}
-                className="px-1 py-1 text-[13px] text-stone-500 disabled:text-stone-300"
-                onClick={() => {
-                  if (!nextClip) return;
-                  onSectionChange(
-                    applyTransitionPreset(section, layer.id, nextClip.id, preset, {
-                      atSec: nextClip.inSec ?? layer.outSec ?? playheadSec,
-                      durationSec: nextClip.transitionIn?.durationSec ?? 0.5
-                    })
-                  );
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className={tab === 'animations' ? 'flex flex-wrap items-center gap-1' : 'hidden'}>
+          <AnimationChoices layer={layer} section={section} onSectionChange={onSectionChange} />
+        </div>
 
         <div className={tab === 'tracks' ? 'space-y-3' : 'hidden'}>
           <div className="space-y-2">
@@ -766,6 +713,7 @@ export function MediaEditorPanel({
         onReverse={() => void onReverse()}
         scopeGroupId={scopeGroupId}
         onEnterGroup={onEnterGroup}
+        showAnimations={false}
       />
 
       <CloudFeedMediaPicker
@@ -810,14 +758,6 @@ function LookTiles({
       })}
     </div>
   );
-}
-
-function followingClip(section: PenSectionContent, layer: PenPageLayer): PenPageLayer | undefined {
-  const track = layer.timelineTrackId || layer.id;
-  return (section.layers || [])
-    .filter((item) => item.id !== layer.id && (item.timelineTrackId || item.id) === track)
-    .filter((item) => (item.inSec ?? 0) >= (layer.inSec ?? 0) - 0.001)
-    .sort((a, b) => (a.inSec ?? 0) - (b.inSec ?? 0))[0];
 }
 
 function CropMarquee({

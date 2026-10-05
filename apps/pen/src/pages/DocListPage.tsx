@@ -1040,7 +1040,9 @@ export function DocListPage({
           setTemplates([
             ...remoteTemplates,
             ...listStarterTemplates().filter(
-              (t) => t.classId === 'widgets.widget' && !templateIds.has(t.id)
+              (t) =>
+                (t.classId === 'widgets.widget' || t.classId === 'widgets.sticker') &&
+                !templateIds.has(t.id)
             )
           ]);
         }

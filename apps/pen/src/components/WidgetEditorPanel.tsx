@@ -126,7 +126,8 @@ export function WidgetEditorPanel({
   docId,
   session,
   scopeGroupId = null,
-  onEnterGroup
+  onEnterGroup,
+  hideTriggers = false
 }: {
   layer: PenPageLayer | null;
   section: PenSectionContent;
@@ -145,8 +146,17 @@ export function WidgetEditorPanel({
   session?: PenSession | null;
   scopeGroupId?: string | null;
   onEnterGroup?: (id: string | null) => void;
+  /** Sticker docs keep SVG, image, and text. Buttons and sheet writes stay hidden. */
+  hideTriggers?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const tools = hideTriggers
+    ? [
+        { element: 'text' as const, label: 'Text' },
+        { element: 'image' as const, label: 'Image' },
+        { element: 'svg' as const, label: 'SVG' }
+      ]
+    : ADD;
 
   function add(element: PenWidgetElement | 'image') {
     const groupId = layer?.kind === 'group' ? layer.id : layer?.parentGroupId || null;
@@ -163,7 +173,7 @@ export function WidgetEditorPanel({
         aria-label="Widget layers"
         className="flex shrink-0 flex-wrap items-center gap-1 border-b border-stone-300 bg-stone-50 px-2 py-1.5"
       >
-        {ADD.map((item) => (
+        {tools.map((item) => (
           <button
             key={item.element}
             type="button"
@@ -234,10 +244,10 @@ export function WidgetEditorPanel({
       {layer && (
         <div
           className={`grid gap-4 border-b border-stone-200 px-3 py-3 ${
-            layer.kind === 'interactive' ? 'grid-cols-2' : 'grid-cols-1'
+            layer.kind === 'interactive' && !hideTriggers ? 'grid-cols-2' : 'grid-cols-1'
           }`}
         >
-          {layer.kind === 'interactive' && (
+          {layer.kind === 'interactive' && !hideTriggers && (
             <div className="flex min-w-0 flex-col gap-2 text-sm">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
                 Trigger

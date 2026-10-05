@@ -186,6 +186,23 @@ function widgetStarters(): PenTemplate[] {
       'Empty template. Place layers on the preview and set a trigger on a button.',
       'Arrange layers by dragging them. A button does nothing until its trigger is set.',
       seedWidget()
+    ),
+    withSeed(
+      {
+        id: 'sticker.v1',
+        classId: 'widgets.sticker',
+        docType: 'sticker',
+        version: '1',
+        title: 'Sticker',
+        description: 'Empty sticker. Place SVG, image, or text. No button and no trigger.',
+        sections: [{ slug: 'card', title: 'Card', required: true }],
+        seedGalleryAspect: '1/1',
+        agentStarter: proseStarter({
+          title: 'Sticker',
+          focus: 'Place art on the card. Do not add a button or a trigger.'
+        })
+      },
+      seedWidget()
     )
   ];
 }

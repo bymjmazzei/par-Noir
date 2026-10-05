@@ -28,7 +28,8 @@ describe('buildSocialTemplateRailItems', () => {
       'media',
       'collection',
       'set',
-      'widget'
+      'widget',
+      'sticker'
     ]);
     expect(items.some((i) => i.id === 'widgets.widget')).toBe(true);
   });

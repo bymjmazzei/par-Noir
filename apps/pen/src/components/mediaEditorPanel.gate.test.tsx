@@ -47,6 +47,19 @@ describe('media and widget panels', () => {
     expect(media).toContain('max-h-[5.75rem]');
     expect(media).toContain('data-media-tabs');
     expect(media).toContain('flex h-7 flex-nowrap');
+    expect(media).toContain('>Animations<');
+    expect(media).not.toContain('>Transitions<');
+    expect(media).toContain('aria-label="Animation In"');
+    expect(media).not.toContain('aria-label="Animation Rise"');
+    const textLayer = renderToStaticMarkup(
+      <MediaEditorPanel
+        layer={{ ...portrait, kind: 'text', textDoc: { type: 'doc', content: [] } }}
+        section={section}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(textLayer).toContain('aria-label="Animation Rise"');
+    expect(textLayer).toContain('aria-label="Animation Pop"');
     expect(media).toContain('Grade');
     expect(media).toContain('Brightness');
     expect(media).toContain('Scale');

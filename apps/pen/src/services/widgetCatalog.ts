@@ -17,7 +17,12 @@ export function publicWidgetCatalog(
   const sources = new Map<string, string>();
   for (const entry of entries) {
     const meta = entry.metadata;
-    if (meta?.penClassId !== 'widgets.widget' || !meta.penTemplateKind) continue;
+    if (
+      (meta?.penClassId !== 'widgets.widget' && meta?.penClassId !== 'widgets.sticker') ||
+      !meta.penTemplateKind
+    ) {
+      continue;
+    }
     const id = `pubwidget_${entry.fileId}`;
     const basedOn = meta.basedOnTemplateId?.trim();
     const source = basedOn ? getTemplate(basedOn) : undefined;
@@ -30,8 +35,8 @@ export function publicWidgetCatalog(
       : undefined;
     templates.push({
       id,
-      classId: 'widgets.widget',
-      docType: source?.docType || 'widget',
+      classId: meta.penClassId,
+      docType: source?.docType || (meta.penClassId === 'widgets.sticker' ? 'sticker' : 'widget'),
       version: '1',
       title: meta.title?.trim() || source?.title || 'Widget',
       description: 'Public template',

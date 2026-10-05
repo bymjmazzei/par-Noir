@@ -314,6 +314,14 @@ const CLASSES: PenClass[] = [
     parentId: 'widgets'
   },
   {
+    id: 'widgets.sticker',
+    title: 'Sticker',
+    description: 'A widget with no button and no trigger',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'widgets'
+  },
+  {
     id: 'records',
     title: 'Records',
     description: 'Typed structured data for kit / agents',

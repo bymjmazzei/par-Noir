@@ -9,6 +9,7 @@ import type {
   PenLayerKeyframe,
   PenLayerMotion,
   PenMediaCrop,
+  PenMotionPreset,
   PenMediaFilter,
   PenPageLayer,
   PenSectionContent,
@@ -163,21 +164,25 @@ function sampleCrop(
 }
 
 /** Render copy at `time`. Unkeyed layers are returned as-is. Guides are never sampled. */
-export function sampleLayerAt(layer: PenPageLayer, time: number): PenPageLayer {
+export function sampleLayerAt(layer: PenPageLayer, time: number, spanSec?: number): PenPageLayer {
   if (layer.kind === 'guide') return layer;
-  const keys = layer.motion?.keys;
-  if (!keys?.length) return layer;
   const t = Number.isFinite(time) ? time : 0;
-  const next: PenPageLayer = { ...layer };
-  for (const prop of SCALAR_PROPS) {
-    const value = sampleNumeric(keys, (key) => key[prop], t);
-    if (value !== undefined) next[prop] = value;
+  const keys = layer.motion?.keys;
+  let next: PenPageLayer = layer;
+  if (keys?.length) {
+    next = { ...layer };
+    for (const prop of SCALAR_PROPS) {
+      const value = sampleNumeric(keys, (key) => key[prop], t);
+      if (value !== undefined) next[prop] = value;
+    }
+    const filter = sampleFilter(keys, t, layer.mediaFilter);
+    if (filter !== layer.mediaFilter) next.mediaFilter = filter;
+    const crop = sampleCrop(keys, t, layer.mediaCrop);
+    if (crop !== layer.mediaCrop) next.mediaCrop = crop;
   }
-  const filter = sampleFilter(keys, t, layer.mediaFilter);
-  if (filter !== layer.mediaFilter) next.mediaFilter = filter;
-  const crop = sampleCrop(keys, t, layer.mediaCrop);
-  if (crop !== layer.mediaCrop) next.mediaCrop = crop;
-  return next;
+  const animation = layer.motion?.animation;
+  if (!animation) return next;
+  return overlayAnimation(layer, next, animation, t, spanSec);
 }
 
 export function wrapTime(time: number, duration: number): number {
@@ -507,7 +512,7 @@ export function sampleSectionLayers(
 ): PenPageLayer[] {
   const sampled = (section.layers || []).map((layer) => {
     const local = layerSampleTime(section, layer, pageTime);
-    const posed = sampleLayerAt(layer, local);
+    const posed = sampleLayerAt(layer, local, layerClockSpan(section, layer));
     if (layer.visible === false || layer.kind === 'guide') return posed;
     const span = layerClockSpan(section, layer);
     if (!layerOnClock(layer, local, span)) return { ...posed, visible: false };
@@ -608,6 +613,104 @@ export function spanLeavingKey(layer: PenPageLayer, time: number): PenLayerKeyfr
   return chosen;
 }
 
+export const MOTION_PRESET_SEC = 0.4;
+
+const RISE_PX = 28;
+const POP_SCALE = 0.82;
+
+function presetWindow(layer: PenPageLayer, spanSec?: number): { start: number; end: number; dur: number } {
+  const start = layer.inSec ?? 0;
+  const end = Math.max(layer.outSec ?? spanSec ?? DEFAULT_TIMELINE_SEC, start + 0.05);
+  const span = end - start;
+  return { start, end, dur: Math.min(MOTION_PRESET_SEC, span / 2) };
+}
+
+function animationKeys(layer: PenPageLayer, preset: PenMotionPreset, spanSec?: number): PenLayerKeyframe[] {
+  const { start, end, dur } = presetWindow(layer, spanSec);
+  const keys: PenLayerKeyframe[] = [];
+  const fadeIn = preset === 'in' || preset === 'both' || preset === 'rise';
+  const fadeOut = preset === 'out' || preset === 'both';
+  if (fadeIn) {
+    keys.push({ t: start, opacity: 0, ease: 'easeOut' });
+    keys.push({ t: start + dur, opacity: 100 });
+  }
+  if (fadeOut) {
+    keys.push({ t: end - dur, opacity: 100, ease: 'easeIn' });
+    keys.push({ t: end, opacity: 0 });
+  }
+  if (preset === 'rise') {
+    keys.push({ t: start, y: layer.y + RISE_PX, ease: 'easeOut' });
+    keys.push({ t: start + dur, y: layer.y });
+  }
+  if (preset === 'pop') {
+    const w = Math.max(1, layer.w * POP_SCALE);
+    const h = Math.max(1, layer.h * POP_SCALE);
+    keys.push({
+      t: start,
+      w,
+      h,
+      x: layer.x + (layer.w - w) / 2,
+      y: layer.y + (layer.h - h) / 2,
+      ease: 'easeOut'
+    });
+    keys.push({ t: start + dur, w: layer.w, h: layer.h, x: layer.x, y: layer.y });
+  }
+  return keys;
+}
+
+const ANIMATION_CHANNELS: Record<PenMotionPreset, Array<'opacity' | 'x' | 'y' | 'w' | 'h'>> = {
+  in: ['opacity'],
+  out: ['opacity'],
+  both: ['opacity'],
+  rise: ['opacity', 'y'],
+  pop: ['x', 'y', 'w', 'h']
+};
+
+function overlayAnimation(
+  rest: PenPageLayer,
+  posed: PenPageLayer,
+  preset: PenMotionPreset,
+  time: number,
+  spanSec?: number
+): PenPageLayer {
+  const keys = animationKeys(rest, preset, spanSec);
+  const next = posed === rest ? { ...posed } : posed;
+  for (const prop of ANIMATION_CHANNELS[preset]) {
+    const value = sampleNumeric(keys, (key) => key[prop], time);
+    if (value !== undefined) next[prop] = value;
+  }
+  return next;
+}
+
+function motionKeeping(layer: PenPageLayer, keys: PenLayerKeyframe[]): PenLayerMotion | undefined {
+  const loop = layer.motion?.loop;
+  const animation = layer.motion?.animation;
+  if (!keys.length && !loop && !animation) return undefined;
+  return {
+    keys,
+    ...(loop ? { loop: true } : {}),
+    ...(animation ? { animation } : {})
+  };
+}
+
+/** Stores In, Out, Both, Rise, or Pop. Does not write timeline keys. Null clears it. */
+export function applyMotionPreset(
+  layer: PenPageLayer,
+  preset: PenMotionPreset | null
+): PenPageLayer {
+  const keys = layer.motion?.keys || [];
+  const loop = layer.motion?.loop;
+  if (!preset && !keys.length && !loop) return { ...layer, motion: undefined };
+  return {
+    ...layer,
+    motion: {
+      keys,
+      ...(loop ? { loop: true } : {}),
+      ...(preset ? { animation: preset } : {})
+    }
+  };
+}
+
 /** Set the curve on the span that contains `time`. Does not add or move keys. */
 export function setKeyframeEase(
   layer: PenPageLayer,
@@ -619,7 +722,7 @@ export function setKeyframeEase(
   const keys = (layer.motion?.keys || []).map((key) =>
     Math.abs(key.t - leaving.t) <= KEYFRAME_EPSILON_SEC ? { ...key, ease } : key
   );
-  return { ...layer, motion: keys.length ? { keys } : undefined };
+  return { ...layer, motion: motionKeeping(layer, keys) };
 }
 
 function mergeKey(layer: PenPageLayer, key: PenLayerKeyframe): PenPageLayer {
@@ -628,7 +731,7 @@ function mergeKey(layer: PenPageLayer, key: PenLayerKeyframe): PenPageLayer {
   if (index >= 0) keys[index] = { ...keys[index], ...key, t: quantizeTime(key.t) };
   else keys.push({ ...key, t: quantizeTime(key.t) });
   keys.sort((a, b) => a.t - b.t);
-  return { ...layer, motion: { keys } };
+  return { ...layer, motion: motionKeeping(layer, keys) };
 }
 
 /**
@@ -692,7 +795,7 @@ export function toggleKeyframeAt(layer: PenPageLayer, time: number): PenPageLaye
   const near = keys.some((key) => Math.abs(key.t - time) <= KEYFRAME_EPSILON_SEC);
   if (near) {
     const next = keys.filter((key) => Math.abs(key.t - time) > KEYFRAME_EPSILON_SEC);
-    return { ...layer, motion: next.length ? { keys: next } : undefined };
+    return { ...layer, motion: motionKeeping(layer, next) };
   }
   const posed = sampleLayerAt(layer, time);
   const animated = (['x', 'y', 'w', 'h', 'opacity', 'blur', 'mediaFilter', 'mediaCrop'] as const).filter(

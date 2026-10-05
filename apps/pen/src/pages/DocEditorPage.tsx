@@ -428,6 +428,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return getClass(classId)?.parentId === 'widgets';
   }, [bundle, template]);
 
+  const isStickerDoc = useMemo(() => {
+    return (bundle?.manifest.classId || template?.classId) === 'widgets.sticker';
+  }, [bundle, template]);
+
   const section = useMemo(() => {
     const raw = bundle?.sections.find((s) => s.slug === activeSlug) || bundle?.sections[0];
     if (!raw) return undefined;
@@ -2890,6 +2894,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 setActiveLayerId(id);
                 setSocialSelectedIds([id]);
               }}
+              hideTriggers={isStickerDoc}
             />
           ) : writingEnabled && canvasSection && section ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

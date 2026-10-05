@@ -14,7 +14,8 @@ export const SOCIAL_TEMPLATE_RAIL_FORMS = [
   'social.post',
   'social.collection',
   'social.set',
-  'widgets.widget'
+  'widgets.widget',
+  'widgets.sticker'
 ] as const;
 
 export type SocialTemplateRailFormId = (typeof SOCIAL_TEMPLATE_RAIL_FORMS)[number];
@@ -25,7 +26,8 @@ export const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, strin
   'social.post': 'media',
   'social.collection': 'collection',
   'social.set': 'set',
-  'widgets.widget': 'widget'
+  'widgets.widget': 'widget',
+  'widgets.sticker': 'sticker'
 };
 
 const SOCIAL_TEMPLATE_RAIL_SET = new Set<string>(SOCIAL_TEMPLATE_RAIL_FORMS);

@@ -17,7 +17,12 @@ export async function loadPublishedWidgetSections(
   await Promise.all(
     entries.map(async (entry) => {
       const meta = entry.metadata;
-      if (meta?.penClassId !== 'widgets.widget' || !meta.penTemplateKind) return;
+      if (
+        (meta?.penClassId !== 'widgets.widget' && meta?.penClassId !== 'widgets.sticker') ||
+        !meta.penTemplateKind
+      ) {
+        return;
+      }
       if (meta.publicToken == null) return;
       try {
         const blob = await decryptPublicIndexedMedia({

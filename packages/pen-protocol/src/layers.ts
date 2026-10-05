@@ -23,6 +23,101 @@ function newLayerId(): string {
   return `layer_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export type PenTextLook = 'title' | 'caption' | 'quote' | 'label';
+
+const TEXT_LOOKS: Record<
+  PenTextLook,
+  {
+    name: string;
+    sample: string;
+    fontFamily: string;
+    fontSize: string;
+    color: string;
+    w: number;
+    h: number;
+  }
+> = {
+  title: {
+    name: 'Title',
+    sample: 'Title',
+    fontFamily: 'Source Serif 4, Georgia, serif',
+    fontSize: '42px',
+    color: '#111111',
+    w: 360,
+    h: 64
+  },
+  caption: {
+    name: 'Caption',
+    sample: 'Caption',
+    fontFamily: 'Montserrat, Helvetica, sans-serif',
+    fontSize: '18px',
+    color: '#f5f5f4',
+    w: 280,
+    h: 40
+  },
+  quote: {
+    name: 'Quote',
+    sample: 'A short quote',
+    fontFamily: 'Source Serif 4, Georgia, serif',
+    fontSize: '28px',
+    color: '#111111',
+    w: 320,
+    h: 80
+  },
+  label: {
+    name: 'Label',
+    sample: 'Label',
+    fontFamily: 'Montserrat, Helvetica, sans-serif',
+    fontSize: '13px',
+    color: '#44403c',
+    w: 140,
+    h: 28
+  }
+};
+
+function textLookDoc(look: PenTextLook): PenTipTapNode {
+  const spec = TEXT_LOOKS[look];
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'text',
+            text: spec.sample,
+            marks: [
+              {
+                type: 'textStyle',
+                attrs: {
+                  fontFamily: spec.fontFamily,
+                  fontSize: spec.fontSize,
+                  color: spec.color
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+}
+
+/** Title, Caption, Quote, and Label. Font, size, color, and sample live on textDoc. */
+export function createTextLookLayer(
+  look: PenTextLook,
+  partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'zIndex'>>
+): PenPageLayer {
+  const spec = TEXT_LOOKS[look];
+  return createTextLayer({
+    ...partial,
+    w: spec.w,
+    h: spec.h,
+    name: spec.name,
+    textDoc: textLookDoc(look)
+  });
+}
+
 export function createTextLayer(
   partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex' | 'textDoc' | 'name'>>
 ): PenPageLayer {
@@ -612,6 +707,7 @@ export function patchLayerStyle(
       | 'textColor'
       | 'widgetTemplateId'
       | 'spreadsheetId'
+      | 'motion'
     >
   >
 ): PenSectionContent {
