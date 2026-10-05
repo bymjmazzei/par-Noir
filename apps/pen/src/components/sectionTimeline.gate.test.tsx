@@ -587,6 +587,10 @@ describe('section timeline', () => {
     const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8');
     expect(css).toContain('.pen-editor-tile');
     expect(css).toContain('width: calc(5.75rem - 0.25rem - 0.25rem - 0.125rem - 0.75rem)');
+    const tiles = css.slice(css.indexOf('.pen-editor-tiles {'), css.indexOf('.pen-editor-tile {'));
+    expect(tiles).toContain('flex-wrap: wrap');
+    expect(tiles).toContain('overflow-y: auto');
+    expect(tiles).not.toContain('overflow-x: auto');
     expect(css).toContain('@keyframes pen-motion-zoom');
     expect(css).toContain('@keyframes pen-motion-unfold');
   });

@@ -3036,13 +3036,17 @@ input.pen-gallery-tile-title-text {
 
 .pen-editor-tiles {
   display: flex;
-  flex: 1 1 0;
-  height: 5.75rem;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: flex-start;
+  height: auto;
+  max-height: 100%;
   min-width: 0;
-  align-items: stretch;
+  min-height: 0;
   gap: 0.25rem;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .pen-editor-tile {
