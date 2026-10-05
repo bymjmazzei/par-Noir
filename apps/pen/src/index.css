@@ -3033,3 +3033,45 @@ input.pen-gallery-tile-title-text {
 .pen-template-gallery-form + .pen-template-gallery-form {
   margin-top: 0;
 }
+
+.pen-motion-still {
+  transform-origin: center;
+}
+
+.pen-motion-tile:hover .pen-motion-still {
+  animation-duration: 0.4s;
+  animation-timing-function: ease-out;
+}
+
+.pen-motion-tile[data-slot='out']:hover .pen-motion-still {
+  animation-direction: reverse;
+}
+
+.pen-motion-tile[data-slot='both']:hover .pen-motion-still {
+  animation-duration: 0.8s;
+  animation-direction: alternate;
+  animation-iteration-count: 2;
+}
+
+.pen-motion-tile[data-motion='fade']:hover .pen-motion-still { animation-name: pen-motion-fade; }
+.pen-motion-tile[data-motion='rise']:hover .pen-motion-still { animation-name: pen-motion-rise; }
+.pen-motion-tile[data-motion='drop']:hover .pen-motion-still { animation-name: pen-motion-drop; }
+.pen-motion-tile[data-motion='slideLeft']:hover .pen-motion-still,
+.pen-motion-tile[data-motion='slide']:hover .pen-motion-still { animation-name: pen-motion-slide; }
+.pen-motion-tile[data-motion='slideRight']:hover .pen-motion-still { animation-name: pen-motion-slide-right; }
+.pen-motion-tile[data-motion='zoom']:hover .pen-motion-still { animation-name: pen-motion-zoom; }
+.pen-motion-tile[data-motion='pop']:hover .pen-motion-still { animation-name: pen-motion-pop; }
+.pen-motion-tile[data-motion='unfold']:hover .pen-motion-still { animation-name: pen-motion-unfold; }
+.pen-motion-tile[data-motion='push']:hover .pen-motion-still { animation-name: pen-motion-push; }
+.pen-motion-tile[data-motion='dip']:hover .pen-motion-still { animation-name: pen-motion-dip; }
+
+@keyframes pen-motion-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pen-motion-rise { from { opacity: 0; transform: translateY(35%); } to { opacity: 1; transform: none; } }
+@keyframes pen-motion-drop { from { opacity: 0; transform: translateY(-35%); } to { opacity: 1; transform: none; } }
+@keyframes pen-motion-slide { from { opacity: 0; transform: translateX(45%); } to { opacity: 1; transform: none; } }
+@keyframes pen-motion-slide-right { from { opacity: 0; transform: translateX(-45%); } to { opacity: 1; transform: none; } }
+@keyframes pen-motion-zoom { from { opacity: 0; transform: scale(0.72); } to { opacity: 1; transform: none; } }
+@keyframes pen-motion-pop { 0% { transform: scale(0.82); } 60% { transform: scale(1.08); } 100% { transform: none; } }
+@keyframes pen-motion-unfold { from { opacity: 0; transform: scaleX(0.04); } to { opacity: 1; transform: none; } }
+@keyframes pen-motion-push { from { transform: translateY(70%); } to { transform: none; } }
+@keyframes pen-motion-dip { 0% { opacity: 1; } 45% { opacity: 0; } 100% { opacity: 1; } }

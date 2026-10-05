@@ -4,6 +4,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -28,18 +29,19 @@ import {
   type PenMediaFilter,
   type PenMediaMask,
   type PenPageLayer,
-  type PenSectionContent
+  type PenSectionContent,
+  type TrackJoinPoint
 } from '@par-noir/pen-protocol';
 import { peekPenMediaController } from '@par-noir/feed-tile';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
-import { AnimationPicker, SectionTimeline } from './SectionTimeline';
+import { AnimationPicker, SectionTimeline, TransitionSettings } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
 import { probeMediaAspect } from '../services/penAttach';
 import lookSwatch from '../assets/look-apple.jpg';
 import { resolvePenMediaSrc, putLocalMedia } from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
 
-type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'speed' | 'tracks' | 'animations';
+type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'speed' | 'tracks' | 'animations' | 'transitions';
 
 const TABS: Array<{ id: ToolTab; label: string }> = [
   { id: 'basic', label: 'Basic' },
@@ -48,6 +50,7 @@ const TABS: Array<{ id: ToolTab; label: string }> = [
   { id: 'crop', label: 'Crop' },
   { id: 'mask', label: 'Mask' },
   { id: 'animations', label: 'Animations' },
+  { id: 'transitions', label: 'Transitions' },
   { id: 'speed', label: 'Speed' },
   { id: 'tracks', label: 'Audio' }
 ];
@@ -247,6 +250,11 @@ export function MediaEditorPanel({
   onEnterGroup?: (id: string | null) => void;
 }) {
   const [tab, setTab] = useState<ToolTab>('color');
+  const [join, setJoin] = useState<TrackJoinPoint | null>(null);
+  const selectJoin = useCallback((point: TrackJoinPoint | null) => {
+    setJoin(point);
+    setTab((current) => (point ? 'transitions' : current === 'transitions' ? 'color' : current));
+  }, []);
   const [activeSetting, setActiveSetting] = useState<string | null>(null);
   useEffect(() => {
     if (!activeSetting) return;
@@ -345,17 +353,24 @@ export function MediaEditorPanel({
           data-media-tabs
           className="flex h-7 flex-nowrap items-center gap-x-2 overflow-x-auto"
         >
-          {TABS.map((item) => (
+          {TABS.map((item) => {
+            const inactive = item.id === 'transitions' && !join;
+            return (
             <button
               key={item.id}
               type="button"
+              data-transition-tab={item.id === 'transitions' ? '' : undefined}
+              disabled={inactive}
               aria-pressed={tab === item.id}
-              className={`shrink-0 px-0.5 text-[12px] leading-none ${activeText(tab === item.id)}`}
+              className={`shrink-0 px-0.5 text-[12px] leading-none ${
+                inactive ? 'text-stone-300' : activeText(tab === item.id)
+              }`}
               onClick={() => setTab(item.id)}
             >
               {item.label}
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -596,6 +611,20 @@ export function MediaEditorPanel({
           <AnimationPicker layer={layer} section={section} onSectionChange={onSectionChange} />
         </div>
 
+        <div className={tab === 'transitions' && join ? '' : 'hidden'} data-transition-settings="">
+          {join ? (
+            <TransitionSettings
+              join={join}
+              section={section}
+              onSectionChange={onSectionChange}
+              onPreview={(time) => {
+                onPlayhead?.(time);
+                onPlaying?.(true);
+              }}
+            />
+          ) : null}
+        </div>
+
         <div className={tab === 'tracks' ? 'space-y-3' : 'hidden'}>
           <div className="space-y-2">
             <div className="text-[13px] text-stone-700">Clip</div>
@@ -714,6 +743,7 @@ export function MediaEditorPanel({
         scopeGroupId={scopeGroupId}
         onEnterGroup={onEnterGroup}
         showAnimations={false}
+        onJoinSelect={selectJoin}
       />
 
       <CloudFeedMediaPicker

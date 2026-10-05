@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, sampleLayerAt, type PenSectionContent } from '@par-noir/pen-protocol';
-import { AnimationPicker, SectionTimeline, shouldSeekTimelineVideo, timelineTracksMaxPx } from './SectionTimeline';
+import { AnimationPicker, SectionTimeline, shouldSeekTimelineVideo, timelineTracksMaxPx, TransitionSettings } from './SectionTimeline';
 
 const section: PenSectionContent = {
   ...emptySection('body'),
@@ -559,16 +559,32 @@ describe('section timeline', () => {
     expect(picker).toContain('aria-label="Animation Out"');
     expect(picker).toContain('aria-label="Animation Both"');
     expect(picker).toContain('aria-label="Animation Zoom"');
+    expect(picker).toContain('data-look-tile="square"');
+    expect(picker).toContain('data-motion="zoom"');
+    expect(picker).toContain('data-slot="in"');
   });
 
-  it('keeps the transition menu on the timeline root', () => {
-    const source = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
-    const menu = source.indexOf('data-transition-menu');
-    const lane = source.indexOf('data-clip-lane');
-    expect(menu).toBeGreaterThan(-1);
-    expect(lane).toBeGreaterThan(menu);
-    expect(source).toContain("label: 'Fade'");
-    expect(source).toContain("label: 'Unfold'");
+  it('keeps transition settings on the media editor bar', () => {
+    const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
+    const panel = readFileSync(resolve(__dirname, './MediaEditorPanel.tsx'), 'utf8');
+    expect(timeline).not.toContain('data-transition-menu');
+    expect(panel).toContain('data-transition-tab');
+    expect(panel).toContain('data-transition-settings');
+    const settings = renderToStaticMarkup(
+      <TransitionSettings
+        join={{ trackId: 'row', atSec: 1, fromId: 'a', toId: 'b', durationSec: 0.5, preset: null }}
+        section={section}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(settings).toContain('>Fade<');
+    expect(settings).toContain('>Unfold<');
+    expect(settings).toContain('data-look-tile="square"');
+    expect(settings).toContain('data-motion="unfold"');
+    const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8');
+    expect(css).toContain('.pen-motion-tile:hover .pen-motion-still');
+    expect(css).toContain('@keyframes pen-motion-zoom');
+    expect(css).toContain('@keyframes pen-motion-unfold');
   });
 
   it('mounts the timeline under the text editor', () => {

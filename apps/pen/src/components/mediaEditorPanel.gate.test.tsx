@@ -48,11 +48,15 @@ describe('media and widget panels', () => {
     expect(media).toContain('data-media-tabs');
     expect(media).toContain('flex h-7 flex-nowrap');
     expect(media).toContain('>Animations<');
-    expect(media).not.toContain('>Transitions<');
+    expect(media).toContain('>Transitions<');
+    expect(media).toContain('data-transition-tab=""');
+    expect(media).toMatch(/data-transition-tab=""[\s\S]{0,80}disabled=""/);
     expect(media).toContain('aria-label="Animation In"');
     expect(media).toContain('aria-label="Animation Out"');
     expect(media).toContain('aria-label="Animation Both"');
     expect(media).toContain('aria-label="Animation Zoom"');
+    expect(media).toContain('data-look-tile="square"');
+    expect(media).toContain('data-motion="zoom"');
     const textLayer = renderToStaticMarkup(
       <MediaEditorPanel
         layer={{ ...portrait, kind: 'text', textDoc: { type: 'doc', content: [] } }}

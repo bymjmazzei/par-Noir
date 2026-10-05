@@ -58,6 +58,7 @@ import {
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import type { PenSession } from '../services/penSession';
+import lookSwatch from '../assets/look-apple.jpg';
 
 const GRAPH_CURVES: Array<{ id: PenKeyframeEase; label: string; d: string }> = [
   { id: 'hold', label: 'Original', d: 'M2 14 H10 V2 H14' },
@@ -377,22 +378,40 @@ function WaveLine({ values }: { values: number[] }) {
   );
 }
 
-function TransitionSketch({ preset }: { preset: PenTransitionPreset }) {
-  const slide = preset === 'slide' || preset === 'push';
+function MotionTile({
+  label,
+  motion,
+  slot,
+  selected,
+  onClick
+}: {
+  label: string;
+  motion: string;
+  slot?: PenAnimationSlot;
+  selected: boolean;
+  onClick: () => void;
+}) {
   return (
-    <span className="relative block h-8 w-10 overflow-hidden bg-white">
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={selected}
+      title={label}
+      data-motion={motion}
+      data-slot={slot}
+      className="pen-motion-tile space-y-0.5 text-left"
+      onClick={onClick}
+    >
       <span
-        className="absolute inset-y-1 left-1 w-4 bg-blue-700"
-        style={{
-          opacity: preset === 'dip' ? 0.2 : 0.55,
-          transform: slide ? 'translateX(-6px)' : undefined
-        }}
-      />
-      <span
-        className="absolute inset-y-1 right-1 w-4 bg-blue-300"
-        style={{ transform: preset === 'zoom' || preset === 'unfold' ? 'scale(0.7)' : slide ? 'translateX(6px)' : undefined }}
-      />
-    </span>
+        data-look-tile="square"
+        className={`block overflow-hidden bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}
+      >
+        <img src={lookSwatch} alt="" className="pen-motion-still aspect-square w-full object-cover" draggable={false} />
+      </span>
+      <span className={`block truncate text-[10px] leading-tight ${selected ? 'font-semibold text-stone-700' : 'text-stone-400'}`}>
+        {label.replace(/^(Animation|Transition) /, '')}
+      </span>
+    </button>
   );
 }
 
@@ -700,29 +719,89 @@ export function AnimationPicker({
           </button>
         ))}
       </div>
-      <div className="flex flex-wrap gap-1">
+      <div className="grid grid-cols-5 gap-1">
         <button
           type="button"
           aria-label="Animation None"
           aria-pressed={!selected}
-          className={`px-1 py-1 text-[13px] ${selected ? 'text-stone-400' : 'font-semibold text-stone-700'}`}
+          className={`px-1 py-1 text-left text-[10px] leading-tight ${selected ? 'text-stone-400' : 'font-semibold text-stone-700'}`}
           onClick={() => onSectionChange(upsertLayer(section, setLayerAnimation(layer, slot, null)))}
         >
           None
         </button>
         {ANIMATION_STYLES.map(([style, label]) => (
-          <button
+          <MotionTile
             key={style}
-            type="button"
-            aria-label={`Animation ${label}`}
-            aria-pressed={selected === style}
-            className={`px-1 py-1 text-[13px] ${
-              selected === style ? 'font-semibold text-stone-700' : 'text-stone-400'
-            }`}
+            label={`Animation ${label}`}
+            motion={style}
+            slot={slot}
+            selected={selected === style}
             onClick={() => onSectionChange(upsertLayer(section, setLayerAnimation(layer, slot, style)))}
-          >
-            {label}
-          </button>
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function TransitionSettings({
+  join,
+  section,
+  onSectionChange,
+  onPreview
+}: {
+  join: TrackJoinPoint;
+  section: PenSectionContent;
+  onSectionChange: (next: PenSectionContent) => void;
+  onPreview?: (time: number) => void;
+}) {
+  const incoming = (section.layers || []).find((item) => item.id === join.toId);
+  const current = incoming?.transitionIn?.preset;
+  const durationSec = incoming?.transitionIn?.durationSec ?? join.durationSec;
+  function apply(preset: PenTransitionPreset, duration = durationSec) {
+    const next = applyTransitionPreset(section, join.fromId, join.toId, preset, {
+      atSec: join.atSec,
+      durationSec: duration
+    });
+    onSectionChange(next);
+    const start = Math.max(0, join.atSec - 0.05);
+    onPreview?.(start);
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="flex items-center gap-1 text-[12px] text-stone-500">
+        Sec
+        <input
+          aria-label="Transition length"
+          type="number"
+          min={0.1}
+          step={0.1}
+          value={durationSec}
+          className="w-14 bg-transparent text-center tabular-nums text-stone-700 outline-none"
+          onChange={(event) => {
+            const next = Math.max(1 / 30, Number(event.target.value) || 0.5);
+            apply(current && current !== 'cut' ? current : 'crossfade', next);
+          }}
+        />
+      </label>
+      <div className="grid grid-cols-5 gap-1">
+        <button
+          type="button"
+          aria-label="Transition None"
+          aria-pressed={!current || current === 'cut'}
+          className="px-1 py-1 text-left text-[10px] leading-tight text-stone-500"
+          onClick={() => onSectionChange(clearClipTransition(section, join.toId))}
+        >
+          None
+        </button>
+        {TRANSITION_PRESETS.map((preset) => (
+          <MotionTile
+            key={preset.id}
+            label={`Transition ${preset.label}`}
+            motion={preset.id === 'crossfade' ? 'fade' : preset.id}
+            selected={current === preset.id}
+            onClick={() => apply(preset.id)}
+          />
         ))}
       </div>
     </div>
@@ -744,7 +823,8 @@ export function SectionTimeline({
   mode = 'media',
   scopeGroupId = null,
   onEnterGroup,
-  showAnimations = true
+  showAnimations = true,
+  onJoinSelect
 }: {
   section: PenSectionContent;
   activeLayerId: string | null;
@@ -764,6 +844,8 @@ export function SectionTimeline({
   onEnterGroup?: (id: string | null) => void;
   /** Media editor shows these on its Animations tab instead. */
   showAnimations?: boolean;
+  /** Media editor opens its Transitions tab from the selected join. */
+  onJoinSelect?: (point: TrackJoinPoint | null) => void;
 }) {
   const widget = mode === 'widget';
   const duration = resolveTimelineDuration(section);
@@ -809,7 +891,6 @@ export function SectionTimeline({
   const graphPopRef = useRef<HTMLDivElement>(null);
   const [graphAnchor, setGraphAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const [joinMenu, setJoinMenu] = useState<TrackJoinPoint | null>(null);
-  const [joinAnchor, setJoinAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const [animOpen, setAnimOpen] = useState(false);
   const [animAnchor, setAnimAnchor] = useState<{ left: number; bottom: number } | null>(null);
   const animRef = useRef<HTMLDivElement>(null);
@@ -892,18 +973,19 @@ export function SectionTimeline({
     if (!joinMenu) return;
     function onDoc(event: MouseEvent) {
       const target = event.target;
-      if (!(target instanceof Node) || !rootRef.current?.contains(target)) {
-        setJoinMenu(null);
-        return;
-      }
-      if (target instanceof Element && target.closest('[data-transition-join], [data-transition-menu]')) {
+      if (!(target instanceof Node)) return;
+      if (
+        target instanceof Element &&
+        target.closest('[data-transition-join], [data-transition-settings], [data-transition-tab], [data-media-settings], [data-media-tabs]')
+      ) {
         return;
       }
       setJoinMenu(null);
+      onJoinSelect?.(null);
     }
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [joinMenu]);
+  }, [joinMenu, onJoinSelect]);
   const videoSrcs = useRef(new Map<string, string>());
   const ownedVideos = useRef(new Map<string, PenMediaController>());
   playingRef.current = playing;
@@ -1216,29 +1298,6 @@ export function SectionTimeline({
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-  }
-
-  function clearJoin() {
-    if (!joinMenu) return;
-    onSectionChange(clearClipTransition(section, joinMenu.toId));
-    setJoinMenu(null);
-  }
-
-  function assignJoin(preset: PenTransitionPreset) {
-    if (!joinMenu) return;
-    onSectionChange(
-      applyTransitionPreset(section, joinMenu.fromId, joinMenu.toId, preset, {
-        atSec: joinMenu.atSec,
-        durationSec: joinMenu.durationSec
-      })
-    );
-    const start = Math.max(0, joinMenu.atSec - 0.05);
-    playheadRef.current = start;
-    playingRef.current = true;
-    onPlayhead(start);
-    onPlaying(true);
-    driveVideos('play', start);
-    setJoinMenu(null);
   }
 
   function beginResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -1589,54 +1648,6 @@ export function SectionTimeline({
           <AnimationPicker layer={active} section={section} onSectionChange={onSectionChange} />
         </div>
       ) : null}
-      {joinMenu && joinAnchor ? (
-        <div
-          data-transition-menu=""
-          className="absolute z-50 flex -translate-x-1/2 gap-1 rounded-md border border-stone-200 bg-white p-1 shadow-lg"
-          style={{ left: joinAnchor.left, bottom: joinAnchor.bottom }}
-        >
-          <label className="flex w-14 flex-col items-center gap-0.5 text-[10px] text-stone-600">
-            Sec
-            <input
-              aria-label="Transition length"
-              type="number"
-              min={0.1}
-              step={0.1}
-              value={joinMenu.durationSec}
-              className="w-12 rounded border border-stone-200 px-1 py-0.5 text-center tabular-nums"
-              onChange={(event) => {
-                const durationSec = Math.max(1 / 30, Number(event.target.value) || 0.5);
-                const incoming = (section.layers || []).find((item) => item.id === joinMenu.toId);
-                const preset = incoming?.transitionIn?.preset ?? 'crossfade';
-                onSectionChange(
-                  applyTransitionPreset(section, joinMenu.fromId, joinMenu.toId, preset, {
-                    durationSec
-                  })
-                );
-                setJoinMenu({ ...joinMenu, durationSec });
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            className="flex w-12 flex-col items-center justify-center gap-0.5 text-[10px] text-stone-600"
-            onClick={clearJoin}
-          >
-            None
-          </button>
-          {TRANSITION_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className="flex w-12 flex-col items-center gap-0.5 text-[10px] text-stone-600"
-              onClick={() => assignJoin(preset.id)}
-            >
-              <TransitionSketch preset={preset.id} />
-              {preset.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
       <div ref={scaleHostRef} className="min-w-0 shrink-0 overflow-x-auto px-2 pb-2">
         <div
           data-timeline-scale
@@ -1872,6 +1883,7 @@ export function SectionTimeline({
                   .filter((point) => point.trackId === trackId)
                   .map((point) => {
                     const titled = TRANSITION_PRESETS.find((item) => item.id === point.preset);
+                    const chosen = joinMenu?.fromId === point.fromId && joinMenu?.toId === point.toId;
                     return (
                     <button
                       key={`${point.fromId}-${point.toId}`}
@@ -1879,23 +1891,18 @@ export function SectionTimeline({
                       data-transition-join=""
                       data-transition-preset={titled ? titled.id : 'none'}
                       aria-label={titled ? `Transition ${titled.label}` : 'Transition'}
+                      aria-pressed={chosen}
                       title={titled ? titled.label : 'Transition'}
                       className={`absolute top-1/2 z-20 flex h-5 min-w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm px-1 text-[10px] leading-none ${
-                        titled ? 'bg-stone-400 text-stone-800' : 'bg-black'
+                        chosen ? 'bg-stone-800 text-white' : titled ? 'bg-stone-400 text-stone-800' : 'bg-black'
                       }`}
                       style={{ left: `${(point.atSec / Math.max(viewSpan, 0.01)) * 100}%` }}
                       onPointerDown={(event) => {
                         event.stopPropagation();
                         event.preventDefault();
-                        const root = rootRef.current?.getBoundingClientRect();
-                        const box = event.currentTarget.getBoundingClientRect();
-                        if (root) {
-                          setJoinAnchor({
-                            left: box.left - root.left + box.width / 2,
-                            bottom: root.bottom - box.top + 4
-                          });
-                        }
-                        setJoinMenu(point);
+                        const next = chosen ? null : point;
+                        setJoinMenu(next);
+                        onJoinSelect?.(next);
                       }}
                     >
                       {titled ? titled.label : null}
