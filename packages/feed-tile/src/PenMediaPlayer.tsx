@@ -23,11 +23,11 @@ function drawFitted(
   width: number,
   height: number,
   fit: CSSProperties['objectFit']
-) {
-  const vw = video.videoWidth || width;
-  const vh = video.videoHeight || height;
+): boolean {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!(vw > 0 && vh > 0)) return false;
   ctx.clearRect(0, 0, width, height);
-  if (!(vw > 0 && vh > 0)) return;
   const scale =
     fit === 'cover' || fit === 'fill'
       ? fit === 'fill'
@@ -37,6 +37,7 @@ function drawFitted(
   const dw = scale == null ? width : vw * scale;
   const dh = scale == null ? height : vh * scale;
   ctx.drawImage(video, (width - dw) / 2, (height - dh) / 2, dw, dh);
+  return true;
 }
 
 function SpeakerIcon({ muted }: { muted: boolean }) {
@@ -140,14 +141,15 @@ export function PenMediaPlayer({
       const canvas = canvasRef.current;
       let stopped = false;
       let raf = 0;
-      const paint = () => {
-        if (stopped || !canvas) return;
+      const paint = (): boolean => {
+        if (stopped || !canvas) return false;
         const video = ctrl.master;
-        if (video.readyState < 2) return;
+        if (video.readyState < 2 || !(video.videoWidth > 0)) return false;
         const rect = canvas.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) return false;
         const dpr = window.devicePixelRatio || 1;
-        const width = Math.max(1, Math.round((rect.width || canvas.clientWidth || 1) * dpr));
-        const height = Math.max(1, Math.round((rect.height || canvas.clientHeight || 1) * dpr));
+        const width = Math.max(1, Math.round(rect.width * dpr));
+        const height = Math.max(1, Math.round(rect.height * dpr));
         if (canvas.width !== width) canvas.width = width;
         if (canvas.height !== height) canvas.height = height;
         const tonal = gradeRef.current;
@@ -158,39 +160,61 @@ export function PenMediaPlayer({
           if (paintGradedFrame(gradeCanvas, video, width, height, objectFitRef.current, tonal)) {
             const ctx = canvas.getContext('2d');
             ctx?.clearRect(0, 0, width, height);
-            return;
+            return true;
           }
         }
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        drawFitted(ctx, video, width, height, objectFitRef.current);
+        if (!ctx) return false;
+        return drawFitted(ctx, video, width, height, objectFitRef.current);
       };
-      paintRef.current = paint;
+      paintRef.current = () => {
+        paint();
+      };
+      let waiting = 0;
       const follow = () => {
         if (stopped) return;
-        paint();
+        const drew = paint();
         const video = ctrl.master as HTMLVideoElement & {
           requestVideoFrameCallback?: (cb: () => void) => number;
         };
-        if (video.paused) return;
-        if (typeof video.requestVideoFrameCallback === 'function') {
-          video.requestVideoFrameCallback(() => follow());
-        } else {
-          raf = requestAnimationFrame(follow);
+        if (video.paused && drew) {
+          waiting = 0;
+          return;
         }
+        if (video.paused) {
+          waiting += 1;
+          if (waiting > 90) return;
+        } else {
+          waiting = 0;
+        }
+        if (!video.paused && typeof video.requestVideoFrameCallback === 'function') {
+          video.requestVideoFrameCallback(() => follow());
+          return;
+        }
+        raf = requestAnimationFrame(follow);
       };
-      ctrl.master.addEventListener('loadeddata', follow);
-      ctrl.master.addEventListener('seeked', follow);
-      ctrl.master.addEventListener('play', follow);
-      ctrl.master.addEventListener('pause', paint);
-      if (ctrl.master.readyState >= 2) follow();
+      const kick = () => {
+        waiting = 0;
+        cancelAnimationFrame(raf);
+        follow();
+      };
+      const observer = new ResizeObserver(() => {
+        if (!stopped) kick();
+      });
+      if (canvas) observer.observe(canvas);
+      ctrl.master.addEventListener('loadeddata', kick);
+      ctrl.master.addEventListener('seeked', kick);
+      ctrl.master.addEventListener('play', kick);
+      ctrl.master.addEventListener('pause', kick);
+      kick();
       return () => {
         stopped = true;
+        observer.disconnect();
         cancelAnimationFrame(raf);
-        ctrl.master.removeEventListener('loadeddata', follow);
-        ctrl.master.removeEventListener('seeked', follow);
-        ctrl.master.removeEventListener('play', follow);
-        ctrl.master.removeEventListener('pause', paint);
+        ctrl.master.removeEventListener('loadeddata', kick);
+        ctrl.master.removeEventListener('seeked', kick);
+        ctrl.master.removeEventListener('play', kick);
+        ctrl.master.removeEventListener('pause', kick);
         unsub();
         ctrl.release();
         if (ctrlRef.current === ctrl) ctrlRef.current = null;

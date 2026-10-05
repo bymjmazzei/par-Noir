@@ -548,6 +548,9 @@ describe('section timeline', () => {
     );
     expect(text).toContain('aria-label="Animations"');
     expect(text.match(/data-keyframe="[^"]+"/g)).toEqual(['data-keyframe="marked:1"']);
+    const drag = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
+    const clipDrag = drag.slice(drag.indexOf('function beginClipDrag'), drag.indexOf('function beginResize'));
+    expect(clipDrag).not.toContain('const moved');
     const picker = renderToStaticMarkup(
       <AnimationPicker
         layer={animated.layers![0]!}
@@ -583,7 +586,7 @@ describe('section timeline', () => {
     expect(settings).toContain('data-motion="unfold"');
     const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8');
     expect(css).toContain('.pen-editor-tile');
-    expect(css).toContain('width: calc(100cqh - 0.25rem - 0.25rem - 0.125rem - 0.75rem)');
+    expect(css).toContain('width: calc(5.75rem - 0.25rem - 0.25rem - 0.125rem - 0.75rem)');
     expect(css).toContain('@keyframes pen-motion-zoom');
     expect(css).toContain('@keyframes pen-motion-unfold');
   });

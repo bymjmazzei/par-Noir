@@ -1295,8 +1295,8 @@ export function SectionTimeline({
         return;
       }
       const delta = ((ev.clientX - startX) / Math.max(1, width)) * span;
-      const moved = moveClipBy(section, layer.id, clipId, delta);
-      onSectionChange(own === mainTrackId ? closeTrackGaps(moved, own) : moved);
+      const shifted = moveClipBy(section, layer.id, clipId, delta);
+      onSectionChange(own === mainTrackId ? closeTrackGaps(shifted, own) : shifted);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
