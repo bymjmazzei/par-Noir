@@ -399,16 +399,16 @@ function MotionTile({
       title={label}
       data-motion={motion}
       data-slot={slot}
-      className="pen-motion-tile space-y-0.5 text-left"
+      className="pen-motion-tile pen-editor-tile text-left"
       onClick={onClick}
     >
       <span
         data-look-tile="square"
-        className={`block overflow-hidden bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}
+        className={`pen-editor-square bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}
       >
-        <img src={lookSwatch} alt="" className="pen-motion-still aspect-square w-full object-cover" draggable={false} />
+        <img src={lookSwatch} alt="" className="pen-motion-still h-full w-full object-cover" draggable={false} />
       </span>
-      <span className={`block truncate text-[10px] leading-tight ${selected ? 'font-semibold text-stone-700' : 'text-stone-400'}`}>
+      <span className={`block h-3 shrink-0 truncate text-[10px] leading-3 ${selected ? 'font-semibold text-stone-700' : 'text-stone-400'}`}>
         {label.replace(/^(Animation|Transition) /, '')}
       </span>
     </button>
@@ -703,8 +703,8 @@ export function AnimationPicker({
   const spec = readLayerAnimation(layer.motion?.animation);
   const selected = spec.both ? (slot === 'both' ? spec.both : undefined) : spec[slot];
   return (
-    <div data-animation-picker="" className="flex min-w-0 flex-col gap-1">
-      <div className="flex gap-1" role="tablist">
+    <div data-animation-picker="" className="flex h-full min-w-0 items-stretch gap-2">
+      <div className="flex shrink-0 flex-col justify-center" role="tablist">
         {ANIMATION_SLOTS.map(([id, label]) => (
           <button
             key={id}
@@ -712,22 +712,23 @@ export function AnimationPicker({
             role="tab"
             aria-label={`Animation ${label}`}
             aria-selected={slot === id}
-            className={`px-1 py-0.5 text-[13px] ${slot === id ? 'font-semibold text-stone-700' : 'text-stone-400'}`}
+            className={`px-1 py-0.5 text-left text-[13px] ${slot === id ? 'font-semibold text-stone-700' : 'text-stone-400'}`}
             onClick={() => setSlot(id)}
           >
             {label}
           </button>
         ))}
       </div>
-      <div className="grid grid-cols-5 gap-1">
+      <div className="pen-editor-tiles">
         <button
           type="button"
           aria-label="Animation None"
           aria-pressed={!selected}
-          className={`px-1 py-1 text-left text-[10px] leading-tight ${selected ? 'text-stone-400' : 'font-semibold text-stone-700'}`}
+          className={`pen-editor-tile text-left ${selected ? 'text-stone-400' : 'font-semibold text-stone-700'}`}
           onClick={() => onSectionChange(upsertLayer(section, setLayerAnimation(layer, slot, null)))}
         >
-          None
+          <span className="pen-editor-square bg-stone-200" />
+          <span className="block h-3 shrink-0 truncate text-[10px] leading-3">None</span>
         </button>
         {ANIMATION_STYLES.map(([style, label]) => (
           <MotionTile
@@ -768,8 +769,8 @@ export function TransitionSettings({
     onPreview?.(start);
   }
   return (
-    <div className="flex flex-col gap-1">
-      <label className="flex items-center gap-1 text-[12px] text-stone-500">
+    <div className="flex h-full min-w-0 items-stretch gap-2">
+      <label className="flex shrink-0 flex-col justify-center text-[12px] text-stone-500">
         Sec
         <input
           aria-label="Transition length"
@@ -777,22 +778,23 @@ export function TransitionSettings({
           min={0.1}
           step={0.1}
           value={durationSec}
-          className="w-14 bg-transparent text-center tabular-nums text-stone-700 outline-none"
+          className="w-12 bg-transparent text-center tabular-nums text-stone-700 outline-none"
           onChange={(event) => {
             const next = Math.max(1 / 30, Number(event.target.value) || 0.5);
             apply(current && current !== 'cut' ? current : 'crossfade', next);
           }}
         />
       </label>
-      <div className="grid grid-cols-5 gap-1">
+      <div className="pen-editor-tiles">
         <button
           type="button"
           aria-label="Transition None"
           aria-pressed={!current || current === 'cut'}
-          className="px-1 py-1 text-left text-[10px] leading-tight text-stone-500"
+          className="pen-editor-tile text-left text-stone-500"
           onClick={() => onSectionChange(clearClipTransition(section, join.toId))}
         >
-          None
+          <span className="pen-editor-square bg-stone-200" />
+          <span className="block h-3 shrink-0 truncate text-[10px] leading-3">None</span>
         </button>
         {TRANSITION_PRESETS.map((preset) => (
           <MotionTile

@@ -582,7 +582,8 @@ describe('section timeline', () => {
     expect(settings).toContain('data-look-tile="square"');
     expect(settings).toContain('data-motion="unfold"');
     const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8');
-    expect(css).toContain('.pen-motion-tile:hover .pen-motion-still');
+    expect(css).toContain('.pen-editor-tile');
+    expect(css).toContain('width: calc(100cqh - 0.25rem - 0.25rem - 0.125rem - 0.75rem)');
     expect(css).toContain('@keyframes pen-motion-zoom');
     expect(css).toContain('@keyframes pen-motion-unfold');
   });

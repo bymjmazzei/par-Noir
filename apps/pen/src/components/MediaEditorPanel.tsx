@@ -419,7 +419,7 @@ export function MediaEditorPanel({
       <ActiveSettingContext.Provider value={{ id: activeSetting, setId: setActiveSetting }}>
       <div
         data-media-settings
-        className="relative z-10 max-h-[5.75rem] min-h-0 shrink overflow-y-auto px-3"
+        className="relative z-10 h-[5.75rem] max-h-[5.75rem] min-h-0 shrink overflow-y-auto px-3"
       >
         <div className={tab === 'basic' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <InspectorSlider
@@ -607,11 +607,11 @@ export function MediaEditorPanel({
           />
         </div>
 
-        <div className={tab === 'animations' ? 'flex flex-wrap items-center gap-1' : 'hidden'}>
+        <div className={tab === 'animations' ? 'h-full min-w-0' : 'hidden'}>
           <AnimationPicker layer={layer} section={section} onSectionChange={onSectionChange} />
         </div>
 
-        <div className={tab === 'transitions' && join ? '' : 'hidden'} data-transition-settings="">
+        <div className={tab === 'transitions' && join ? 'h-full' : 'hidden'} data-transition-settings="">
           {join ? (
             <TransitionSettings
               join={join}
@@ -766,23 +766,23 @@ function LookTiles({
   onPick: (preset: PenMediaFilter) => void;
 }) {
   return (
-    <div className="grid grid-cols-5 gap-1">
+    <div className="pen-editor-tiles">
       {Object.entries(MEDIA_FILTER_PRESETS).map(([id, preset]) => {
         const selected = looksMatch(current, preset);
         const filter = mediaFilterCss({ mediaFilter: preset });
         return (
-          <button key={id} type="button" aria-pressed={selected} title={id} className="space-y-0.5 text-left" onClick={() => onPick(preset)}>
-            <span className={`block overflow-hidden bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}>
+          <button key={id} type="button" aria-pressed={selected} title={id} className="pen-editor-tile text-left" onClick={() => onPick(preset)}>
+            <span className={`pen-editor-square bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}>
               <img
                 src={lookSwatch}
                 alt=""
                 data-look-tile="square"
-                className="aspect-square w-full object-cover"
+                className="h-full w-full object-cover"
                 style={filter ? { filter } : undefined}
                 draggable={false}
               />
             </span>
-            <span className={`block truncate text-[10px] capitalize leading-tight ${activeText(selected)}`}>{id}</span>
+            <span className={`block h-3 shrink-0 truncate text-[10px] capitalize leading-3 ${activeText(selected)}`}>{id}</span>
           </button>
         );
       })}

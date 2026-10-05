@@ -3034,6 +3034,36 @@ input.pen-gallery-tile-title-text {
   margin-top: 0;
 }
 
+.pen-editor-tiles {
+  container-type: size;
+  display: flex;
+  height: 5.75rem;
+  max-height: 100%;
+  min-width: 0;
+  align-items: stretch;
+  gap: 0.25rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.pen-editor-tile {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  height: 100%;
+  gap: 0.125rem;
+  padding-block: 0.25rem;
+  width: calc(100cqh - 0.25rem - 0.25rem - 0.125rem - 0.75rem);
+}
+
+.pen-editor-square {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
 .pen-motion-still {
   transform-origin: center;
 }
