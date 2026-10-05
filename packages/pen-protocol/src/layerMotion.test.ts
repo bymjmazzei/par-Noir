@@ -13,6 +13,7 @@ import {
   trackJoinPoints,
   resolveTimelineDuration,
   sampleLayerAt,
+  setAnimationDuration,
   sampleSectionLayers,
   sectionHasMotion,
   setKeyframeEase,
@@ -612,6 +613,10 @@ describe('copyWidgetLayersIntoSection motion', () => {
     expect(faded.motion?.keys).toEqual([{ t: 1, x: 8 }]);
     expect(sampleLayerAt(faded, 0).opacity).toBe(0);
     expect(sampleLayerAt(faded, 0.4).opacity).toBe(100);
+    const slow = setAnimationDuration(faded, 1);
+    expect(slow.motion?.animation).toMatchObject({ in: 'fade', durationSec: 1 });
+    expect(sampleLayerAt(slow, 0.4).opacity).toBeLessThan(100);
+    expect(sampleLayerAt(slow, 1).opacity).toBe(100);
     expect(sampleLayerAt(faded, 1).x).toBe(8);
     const legacy = layer({ id: 'old', opacity: 100, motion: { keys: [], animation: 'in' } });
     expect(sampleLayerAt(legacy, 0).opacity).toBe(0);

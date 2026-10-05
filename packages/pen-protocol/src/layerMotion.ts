@@ -628,11 +628,19 @@ export const MOTION_PRESET_SEC = 0.4;
 const RISE_PX = 28;
 const SLIDE_PX = 48;
 
-function presetWindow(layer: PenPageLayer, spanSec?: number): { start: number; end: number; dur: number } {
+function presetWindow(
+  layer: PenPageLayer,
+  spec: PenLayerAnimation,
+  spanSec?: number
+): { start: number; end: number; dur: number } {
   const start = layer.inSec ?? 0;
   const end = Math.max(layer.outSec ?? spanSec ?? DEFAULT_TIMELINE_SEC, start + 0.05);
   const span = end - start;
-  return { start, end, dur: Math.min(MOTION_PRESET_SEC, span / 2) };
+  const wanted =
+    spec.durationSec != null && spec.durationSec > 0 ? spec.durationSec : MOTION_PRESET_SEC;
+  const bothEnds = Boolean(spec.both || (spec.in && spec.out));
+  const cap = bothEnds ? span / 2 : span;
+  return { start, end, dur: Math.min(wanted, Math.max(CUT_GAP_SEC, cap)) };
 }
 
 /** Older single-name choices still play. Rise and Pop stay an intro. */
@@ -716,7 +724,7 @@ function foldAnimKeys(keys: PenLayerKeyframe[]): PenLayerKeyframe[] {
 }
 
 function keysForSpec(layer: PenPageLayer, spec: PenLayerAnimation, spanSec?: number): PenLayerKeyframe[] {
-  const { start, end, dur } = presetWindow(layer, spanSec);
+  const { start, end, dur } = presetWindow(layer, spec, spanSec);
   const keys: PenLayerKeyframe[] = [];
   const add = (style: PenAnimationStyle | undefined, slot: PenAnimationSlot) => {
     if (!style) return;
@@ -795,13 +803,29 @@ export function setLayerAnimation(
   const has = Boolean(next.in || next.out || next.both);
   const keys = layer.motion?.keys || [];
   const loop = layer.motion?.loop;
-  if (!has && !keys.length && !loop) return { ...layer, motion: undefined };
+  if (!has && next.durationSec == null && !keys.length && !loop) return { ...layer, motion: undefined };
   return {
     ...layer,
     motion: {
       keys,
       ...(loop ? { loop: true } : {}),
-      ...(has ? { animation: next } : {})
+      ...(has || next.durationSec != null ? { animation: next } : {})
+    }
+  };
+}
+
+/** How long In, Out, and each half of Both take. Styles already chosen keep their names. */
+export function setAnimationDuration(layer: PenPageLayer, durationSec: number): PenPageLayer {
+  const next: PenLayerAnimation = { ...readLayerAnimation(layer.motion?.animation) };
+  next.durationSec = Math.max(CUT_GAP_SEC, durationSec);
+  const keys = layer.motion?.keys || [];
+  const loop = layer.motion?.loop;
+  return {
+    ...layer,
+    motion: {
+      keys,
+      ...(loop ? { loop: true } : {}),
+      animation: next
     }
   };
 }

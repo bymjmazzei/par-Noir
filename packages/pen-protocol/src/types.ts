@@ -313,6 +313,8 @@ export interface PenLayerAnimation {
   in?: PenAnimationStyle;
   out?: PenAnimationStyle;
   both?: PenAnimationStyle;
+  /** Seconds for In, for Out, and for each half of Both. Absent is the 0.4s default. */
+  durationSec?: number;
 }
 
 export interface PenLayerMotion {

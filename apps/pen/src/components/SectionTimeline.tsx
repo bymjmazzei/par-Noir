@@ -15,7 +15,9 @@ import {
   type PenMediaController
 } from '@par-noir/feed-tile';
 import {
+  MOTION_PRESET_SEC,
   readLayerAnimation,
+  setAnimationDuration,
   setLayerAnimation,
   applyTransitionPreset,
   clearClipTransition,
@@ -702,8 +704,24 @@ export function AnimationPicker({
   const [slot, setSlot] = useState<PenAnimationSlot>('in');
   const spec = readLayerAnimation(layer.motion?.animation);
   const selected = spec.both ? (slot === 'both' ? spec.both : undefined) : spec[slot];
+  const durationSec = spec.durationSec ?? MOTION_PRESET_SEC;
   return (
     <div data-animation-picker="" className="flex h-full min-w-0 items-stretch gap-2">
+      <label className="flex shrink-0 flex-col justify-center text-[12px] text-stone-500">
+        Sec
+        <input
+          aria-label="Animation length"
+          type="number"
+          min={0.1}
+          step={0.1}
+          value={durationSec}
+          className="w-12 bg-transparent text-center tabular-nums text-stone-700 outline-none"
+          onChange={(event) => {
+            const next = Math.max(1 / 30, Number(event.target.value) || MOTION_PRESET_SEC);
+            onSectionChange(upsertLayer(section, setAnimationDuration(layer, next)));
+          }}
+        />
+      </label>
       <div className="flex shrink-0 flex-col justify-center" role="tablist">
         {ANIMATION_SLOTS.map(([id, label]) => (
           <button
