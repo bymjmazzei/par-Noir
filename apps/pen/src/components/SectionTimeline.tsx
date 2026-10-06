@@ -744,26 +744,33 @@ function AnimationSeconds({
   label,
   value,
   disabled,
-  onCommit
+  onCommit,
+  className
 }: {
   label: string;
   value: number;
   disabled: boolean;
   onCommit: (next: number) => void;
+  className?: string;
 }) {
   return (
-    <input
-      aria-label={label}
-      type="number"
-      min={0.1}
-      step={0.1}
-      disabled={disabled}
-      value={value}
-      className="h-4 w-10 bg-transparent text-center text-[11px] tabular-nums text-stone-700 outline-none disabled:text-stone-300"
-      onChange={(event) => {
-        onCommit(Math.max(1 / 30, Number(event.target.value) || MOTION_PRESET_SEC));
-      }}
-    />
+    <label
+      className={`flex items-center text-[11px] tabular-nums ${disabled ? 'text-stone-300' : 'text-stone-700'} ${className ?? ''}`}
+    >
+      <input
+        aria-label={label}
+        type="number"
+        min={0.1}
+        step={0.1}
+        disabled={disabled}
+        value={value}
+        className="h-4 w-8 bg-transparent text-right outline-none disabled:text-stone-300"
+        onChange={(event) => {
+          onCommit(Math.max(1 / 30, Number(event.target.value) || MOTION_PRESET_SEC));
+        }}
+      />
+      <span>s</span>
+    </label>
   );
 }
 
@@ -786,29 +793,32 @@ export function AnimationPicker({
   }
   return (
     <div data-animation-picker="" className="flex h-full min-w-0 items-stretch gap-2">
-      <div className="flex h-full shrink-0 flex-col items-center justify-center">
-        <div className="flex items-center" role="tablist">
-          {ANIMATION_SLOTS.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-label={`Animation ${label}`}
-              aria-selected={slot === id}
-              className={`flex h-5 w-5 items-center justify-center ${slot === id ? 'text-stone-700' : 'text-stone-400'}`}
-              onClick={() => setSlot(id)}
-            >
-              <AnimationSlotIcon slot={id} />
-            </button>
-          ))}
-        </div>
+      <div
+        className="grid h-full shrink-0 grid-cols-[1.25rem_auto] grid-rows-3 content-center items-center"
+        role="tablist"
+      >
+        {ANIMATION_SLOTS.map(([id, label], index) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-label={`Animation ${label}`}
+            aria-selected={slot === id}
+            className={`col-start-1 flex h-5 w-5 items-center justify-center ${slot === id ? 'text-stone-700' : 'text-stone-400'} ${index === 0 ? 'row-start-1' : index === 1 ? 'row-start-2' : 'row-start-3'}`}
+            onClick={() => setSlot(id)}
+          >
+            <AnimationSlotIcon slot={id} />
+          </button>
+        ))}
         <AnimationSeconds
+          className="col-start-2 row-start-1"
           label="Animation In length"
           value={inSec}
           disabled={!animationLengthEditable(slot, 'in')}
           onCommit={(next) => setEdge('in', next)}
         />
         <AnimationSeconds
+          className="col-start-2 row-start-2"
           label="Animation Out length"
           value={outSec}
           disabled={!animationLengthEditable(slot, 'out')}

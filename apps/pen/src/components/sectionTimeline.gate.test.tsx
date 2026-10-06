@@ -567,6 +567,9 @@ describe('section timeline', () => {
     );
     expect(picker).toContain('aria-label="Animation In length"');
     expect(picker).toContain('aria-label="Animation Out length"');
+    expect(picker.match(/>s<\/span>/g)).toHaveLength(2);
+    expect(picker).toContain('grid-cols-[1.25rem_auto]');
+    expect(picker).toContain('row-start-3');
     expect(picker).not.toContain('aria-label="Animation Both in length"');
     const outAt = picker.indexOf('aria-label="Animation Out length"');
     const outTag = picker.slice(picker.lastIndexOf('<input', outAt), picker.indexOf('>', outAt));
