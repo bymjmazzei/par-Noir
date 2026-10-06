@@ -735,13 +735,20 @@ function AnimationSlotIcon({ slot }: { slot: PenAnimationSlot }) {
   );
 }
 
+/** In edits the entrance. Out edits the exit. Both edits both. */
+export function animationLengthEditable(slot: PenAnimationSlot, edge: 'in' | 'out'): boolean {
+  return slot === 'both' || slot === edge;
+}
+
 function AnimationSeconds({
   label,
   value,
+  disabled,
   onCommit
 }: {
   label: string;
   value: number;
+  disabled: boolean;
   onCommit: (next: number) => void;
 }) {
   return (
@@ -750,8 +757,9 @@ function AnimationSeconds({
       type="number"
       min={0.1}
       step={0.1}
+      disabled={disabled}
       value={value}
-      className="w-8 bg-transparent text-center text-[11px] tabular-nums text-stone-700 outline-none"
+      className="h-4 w-10 bg-transparent text-center text-[11px] tabular-nums text-stone-700 outline-none disabled:text-stone-300"
       onChange={(event) => {
         onCommit(Math.max(1 / 30, Number(event.target.value) || MOTION_PRESET_SEC));
       }}
@@ -778,41 +786,34 @@ export function AnimationPicker({
   }
   return (
     <div data-animation-picker="" className="flex h-full min-w-0 items-stretch gap-2">
-      <div className="flex h-full shrink-0 items-center gap-1" role="tablist">
-        {ANIMATION_SLOTS.map(([id, label]) => (
-          <div key={id} className="flex flex-col items-center justify-center">
+      <div className="flex h-full shrink-0 flex-col items-center justify-center">
+        <div className="flex items-center" role="tablist">
+          {ANIMATION_SLOTS.map(([id, label]) => (
             <button
+              key={id}
               type="button"
               role="tab"
               aria-label={`Animation ${label}`}
               aria-selected={slot === id}
-              className={`flex h-6 w-6 items-center justify-center ${slot === id ? 'text-stone-700' : 'text-stone-400'}`}
+              className={`flex h-5 w-5 items-center justify-center ${slot === id ? 'text-stone-700' : 'text-stone-400'}`}
               onClick={() => setSlot(id)}
             >
               <AnimationSlotIcon slot={id} />
             </button>
-            {id === 'both' ? (
-              <span className="flex">
-                <AnimationSeconds
-                  label="Animation Both in length"
-                  value={inSec}
-                  onCommit={(next) => setEdge('in', next)}
-                />
-                <AnimationSeconds
-                  label="Animation Both out length"
-                  value={outSec}
-                  onCommit={(next) => setEdge('out', next)}
-                />
-              </span>
-            ) : (
-              <AnimationSeconds
-                label={`Animation ${label} length`}
-                value={id === 'in' ? inSec : outSec}
-                onCommit={(next) => setEdge(id, next)}
-              />
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
+        <AnimationSeconds
+          label="Animation In length"
+          value={inSec}
+          disabled={!animationLengthEditable(slot, 'in')}
+          onCommit={(next) => setEdge('in', next)}
+        />
+        <AnimationSeconds
+          label="Animation Out length"
+          value={outSec}
+          disabled={!animationLengthEditable(slot, 'out')}
+          onCommit={(next) => setEdge('out', next)}
+        />
       </div>
       <div className="pen-editor-tiles">
         <button

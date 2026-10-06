@@ -5,7 +5,14 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, sampleLayerAt, type PenSectionContent } from '@par-noir/pen-protocol';
-import { AnimationPicker, SectionTimeline, shouldSeekTimelineVideo, timelineTracksMaxPx, TransitionSettings } from './SectionTimeline';
+import {
+  AnimationPicker,
+  animationLengthEditable,
+  SectionTimeline,
+  shouldSeekTimelineVideo,
+  timelineTracksMaxPx,
+  TransitionSettings
+} from './SectionTimeline';
 
 const section: PenSectionContent = {
   ...emptySection('body'),
@@ -560,8 +567,19 @@ describe('section timeline', () => {
     );
     expect(picker).toContain('aria-label="Animation In length"');
     expect(picker).toContain('aria-label="Animation Out length"');
-    expect(picker).toContain('aria-label="Animation Both in length"');
-    expect(picker).toContain('aria-label="Animation Both out length"');
+    expect(picker).not.toContain('aria-label="Animation Both in length"');
+    const outAt = picker.indexOf('aria-label="Animation Out length"');
+    const outTag = picker.slice(picker.lastIndexOf('<input', outAt), picker.indexOf('>', outAt));
+    expect(outTag).toContain('disabled=""');
+    const inAt = picker.indexOf('aria-label="Animation In length"');
+    const inTag = picker.slice(picker.lastIndexOf('<input', inAt), picker.indexOf('>', inAt));
+    expect(inTag).not.toContain('disabled=""');
+    expect(animationLengthEditable('in', 'in')).toBe(true);
+    expect(animationLengthEditable('in', 'out')).toBe(false);
+    expect(animationLengthEditable('out', 'in')).toBe(false);
+    expect(animationLengthEditable('out', 'out')).toBe(true);
+    expect(animationLengthEditable('both', 'in')).toBe(true);
+    expect(animationLengthEditable('both', 'out')).toBe(true);
     expect(picker).toContain('aria-label="Animation In"');
     expect(picker).toContain('aria-label="Animation Out"');
     expect(picker).toContain('aria-label="Animation Both"');
