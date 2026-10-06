@@ -558,7 +558,10 @@ describe('section timeline', () => {
         onSectionChange={() => undefined}
       />
     );
-    expect(picker).toContain('aria-label="Animation length"');
+    expect(picker).toContain('aria-label="Animation In length"');
+    expect(picker).toContain('aria-label="Animation Out length"');
+    expect(picker).toContain('aria-label="Animation Both in length"');
+    expect(picker).toContain('aria-label="Animation Both out length"');
     expect(picker).toContain('aria-label="Animation In"');
     expect(picker).toContain('aria-label="Animation Out"');
     expect(picker).toContain('aria-label="Animation Both"');

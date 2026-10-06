@@ -521,8 +521,9 @@ export function sampleSectionLayers(
   pageTime: number
 ): PenPageLayer[] {
   const sampled = (section.layers || []).map((layer) => {
+    const play = layerWithTransitionNegation(section, layer);
     const local = layerSampleTime(section, layer, pageTime);
-    const posed = sampleLayerAt(layer, local, layerClockSpan(section, layer));
+    const posed = sampleLayerAt(play, local, layerClockSpan(section, layer));
     if (layer.visible === false || layer.kind === 'guide') return posed;
     const span = layerClockSpan(section, layer);
     if (!layerOnClock(layer, local, span)) return { ...posed, visible: false };
@@ -628,19 +629,35 @@ export const MOTION_PRESET_SEC = 0.4;
 const RISE_PX = 28;
 const SLIDE_PX = 48;
 
-function presetWindow(
+function slotDurations(
   layer: PenPageLayer,
   spec: PenLayerAnimation,
   spanSec?: number
-): { start: number; end: number; dur: number } {
+): { start: number; end: number; inDur: number; outDur: number } {
   const start = layer.inSec ?? 0;
   const end = Math.max(layer.outSec ?? spanSec ?? DEFAULT_TIMELINE_SEC, start + 0.05);
   const span = end - start;
-  const wanted =
+  const inWanted =
     spec.durationSec != null && spec.durationSec > 0 ? spec.durationSec : MOTION_PRESET_SEC;
+  const outWanted =
+    spec.outDurationSec != null && spec.outDurationSec > 0 ? spec.outDurationSec : inWanted;
   const bothEnds = Boolean(spec.both || (spec.in && spec.out));
-  const cap = bothEnds ? span / 2 : span;
-  return { start, end, dur: Math.min(wanted, Math.max(CUT_GAP_SEC, cap)) };
+  let inDur = inWanted;
+  let outDur = outWanted;
+  if (bothEnds && inDur + outDur > span) {
+    const scale = span / Math.max(inDur + outDur, CUT_GAP_SEC);
+    inDur *= scale;
+    outDur *= scale;
+  } else {
+    inDur = Math.min(inDur, span);
+    outDur = Math.min(outDur, span);
+  }
+  return {
+    start,
+    end,
+    inDur: Math.max(CUT_GAP_SEC, inDur),
+    outDur: Math.max(CUT_GAP_SEC, outDur)
+  };
 }
 
 /** Older single-name choices still play. Rise and Pop stay an intro. */
@@ -724,14 +741,14 @@ function foldAnimKeys(keys: PenLayerKeyframe[]): PenLayerKeyframe[] {
 }
 
 function keysForSpec(layer: PenPageLayer, spec: PenLayerAnimation, spanSec?: number): PenLayerKeyframe[] {
-  const { start, end, dur } = presetWindow(layer, spec, spanSec);
+  const { start, end, inDur, outDur } = slotDurations(layer, spec, spanSec);
   const keys: PenLayerKeyframe[] = [];
   const add = (style: PenAnimationStyle | undefined, slot: PenAnimationSlot) => {
     if (!style) return;
     const pair = stylePair(layer, style);
-    if (slot === 'out') keys.push(...placedPair(pair, end - dur, end, true));
-    else keys.push(...placedPair(pair, start, start + dur, false));
-    if (slot === 'both') keys.push(...placedPair(pair, end - dur, end, true));
+    if (slot === 'out') keys.push(...placedPair(pair, end - outDur, end, true));
+    else keys.push(...placedPair(pair, start, start + inDur, false));
+    if (slot === 'both') keys.push(...placedPair(pair, end - outDur, end, true));
   };
   if (spec.both) add(spec.both, 'both');
   else {
@@ -801,25 +818,82 @@ export function setLayerAnimation(
     delete next[slot];
   }
   const has = Boolean(next.in || next.out || next.both);
+  const hasDuration = next.durationSec != null || next.outDurationSec != null;
   const keys = layer.motion?.keys || [];
   const loop = layer.motion?.loop;
-  if (!has && next.durationSec == null && !keys.length && !loop) return { ...layer, motion: undefined };
+  if (!has && !hasDuration && !keys.length && !loop) return { ...layer, motion: undefined };
   return {
     ...layer,
     motion: {
       keys,
       ...(loop ? { loop: true } : {}),
-      ...(has || next.durationSec != null ? { animation: next } : {})
+      ...(has || hasDuration ? { animation: next } : {})
     }
   };
 }
 
-/** How long In, Out, and each half of Both take. Styles already chosen keep their names. */
-export function setAnimationDuration(layer: PenPageLayer, durationSec: number): PenPageLayer {
+/** How long one edge takes. In is the first half of Both. Out is the second half. */
+export function setAnimationDuration(
+  layer: PenPageLayer,
+  edge: 'in' | 'out',
+  durationSec: number
+): PenPageLayer {
   const next: PenLayerAnimation = { ...readLayerAnimation(layer.motion?.animation) };
-  next.durationSec = Math.max(CUT_GAP_SEC, durationSec);
+  const dur = Math.max(CUT_GAP_SEC, durationSec);
+  if (edge === 'out') next.outDurationSec = dur;
+  else next.durationSec = dur;
   const keys = layer.motion?.keys || [];
   const loop = layer.motion?.loop;
+  return {
+    ...layer,
+    motion: {
+      keys,
+      ...(loop ? { loop: true } : {}),
+      animation: next
+    }
+  };
+}
+
+/**
+ * A transition owns the edge it covers, so that edge's animation does not also play.
+ * The stored choice stays. Removing the transition brings the animation back.
+ */
+function layerWithTransitionNegation(section: PenSectionContent, layer: PenPageLayer): PenPageLayer {
+  const animation = layer.motion?.animation;
+  const spec = readLayerAnimation(animation);
+  if (!spec.in && !spec.out && !spec.both) return layer;
+  let dropIn = false;
+  let dropOut = false;
+  for (const join of trackJoinPoints(section)) {
+    if (!join.preset) continue;
+    if (join.toId === layer.id) dropIn = true;
+    if (join.fromId === layer.id) dropOut = true;
+  }
+  if (!dropIn && !dropOut) return layer;
+  const next: PenLayerAnimation = { ...spec };
+  if (dropIn) {
+    delete next.in;
+    if (next.both) {
+      if (dropOut) delete next.both;
+      else {
+        next.out = next.both;
+        delete next.both;
+      }
+    }
+  }
+  if (dropOut) {
+    delete next.out;
+    if (next.both) {
+      next.in = next.both;
+      delete next.both;
+    }
+  }
+  const keys = layer.motion?.keys || [];
+  const loop = layer.motion?.loop;
+  if (!next.in && !next.out && !next.both) {
+    if (!keys.length && !loop) return { ...layer, motion: undefined };
+    return { ...layer, motion: { keys, ...(loop ? { loop: true } : {}) } };
+  }
   return {
     ...layer,
     motion: {

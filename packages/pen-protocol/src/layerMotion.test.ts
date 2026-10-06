@@ -613,7 +613,7 @@ describe('copyWidgetLayersIntoSection motion', () => {
     expect(faded.motion?.keys).toEqual([{ t: 1, x: 8 }]);
     expect(sampleLayerAt(faded, 0).opacity).toBe(0);
     expect(sampleLayerAt(faded, 0.4).opacity).toBe(100);
-    const slow = setAnimationDuration(faded, 1);
+    const slow = setAnimationDuration(faded, 'in', 1);
     expect(slow.motion?.animation).toMatchObject({ in: 'fade', durationSec: 1 });
     expect(sampleLayerAt(slow, 0.4).opacity).toBeLessThan(100);
     expect(sampleLayerAt(slow, 1).opacity).toBe(100);
@@ -631,5 +631,66 @@ describe('copyWidgetLayersIntoSection motion', () => {
     expect(sampleLayerAt(combo, 0).opacity).toBe(0);
     expect(sampleLayerAt(combo, 0.4).y).toBe(0);
     expect(sampleLayerAt(combo, 5).opacity).toBe(0);
+  });
+
+  it('Out can last a different time than In, and Both uses both times', () => {
+    const host = layer({ id: 't', opacity: 100, inSec: 0, outSec: 2 });
+    const edges = setAnimationDuration(
+      setAnimationDuration(setLayerAnimation(setLayerAnimation(host, 'in', 'fade'), 'out', 'fade'), 'in', 0.2),
+      'out',
+      0.6
+    );
+    expect(edges.motion?.animation).toMatchObject({
+      in: 'fade',
+      out: 'fade',
+      durationSec: 0.2,
+      outDurationSec: 0.6
+    });
+    expect(sampleLayerAt(edges, 0).opacity).toBe(0);
+    expect(sampleLayerAt(edges, 0.2).opacity).toBe(100);
+    expect(sampleLayerAt(edges, 1).opacity).toBe(100);
+    expect(sampleLayerAt(edges, 2).opacity).toBe(0);
+    const both = setAnimationDuration(
+      setAnimationDuration(setLayerAnimation(host, 'both', 'fade'), 'in', 0.2),
+      'out',
+      0.6
+    );
+    expect(sampleLayerAt(both, 0).opacity).toBe(0);
+    expect(sampleLayerAt(both, 0.2).opacity).toBe(100);
+    expect(sampleLayerAt(both, 1).opacity).toBe(100);
+    expect(sampleLayerAt(both, 2).opacity).toBe(0);
+  });
+
+  it('a transition takes the edge so that animation does not also play', () => {
+    const doc = section([
+      layer({
+        id: 'a',
+        opacity: 100,
+        inSec: 0,
+        outSec: 1,
+        timelineTrackId: 'row',
+        motion: { keys: [], animation: { in: 'fade', out: 'fade' } }
+      }),
+      layer({
+        id: 'b',
+        opacity: 100,
+        inSec: 1,
+        outSec: 2,
+        timelineTrackId: 'row',
+        motion: { keys: [], animation: { both: 'fade' } }
+      })
+    ]);
+    expect(sampleSectionLayers(doc, 0.7).find((item) => item.id === 'a')?.opacity).toBeLessThan(100);
+    expect(sampleSectionLayers(doc, 1.3).find((item) => item.id === 'b')?.opacity).toBeLessThan(100);
+    const next = applyTransitionPreset(doc, 'a', 'b', 'crossfade', { durationSec: 0.5 });
+    expect(next.layers?.find((item) => item.id === 'a')?.motion?.animation).toEqual({
+      in: 'fade',
+      out: 'fade'
+    });
+    expect(next.layers?.find((item) => item.id === 'b')?.motion?.animation).toEqual({ both: 'fade' });
+    expect(sampleSectionLayers(next, 0).find((item) => item.id === 'a')?.opacity).toBe(0);
+    expect(sampleSectionLayers(next, 0.7).find((item) => item.id === 'a')?.opacity).toBe(100);
+    expect(sampleSectionLayers(next, 1.3).find((item) => item.id === 'b')?.opacity).toBe(100);
+    expect(sampleSectionLayers(next, 1.9).find((item) => item.id === 'b')?.opacity).toBeLessThan(100);
   });
 });

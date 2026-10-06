@@ -692,6 +692,73 @@ const ANIMATION_SLOTS: Array<[PenAnimationSlot, string]> = [
   ['both', 'Both']
 ];
 
+function AnimationSlotIcon({ slot }: { slot: PenAnimationSlot }) {
+  if (slot === 'in') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+        <path
+          d="M3 3v10M6 8h7M10 5l3 3-3 3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (slot === 'out') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+        <path
+          d="M13 3v10M10 8H3M6 5 3 8l3 3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <path
+        d="M3 3v10M13 3v10M5.5 8h5M7.5 6 5.5 8l2 2M8.5 6l2 2-2 2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AnimationSeconds({
+  label,
+  value,
+  onCommit
+}: {
+  label: string;
+  value: number;
+  onCommit: (next: number) => void;
+}) {
+  return (
+    <input
+      aria-label={label}
+      type="number"
+      min={0.1}
+      step={0.1}
+      value={value}
+      className="w-8 bg-transparent text-center text-[11px] tabular-nums text-stone-700 outline-none"
+      onChange={(event) => {
+        onCommit(Math.max(1 / 30, Number(event.target.value) || MOTION_PRESET_SEC));
+      }}
+    />
+  );
+}
+
 export function AnimationPicker({
   layer,
   section,
@@ -704,37 +771,47 @@ export function AnimationPicker({
   const [slot, setSlot] = useState<PenAnimationSlot>('in');
   const spec = readLayerAnimation(layer.motion?.animation);
   const selected = spec.both ? (slot === 'both' ? spec.both : undefined) : spec[slot];
-  const durationSec = spec.durationSec ?? MOTION_PRESET_SEC;
+  const inSec = spec.durationSec ?? MOTION_PRESET_SEC;
+  const outSec = spec.outDurationSec ?? spec.durationSec ?? MOTION_PRESET_SEC;
+  function setEdge(edge: 'in' | 'out', next: number) {
+    onSectionChange(upsertLayer(section, setAnimationDuration(layer, edge, next)));
+  }
   return (
     <div data-animation-picker="" className="flex h-full min-w-0 items-stretch gap-2">
-      <label className="flex shrink-0 flex-col justify-center text-[12px] text-stone-500">
-        Sec
-        <input
-          aria-label="Animation length"
-          type="number"
-          min={0.1}
-          step={0.1}
-          value={durationSec}
-          className="w-12 bg-transparent text-center tabular-nums text-stone-700 outline-none"
-          onChange={(event) => {
-            const next = Math.max(1 / 30, Number(event.target.value) || MOTION_PRESET_SEC);
-            onSectionChange(upsertLayer(section, setAnimationDuration(layer, next)));
-          }}
-        />
-      </label>
-      <div className="flex shrink-0 flex-col justify-center" role="tablist">
+      <div className="flex h-full shrink-0 items-center gap-1" role="tablist">
         {ANIMATION_SLOTS.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-label={`Animation ${label}`}
-            aria-selected={slot === id}
-            className={`px-1 py-0.5 text-left text-[13px] ${slot === id ? 'font-semibold text-stone-700' : 'text-stone-400'}`}
-            onClick={() => setSlot(id)}
-          >
-            {label}
-          </button>
+          <div key={id} className="flex flex-col items-center justify-center">
+            <button
+              type="button"
+              role="tab"
+              aria-label={`Animation ${label}`}
+              aria-selected={slot === id}
+              className={`flex h-6 w-6 items-center justify-center ${slot === id ? 'text-stone-700' : 'text-stone-400'}`}
+              onClick={() => setSlot(id)}
+            >
+              <AnimationSlotIcon slot={id} />
+            </button>
+            {id === 'both' ? (
+              <span className="flex">
+                <AnimationSeconds
+                  label="Animation Both in length"
+                  value={inSec}
+                  onCommit={(next) => setEdge('in', next)}
+                />
+                <AnimationSeconds
+                  label="Animation Both out length"
+                  value={outSec}
+                  onCommit={(next) => setEdge('out', next)}
+                />
+              </span>
+            ) : (
+              <AnimationSeconds
+                label={`Animation ${label} length`}
+                value={id === 'in' ? inSec : outSec}
+                onCommit={(next) => setEdge(id, next)}
+              />
+            )}
+          </div>
         ))}
       </div>
       <div className="pen-editor-tiles">
