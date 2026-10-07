@@ -606,6 +606,10 @@ describe('section timeline', () => {
         onSectionChange={() => undefined}
       />
     );
+    expect(settings).toContain('>Length<');
+    expect(settings).not.toContain('>Sec<');
+    expect(settings).toContain('data-transition-seconds=""');
+    expect(settings).toContain('aria-label="Transition length"');
     expect(settings).toContain('>Fade<');
     expect(settings).toContain('>Unfold<');
     expect(settings).toContain('data-look-tile="square"');

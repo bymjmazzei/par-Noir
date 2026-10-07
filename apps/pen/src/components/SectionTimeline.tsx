@@ -740,23 +740,29 @@ export function animationLengthEditable(slot: PenAnimationSlot, edge: 'in' | 'ou
   return slot === 'both' || slot === edge;
 }
 
-function AnimationSeconds({
+function DurationSecondsInput({
   label,
   value,
-  disabled,
+  disabled = false,
   onCommit,
-  className
+  className,
+  fallbackSec = MOTION_PRESET_SEC,
+  marker = 'animation-seconds'
 }: {
   label: string;
   value: number;
-  disabled: boolean;
+  disabled?: boolean;
   onCommit: (next: number) => void;
   className?: string;
+  fallbackSec?: number;
+  marker?: 'animation-seconds' | 'transition-seconds';
 }) {
   const tone = disabled ? 'text-stone-300' : 'text-stone-700';
+  const markerProps =
+    marker === 'transition-seconds' ? { 'data-transition-seconds': '' } : { 'data-animation-seconds': '' };
   return (
     <label
-      data-animation-seconds=""
+      {...markerProps}
       className={`relative inline-block text-[11px] tabular-nums ${tone} ${className ?? ''}`}
     >
       <input
@@ -768,7 +774,7 @@ function AnimationSeconds({
         value={value}
         className={`h-4 w-11 bg-transparent pr-3 text-right outline-none [appearance:textfield] disabled:text-stone-300 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${tone}`}
         onChange={(event) => {
-          onCommit(Math.max(1 / 30, Number(event.target.value) || MOTION_PRESET_SEC));
+          onCommit(Math.max(1 / 30, Number(event.target.value) || fallbackSec));
         }}
       />
       <span className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2" aria-hidden>
@@ -814,14 +820,14 @@ export function AnimationPicker({
             <AnimationSlotIcon slot={id} />
           </button>
         ))}
-        <AnimationSeconds
+        <DurationSecondsInput
           className="col-start-2 row-start-1"
           label="Animation In length"
           value={inSec}
           disabled={!animationLengthEditable(slot, 'in')}
           onCommit={(next) => setEdge('in', next)}
         />
-        <AnimationSeconds
+        <DurationSecondsInput
           className="col-start-2 row-start-2"
           label="Animation Out length"
           value={outSec}
@@ -881,18 +887,13 @@ export function TransitionSettings({
   return (
     <div className="flex h-full min-w-0 items-stretch gap-2">
       <label className="flex shrink-0 flex-col justify-center text-[12px] text-stone-500">
-        Sec
-        <input
-          aria-label="Transition length"
-          type="number"
-          min={0.1}
-          step={0.1}
+        Length
+        <DurationSecondsInput
+          label="Transition length"
           value={durationSec}
-          className="w-12 bg-transparent text-center tabular-nums text-stone-700 outline-none"
-          onChange={(event) => {
-            const next = Math.max(1 / 30, Number(event.target.value) || 0.5);
-            apply(current && current !== 'cut' ? current : 'crossfade', next);
-          }}
+          fallbackSec={0.5}
+          marker="transition-seconds"
+          onCommit={(next) => apply(current && current !== 'cut' ? current : 'crossfade', next)}
         />
       </label>
       <div className="pen-editor-tiles">
