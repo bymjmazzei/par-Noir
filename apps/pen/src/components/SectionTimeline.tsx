@@ -887,14 +887,14 @@ export function TransitionSettings({
   return (
     <div className="flex h-full min-w-0 items-stretch gap-2">
       <div
-        className="flex h-full w-[calc(1.25rem+2.75rem)] shrink-0 flex-col items-center justify-center"
+        className="flex h-full w-[calc(1.25rem+2.75rem)] shrink-0 flex-col items-start justify-center"
         data-transition-length-controls=""
       >
-        <span className="flex h-5 items-center justify-center text-[12px] leading-none text-stone-500">
+        <span className="flex h-5 items-center text-[12px] leading-none text-stone-500">
           Length
         </span>
         <DurationSecondsInput
-          className="flex h-5 items-center"
+          className="!block h-5 w-full [&_input]:text-left"
           label="Transition length"
           value={durationSec}
           fallbackSec={0.5}

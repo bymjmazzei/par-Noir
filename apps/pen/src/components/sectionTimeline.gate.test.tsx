@@ -610,7 +610,7 @@ describe('section timeline', () => {
       /data-transition-length-controls[\s\S]{0,200}grid-cols-\[1\.25rem_auto\]/
     );
     expect(settings).toContain('data-transition-length-controls=""');
-    expect(settings).toContain('items-center');
+    expect(settings).toContain('items-start');
     expect(settings).toContain('>Length<');
     expect(settings).not.toContain('col-start-2');
     expect(settings).not.toContain('>Sec<');
