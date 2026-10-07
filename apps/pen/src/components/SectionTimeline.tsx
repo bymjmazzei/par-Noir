@@ -894,7 +894,7 @@ export function TransitionSettings({
           Length
         </span>
         <DurationSecondsInput
-          className="!block h-5 w-full [&_input]:text-left"
+          className="h-5 [&_input]:text-left"
           label="Transition length"
           value={durationSec}
           fallbackSec={0.5}

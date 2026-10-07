@@ -615,6 +615,7 @@ describe('section timeline', () => {
     expect(settings).not.toContain('col-start-2');
     expect(settings).not.toContain('>Sec<');
     expect(settings).toContain('data-transition-seconds=""');
+    expect(settings).not.toMatch(/data-transition-seconds=""[^>]*w-full/);
     expect(settings).toContain('aria-label="Transition length"');
     expect(settings).toContain('>Fade<');
     expect(settings).toContain('>Unfold<');
