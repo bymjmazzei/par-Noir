@@ -753,9 +753,11 @@ function AnimationSeconds({
   onCommit: (next: number) => void;
   className?: string;
 }) {
+  const tone = disabled ? 'text-stone-300' : 'text-stone-700';
   return (
     <label
-      className={`flex items-center text-[11px] tabular-nums ${disabled ? 'text-stone-300' : 'text-stone-700'} ${className ?? ''}`}
+      data-animation-seconds=""
+      className={`relative inline-block text-[11px] tabular-nums ${tone} ${className ?? ''}`}
     >
       <input
         aria-label={label}
@@ -764,12 +766,14 @@ function AnimationSeconds({
         step={0.1}
         disabled={disabled}
         value={value}
-        className="h-4 w-8 bg-transparent text-right outline-none disabled:text-stone-300"
+        className={`h-4 w-11 bg-transparent pr-3 text-right outline-none [appearance:textfield] disabled:text-stone-300 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${tone}`}
         onChange={(event) => {
           onCommit(Math.max(1 / 30, Number(event.target.value) || MOTION_PRESET_SEC));
         }}
       />
-      <span>s</span>
+      <span className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2" aria-hidden>
+        s
+      </span>
     </label>
   );
 }
