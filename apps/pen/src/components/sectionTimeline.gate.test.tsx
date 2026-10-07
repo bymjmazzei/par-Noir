@@ -606,10 +606,13 @@ describe('section timeline', () => {
         onSectionChange={() => undefined}
       />
     );
+    expect(timeline).not.toMatch(
+      /data-transition-length-controls[\s\S]{0,200}grid-cols-\[1\.25rem_auto\]/
+    );
     expect(settings).toContain('data-transition-length-controls=""');
+    expect(settings).toContain('items-center');
     expect(settings).toContain('>Length<');
-    expect(settings).toMatch(/row-start-1[\s\S]*>Length</);
-    expect(settings).toMatch(/data-transition-seconds=""[^>]*row-start-2/);
+    expect(settings).not.toContain('col-start-2');
     expect(settings).not.toContain('>Sec<');
     expect(settings).toContain('data-transition-seconds=""');
     expect(settings).toContain('aria-label="Transition length"');
