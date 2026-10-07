@@ -607,6 +607,7 @@ describe('section timeline', () => {
       />
     );
     expect(settings).toContain('>Length<');
+    expect(settings).toContain('items-center');
     expect(settings).not.toContain('>Sec<');
     expect(settings).toContain('data-transition-seconds=""');
     expect(settings).toContain('aria-label="Transition length"');

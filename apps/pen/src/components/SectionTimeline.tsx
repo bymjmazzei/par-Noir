@@ -886,7 +886,7 @@ export function TransitionSettings({
   }
   return (
     <div className="flex h-full min-w-0 items-stretch gap-2">
-      <label className="flex shrink-0 flex-col justify-center text-[12px] text-stone-500">
+      <label className="flex shrink-0 flex-col items-center justify-center gap-0.5 text-center text-[12px] text-stone-500">
         Length
         <DurationSecondsInput
           label="Transition length"
