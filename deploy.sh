@@ -97,6 +97,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/social-connections..."
+cd ../social-connections
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ social-connections build failed"
+    exit 1
+fi
+
 echo "📦 Building packages/aggregator-domain..."
 cd ../aggregator-domain
 npm run build
