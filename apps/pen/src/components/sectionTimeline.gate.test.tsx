@@ -616,9 +616,10 @@ describe('section timeline', () => {
     expect(settings).not.toContain('>Sec<');
     expect(settings).toContain('data-transition-seconds=""');
     expect(settings).toMatch(/data-transition-seconds=""[^>]*inline-flex/);
-    expect(settings).toContain('gap-1');
-    expect(settings).toContain('shrink-0" aria-hidden="true">s</span>');
-    expect(settings).not.toContain('absolute right-0.5');
+    expect(settings).toContain('[field-sizing:content]');
+    expect(settings).toContain('text-left');
+    expect(settings).toContain('aria-hidden="true"> s</span>');
+    expect(settings).not.toContain('gap-1');
     expect(settings).toContain('aria-label="Transition length"');
     expect(settings).toContain('>Fade<');
     expect(settings).toContain('>Unfold<');

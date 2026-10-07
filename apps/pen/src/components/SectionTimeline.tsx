@@ -748,7 +748,7 @@ function DurationSecondsInput({
   className,
   fallbackSec = MOTION_PRESET_SEC,
   marker = 'animation-seconds',
-  layout = 'default'
+  presentation = 'iconColumn'
 }: {
   label: string;
   value: number;
@@ -757,17 +757,18 @@ function DurationSecondsInput({
   className?: string;
   fallbackSec?: number;
   marker?: 'animation-seconds' | 'transition-seconds';
-  layout?: 'default' | 'compact';
+  presentation?: 'iconColumn' | 'plainText';
 }) {
   const tone = disabled ? 'text-stone-300' : 'text-stone-700';
   const markerProps =
     marker === 'transition-seconds' ? { 'data-transition-seconds': '' } : { 'data-animation-seconds': '' };
   const inputClass = `h-4 bg-transparent outline-none [appearance:textfield] disabled:text-stone-300 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${tone}`;
-  if (layout === 'compact') {
+  if (presentation === 'plainText') {
+    const widthCh = Math.min(6, Math.max(3, String(value).length));
     return (
       <label
         {...markerProps}
-        className={`inline-flex h-5 items-center gap-1 text-[11px] tabular-nums ${tone} ${className ?? ''}`}
+        className={`inline-flex h-5 items-baseline text-[11px] tabular-nums ${tone} ${className ?? ''}`}
       >
         <input
           aria-label={label}
@@ -776,12 +777,15 @@ function DurationSecondsInput({
           step={0.1}
           disabled={disabled}
           value={value}
-          className={`${inputClass} w-[4.5ch] min-w-0 p-0 text-left`}
+          style={{ width: `${widthCh}ch` }}
+          className={`${inputClass} min-w-0 max-w-[6ch] p-0 text-left [field-sizing:content]`}
           onChange={(event) => {
             onCommit(Math.max(1 / 30, Number(event.target.value) || fallbackSec));
           }}
         />
-        <span className="shrink-0" aria-hidden>s</span>
+        <span className="shrink-0" aria-hidden>
+          {' s'}
+        </span>
       </label>
     );
   }
@@ -919,7 +923,7 @@ export function TransitionSettings({
           Length
         </span>
         <DurationSecondsInput
-          layout="compact"
+          presentation="plainText"
           label="Transition length"
           value={durationSec}
           fallbackSec={0.5}
