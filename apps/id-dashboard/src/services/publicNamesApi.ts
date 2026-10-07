@@ -155,7 +155,7 @@ export function browseAppOrigin(): string {
   return 'https://browse.parnoir.com';
 }
 
-/** Messaging app origin for profile connect links (vanity only). */
+/** Messaging app origin for universal connect links and optional vanity profile URLs. */
 export function messagingAppOrigin(): string {
   const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env
     ?.VITE_MESSAGING_ORIGIN;

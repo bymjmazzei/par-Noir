@@ -324,21 +324,48 @@ function App() {
   const [vanityNotFound, setVanityNotFound] = useState(false);
   const [vanityConnect, setVanityConnect] = useState<{
     pnIdentifier: string;
-    publicName: string;
+    publicName?: string;
   } | null>(null);
 
   // Vanity path /:publicName — browse → creator feed; messaging → connect landing.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const {
-        vanitySlugFromPathname,
-        vanitySlugForMessagingLanding,
-        resolveVanityPublicName
-      } = await import('./services/publicNamesService');
-      const slug = MESSAGING_ONLY
-        ? vanitySlugForMessagingLanding(window.location.pathname)
-        : vanitySlugFromPathname(window.location.pathname);
+      if (MESSAGING_ONLY) {
+        const { parseMessagingConnectPath } = await import('@par-noir/social-connections');
+        const pnConnect = parseMessagingConnectPath(window.location.pathname);
+        if (pnConnect?.kind === 'pn') {
+          if (cancelled) return;
+          setVanityNotFound(false);
+          setVanityConnect({
+            pnIdentifier: pnConnect.pnIdentifier,
+            publicName: undefined
+          });
+          const url = new URL(window.location.href);
+          const canonical = `/connect/${pnConnect.pnIdentifier}`;
+          if (url.pathname !== canonical) {
+            url.pathname = canonical;
+            url.search = '';
+            window.history.replaceState({}, '', url.toString());
+          }
+          return;
+        }
+      }
+
+      const { vanitySlugFromPathname, resolveVanityPublicName } = await import(
+        './services/publicNamesService'
+      );
+      let slug: string | null;
+      if (MESSAGING_ONLY) {
+        const { parseMessagingConnectPath } = await import('@par-noir/social-connections');
+        const connectParsed = parseMessagingConnectPath(window.location.pathname);
+        slug =
+          connectParsed?.kind === 'vanity'
+            ? connectParsed.slug
+            : vanitySlugFromPathname(window.location.pathname);
+      } else {
+        slug = vanitySlugFromPathname(window.location.pathname);
+      }
       if (!slug) return;
       const hit = await resolveVanityPublicName(slug);
       if (cancelled) return;

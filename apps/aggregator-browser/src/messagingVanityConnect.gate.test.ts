@@ -12,7 +12,8 @@ describe('messaging vanity connect', () => {
   it('App routes MESSAGING_ONLY vanity to VanityConnectPage', () => {
     const app = readFileSync(resolve(here, 'App.tsx'), 'utf8');
     expect(app).toContain('VanityConnectPage');
-    expect(app).toContain('vanitySlugForMessagingLanding');
+    expect(app).toContain('parseMessagingConnectPath');
+    expect(app).toContain("kind === 'pn'");
     expect(app).toContain('setVanityConnect');
     expect(app).toMatch(/MESSAGING_ONLY && vanityConnect/);
   });
