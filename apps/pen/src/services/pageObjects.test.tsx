@@ -18,11 +18,16 @@ import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { SoundCatalogMenu } from '../components/SoundCatalogMenu';
 
 describe('page objects', () => {
-  it('adds Title, Caption, Quote, and Label from the Add menu', () => {
+  it('adds text looks and page widgets from the layered Add menu', () => {
     const menu = readFileSync(resolve(__dirname, '../components/LayersPanel.tsx'), 'utf8');
-    for (const label of ['Title', 'Caption', 'Quote', 'Label', 'Sticker', 'Poll', 'Countdown', 'Link', 'Sound']) {
+    const presets = readFileSync(resolve(__dirname, '../components/layersAddMenu.ts'), 'utf8');
+    for (const label of ['Text', 'Media', 'Widgets', 'Stickers', 'Blank', 'Sound']) {
       expect(menu).toContain(label);
     }
+    for (const label of ['Title', 'Caption', 'Quote', 'Poll', 'Countdown', 'Link']) {
+      expect(presets).toContain(label);
+    }
+    expect(presets).not.toMatch(/look: 'label'/);
     const title = createTextLookLayer('title');
     expect(title.name).toBe('Title');
     expect(JSON.stringify(title.textDoc)).toContain('Source Serif 4');

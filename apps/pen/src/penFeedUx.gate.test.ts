@@ -260,7 +260,8 @@ describe('pen feed UX chrome', () => {
     const panel = readFileSync(resolve(root, 'components/LayersPanel.tsx'), 'utf8');
     const menu = readFileSync(resolve(root, 'components/ActionLayerMenu.tsx'), 'utf8');
     const rail = readFileSync(resolve(root, 'services/classFeedRailItems.ts'), 'utf8');
-    expect(panel).toMatch(/New text layer/);
+    expect(panel).toMatch(/Blank/);
+    expect(panel).toMatch(/Stickers/);
     expect(panel).toMatch(/New group/);
     expect(panel).toMatch(/Import widget/);
     expect(panel).not.toMatch(/New widget/);

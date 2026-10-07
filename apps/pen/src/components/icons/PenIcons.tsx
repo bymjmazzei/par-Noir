@@ -5,7 +5,9 @@ import {
   AlignJustify,
   AlignLeft,
   AlignRight,
+  Check,
   ChevronDown,
+  Pencil,
   Clock,
   Eraser,
   Eye,
@@ -120,6 +122,12 @@ export function IconUnlock(p: SVGProps<SVGSVGElement>) {
 }
 export function IconTrash(p: SVGProps<SVGSVGElement>) {
   return <Trash2 {...sz} {...p} />;
+}
+export function IconCheck(p: SVGProps<SVGSVGElement>) {
+  return <Check {...sz} {...p} />;
+}
+export function IconPencil(p: SVGProps<SVGSVGElement>) {
+  return <Pencil width={12} height={12} strokeWidth={2} {...p} />;
 }
 export function IconSend(p: SVGProps<SVGSVGElement>) {
   return <Send {...sz} {...p} />;

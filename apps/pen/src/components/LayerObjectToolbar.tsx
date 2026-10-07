@@ -18,6 +18,7 @@ import {
   type PenStrokeStyle
 } from '@par-noir/pen-protocol';
 import { ActionBindStrip } from './ActionBindStrip';
+import { LayerTitleControl } from './LayerTitleControl';
 import { parseCssColor } from './PanelValueControls';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
@@ -352,7 +353,6 @@ export function LayerObjectToolbar({
   const [fileKind, setFileKind] = useState<'image' | 'video'>('image');
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
-  const cancelRename = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isPage = target.kind === 'page';
@@ -463,11 +463,6 @@ export function LayerObjectToolbar({
   }
 
   function commitRename() {
-    if (cancelRename.current) {
-      cancelRename.current = false;
-      setRenaming(false);
-      return;
-    }
     if (!layer) return;
     const next = nameDraft.trim();
     patchLayer({ name: next || undefined });
@@ -595,41 +590,20 @@ export function LayerObjectToolbar({
               data-layer-menu
               className="absolute right-0 top-full z-50 mt-1 max-h-80 w-56 overflow-y-auto rounded-md border border-stone-200 bg-white p-2 shadow-lg"
             >
-              {layer &&
-                (renaming ? (
-                  <input
-                    aria-label="Layer title"
-                    autoFocus
-                    className="mb-1 h-5 w-full bg-transparent text-[13px] text-stone-800 outline-none"
-                    value={nameDraft}
-                    onChange={(e) => setNameDraft(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur();
-                      if (e.key === 'Escape') {
-                        cancelRename.current = true;
-                        e.currentTarget.blur();
-                      }
-                    }}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    aria-label="Edit layer title"
-                    className="mb-1 inline-flex h-5 w-5 items-center justify-center text-stone-500 hover:text-stone-800"
-                    onClick={startRename}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path
-                        d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinejoin="round"
-                      />
-                      <path d="M13.5 6.5l3 3" stroke="currentColor" strokeWidth="1.6" />
-                    </svg>
-                  </button>
-                ))}
+              {layer && (
+                <LayerTitleControl
+                  className="mb-1"
+                  label={defaultLayerName(layer, section.layers || [])}
+                  editing={renaming}
+                  draft={nameDraft}
+                  onStartEdit={startRename}
+                  onDraftChange={setNameDraft}
+                  onSave={commitRename}
+                  onCancel={() => setRenaming(false)}
+                  inputClassName="text-[13px]"
+                  titleClassName="text-[13px] text-stone-800"
+                />
+              )}
               {showBackground && (
                 <SectionRow
                   label="Background"

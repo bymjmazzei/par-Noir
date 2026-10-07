@@ -40,7 +40,14 @@ import type { PenSession } from '../services/penSession';
 import { ActionLayerMenu } from './ActionLayerMenu';
 import { SoundCatalogMenu } from './SoundCatalogMenu';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
-import { IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
+import { IconChevron, IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
+import { LayerTitleControl } from './LayerTitleControl';
+import {
+  LAYERS_PAGE_WIDGET_PRESETS,
+  LAYERS_TEXT_LOOK_PRESETS,
+  LAYERS_WIDGET_ELEMENTS,
+  type LayersAddAccordionSection
+} from './layersAddMenu';
 
 export function layerDisplayLabel(layer: PenPageLayer, all: PenPageLayer[]): string {
   return defaultLayerName(layer, all);
@@ -131,6 +138,9 @@ export function LayersPopover({
   const [soundOpen, setSoundOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [mediaKind, setMediaKind] = useState<'image' | 'video'>('image');
+  const [addSection, setAddSection] = useState<LayersAddAccordionSection | null>(null);
+  const [renamingLayerId, setRenamingLayerId] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
 
   const prepared = useMemo(() => normalizeSection(section), [section]);
   const allLayers = prepared.layers || [];
@@ -171,7 +181,9 @@ export function LayersPopover({
     if (!open) {
       setActionOpen(false);
       setAddOpen(false);
+      setAddSection(null);
       setMediaOpen(false);
+      setRenamingLayerId(null);
     }
   }, [open]);
 
@@ -198,6 +210,30 @@ export function LayersPopover({
 
   function commit(next: PenSectionContent) {
     onSectionChange(next);
+  }
+
+  function startLayerRename(layer: PenPageLayer) {
+    setRenamingLayerId(layer.id);
+    setNameDraft(defaultLayerName(layer, allLayers));
+  }
+
+  function commitLayerRename(layerId: string) {
+    const next = nameDraft.trim();
+    commit(patchLayerStyle(prepared, layerId, { name: next || undefined }));
+    setRenamingLayerId(null);
+  }
+
+  function cancelLayerRename() {
+    setRenamingLayerId(null);
+  }
+
+  function toggleAddSection(section: LayersAddAccordionSection) {
+    setAddSection((current) => (current === section ? null : section));
+  }
+
+  function closeAddMenu() {
+    setAddOpen(false);
+    setAddSection(null);
   }
 
   function maxZ() {
@@ -441,7 +477,12 @@ export function LayersPopover({
             aria-label="Add"
             aria-expanded={addOpen}
             className="inline-flex h-7 w-7 items-center justify-center text-black hover:opacity-60"
-            onClick={() => setAddOpen((open) => !open)}
+            onClick={() =>
+              setAddOpen((wasOpen) => {
+                if (wasOpen) setAddSection(null);
+                return !wasOpen;
+              })
+            }
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -450,136 +491,164 @@ export function LayersPopover({
           {addOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-8 z-50 max-h-80 w-44 overflow-auto rounded border border-neutral-200 bg-white py-1 shadow-lg"
+              className="absolute right-0 top-8 z-50 max-h-80 min-w-[10rem] w-48 overflow-auto rounded border border-neutral-200 bg-white py-1 shadow-lg"
             >
               <button
                 type="button"
                 role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
-                onClick={() => {
-                  addTextLayer();
-                  setAddOpen(false);
-                }}
+                aria-expanded={addSection === 'text'}
+                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => toggleAddSection('text')}
               >
-                New text layer
+                Text
+                <IconChevron
+                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'text' ? 'rotate-180' : ''}`}
+                />
               </button>
-              {(
-                [
-                  ['title', 'Title'],
-                  ['caption', 'Caption'],
-                  ['quote', 'Quote'],
-                  ['label', 'Label']
-                ] as const
-              ).map(([look, label]) => (
-                <button
-                  key={look}
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
-                  onClick={() => {
-                    addLook(look);
-                    setAddOpen(false);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
+              {addSection === 'text' && (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                    onClick={() => {
+                      addTextLayer();
+                      closeAddMenu();
+                    }}
+                  >
+                    Blank
+                  </button>
+                  {LAYERS_TEXT_LOOK_PRESETS.map(({ look, label }) => (
+                    <button
+                      key={look}
+                      type="button"
+                      role="menuitem"
+                      className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                      onClick={() => {
+                        addLook(look);
+                        closeAddMenu();
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </>
+              )}
               <button
                 type="button"
                 role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
-                onClick={() => {
-                  setAddOpen(false);
-                  setMediaKind('image');
-                  setMediaOpen(true);
-                }}
+                aria-expanded={addSection === 'media'}
+                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => toggleAddSection('media')}
               >
                 Media
+                <IconChevron
+                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'media' ? 'rotate-180' : ''}`}
+                />
               </button>
-              {(
-                [
-                  ['input', 'Text input'],
-                  ['button', 'Button'],
-                  ['time', 'Time'],
-                  ['html', 'HTML snippet']
-                ] as const
-              ).map(([element, label]) => (
-                <button
-                  key={element}
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
-                  onClick={() => {
-                    addPlaced(element);
-                    setAddOpen(false);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
+              {addSection === 'media' && (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                    onClick={() => {
+                      closeAddMenu();
+                      setMediaKind('image');
+                      setMediaOpen(true);
+                    }}
+                  >
+                    Image or video
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                    onClick={() => {
+                      closeAddMenu();
+                      setSoundOpen(true);
+                    }}
+                  >
+                    Sound
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                aria-expanded={addSection === 'widgets'}
+                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => toggleAddSection('widgets')}
+              >
+                Widgets
+                <IconChevron
+                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'widgets' ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {addSection === 'widgets' && (
+                <>
+                  {LAYERS_WIDGET_ELEMENTS.map(({ element, label }) => (
+                    <button
+                      key={element}
+                      type="button"
+                      role="menuitem"
+                      className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                      onClick={() => {
+                        addPlaced(element);
+                        closeAddMenu();
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                    onClick={() => {
+                      closeAddMenu();
+                      setActionOpen(true);
+                    }}
+                  >
+                    Import widget
+                  </button>
+                  {LAYERS_PAGE_WIDGET_PRESETS.map(({ preset, label }) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      role="menuitem"
+                      className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                      onClick={() => {
+                        addWholeWidget(preset);
+                        closeAddMenu();
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => {
+                  closeAddMenu();
+                  setStickerOpen(true);
+                }}
+              >
+                Stickers
+              </button>
               <button
                 type="button"
                 role="menuitem"
                 className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
                 onClick={() => {
                   onCreateGroup();
-                  setAddOpen(false);
+                  closeAddMenu();
                 }}
               >
                 New group
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
-                onClick={() => {
-                  setAddOpen(false);
-                  setActionOpen(true);
-                }}
-              >
-                Import widget
-              </button>
-              {(
-                [
-                  ['poll', 'Poll'],
-                  ['countdown', 'Countdown'],
-                  ['link', 'Link']
-                ] as const
-              ).map(([preset, label]) => (
-                <button
-                  key={preset}
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
-                  onClick={() => {
-                    addWholeWidget(preset);
-                    setAddOpen(false);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-              <button
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
-                onClick={() => {
-                  setAddOpen(false);
-                  setStickerOpen(true);
-                }}
-              >
-                Sticker
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
-                onClick={() => {
-                  setAddOpen(false);
-                  setSoundOpen(true);
-                }}
-              >
-                Sound
               </button>
             </div>
           )}
@@ -699,9 +768,16 @@ export function LayersPopover({
                   <FolderIcon />
                 </span>
               )}
-              <span className="min-w-0 flex-1 truncate">
-                {layerDisplayLabel(layer, allLayers)}
-              </span>
+              <LayerTitleControl
+                label={layerDisplayLabel(layer, allLayers)}
+                editing={renamingLayerId === layer.id}
+                draft={nameDraft}
+                onStartEdit={() => startLayerRename(layer)}
+                onDraftChange={setNameDraft}
+                onSave={() => commitLayerRename(layer.id)}
+                onCancel={cancelLayerRename}
+                titleClassName={selected ? 'font-bold' : ''}
+              />
               {isWrapped && (
                 <span
                   className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-sky-700"
