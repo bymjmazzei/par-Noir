@@ -374,6 +374,40 @@ export async function promotePenOutboxAndFanout(session: PenSession): Promise<vo
   });
 }
 
+async function applyPenDocInviteClaimFromMailbox(
+  session: PenSession,
+  job: { id: string; payload: Record<string, unknown> }
+): Promise<boolean> {
+  if (!session.mlKemSecretKey) return false;
+  const envelope = job.payload?.envelope as
+    | { kemCiphertext: string; ciphertext: string }
+    | undefined;
+  if (!envelope?.kemCiphertext) return false;
+  const contextId = String(job.payload?.envelopeContext || `pen.doc_invite_claim:${job.id}`);
+  const opened = await openSocialEnvelope<Record<string, unknown>>(
+    envelope,
+    session.mlKemSecretKey,
+    contextId
+  );
+  const inviteePn = String(opened.inviteePn || '').trim();
+  const inviteeMlKemPublicKey = String(opened.inviteeMlKemPublicKey || '').trim();
+  const docId = String(opened.docId || '').trim();
+  const groupId = String(opened.groupId || '').trim();
+  const title = String(opened.title || 'Document');
+  const role = String(opened.role || 'viewer') as PenRole;
+  if (!inviteePn || !inviteeMlKemPublicKey || !docId || !groupId) return false;
+  await invitePenCollaborator({
+    session,
+    docId,
+    groupId,
+    title,
+    peerPnIdentifier: inviteePn.startsWith('pn-') ? inviteePn : `pn-${inviteePn}`,
+    role,
+    peerMlKemPublicKey: inviteeMlKemPublicKey
+  });
+  return true;
+}
+
 /** Drain mailbox and apply pen.* jobs into this user's Drive. */
 const mailboxRouteByPn = new Map<string, string>();
 const drainInFlight = new Map<string, Promise<number>>();
@@ -422,6 +456,24 @@ export async function drainPenMailbox(session: PenSession): Promise<number> {
     };
     let applied = 0;
     for (const job of data.jobs || []) {
+      if (job.jobType === 'pen.doc_invite_claim') {
+        let ok = false;
+        try {
+          ok = await applyPenDocInviteClaimFromMailbox(session, job);
+        } catch {
+          ok = false;
+        }
+        if (ok) {
+          applied += 1;
+          await ownerFetch(
+            'POST',
+            '/api/mailbox/ack',
+            { pnIdentifier: session.pnIdentifier, routeKey, jobIds: [job.id] },
+            { pnIdentifier: session.pnIdentifier }
+          ).catch(() => null);
+        }
+        continue;
+      }
       if (!String(job.jobType || '').startsWith('pen.')) continue;
       let ok = false;
       try {

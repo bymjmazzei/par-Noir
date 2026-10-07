@@ -154,3 +154,14 @@ export function browseAppOrigin(): string {
   }
   return 'https://browse.parnoir.com';
 }
+
+/** Messaging app origin for profile connect links (vanity only). */
+export function messagingAppOrigin(): string {
+  const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env
+    ?.VITE_MESSAGING_ORIGIN;
+  if (fromEnv && fromEnv.trim()) return fromEnv.replace(/\/$/, '');
+  if (typeof window !== 'undefined' && window.location.hostname.includes('localhost')) {
+    return 'http://localhost:5175';
+  }
+  return 'https://messaging.parnoir.com';
+}

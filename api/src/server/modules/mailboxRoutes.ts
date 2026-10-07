@@ -61,7 +61,8 @@ const SOCIAL_JOB_TYPES: SocialMailboxJobType[] = [
   'pen.doc_meta',
   'pen.font_upsert',
   'pen.poll_vote',
-  'pen.widget_action'
+  'pen.widget_action',
+  'pen.doc_invite_claim'
 ];
 
 const JOB_TYPES: SocialMailboxJobType[] = [...MESSAGING_JOB_TYPES, ...SOCIAL_JOB_TYPES];

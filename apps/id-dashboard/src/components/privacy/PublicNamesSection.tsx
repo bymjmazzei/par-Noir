@@ -3,6 +3,7 @@ import { BadgeCheck, Link2, Loader2, Plus } from 'lucide-react';
 import { ClaimPublicNameModal } from './ClaimPublicNameModal';
 import {
   browseAppOrigin,
+  messagingAppOrigin,
   clearVanityPublicName,
   fetchMyPublicNames,
   listPublicName,
@@ -51,7 +52,7 @@ export const PublicNamesSection: React.FC<PublicNamesSectionProps> = ({
 
   const listedOrProven = names.filter((n) => n.status === 'listed' || n.status === 'proven');
   const hasAny = listedOrProven.length > 0;
-  const browseOrigin = browseAppOrigin();
+  const messagingOrigin = messagingAppOrigin();
 
   const onList = async (name: string) => {
     setBusyName(name);
@@ -165,7 +166,7 @@ export const PublicNamesSection: React.FC<PublicNamesSectionProps> = ({
                 </div>
                 {n.isVanity && (
                   <p className="text-xs text-text-secondary mt-1 break-all">
-                    {browseOrigin}/{n.publicName}
+                    {messagingOrigin}/{n.publicName}
                   </p>
                 )}
               </div>

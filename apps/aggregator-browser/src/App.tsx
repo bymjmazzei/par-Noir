@@ -63,6 +63,7 @@ import { API_ENDPOINT } from './config/api';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { EmbedMessagingPage } from './pages/EmbedMessagingPage';
 import { EmbedFeedPage } from './pages/EmbedFeedPage';
+import { VanityConnectPage } from './pages/VanityConnectPage';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -321,23 +322,44 @@ function App() {
   // Initialize from URL params - only on mount and when file param changes
   const hasInitializedFromURLRef = useRef<boolean>(false);
   const [vanityNotFound, setVanityNotFound] = useState(false);
+  const [vanityConnect, setVanityConnect] = useState<{
+    pnIdentifier: string;
+    publicName: string;
+  } | null>(null);
 
-  // Vanity path /:publicName → /?creator=<pn> (only is_vanity listed names)
+  // Vanity path /:publicName — browse → creator feed; messaging → connect landing.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { vanitySlugFromPathname, resolveVanityPublicName } = await import(
-        './services/publicNamesService'
-      );
-      const slug = vanitySlugFromPathname(window.location.pathname);
+      const {
+        vanitySlugFromPathname,
+        vanitySlugForMessagingLanding,
+        resolveVanityPublicName
+      } = await import('./services/publicNamesService');
+      const slug = MESSAGING_ONLY
+        ? vanitySlugForMessagingLanding(window.location.pathname)
+        : vanitySlugFromPathname(window.location.pathname);
       if (!slug) return;
       const hit = await resolveVanityPublicName(slug);
       if (cancelled) return;
       if (!hit) {
         setVanityNotFound(true);
+        setVanityConnect(null);
         return;
       }
       setVanityNotFound(false);
+      if (MESSAGING_ONLY) {
+        setVanityConnect({
+          pnIdentifier: hit.pnIdentifier,
+          publicName: hit.publicName
+        });
+        const url = new URL(window.location.href);
+        url.pathname = `/${hit.publicName}`;
+        url.search = '';
+        window.history.replaceState({}, '', url.toString());
+        return;
+      }
+      setVanityConnect(null);
       const url = new URL(window.location.href);
       url.pathname = '/';
       url.searchParams.set('creator', hit.pnIdentifier);
@@ -1123,6 +1145,19 @@ function App() {
       <>
         {userState.isUnlocked ? <AggregatorCloudReconnectHost /> : null}
         <EmbedMessagingPage onLockUnlock={handleLockUnlock} />
+      </>
+    );
+  }
+
+  if (MESSAGING_ONLY && vanityConnect) {
+    return (
+      <>
+        <BrowserSessionVaultHost />
+        {userState.isUnlocked ? <AggregatorCloudReconnectHost /> : null}
+        <VanityConnectPage
+          targetPnIdentifier={vanityConnect.pnIdentifier}
+          publicName={vanityConnect.publicName}
+        />
       </>
     );
   }

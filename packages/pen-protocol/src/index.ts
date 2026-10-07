@@ -23,6 +23,7 @@ export * from './editProxyRef.js';
 export * from './layerParts.js';
 export * from './agent.js';
 export * from './licensing.js';
+export * from './verifiedAuthor.js';
 export * from './starterAssets.js';
 export * from './table.js';
 export * from './pollSheet.js';

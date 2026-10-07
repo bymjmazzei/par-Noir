@@ -462,4 +462,103 @@ export function setupPenRoutes(
       return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
     }
   });
+
+  app.post('/api/pen/docs/:docId/invites', async (req: Request, res: Response) => {
+    try {
+      const payload = requireFirstPartyOAuthClient(req, res);
+      if (!payload) return;
+      const ownerPn = String(payload.pnIdentifier || '').trim();
+      const docId = String(req.params.docId || '').trim();
+      const groupId = String(req.body?.groupId || '').trim();
+      const role = String(req.body?.role || 'viewer').trim() as 'collaborator' | 'commentor' | 'viewer';
+      const title = String(req.body?.title || '').trim();
+      const expiresInDays =
+        req.body?.expiresInDays != null ? Number(req.body.expiresInDays) : undefined;
+      if (!docId || !groupId) {
+        return res.status(400).json({ error: 'docId and groupId required' });
+      }
+      if (!['collaborator', 'commentor', 'viewer'].includes(role)) {
+        return res.status(400).json({ error: 'invalid_role' });
+      }
+      const { createPenDocInvite } = await import('./penDocInviteService');
+      const created = await createPenDocInvite({
+        ownerPn,
+        docId,
+        groupId,
+        title,
+        role,
+        expiresInDays
+      });
+      return res.json(created);
+    } catch (e) {
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
+    }
+  });
+
+  app.get('/api/pen/invites/:inviteId', async (req: Request, res: Response) => {
+    try {
+      const inviteId = String(req.params.inviteId || '').trim();
+      const { getPenDocInvitePublic } = await import('./penDocInviteService');
+      const invite = await getPenDocInvitePublic(inviteId);
+      if (!invite) {
+        return res.status(404).json({ error: 'invite_not_found' });
+      }
+      return res.json({
+        docId: invite.docId,
+        title: invite.title,
+        role: invite.role,
+        ownerPn: invite.ownerPn,
+        expiresAt: invite.expiresAt,
+        claimed: Boolean(invite.claimedBy)
+      });
+    } catch (e) {
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
+    }
+  });
+
+  app.post('/api/pen/invites/:inviteId/claim', async (req: Request, res: Response) => {
+    try {
+      const payload = requireFirstPartyOAuthClient(req, res);
+      if (!payload) return;
+      const inviteePn = String(payload.pnIdentifier || '').trim();
+      const inviteId = String(req.params.inviteId || '').trim();
+      const inviteeMlKemPublicKey = String(req.body?.inviteeMlKemPublicKey || '').trim();
+      if (!inviteeMlKemPublicKey) {
+        return res.status(400).json({
+          error: 'messaging_keys_required',
+          error_description:
+            'Messaging keys unavailable. Lock and unlock your pN before accepting a doc invite.'
+        });
+      }
+      const { claimPenDocInvite } = await import('./penDocInviteService');
+      const result = await claimPenDocInvite({
+        inviteId,
+        inviteePn,
+        inviteeMlKemPublicKey
+      });
+      return res.json({ success: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'claim_failed';
+      const status =
+        msg === 'invite_not_found'
+          ? 404
+          : msg === 'invite_expired' || msg === 'invite_already_claimed' || msg === 'cannot_claim_own_doc'
+            ? 400
+            : 500;
+      return res.status(status).json({ error: msg });
+    }
+  });
+
+  /** Verified author for public templates + monetized licensing (env allowlist until Veriff). */
+  app.get('/api/pen/author-verification', async (req: Request, res: Response) => {
+    try {
+      const payload = requireFirstPartyOAuthClient(req, res);
+      if (!payload) return;
+      const { isPenVerifiedAuthor } = await import('./penVerifiedAuthor');
+      const pn = String(payload.pnIdentifier || '').trim();
+      return res.json({ verified: isPenVerifiedAuthor(pn) });
+    } catch (e) {
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
+    }
+  });
 }

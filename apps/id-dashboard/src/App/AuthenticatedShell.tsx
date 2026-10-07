@@ -11,6 +11,7 @@ import { SectionInfo } from '../components/common/SectionInfo';
 import { PrivacyDataPointsPanel } from '../components/privacy/PrivacyDataPointsPanel';
 import { AdvancedPrivacySettingsBody } from '../components/privacy/AdvancedPrivacySettingsBody';
 import { PublicNamesSection } from '../components/privacy/PublicNamesSection';
+import { SharePnCard } from '../components/SharePnCard';
 import { STANDARD_DATA_POINTS, getDataPointMinLevel } from '@par-noir/standard-data-points';
 import { setOwnerApiPnIdentifier } from '../services/ownerApiService';
 export interface AuthenticatedShellProps {
@@ -307,6 +308,11 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           </div>
                         )}
                       </div>
+                      <SharePnCard
+                        accessToken={apiToken}
+                        pnIdentifier={recoveryVaultPnId || null}
+                        nickname={authenticatedUser?.nickname}
+                      />
                     </div>
                   </div>
                   

@@ -94,6 +94,8 @@ const RESERVED_PATH_SEGMENTS = new Set([
   'api',
   'index.html',
   'favicon.ico',
+  'connect',
+  'embed',
 ]);
 
 export function vanitySlugFromPathname(pathname: string): string | null {
@@ -101,4 +103,16 @@ export function vanitySlugFromPathname(pathname: string): string | null {
   if (!seg || RESERVED_PATH_SEGMENTS.has(seg.toLowerCase())) return null;
   if (seg.includes('.')) return null;
   return seg.replace(/^@+/, '').toLowerCase();
+}
+
+/** Explicit connect route: /connect/{vanity} */
+export function vanitySlugFromConnectPath(pathname: string): string | null {
+  const parts = pathname.replace(/^\//, '').split('/').filter(Boolean);
+  if (parts[0]?.toLowerCase() !== 'connect' || !parts[1]) return null;
+  if (parts[1].includes('.')) return null;
+  return parts[1].replace(/^@+/, '').toLowerCase();
+}
+
+export function vanitySlugForMessagingLanding(pathname: string): string | null {
+  return vanitySlugFromConnectPath(pathname) || vanitySlugFromPathname(pathname);
 }

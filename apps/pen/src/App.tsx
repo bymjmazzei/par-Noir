@@ -21,6 +21,7 @@ import {
 } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
+import { DocJoinPage } from './pages/DocJoinPage';
 import { DocPreviewPage } from './pages/DocPreviewPage';
 import { DocListPage, type PenAddIntent } from './pages/DocListPage';
 import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
@@ -39,7 +40,7 @@ import { PenLockedLanding } from './components/PenLockedLanding';
 import { PenNotebookPage } from './components/PenNotebookPage';
 import { TemplatesBrowse } from './components/TemplatesBrowse';
 import { loadBrowseDensity, saveBrowseDensity, type PenBrowseDensity } from './services/penClassPrefs';
-import { canPublishPublicTemplate } from './services/penVerified';
+import { useVerifiedAuthor } from './hooks/useVerifiedAuthor';
 import { ensurePlatformTemplateRoots } from './services/penPlatformTemplates';
 import { clearDocKeysForSession } from './services/penDocCrypto';
 import {
@@ -434,6 +435,7 @@ function AuthenticatedApp({
   const [mlKemSecretKey, setMlKemSecretKey] = useState<string | null>(
     () => session.mlKemSecretKey || peekMlKemSecretKey() || null
   );
+  const verifiedAuthor = useVerifiedAuthor(session);
 
   useEffect(() => {
     if (location.pathname !== '/templates') return;
@@ -448,13 +450,13 @@ function AuthenticatedApp({
   }, [session.mlKemSecretKey, mlKemSecretKey]);
 
   useEffect(() => {
-    if (!canPublishPublicTemplate(session)) return;
+    if (!verifiedAuthor) return;
     try {
       ensurePlatformTemplateRoots(session.pnIdentifier);
     } catch {
       /* ignore — catalog still works from listStarterTemplates */
     }
-  }, [session.pnIdentifier, session]);
+  }, [session.pnIdentifier, verifiedAuthor]);
 
   useEffect(() => {
     if (!mlKemSecretKey) {
@@ -644,6 +646,7 @@ function AuthenticatedApp({
             path="/d/:docId/preview"
             element={<DocPreviewRoute session={session} />}
           />
+          <Route path="/d/:docId/join" element={<DocJoinPage session={session} />} />
           <Route path="/d/:docId" element={<DocEditorRoute session={session} />} />
         </Routes>
       </div>

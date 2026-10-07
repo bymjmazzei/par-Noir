@@ -165,4 +165,61 @@ describe('Pen owner-cloud publish', () => {
     expect(body.basedOnFileId).toBe('post-file');
     expect(body.penDocId).toBe('doc-1');
   });
+
+  it('widget building blocks may publish to pen-templates without a feed post', async () => {
+    const bundle = {
+      manifest: {
+        docId: 'w-1',
+        title: 'Sticker',
+        docType: 'sticker',
+        classId: 'widgets.sticker',
+        templateId: 'sticker.v1',
+        templateVersion: '1',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        toc: []
+      },
+      sections: [
+        {
+          slug: 'card',
+          doc: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Sticker' }] }]
+          },
+          layers: []
+        }
+      ],
+      chain: { docId: 'w-1', genesis: { hash: 'g' }, links: [] }
+    } as unknown as LocalDocBundle;
+
+    const request = async (method: string, path: string) => {
+      if (path === '/api/drive/files') {
+        return new Response(JSON.stringify({ id: 'wt-1' }), { status: 200 });
+      }
+      if (path.includes('/ensure-public')) {
+        return new Response(
+          JSON.stringify({
+            publicContentRef: {
+              objectId: 'wt-1',
+              publicUrl: 'https://drive.google.com/uc?export=download&id=wt-1',
+              backend: 'google_drive'
+            }
+          }),
+          { status: 200 }
+        );
+      }
+      if (method === 'PUT') return new Response('{}', { status: 200 });
+      return new Response('unexpected', { status: 500 });
+    };
+
+    const published = await publishTemplateToOwnerCloud({
+      bundle,
+      templateLicensing: defaultLicensingRoot('owner'),
+      verified: true,
+      pnIdentifier: 'pn',
+      request,
+      parentFolderId: 'public-folder'
+    });
+    expect(published.fileId).toBe('wt-1');
+  });
 });

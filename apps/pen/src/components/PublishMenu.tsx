@@ -20,6 +20,7 @@ export function PublishMenu({
   correspondenceEnabled,
   canPublishPublicTemplate,
   hasPublishedPost,
+  widgetTemplatesOnly,
   pnIdentifier,
   onPublishLive,
   onShareToAggregators,
@@ -44,8 +45,10 @@ export function PublishMenu({
   correspondenceEnabled?: boolean;
   /** Verified author — public pen-templates share + licensing panel. */
   canPublishPublicTemplate?: boolean;
-  /** Post already written to the owner cloud — required before template reuse. */
+  /** Post already written to the owner cloud — required before social template reuse. */
   hasPublishedPost?: boolean;
+  /** Widget/sticker building blocks may publish to pen-templates without a feed post. */
+  widgetTemplatesOnly?: boolean;
   pnIdentifier?: string;
   onPublishLive: () => void;
   onShareToAggregators: (feedIds: string[]) => void;
@@ -77,7 +80,9 @@ export function PublishMenu({
     defaultLicensingRoot(ownerPnHash, { membership: membership === true })
   );
   const rootRef = useRef<HTMLDivElement>(null);
-  const templateOk = canPublishPublicTemplate === true && hasPublishedPost === true;
+  const templateOk =
+    canPublishPublicTemplate === true &&
+    (hasPublishedPost === true || widgetTemplatesOnly === true);
   const showLicensing = membership === true;
 
   useEffect(() => {

@@ -60,6 +60,7 @@ import {
 } from './penPublishGates';
 import { publishPublicCloudFile, renderNotePoster, type CloudRequest } from './penPublicPublish';
 import { resolvePenMediaSrc } from './penLocalMedia';
+import { isTemplatesCatalogClass } from './classFeedRailItems';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
 /** Legacy browse handoff key — still written alongside for one release. */
@@ -791,8 +792,11 @@ export async function publishTemplateToOwnerCloud(params: {
   parentFolderId?: string;
 }): Promise<{ fileId: string }> {
   if (!params.verified) throw new Error(PUBLIC_TEMPLATE_REQUIRES_VERIFICATION);
+  const classId = params.bundle.manifest.classId || '';
+  const widgetCatalogOnly =
+    classId.startsWith('widgets.') && isTemplatesCatalogClass(classId);
   const postFileId = params.bundle.manifest.publishedFileId;
-  if (!postFileId) throw new Error('post_required_before_template');
+  if (!widgetCatalogOnly && !postFileId) throw new Error('post_required_before_template');
   const licensing = licensingForPublish(params.templateLicensing, params.bundle.manifest.ownerPnHash, {
     membership: true,
     connectReady: params.connectReady,
@@ -831,7 +835,7 @@ export async function publishTemplateToOwnerCloud(params: {
       textPost,
       description: textPost.content,
       penTemplateKind: kind,
-      basedOnFileId: postFileId,
+      ...(postFileId ? { basedOnFileId: postFileId } : {}),
       basedOnTemplateId: params.bundle.manifest.basedOnTemplateId || params.bundle.manifest.templateId
     }
   });

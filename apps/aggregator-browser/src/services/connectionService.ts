@@ -18,30 +18,40 @@ import {
   cachePeerMailboxRouteKey,
   clearPeerMailboxRouteKeyCache
 } from './peerMailboxRouteCache';
+import {
+  createConnectionsClient,
+  normalizePnId,
+  type Connection,
+  type ConnectionStatus,
+  type PendingRequests,
+  LEGACY_CONNECTION_REQUEST_KEY_MESSAGE
+} from '@par-noir/social-connections';
 
-export interface Connection {
-  connectionId: string;
-  userPnIdentifier: string;
-  status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
-  createdAt: string;
-  acceptedAt?: string;
-  peerMlKemPublicKey?: string;
-  /** Peer's opaque mailbox inbox route (for cross-cloud DM throughway). */
-  peerMailboxRouteKey?: string;
-}
+export type { Connection, ConnectionStatus, PendingRequests };
+export { LEGACY_CONNECTION_REQUEST_KEY_MESSAGE };
 
-export interface ConnectionStatus {
-  status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked';
-  connectionId?: string;
-}
-
-export interface PendingRequests {
-  sent: Connection[];
-  received: Connection[];
-}
-
-export const LEGACY_CONNECTION_REQUEST_KEY_MESSAGE =
-  'This connection request was sent before messaging keys were attached. Ask them to cancel and send a new request.';
+const connectionsClient = createConnectionsClient({
+  waitForCloud: waitForOwnerCloudAccess,
+  listConnectionRows: async (userPnIdentifier) => {
+    const { listDeviceConnections } = await import('@par-noir/device-cloud-credentials');
+    const { sessionDriveFor } = await import('./sessionDrive');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds.connections;
+    if (!sheetId) return [];
+    return (await listDeviceConnections(drive.accessToken, sheetId)) as Connection[];
+  },
+  onAcceptedRowsLoaded: (connections) => {
+    for (const row of connections) {
+      if (row.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
+        cachePeerMailboxRouteKey({
+          connectionId: row.connectionId,
+          peerPnIdentifier: row.userPnIdentifier,
+          peerMailboxRouteKey: row.peerMailboxRouteKey.trim()
+        });
+      }
+    }
+  }
+});
 
 /**
  * Send connection request to another user
@@ -388,53 +398,12 @@ export async function rejectConnectionRequest(
  * Uses Google Drive via API
  */
 export async function getConnections(userPnIdentifier: string): Promise<Connection[]> {
-  const norm = normalizePnId(userPnIdentifier);
-  if (
-    connectionsCache?.pn === norm &&
-    Date.now() - connectionsCache.at < CONNECTIONS_TTL_MS
-  ) {
-    return connectionsCache.value;
+  try {
+    return await connectionsClient.getConnections(userPnIdentifier);
+  } catch (error) {
+    console.error('[getConnections] Failed to get connections:', error);
+    return [];
   }
-  const inflight = connectionsInflight.get(norm);
-  if (inflight) return inflight;
-
-  const work = (async (): Promise<Connection[]> => {
-    try {
-      // Under device custody this needs X-PN-Cloud-Access-Token — wait for vault hydrate.
-      const ready = await waitForOwnerCloudAccess(userPnIdentifier);
-      if (!ready) {
-        return [];
-      }
-
-      const { listDeviceConnections } = await import('@par-noir/device-cloud-credentials');
-      const { sessionDriveFor } = await import('./sessionDrive');
-      const drive = await sessionDriveFor(userPnIdentifier);
-      const sheetId = drive.index.sheetIds.connections;
-      if (!sheetId) return [];
-      const connections = (await listDeviceConnections(drive.accessToken, sheetId)).filter(
-        (row) => row.status === 'accepted'
-      ) as Connection[];
-      connectionsCache = { pn: norm, at: Date.now(), value: connections };
-      for (const row of connections) {
-        if (row.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
-          cachePeerMailboxRouteKey({
-            connectionId: row.connectionId,
-            peerPnIdentifier: row.userPnIdentifier,
-            peerMailboxRouteKey: row.peerMailboxRouteKey.trim()
-          });
-        }
-      }
-      return connections;
-    } catch (error) {
-      console.error('[getConnections] Failed to get connections:', error);
-      return [];
-    }
-  })().finally(() => {
-    connectionsInflight.delete(norm);
-  });
-
-  connectionsInflight.set(norm, work);
-  return work;
 }
 
 /**
@@ -443,43 +412,16 @@ export async function getConnections(userPnIdentifier: string): Promise<Connecti
  */
 const pendingRequestsInflight = new Map<string, Promise<PendingRequests>>();
 
-const CONNECTIONS_TTL_MS = 5 * 60_000;
-const connectionsInflight = new Map<string, Promise<Connection[]>>();
-let connectionsCache: { pn: string; at: number; value: Connection[] } | null = null;
-const connectionsPrefetchInflight = new Map<string, Promise<Connection[]>>();
-
 export function invalidateConnectionsCache(pnIdentifier?: string): void {
+  connectionsClient.invalidateConnectionsCache(pnIdentifier);
   if (!pnIdentifier) {
-    connectionsCache = null;
-    connectionsInflight.clear();
-    connectionsPrefetchInflight.clear();
     clearPeerMailboxRouteKeyCache();
-    return;
   }
-  const norm = normalizePnId(pnIdentifier);
-  if (connectionsCache?.pn === norm) {
-    connectionsCache = null;
-  }
-  connectionsInflight.delete(norm);
-  connectionsPrefetchInflight.delete(norm);
-  clearPeerMailboxRouteKeyCache();
-}
-
-function normalizePnId(id: string): string {
-  return id.startsWith('pn-') ? id.slice(3) : id;
 }
 
 /** Warm connections list after cloud unlock (single GET, cached). */
 export function prefetchConnectionsList(userPnIdentifier: string): Promise<Connection[]> {
-  const norm = normalizePnId(userPnIdentifier);
-  const existing = connectionsPrefetchInflight.get(norm);
-  if (existing) return existing;
-
-  const work = getConnections(userPnIdentifier).finally(() => {
-    connectionsPrefetchInflight.delete(norm);
-  });
-  connectionsPrefetchInflight.set(norm, work);
-  return work;
+  return connectionsClient.prefetchConnectionsList(userPnIdentifier);
 }
 
 /**
@@ -489,23 +431,11 @@ export async function resolveConnectionStatusFromCache(
   userPnIdentifier: string,
   otherUserPnIdentifier: string
 ): Promise<ConnectionStatus> {
-  const connections = await getConnections(userPnIdentifier);
-  const other = normalizePnId(otherUserPnIdentifier);
-  for (const c of connections) {
-    if (normalizePnId(c.userPnIdentifier) !== other) continue;
-    if (c.status === 'accepted') {
-      return { status: 'connected', connectionId: c.connectionId };
-    }
-    if (c.status === 'pending_sent') {
-      return { status: 'pending_sent', connectionId: c.connectionId };
-    }
-    if (c.status === 'pending_received') {
-      return { status: 'pending_received', connectionId: c.connectionId };
-    }
-    if (c.status === 'blocked') {
-      return { status: 'blocked', connectionId: c.connectionId };
-    }
-  }
+  const fromCache = await connectionsClient.resolveConnectionStatusFromCache(
+    userPnIdentifier,
+    otherUserPnIdentifier
+  );
+  if (fromCache.status !== 'not_connected') return fromCache;
   return getConnectionStatus(userPnIdentifier, otherUserPnIdentifier);
 }
 

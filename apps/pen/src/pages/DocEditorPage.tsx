@@ -151,7 +151,7 @@ import {
   IconRedo,
   IconUndo
 } from '../components/icons/PenIcons';
-import { canPublishPublicTemplate } from '../services/penVerified';
+import { useVerifiedAuthor } from '../hooks/useVerifiedAuthor';
 import { starTemplateToCloud } from '../services/penCloudTemplates';
 import {
   loadLocalDoc,
@@ -194,6 +194,9 @@ import {
   withGalleryPreview
 } from '../services/penGalleryPreview';
 import { ownerGet } from '../services/penOwnerFetch';
+import type { Connection } from '@par-noir/social-connections';
+import { getPenConnections } from '../services/penConnections';
+import { createPenDocInvite } from '../services/penDocInvite';
 import {
   syncUsedCustomFontsOnManifest,
   ensureDocScopedFonts,
@@ -286,6 +289,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [showComments, setShowComments] = useState(false);
   const [invitePn, setInvitePn] = useState('');
   const [inviteRole, setInviteRole] = useState<PenRole>('collaborator');
+  const [shareConnections, setShareConnections] = useState<Connection[]>([]);
+  const [shareConnectionsLoading, setShareConnectionsLoading] = useState(false);
+  const [selectedConnectionPns, setSelectedConnectionPns] = useState<string[]>([]);
+  const [joinLink, setJoinLink] = useState<string | null>(null);
+  const [joinLinkLoading, setJoinLinkLoading] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -329,7 +337,20 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     listLocalSuggestions(session.pnIdentifier, docId)
   );
   const [connectReady, setConnectReady] = useState(false);
-  const verifiedAuthor = canPublishPublicTemplate(session);
+  const verifiedAuthor = useVerifiedAuthor(session);
+
+  useEffect(() => {
+    let cancel = false;
+    void (async () => {
+      setShareConnectionsLoading(true);
+      const rows = await getPenConnections(session.pnIdentifier);
+      if (!cancel) setShareConnections(rows);
+      if (!cancel) setShareConnectionsLoading(false);
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [session.pnIdentifier]);
 
   useEffect(() => {
     bindTimelineSample(setPlayheadSec);
@@ -1572,8 +1593,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     }
   }
 
-  async function inviteCollaborator(roleOverride?: typeof inviteRole) {
-    const pn = invitePn.trim();
+  async function inviteCollaborator(roleOverride?: typeof inviteRole, peerPnOverride?: string) {
+    const pn = (peerPnOverride ?? invitePn).trim();
     if (!pn || !bundle) return;
     if (
       !actorCan(
@@ -1637,11 +1658,50 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         manifest: { ...bundle.manifest, roles, updatedAt: new Date().toISOString() }
       });
       setStatus(roleOverride === 'viewer' ? `Preview sealed. ${previewPath(docId)}` : 'Invited');
-      setInvitePn('');
+      if (!peerPnOverride) setInvitePn('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'invite_failed');
       setStatus(null);
     }
+  }
+
+  async function inviteSelectedConnections() {
+    for (const pn of selectedConnectionPns) {
+      await inviteCollaborator(inviteRole, pn);
+    }
+    setSelectedConnectionPns([]);
+  }
+
+  async function createDocJoinLink() {
+    if (!bundle) return;
+    const groupId = bundle.manifest.groupId || sessionStorage.getItem(`pen_group_id:${docId}`) || '';
+    if (!groupId) {
+      setError('group_id_required');
+      return;
+    }
+    setJoinLinkLoading(true);
+    setError(null);
+    try {
+      const created = await createPenDocInvite({
+        session,
+        docId,
+        groupId,
+        title: bundle.manifest.title,
+        role: inviteRole
+      });
+      setJoinLink(created.joinUrl);
+      setStatus('Join link created');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'invite_link_failed');
+    } finally {
+      setJoinLinkLoading(false);
+    }
+  }
+
+  function copyDocJoinLink() {
+    if (!joinLink) return;
+    void navigator.clipboard?.writeText(joinLink);
+    setStatus('Link copied');
   }
 
   function rememberPostFileId(b: NonNullable<typeof bundle>, fileId: string) {
@@ -2578,6 +2638,23 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           inviteRole={inviteRole}
           onInviteRoleChange={setInviteRole}
           canInvite={canInvite}
+          connections={shareConnections}
+          connectionsLoading={shareConnectionsLoading}
+          selectedConnectionPns={selectedConnectionPns}
+          onToggleConnection={(peerPn) => {
+            setSelectedConnectionPns((prev) =>
+              prev.includes(peerPn) ? prev.filter((p) => p !== peerPn) : [...prev, peerPn]
+            );
+          }}
+          onInviteConnections={() => {
+            void inviteSelectedConnections();
+          }}
+          joinLink={joinLink}
+          joinLinkLoading={joinLinkLoading}
+          onCreateJoinLink={() => {
+            void createDocJoinLink();
+          }}
+          onCopyJoinLink={copyDocJoinLink}
         />
         <SaveMenu
           canCommit={canCommit}
@@ -2592,6 +2669,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           correspondenceEnabled={correspondenceEnabled}
           canPublishPublicTemplate={verifiedAuthor}
           hasPublishedPost={Boolean(bundle?.manifest.publishedFileId)}
+          widgetTemplatesOnly={isWidgetDoc}
           pnIdentifier={session.pnIdentifier}
           onPublishLive={() => void publishLive()}
           onShareToAggregators={(feedIds) => publishSocial(feedIds)}
