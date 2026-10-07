@@ -7,8 +7,11 @@ import {
   claimsForPostWithMusic,
   defaultLicensingRoot,
   defaultPlatformRoyaltyConfig,
+  licensingForTemplateReuse,
   normalizeLicensingRoot,
-  claimsFromLicensingRoot
+  claimsFromLicensingRoot,
+  reuseContractForAttachments,
+  reuseKindForClass
 } from './licensing.js';
 
 describe('platform royalty config', () => {
@@ -175,5 +178,67 @@ describe('allocatePostBounty', () => {
     });
     expect(c.musicAttached).toBe(true);
     expect(c.musicClaimBps).toBe(0);
+  });
+});
+
+describe('reuse bucket', () => {
+  it('maps widget classes onto slices and treats other forms as layout', () => {
+    expect(reuseKindForClass('widgets.widget')).toBe('widget');
+    expect(reuseKindForClass('widgets.sticker')).toBe('sticker');
+    expect(reuseKindForClass('widgets.animation')).toBe('animation');
+    expect(reuseKindForClass('widgets.transition')).toBe('transition');
+    expect(reuseKindForClass('widgets.text_preset')).toBe('text_preset');
+    expect(reuseKindForClass('social.note')).toBe('layout');
+  });
+
+  it('splits a layout plus a sticker across the 1500 bps bucket', () => {
+    const contract = reuseContractForAttachments([
+      { kind: 'layout', holderPnHash: 'author', claimBps: BPS_DENOM },
+      { kind: 'sticker', holderPnHash: 'sticker_author', claimBps: BPS_DENOM }
+    ]);
+    expect(contract?.claimBps).toBe(5000);
+    expect(contract?.splits).toEqual([
+      { holderPnHash: 'author', role: 'author', shareBps: 8000 },
+      { holderPnHash: 'sticker_author', role: 'author', shareBps: 2000 }
+    ]);
+    expect(assertLicensingRoot({ family: 'implied', contracts: [contract!] })).toBeNull();
+  });
+
+  it('splits one kind across several holders and scales by claim', () => {
+    const half = reuseContractForAttachments([
+      { kind: 'layout', holderPnHash: 'author', claimBps: 5000 }
+    ]);
+    expect(half?.claimBps).toBe(2000);
+    expect(half?.splits[0]?.shareBps).toBe(BPS_DENOM);
+
+    const stickers = reuseContractForAttachments([
+      { kind: 'sticker', holderPnHash: 'a', claimBps: BPS_DENOM },
+      { kind: 'sticker', holderPnHash: 'b', claimBps: BPS_DENOM }
+    ]);
+    expect(stickers?.claimBps).toBe(1000);
+    expect(stickers?.splits.map((split) => split.shareBps)).toEqual([5000, 5000]);
+  });
+
+  it('writes an implied layout claim and leaves free and paid alone', () => {
+    const implied = licensingForTemplateReuse(
+      'social.note',
+      defaultLicensingRoot('author_hash', { membership: true })
+    );
+    expect(implied.family).toBe('implied');
+    expect(implied.contracts[0]?.claimBps).toBe(4000);
+    expect(implied.contracts[0]?.splits[0]?.holderPnHash).toBe('author_hash');
+
+    const free = licensingForTemplateReuse('widgets.widget', defaultLicensingRoot('author_hash'));
+    expect(free.family).toBe('unconditionalFree');
+    expect(free.contracts).toEqual([]);
+
+    const paid = licensingForTemplateReuse('widgets.sticker', {
+      family: 'unconditionalPaid',
+      contracts: [],
+      offers: [{ scope: 'personal', priceCents: 500, currency: 'usd' }]
+    });
+    expect(paid.family).toBe('unconditionalPaid');
+    expect(paid.contracts).toEqual([]);
+    expect(paid.offers?.[0]?.priceCents).toBe(500);
   });
 });

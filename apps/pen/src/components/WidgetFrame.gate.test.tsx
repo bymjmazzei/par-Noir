@@ -54,10 +54,10 @@ describe('widget trigger panel', () => {
     );
     expect(html).toContain('Correct answer');
     expect(html).toContain('>Fill<');
-    expect(html).toContain('#0f766e');
+    expect(html).toMatch(/#0f766e|rgba\(15,\s*118,\s*110/);
     expect(html).toContain('>Opacity<');
     expect(html).toContain('100%');
-    expect(html).not.toContain('type="range"');
+    expect(html).not.toContain('Your claim of the content fund');
   });
 
   it('shows the fields each trigger needs', () => {

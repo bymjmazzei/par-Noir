@@ -4,16 +4,27 @@
  */
 
 import {
+  licensingForTemplateReuse,
   stripPollSpreadsheetFromSection,
   templateRootPath,
+  type PenLicensingRoot,
   type PenSectionContent,
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import { createDocFromTemplate } from './createDocFromTemplate';
 import { starTemplateToCloud } from './penCloudTemplates';
-import type { LocalDocBundle } from './penLocalStore';
+import { saveLocalDoc, type LocalDocBundle } from './penLocalStore';
 import type { PenSession } from './penSession';
 import { ensureBundleTrackingSheets, type MintTrackingSheet } from './widgetTracking';
+
+function docTypeForClass(classId: string): string {
+  if (classId === 'widgets.sticker') return 'sticker';
+  if (classId === 'widgets.animation') return 'animation';
+  if (classId === 'widgets.transition') return 'transition';
+  if (classId === 'widgets.text_preset') return 'text_preset';
+  if (classId === 'widgets.widget') return 'widget';
+  return classId.split('.').pop() || 'note';
+}
 
 export async function clonePublishedWidget(input: {
   session: PenSession;
@@ -21,14 +32,18 @@ export async function clonePublishedWidget(input: {
   title: string;
   sections: PenSectionContent[];
   mintSheet?: MintTrackingSheet;
-  classId?: 'widgets.widget' | 'widgets.sticker';
+  classId?: string;
+  licensing?: PenLicensingRoot;
+  basedOnTemplateId?: string;
 }): Promise<{ bundle: LocalDocBundle; cloudPath: string; personalId: string }> {
   const sections = input.sections.map(stripPollSpreadsheetFromSection);
-  const templateId = `pubwidget_${input.fileId}`;
+  const classId = input.classId || 'widgets.widget';
+  const templateId = input.basedOnTemplateId || `pubwidget_${input.fileId}`;
+  const licensing = licensingForTemplateReuse(classId, input.licensing);
   const template: PenTemplate = {
     id: templateId,
-    classId: input.classId || 'widgets.widget',
-    docType: input.classId === 'widgets.sticker' ? 'sticker' : 'widget',
+    classId,
+    docType: docTypeForClass(classId),
     version: '1',
     title: input.title,
     description: 'Public template',
@@ -38,19 +53,34 @@ export async function clonePublishedWidget(input: {
       required: true
     })),
     seedSections: sections,
+    licensing,
     agentStarter: ''
   };
   const created = await createDocFromTemplate({
     session: input.session,
     templateId,
     templates: [template],
-    title: input.title
+    title: input.title,
+    basedOnTemplateId: templateId,
+    basedOnFileId: input.fileId
   });
-  const bundle = await ensureBundleTrackingSheets({
+  const tracked = await ensureBundleTrackingSheets({
     session: input.session,
     bundle: created,
     mintSheet: input.mintSheet
   });
+  const bundle: LocalDocBundle = {
+    ...tracked,
+    manifest: {
+      ...tracked.manifest,
+      classId,
+      docType: docTypeForClass(classId),
+      basedOnTemplateId: templateId,
+      basedOnFileId: input.fileId,
+      licensing
+    }
+  };
+  saveLocalDoc(input.session.pnIdentifier, bundle);
   const personal = await starTemplateToCloud(input.session, bundle, {
     title: input.title,
     basedOnFileId: input.fileId

@@ -567,3 +567,138 @@ export function claimsForPostWithMusic(input: {
     musicAttached: true
   };
 }
+
+/** Building blocks that share the content-rights reuse bucket (1500 bps of a post). */
+export type ReuseAssetKind =
+  | 'layout'
+  | 'widget'
+  | 'sticker'
+  | 'animation'
+  | 'transition'
+  | 'text_preset';
+
+/** Basis points of one post. Unused kinds stay with the publisher. */
+export const REUSE_SLICE_BPS: Record<ReuseAssetKind, number> = {
+  layout: 600,
+  widget: 300,
+  sticker: 150,
+  animation: 150,
+  transition: 150,
+  text_preset: 150
+};
+
+const REUSE_KIND_BY_CLASS: Record<string, ReuseAssetKind> = {
+  'widgets.widget': 'widget',
+  'widgets.sticker': 'sticker',
+  'widgets.animation': 'animation',
+  'widgets.transition': 'transition',
+  'widgets.text_preset': 'text_preset'
+};
+
+export function reuseKindForClass(classId: string | undefined): ReuseAssetKind {
+  if (!classId) return 'layout';
+  return REUSE_KIND_BY_CLASS[classId] || 'layout';
+}
+
+export interface ReuseAttachment {
+  kind: ReuseAssetKind;
+  holderPnHash: string;
+  /** 0..10000 of this asset's slice. Default 10000. */
+  claimBps?: number;
+}
+
+/**
+ * One content_rights contract for the attached blocks.
+ * claimBps is the sum of slices over the content-rights bucket.
+ * splits divide that claim and sum to 10000. Same holder is one split.
+ */
+export function reuseContractForAttachments(
+  blocks: ReuseAttachment[],
+  contentBucketBps = defaultPlatformRoyaltyConfig().contentRightsBucketBps
+): PenOpenCreatorContract | null {
+  const usable = blocks
+    .map((block) => ({
+      kind: block.kind,
+      holderPnHash: block.holderPnHash.trim(),
+      claimBps: clampClaimBps(block.claimBps === undefined ? BPS_DENOM : block.claimBps)
+    }))
+    .filter((block) => block.holderPnHash && block.claimBps > 0);
+  if (!usable.length || !(contentBucketBps > 0)) return null;
+
+  const counts = new Map<ReuseAssetKind, number>();
+  for (const block of usable) counts.set(block.kind, (counts.get(block.kind) || 0) + 1);
+
+  const byHolder = new Map<string, number>();
+  for (const block of usable) {
+    const slice = REUSE_SLICE_BPS[block.kind];
+    const count = counts.get(block.kind) || 1;
+    const postBps = Math.floor((slice * block.claimBps) / (BPS_DENOM * count));
+    if (postBps <= 0) continue;
+    byHolder.set(block.holderPnHash, (byHolder.get(block.holderPnHash) || 0) + postBps);
+  }
+  const merged = [...byHolder.entries()].map(([holderPnHash, postBps]) => ({
+    holderPnHash,
+    postBps
+  }));
+  const claimedPost = merged.reduce((sum, line) => sum + line.postBps, 0);
+  if (claimedPost <= 0) return null;
+
+  const claimBps = Math.min(BPS_DENOM, Math.round((claimedPost * BPS_DENOM) / contentBucketBps));
+  if (claimBps <= 0) return null;
+
+  let assigned = 0;
+  const splits: PenSplitShare[] = merged.map((line, index) => {
+    const shareBps =
+      index === merged.length - 1
+        ? BPS_DENOM - assigned
+        : Math.floor((line.postBps * BPS_DENOM) / claimedPost);
+    assigned += shareBps;
+    return { holderPnHash: line.holderPnHash, role: 'author', shareBps };
+  });
+
+  return { party: 'content_rights', claimBps, splits };
+}
+
+/**
+ * License written onto a doc that uses one public template.
+ * Implied scales the author's claim onto that class's slice.
+ * Free stays free. Paid keeps its offers and adds no fund claim.
+ */
+export function licensingForTemplateReuse(classId: string, raw: unknown): PenLicensingRoot {
+  const normalized = normalizeLicensingRoot(raw);
+  if (normalized.family === 'unconditionalPaid') return normalized;
+  if (normalized.family !== 'implied') {
+    return {
+      family: 'unconditionalFree',
+      workLicense: normalized.workLicense,
+      contracts: []
+    };
+  }
+  const content = normalized.contracts.find((contract) => contract.party === 'content_rights');
+  const holder = content?.splits.find((split) => split.holderPnHash.trim())?.holderPnHash.trim() || '';
+  const contract = holder
+    ? reuseContractForAttachments([
+        {
+          kind: reuseKindForClass(classId),
+          holderPnHash: holder,
+          claimBps: content?.claimBps
+        }
+      ])
+    : null;
+  const music = normalized.contracts.filter((contract) => contract.party === 'music');
+  if (!contract) {
+    if (!music.length) {
+      return {
+        family: 'unconditionalFree',
+        workLicense: normalized.workLicense,
+        contracts: []
+      };
+    }
+    return { family: 'implied', workLicense: normalized.workLicense, contracts: music };
+  }
+  return {
+    family: 'implied',
+    workLicense: normalized.workLicense,
+    contracts: [contract, ...music]
+  };
+}

@@ -1,7 +1,13 @@
-/** Public widget templates on the pen-templates index, resolved from published layers. */
+/** Public templates on the pen-templates index, resolved from published layers. */
 
-import { getTemplate, type PenSectionContent, type PenTemplate } from '@par-noir/pen-protocol';
+import {
+  getTemplate,
+  normalizeLicensingRoot,
+  type PenSectionContent,
+  type PenTemplate
+} from '@par-noir/pen-protocol';
 import type { CentralIndexEntry } from '@par-noir/aggregator-domain';
+import { isTemplatesCatalogClass } from './classFeedRailItems';
 
 export type PublicWidgetCatalog = {
   templates: PenTemplate[];
@@ -17,10 +23,8 @@ export function publicWidgetCatalog(
   const sources = new Map<string, string>();
   for (const entry of entries) {
     const meta = entry.metadata;
-    if (
-      (meta?.penClassId !== 'widgets.widget' && meta?.penClassId !== 'widgets.sticker') ||
-      !meta.penTemplateKind
-    ) {
+    const classId = meta?.penClassId;
+    if (!classId || !meta.penTemplateKind || !isTemplatesCatalogClass(classId)) {
       continue;
     }
     const id = `pubwidget_${entry.fileId}`;
@@ -35,10 +39,11 @@ export function publicWidgetCatalog(
       : undefined;
     templates.push({
       id,
-      classId: meta.penClassId,
-      docType: source?.docType || (meta.penClassId === 'widgets.sticker' ? 'sticker' : 'widget'),
+      classId,
+      docType: source?.docType || docTypeForClass(classId),
       version: '1',
-      title: meta.title?.trim() || source?.title || 'Widget',
+      title: meta.title?.trim() || source?.title || 'Template',
+      licensing: normalizeLicensingRoot(meta.licensing),
       description: 'Public template',
       sections: seedSections?.length
         ? seedSections.map((section) => ({
@@ -60,4 +65,13 @@ export function publicWidgetCatalog(
     if (basedOn) sources.set(id, basedOn);
   }
   return { templates, sources };
+}
+
+function docTypeForClass(classId: string): string {
+  if (classId === 'widgets.sticker') return 'sticker';
+  if (classId === 'widgets.animation') return 'animation';
+  if (classId === 'widgets.transition') return 'transition';
+  if (classId === 'widgets.text_preset') return 'text_preset';
+  if (classId === 'widgets.widget') return 'widget';
+  return classId.split('.').pop() || 'note';
 }

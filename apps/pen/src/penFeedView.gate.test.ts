@@ -29,7 +29,10 @@ describe('buildSocialTemplateRailItems', () => {
       'collection',
       'set',
       'widget',
-      'sticker'
+      'sticker',
+      'animation',
+      'transition',
+      'text preset'
     ]);
     expect(items.some((i) => i.id === 'widgets.widget')).toBe(true);
   });

@@ -3,7 +3,7 @@
 import type { PenPageLayout, PenPagePresentation, PenSectionContent } from './types.js';
 import type { PenLicensingRoot } from './licensing.js';
 import { emptySection } from './richDoc.js';
-import { seedWidget } from './widgetElements.js';
+import { seedAnimationPreset, seedTextPreset, seedTransitionPreset, seedWidget } from './widgetElements.js';
 import {
   seedAssetKey,
   seedAudio,
@@ -203,6 +203,57 @@ function widgetStarters(): PenTemplate[] {
         })
       },
       seedWidget()
+    ),
+    withSeed(
+      {
+        id: 'animation.v1',
+        classId: 'widgets.animation',
+        docType: 'animation',
+        version: '1',
+        title: 'Animation',
+        description: 'One layer that rises in. Replace the motion to publish your own.',
+        sections: [{ slug: 'card', title: 'Card', required: true }],
+        seedGalleryAspect: '1/1',
+        agentStarter: proseStarter({
+          title: 'Animation',
+          focus: 'Keep a single layer. Set its intro motion. Do not add a button or a trigger.'
+        })
+      },
+      seedAnimationPreset()
+    ),
+    withSeed(
+      {
+        id: 'transition.v1',
+        classId: 'widgets.transition',
+        docType: 'transition',
+        version: '1',
+        title: 'Transition',
+        description: 'Two clips on one track. The second fades in from the first.',
+        sections: [{ slug: 'card', title: 'Card', required: true }],
+        seedGalleryAspect: '1/1',
+        agentStarter: proseStarter({
+          title: 'Transition',
+          focus: 'Keep two clips on one track and set the join on the incoming clip.'
+        })
+      },
+      seedTransitionPreset()
+    ),
+    withSeed(
+      {
+        id: 'textpreset.v1',
+        classId: 'widgets.text_preset',
+        docType: 'text_preset',
+        version: '1',
+        title: 'Text preset',
+        description: 'One text sample with family, size, color, stroke, and shadow.',
+        sections: [{ slug: 'card', title: 'Card', required: true }],
+        seedGalleryAspect: '1/1',
+        agentStarter: proseStarter({
+          title: 'Text preset',
+          focus: 'Keep one text layer. Set family, size, color, stroke, and shadow.'
+        })
+      },
+      seedTextPreset()
     )
   ];
 }

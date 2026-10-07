@@ -103,15 +103,15 @@ export function formatCountdown(closesAt: string, now = Date.now()): string {
   return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-/** Empty template. Nothing is pre-arranged and no button is a vote. */
-export function seedWidget(): SeedBundle {
+function cardSeed(layers: PenPageLayer[]): SeedBundle {
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
       backgroundColor: 'transparent',
       backgroundGradient: undefined,
       backgroundImage: undefined,
-      fontSize: 16,
+      fontFamily: 'Source Serif 4, Georgia, serif',
+      fontSize: 28,
       textAlign: 'left',
       textColor: '#141414',
       padding: 0,
@@ -119,8 +119,121 @@ export function seedWidget(): SeedBundle {
       dropShadowOffsetX: 0,
       dropShadowOffsetY: 0
     }),
-    seedSections: [{ slug: 'card', doc: plainDoc(''), layers: [] }]
+    seedSections: [{ slug: 'card', doc: plainDoc(''), layers }]
   };
+}
+
+/** Empty template. Nothing is pre-arranged and no button is a vote. */
+export function seedWidget(): SeedBundle {
+  return cardSeed([]);
+}
+
+/** One text layer that rises in. The motion is the preset. */
+export function seedAnimationPreset(): SeedBundle {
+  return cardSeed([
+    {
+      id: 'anim_sample',
+      kind: 'text',
+      name: 'Rise',
+      x: 48,
+      y: 56,
+      w: 200,
+      h: 48,
+      zIndex: 1,
+      positionLocked: false,
+      textDoc: plainDoc('Rise'),
+      motion: {
+        keys: [],
+        animation: { in: 'rise', durationSec: 0.4 }
+      }
+    }
+  ]);
+}
+
+/** Two clips on one track. The second fades in from the first. */
+export function seedTransitionPreset(): SeedBundle {
+  return cardSeed([
+    {
+      id: 'clip_out',
+      kind: 'text',
+      name: 'Out',
+      x: 48,
+      y: 56,
+      w: 160,
+      h: 48,
+      zIndex: 1,
+      positionLocked: false,
+      textDoc: plainDoc('Out'),
+      timelineTrackId: 'join',
+      inSec: 0,
+      outSec: 2
+    },
+    {
+      id: 'clip_in',
+      kind: 'text',
+      name: 'In',
+      x: 48,
+      y: 120,
+      w: 160,
+      h: 48,
+      zIndex: 2,
+      positionLocked: false,
+      textDoc: plainDoc('In'),
+      timelineTrackId: 'join',
+      inSec: 2,
+      outSec: 4,
+      transitionIn: { preset: 'crossfade', durationSec: 0.5 }
+    }
+  ]);
+}
+
+/** One styled sample: family, size, color, stroke, and shadow. */
+export function seedTextPreset(): SeedBundle {
+  return cardSeed([
+    {
+      id: 'text_sample',
+      kind: 'text',
+      name: 'Sample',
+      x: 32,
+      y: 48,
+      w: 240,
+      h: 64,
+      zIndex: 1,
+      positionLocked: false,
+      textColor: '#141414',
+      strokeColor: '#141414',
+      strokeWidth: 1,
+      strokeStyle: 'solid',
+      shadowColor: '#000000',
+      shadowBlur: 8,
+      shadowOffsetX: 0,
+      shadowOffsetY: 2,
+      textDoc: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              {
+                type: 'text',
+                text: 'Sample',
+                marks: [
+                  {
+                    type: 'textStyle',
+                    attrs: {
+                      fontFamily: 'Source Serif 4, Georgia, serif',
+                      fontSize: '28px',
+                      color: '#141414'
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]);
 }
 
 export function placeWidgetLayer(

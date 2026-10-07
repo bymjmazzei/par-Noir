@@ -200,7 +200,9 @@ export function TemplatesBrowse({
           fileId: templateId.slice('pubwidget_'.length),
           title: template.title,
           sections,
-          classId: template.classId === 'widgets.sticker' ? 'widgets.sticker' : 'widgets.widget'
+          classId: template.classId,
+          licensing: template.licensing,
+          basedOnTemplateId: template.id
         });
         bundle = cloned.bundle;
       } else {

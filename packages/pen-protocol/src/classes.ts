@@ -322,6 +322,30 @@ const CLASSES: PenClass[] = [
     parentId: 'widgets'
   },
   {
+    id: 'widgets.animation',
+    title: 'Animation',
+    description: 'One layer whose motion is the preset',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'widgets'
+  },
+  {
+    id: 'widgets.transition',
+    title: 'Transition',
+    description: 'One clip-join preset',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'widgets'
+  },
+  {
+    id: 'widgets.text_preset',
+    title: 'Text preset',
+    description: 'One text sample — family, size, color, stroke, and shadow',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'widgets'
+  },
+  {
     id: 'records',
     title: 'Records',
     description: 'Typed structured data for kit / agents',

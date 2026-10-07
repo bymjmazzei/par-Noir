@@ -49,6 +49,8 @@ async function persistBundle(input: {
   docId: string;
   sections: PenSectionContent[];
   title?: string;
+  basedOnTemplateId?: string;
+  basedOnFileId?: string;
 }): Promise<LocalDocBundle> {
   const draftId = randomDraftId();
   const now = new Date().toISOString();
@@ -129,6 +131,8 @@ async function persistBundle(input: {
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',
     activeDraftId: draftId,
+    ...(input.basedOnTemplateId ? { basedOnTemplateId: input.basedOnTemplateId } : {}),
+    ...(input.basedOnFileId ? { basedOnFileId: input.basedOnFileId } : {}),
     licensing: normalizeLicensingRoot(input.template.licensing, ownerPnHash)
   };
 
@@ -175,6 +179,8 @@ export async function createDocFromTemplate(input: {
   templateId: string;
   templates?: PenTemplate[];
   title?: string;
+  basedOnTemplateId?: string;
+  basedOnFileId?: string;
 }): Promise<LocalDocBundle> {
   const template =
     input.templates?.find((t) => t.id === input.templateId) ||
@@ -199,7 +205,9 @@ export async function createDocFromTemplate(input: {
     template,
     docId,
     sections,
-    title: input.title
+    title: input.title,
+    basedOnTemplateId: input.basedOnTemplateId,
+    basedOnFileId: input.basedOnFileId
   });
   if (bundle.sections[0] && sectionHasVoteButton(bundle.sections[0])) {
     const structure = structureFromLayers(bundle.sections[0]);

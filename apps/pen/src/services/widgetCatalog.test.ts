@@ -61,4 +61,29 @@ describe('publicWidgetCatalog', () => {
     const catalog = publicWidgetCatalog([entry]);
     expect(catalog.templates[0]?.seedSections).toBeUndefined();
   });
+
+  it('keeps published notes and drops classes outside the templates catalog', () => {
+    const note = {
+      ...entry,
+      fileId: 'note-1',
+      metadata: {
+        ...entry.metadata,
+        penClassId: 'social.note',
+        basedOnTemplateId: 'note.basic.portrait.v1',
+        title: 'Portrait'
+      }
+    } as CentralIndexEntry;
+    const kit = {
+      ...entry,
+      fileId: 'kit-1',
+      metadata: {
+        ...entry.metadata,
+        penClassId: 'records.register',
+        title: 'Register'
+      }
+    } as CentralIndexEntry;
+    const catalog = publicWidgetCatalog([note, kit]);
+    expect(catalog.templates.map((template) => template.classId)).toEqual(['social.note']);
+    expect(catalog.templates[0]?.docType).toBe('note');
+  });
 });

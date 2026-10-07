@@ -1041,7 +1041,7 @@ export function DocListPage({
             ...remoteTemplates,
             ...listStarterTemplates().filter(
               (t) =>
-                (t.classId === 'widgets.widget' || t.classId === 'widgets.sticker') &&
+                t.classId.startsWith('widgets.') &&
                 !templateIds.has(t.id)
             )
           ]);

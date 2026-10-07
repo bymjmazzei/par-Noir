@@ -720,6 +720,22 @@ describe('template seeds + Mini featured + layer locks', () => {
     const collection = requireTemplate('collection.basic.v1');
     expect(collection.publishContentClass).toBe('collection');
     expect(collection.seedPageSwipeAxis).toBe('x');
+    const animation = requireTemplate('animation.v1');
+    expect(animation.classId).toBe('widgets.animation');
+    const animLayer = animation.seedSections?.[0]?.layers?.[0];
+    expect(animLayer?.motion?.animation).toMatchObject({ in: 'rise' });
+    const transition = requireTemplate('transition.v1');
+    expect(transition.classId).toBe('widgets.transition');
+    expect(
+      transition.seedSections?.[0]?.layers?.some((layer) => layer.transitionIn?.preset === 'crossfade')
+    ).toBe(true);
+    const textPreset = requireTemplate('textpreset.v1');
+    expect(textPreset.classId).toBe('widgets.text_preset');
+    const sample = textPreset.seedSections?.[0]?.layers?.[0];
+    expect(sample?.kind).toBe('text');
+    expect(sample?.strokeWidth).toBeGreaterThan(0);
+    expect(sample?.shadowBlur).toBeGreaterThan(0);
+    expect(JSON.stringify(sample?.textDoc)).toContain('fontFamily');
     const video = requireTemplate('post.video.portrait.v1');
     expect(video.title).toContain('Video Post');
     expect(

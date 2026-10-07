@@ -9,6 +9,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { API_ENDPOINT } from '../config/api';
+import { isTemplatesCatalogClass } from './classFeedRailItems';
 
 export async function loadPublishedWidgetSections(
   entries: CentralIndexEntry[]
@@ -17,10 +18,7 @@ export async function loadPublishedWidgetSections(
   await Promise.all(
     entries.map(async (entry) => {
       const meta = entry.metadata;
-      if (
-        (meta?.penClassId !== 'widgets.widget' && meta?.penClassId !== 'widgets.sticker') ||
-        !meta.penTemplateKind
-      ) {
+      if (!meta?.penClassId || !meta.penTemplateKind || !isTemplatesCatalogClass(meta.penClassId)) {
         return;
       }
       if (meta.publicToken == null) return;

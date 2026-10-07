@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PenSectionContent } from '@par-noir/pen-protocol';
+import {
+  defaultLicensingRoot,
+  reuseContractForAttachments,
+  type PenSectionContent
+} from '@par-noir/pen-protocol';
 import type { PenSession } from './penSession';
 
 const createDocFromTemplate = vi.fn(
@@ -105,5 +109,44 @@ describe('clonePublishedWidget', () => {
     expect(stored).toContain(cloned.cloudPath);
     expect(stored).not.toContain('sheet-author');
     expect(stored).toContain('sheet-user');
+  });
+
+  it('stamps lineage and the implied layout reuse claim', async () => {
+    const cloned = await clonePublishedWidget({
+      session: { pnIdentifier: 'pn_user', accessToken: 'token' } as PenSession,
+      fileId: 'file-9',
+      title: 'Portrait',
+      classId: 'social.note',
+      licensing: defaultLicensingRoot('author_hash', { membership: true }),
+      basedOnTemplateId: 'pubwidget_file-9',
+      sections: [
+        {
+          slug: 'body',
+          doc: { type: 'doc', content: [] },
+          layers: [
+            {
+              id: 't',
+              kind: 'text',
+              x: 0,
+              y: 0,
+              w: 80,
+              h: 24,
+              zIndex: 1
+            }
+          ]
+        }
+      ]
+    });
+    expect(cloned.bundle.manifest.basedOnFileId).toBe('file-9');
+    expect(cloned.bundle.manifest.basedOnTemplateId).toBe('pubwidget_file-9');
+    expect(cloned.bundle.manifest.classId).toBe('social.note');
+    expect(cloned.bundle.manifest.licensing).toMatchObject({
+      family: 'implied',
+      contracts: [
+        reuseContractForAttachments([
+          { kind: 'layout', holderPnHash: 'author_hash', claimBps: 10000 }
+        ])
+      ]
+    });
   });
 });
