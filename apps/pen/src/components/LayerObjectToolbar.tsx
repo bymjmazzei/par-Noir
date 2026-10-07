@@ -1,6 +1,6 @@
 /**
  * Layer settings on the page preview bar — one dropdown for the active layer
- * (page frame = layer 0, or an overlay object). Wrap stays a toggle on the bar.
+ * (page frame = layer 0, or an overlay object). Body wrap toggle lives on the preview bar beside Snap.
  * Page (layer 0): background only. Overlay objects: background, shadow, blur, blend, opacity, and stroke.
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -28,6 +28,42 @@ import type { PenSession } from '../services/penSession';
 export type ObjectToolTarget =
   | { kind: 'page' }
   | { kind: 'layer'; layer: PenPageLayer };
+
+/** Toggle body text wrap for the active overlay object (live preview toolbar, beside Snap). */
+export function BodyWrapToolbarButton({
+  layer,
+  section,
+  contentWidthPx,
+  onSectionChange
+}: {
+  layer: PenPageLayer;
+  section: PenSectionContent;
+  contentWidthPx: number;
+  onSectionChange: (next: PenSectionContent) => void;
+}) {
+  if (layer.kind === 'group') return null;
+  return (
+    <button
+      type="button"
+      title="Wrap with Body — Body text flows around this object"
+      aria-label="Wrap with Body"
+      aria-pressed={Boolean(layer.bodyWrap)}
+      className={`inline-flex h-6 shrink-0 items-center justify-center rounded px-1.5 text-[10px] font-bold uppercase tracking-wide ${
+        layer.bodyWrap ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-black'
+      }`}
+      onClick={() => {
+        if (layer.bodyWrap) {
+          onSectionChange(patchLayerStyle(section, layer.id, { bodyWrap: undefined }));
+        } else {
+          const side = wrapSideFromGeom(layer.x, layer.w, contentWidthPx);
+          onSectionChange(patchLayerStyle(section, layer.id, { bodyWrap: side }));
+        }
+      }}
+    >
+      Wrap
+    </button>
+  );
+}
 
 type BgMode = 'color' | 'gradient' | 'image' | 'video';
 
@@ -845,32 +881,6 @@ export function LayerObjectToolbar({
           ) : null}
         </div>
       )}
-      {!isPage && !isGroup && (
-          <button
-            type="button"
-            title="Wrap with Body — Body text flows around this object"
-            aria-label="Wrap with Body"
-            aria-pressed={Boolean(layer?.bodyWrap)}
-            className={`inline-flex h-7 items-center justify-center rounded px-1.5 text-[11px] ${
-              layer?.bodyWrap
-                ? 'font-bold text-black'
-                : 'font-medium text-neutral-400 hover:text-neutral-600'
-            }`}
-            onClick={() => {
-              if (!layer) return;
-              if (layer.bodyWrap) {
-                patchLayer({ bodyWrap: undefined });
-              } else {
-                const side = wrapSideFromGeom(layer.x, layer.w, contentWidthPx);
-                patchLayer({ bodyWrap: side });
-              }
-            }}
-          >
-            Wrap
-          </button>
-      )}
-
-
       <CloudFeedMediaPicker
         open={cloudOpen}
         onClose={() => setCloudOpen(false)}

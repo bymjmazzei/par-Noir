@@ -1,5 +1,7 @@
 /** The live preview bar wraps onto a second row instead of clipping. */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, PAGE_LAYER_ID, type PenDocManifest } from '@par-noir/pen-protocol';
@@ -45,5 +47,15 @@ describe('preview toolbar wrap', () => {
     expect(html).toContain('max-w-full shrink-0 flex-wrap items-center gap-1');
     expect(html).toContain('max-w-full flex-wrap items-center gap-0.5');
     expect(html).not.toContain('flex-nowrap');
+  });
+
+  it('places body wrap toggle immediately after Snap on the preview bar', () => {
+    const src = readFileSync(resolve(__dirname, 'EditablePagePreview.tsx'), 'utf8');
+    const toolbar = src.slice(src.indexOf('{onSnapChange && ('), src.indexOf('className="ml-auto flex'));
+    const snap = toolbar.indexOf('\n            Snap\n');
+    const wrap = toolbar.indexOf('BodyWrapToolbarButton');
+    expect(snap).toBeGreaterThan(-1);
+    expect(wrap).toBeGreaterThan(snap);
+    expect(wrap - snap).toBeLessThan(1200);
   });
 });

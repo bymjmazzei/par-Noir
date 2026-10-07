@@ -70,6 +70,7 @@ import { WidgetTextInput } from './WidgetTextInput';
 import { LayersPopover, layerDisplayLabel, pageLayerLabel } from './LayersPanel';
 import { IconLayers, IconTapeMeasure } from './icons/PenIcons';
 import {
+  BodyWrapToolbarButton,
   LayerObjectToolbar,
   layerChromeStyle,
   layerPreviewStyle,
@@ -1046,6 +1047,14 @@ export function EditablePagePreview({
           >
             Snap
           </button>
+        )}
+        {activeObject && !pageActive && activeObject.kind !== 'group' && (
+          <BodyWrapToolbarButton
+            layer={activeObject}
+            section={prepared}
+            contentWidthPx={box.width}
+            onSectionChange={onSectionChange}
+          />
         )}
 
         <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center gap-1">
