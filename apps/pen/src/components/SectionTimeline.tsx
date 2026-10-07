@@ -747,7 +747,8 @@ function DurationSecondsInput({
   onCommit,
   className,
   fallbackSec = MOTION_PRESET_SEC,
-  marker = 'animation-seconds'
+  marker = 'animation-seconds',
+  layout = 'default'
 }: {
   label: string;
   value: number;
@@ -756,10 +757,34 @@ function DurationSecondsInput({
   className?: string;
   fallbackSec?: number;
   marker?: 'animation-seconds' | 'transition-seconds';
+  layout?: 'default' | 'compact';
 }) {
   const tone = disabled ? 'text-stone-300' : 'text-stone-700';
   const markerProps =
     marker === 'transition-seconds' ? { 'data-transition-seconds': '' } : { 'data-animation-seconds': '' };
+  const inputClass = `h-4 bg-transparent outline-none [appearance:textfield] disabled:text-stone-300 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${tone}`;
+  if (layout === 'compact') {
+    return (
+      <label
+        {...markerProps}
+        className={`inline-flex h-5 items-center gap-1 text-[11px] tabular-nums ${tone} ${className ?? ''}`}
+      >
+        <input
+          aria-label={label}
+          type="number"
+          min={0.1}
+          step={0.1}
+          disabled={disabled}
+          value={value}
+          className={`${inputClass} w-[4.5ch] min-w-0 p-0 text-left`}
+          onChange={(event) => {
+            onCommit(Math.max(1 / 30, Number(event.target.value) || fallbackSec));
+          }}
+        />
+        <span className="shrink-0" aria-hidden>s</span>
+      </label>
+    );
+  }
   return (
     <label
       {...markerProps}
@@ -772,7 +797,7 @@ function DurationSecondsInput({
         step={0.1}
         disabled={disabled}
         value={value}
-        className={`h-4 w-11 bg-transparent pr-3 text-right outline-none [appearance:textfield] disabled:text-stone-300 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${tone}`}
+        className={`${inputClass} w-11 pr-3 text-right`}
         onChange={(event) => {
           onCommit(Math.max(1 / 30, Number(event.target.value) || fallbackSec));
         }}
@@ -894,7 +919,7 @@ export function TransitionSettings({
           Length
         </span>
         <DurationSecondsInput
-          className="h-5 [&_input]:text-left"
+          layout="compact"
           label="Transition length"
           value={durationSec}
           fallbackSec={0.5}
