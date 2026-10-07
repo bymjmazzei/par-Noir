@@ -18,15 +18,23 @@ import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { SoundCatalogMenu } from '../components/SoundCatalogMenu';
 
 describe('page objects', () => {
-  it('adds text looks and page widgets from the layered Add menu', () => {
+  it('adds text looks from the layered Add menu; page widget presets live in the picker', () => {
     const menu = readFileSync(resolve(__dirname, '../components/LayersPanel.tsx'), 'utf8');
     const presets = readFileSync(resolve(__dirname, '../components/layersAddMenu.ts'), 'utf8');
+    const picker = readFileSync(resolve(__dirname, '../components/ActionLayerMenu.tsx'), 'utf8');
     for (const label of ['Text', 'Media', 'Widgets', 'Stickers', 'Blank', 'Sound']) {
       expect(menu).toContain(label);
     }
-    for (const label of ['Title', 'Caption', 'Quote', 'Poll', 'Countdown', 'Link']) {
+    expect(menu).toContain('Browse widgets');
+    expect(menu).not.toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
+    for (const label of ['Title', 'Caption', 'Quote']) {
       expect(presets).toContain(label);
     }
+    for (const label of ['Poll', 'Countdown', 'Link']) {
+      expect(presets).toContain(label);
+    }
+    expect(picker).toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
+    expect(picker).toMatch(/placePageWidget/);
     expect(presets).not.toMatch(/look: 'label'/);
     const title = createTextLookLayer('title');
     expect(title.name).toBe('Title');

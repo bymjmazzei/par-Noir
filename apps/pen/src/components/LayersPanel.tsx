@@ -17,10 +17,8 @@ import {
   createGroupFromSelection,
   createTextLayer,
   createTextLookLayer,
-  placePageWidget,
   placeWidgetLayer,
   type PenTextLook,
-  type PageWidgetPreset,
   defaultLayerName,
   distributeLayers,
   normalizeSection,
@@ -43,7 +41,6 @@ import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { IconChevron, IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
 import { LayerTitleControl } from './LayerTitleControl';
 import {
-  LAYERS_PAGE_WIDGET_PRESETS,
   LAYERS_TEXT_LOOK_PRESETS,
   LAYERS_WIDGET_ELEMENTS,
   type LayersAddAccordionSection
@@ -133,7 +130,7 @@ export function LayersPopover({
   const [dragId, setDragId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [actionOpen, setActionOpen] = useState(false);
+  const [widgetOpen, setWidgetOpen] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [soundOpen, setSoundOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
@@ -179,7 +176,7 @@ export function LayersPopover({
 
   useEffect(() => {
     if (!open) {
-      setActionOpen(false);
+      setWidgetOpen(false);
       setAddOpen(false);
       setAddSection(null);
       setMediaOpen(false);
@@ -251,13 +248,6 @@ export function LayersPopover({
     onSelectedIdsChange([layer.id]);
   }
 
-  function addWholeWidget(preset: PageWidgetPreset) {
-    const placed = placePageWidget(prepared, preset);
-    commit(placed.section);
-    onSelectLayer(placed.groupId);
-    onSelectedIdsChange([placed.groupId]);
-  }
-
   function addTextLayer() {
     const n = allLayers.filter((l) => l.kind !== 'group').length + 1;
     const layer = createTextLayer({
@@ -299,7 +289,7 @@ export function LayersPopover({
     commit(next);
     onSelectLayer(groupId);
     onSelectedIdsChange([groupId]);
-    setActionOpen(false);
+    setWidgetOpen(false);
     setStickerOpen(false);
   }
 
@@ -587,6 +577,17 @@ export function LayersPopover({
               </button>
               {addSection === 'widgets' && (
                 <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                    onClick={() => {
+                      closeAddMenu();
+                      setWidgetOpen(true);
+                    }}
+                  >
+                    Browse widgets
+                  </button>
                   {LAYERS_WIDGET_ELEMENTS.map(({ element, label }) => (
                     <button
                       key={element}
@@ -595,31 +596,6 @@ export function LayersPopover({
                       className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
                       onClick={() => {
                         addPlaced(element);
-                        closeAddMenu();
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
-                    onClick={() => {
-                      closeAddMenu();
-                      setActionOpen(true);
-                    }}
-                  >
-                    Import widget
-                  </button>
-                  {LAYERS_PAGE_WIDGET_PRESETS.map(({ preset, label }) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      role="menuitem"
-                      className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
-                      onClick={() => {
-                        addWholeWidget(preset);
                         closeAddMenu();
                       }}
                     >
@@ -654,13 +630,13 @@ export function LayersPopover({
           )}
         </div>
       </div>
-      {actionOpen && (
+      {widgetOpen && (
         <ActionLayerMenu
           session={session}
           docId={docId}
           section={prepared}
           onInserted={insertWidget}
-          onCancel={() => setActionOpen(false)}
+          onCancel={() => setWidgetOpen(false)}
         />
       )}
       {stickerOpen && (

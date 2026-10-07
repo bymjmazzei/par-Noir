@@ -1,10 +1,12 @@
 /**
- * Import widget: popup with My widgets, All widgets, and search.
- * Choosing one copies its layers into the host section.
+ * Browse widgets in-editor: My widgets, All widgets, quick presets, and search.
+ * Catalog picks copy layers into the host section; presets use placePageWidget.
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
   listStarterTemplates,
+  placePageWidget,
+  type PageWidgetPreset,
   type PenPageLayer,
   type PenSectionContent,
   type PenTemplate
@@ -16,6 +18,7 @@ import { loadPublishedWidgetSections } from '../services/publishedWidgetIr';
 import { publicWidgetCatalog } from '../services/widgetCatalog';
 import { insertWidgetCopy } from '../services/widgetInsert';
 import { placeGiphySticker, searchGiphyStickers, type GiphyStickerHit } from '../services/giphyStickers';
+import { LAYERS_PAGE_WIDGET_PRESETS } from './layersAddMenu';
 
 function sourceLayers(template: PenTemplate): PenPageLayer[] {
   return template.seedSections?.[0]?.layers || [];
@@ -70,12 +73,29 @@ export function ActionLayerMenu({
     };
   }, [classId]);
 
-  const shown = useMemo(() => {
+  const shownPresets = useMemo(() => {
+    if (sticker || tab !== 'all') return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return LAYERS_PAGE_WIDGET_PRESETS;
+    return LAYERS_PAGE_WIDGET_PRESETS.filter(({ label }) => label.toLowerCase().includes(q));
+  }, [query, sticker, tab]);
+
+  const shownTemplates = useMemo(() => {
     const q = query.trim().toLowerCase();
     const rows = tab === 'mine' ? yours : [...starters, ...remote];
     if (!q) return rows;
     return rows.filter((template) => template.title.toLowerCase().includes(q));
   }, [query, remote, starters, tab, yours]);
+
+  function pickPreset(preset: PageWidgetPreset) {
+    if (!session?.pnIdentifier) {
+      setError(`Unlock to add a ${noun}`);
+      return;
+    }
+    setError(null);
+    const placed = placePageWidget(section, preset);
+    onInserted(placed.section, placed.groupId);
+  }
 
   async function pick(template: PenTemplate) {
     if (!session?.pnIdentifier) {
@@ -114,7 +134,7 @@ export function ActionLayerMenu({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
-          <span className="font-semibold">{sticker ? 'Add sticker' : 'Import widget'}</span>
+          <span className="font-semibold">{sticker ? 'Add sticker' : 'Add widget'}</span>
           <button type="button" className="text-neutral-500 hover:text-black" onClick={onCancel}>
             Close
           </button>
@@ -149,10 +169,21 @@ export function ActionLayerMenu({
           </button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto px-2 py-2">
-          {shown.length === 0 && (
+          {shownPresets.length === 0 && shownTemplates.length === 0 && (
             <p className="px-1 py-2 text-neutral-500">{sticker ? 'No stickers' : 'No widgets'}</p>
           )}
-          {shown.map((template) => (
+          {shownPresets.map(({ preset, label }) => (
+            <button
+              key={`preset:${preset}`}
+              type="button"
+              disabled={busy}
+              className="w-full rounded px-2 py-1 text-left hover:bg-neutral-50 disabled:opacity-50"
+              onClick={() => pickPreset(preset)}
+            >
+              {label}
+            </button>
+          ))}
+          {shownTemplates.map((template) => (
             <button
               key={template.id}
               type="button"

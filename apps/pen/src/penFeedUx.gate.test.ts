@@ -256,14 +256,16 @@ describe('pen feed UX chrome', () => {
     expect(src).not.toMatch(/engagementOverlay/);
   });
 
-  it('layers add menu is New text layer, New group, and Import widget', () => {
+  it('layers add menu is New text layer, New group, and Browse widgets', () => {
     const panel = readFileSync(resolve(root, 'components/LayersPanel.tsx'), 'utf8');
     const menu = readFileSync(resolve(root, 'components/ActionLayerMenu.tsx'), 'utf8');
     const rail = readFileSync(resolve(root, 'services/classFeedRailItems.ts'), 'utf8');
     expect(panel).toMatch(/Blank/);
     expect(panel).toMatch(/Stickers/);
     expect(panel).toMatch(/New group/);
-    expect(panel).toMatch(/Import widget/);
+    expect(panel).toMatch(/Browse widgets/);
+    expect(panel).not.toMatch(/Import widget/);
+    expect(panel).not.toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
     expect(panel).not.toMatch(/New widget/);
     expect(panel).not.toMatch(/>\s*SVG\s*</);
     expect(panel).toMatch(/aria-label="Add"/);
@@ -272,6 +274,10 @@ describe('pen feed UX chrome', () => {
     expect(panel).not.toMatch(/aria-label="Add text layer"/);
     expect(menu).not.toMatch(/Vote sticker|Embed table|Open sticker/);
     expect(menu).toMatch(/insertWidgetCopy/);
+    expect(menu).toMatch(/placePageWidget/);
+    expect(menu).toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
+    expect(menu).toMatch(/pickPreset/);
+    expect(menu).toMatch(/Add widget/);
     expect(menu).toMatch(/My widgets/);
     expect(menu).toMatch(/All widgets/);
     expect(menu).toMatch(/Search widgets/);
