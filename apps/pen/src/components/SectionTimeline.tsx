@@ -886,16 +886,24 @@ export function TransitionSettings({
   }
   return (
     <div className="flex h-full min-w-0 items-stretch gap-2">
-      <label className="flex shrink-0 flex-col items-center justify-center gap-0.5 text-center text-[12px] text-stone-500">
-        Length
+      <div
+        className="grid h-full shrink-0 grid-cols-[1.25rem_auto] grid-rows-3 content-center items-center"
+        data-transition-length-controls=""
+      >
+        <span
+          className="col-start-2 row-start-1 flex h-5 items-center justify-center text-[12px] leading-none text-stone-500"
+        >
+          Length
+        </span>
         <DurationSecondsInput
+          className="col-start-2 row-start-2 flex h-5 items-center justify-self-center"
           label="Transition length"
           value={durationSec}
           fallbackSec={0.5}
           marker="transition-seconds"
           onCommit={(next) => apply(current && current !== 'cut' ? current : 'crossfade', next)}
         />
-      </label>
+      </div>
       <div className="pen-editor-tiles">
         <button
           type="button"
