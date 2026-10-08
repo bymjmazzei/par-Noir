@@ -86,7 +86,7 @@ describe('pen feed UX chrome', () => {
     const notebook = readFileSync(resolve(root, 'components/PenNotebookPage.tsx'), 'utf8');
     const list = [
       readFileSync(resolve(root, 'pages/docList/DocListShell.tsx'), 'utf8'),
-      readFileSync(resolve(root, 'pages/docList/useDocListController.ts'), 'utf8')
+      readFileSync(resolve(root, 'pages/docList/useDocListController.tsx'), 'utf8')
     ].join('\n');
     const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
     const templates = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');
@@ -119,7 +119,7 @@ describe('pen feed UX chrome', () => {
   it('Library and Templates share Social rail; Library keeps trash; no double gallery head', () => {
     const list = [
       readFileSync(resolve(root, 'pages/docList/DocListShell.tsx'), 'utf8'),
-      readFileSync(resolve(root, 'pages/docList/useDocListController.ts'), 'utf8')
+      readFileSync(resolve(root, 'pages/docList/useDocListController.tsx'), 'utf8')
     ].join('\n');
     const feed = readFileSync(resolve(root, 'components/DocFeedScroller.tsx'), 'utf8');
     expect(list).toMatch(/MinusIcon/);

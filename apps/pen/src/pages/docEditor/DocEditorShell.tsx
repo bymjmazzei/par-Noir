@@ -1295,6 +1295,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
 
         {showPreview && !showHistory && !sidePanel && (
           <div className="hidden min-h-0 min-w-0 flex-1 flex-col sm:flex">
+            {isSocialDoc ? (
             <DocEditorSocialPreview {...state} />
             ) : section ? (
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -1649,5 +1650,4 @@ export function DocEditorShell(state: DocEditorReadyState) {
       </div>
     </div>
   );
-}
 }

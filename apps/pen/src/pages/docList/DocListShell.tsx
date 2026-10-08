@@ -11,7 +11,7 @@ import {
   type PenClass,
   type PenTemplate
 } from '@par-noir/pen-protocol';
-import type { PenSession } from '../App';
+import type { PenSession } from '../../services/penSession';
 import {
   deleteLocalDocs,
   loadLocalDoc,
@@ -632,5 +632,4 @@ export function DocListShell(state: DocListReadyState) {
       ) : null}
     </>
   );
-}
 }

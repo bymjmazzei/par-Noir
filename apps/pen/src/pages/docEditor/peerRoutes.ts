@@ -1,7 +1,7 @@
 import type { PenSession } from '../../services/penSession';
 import { fetchGroupRoster } from '../../services/penCollab';
 
-async function peerRoutes(
+export async function peerRoutes(
   session: PenSession,
   groupId: string | undefined
 ): Promise<string[]> {
