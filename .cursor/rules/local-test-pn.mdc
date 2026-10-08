@@ -1,29 +1,24 @@
 ---
-description: Agent unlock uses cursor-test-pn only — the user's test-pn is their own QA identity
+description: Local pN fixture boundary — never touch the user's test-pn; no secrets in git
 alwaysApply: true
 ---
 
-# Local test pN for unlock QA
+# Local pN fixtures (boundary)
 
 ## Hard split
 
 | Fixture | Who | When |
 |---|---|---|
-| **`.local/cursor-test-pn/`** | **Agent only** | Headed browse unlock, OAuth consent, dashboard unlock, any agent product QA. This is the renamed former `test-pn-2` (already set up). |
 | `.local/test-pn/` | **User** | Your QA identity. You run it yourself. |
+| `.local/cursor-test-pn/` | Fixtures only | Used only when **you** explicitly ask to run dual-pN or fixture harness scripts — not for agent browser QA. |
 
-The agent never opens, unlocks, or uploads `.local/test-pn/`.
+The agent **never** opens, unlocks, or uploads `.local/test-pn/`.
 
-**There is no third fixture.** Do not create `.local/test-pn-2` again. Dual-pN B is `cursor-test-pn`.
+**There is no third fixture.** Do not create `.local/test-pn-2` again. Dual-pN B is `cursor-test-pn` when a harness needs two identities.
 
-## Agent default
+## Agent rules
 
-1. **For agent product QA**, use **`.local/cursor-test-pn/`** only:
-   - Identity: `IDENTITY_FILE` / `live-created.pn` / `.pn` in that folder
-   - Credentials: `.local/cursor-test-pn/keys.env` (`PN_NAME` = Key 1, `PASSCODE` = Key 2)
-2. If `.local/cursor-test-pn/` is missing: **stop and tell the user**. Do not create, mint, or live-create a replacement. Do not fall back to `.local/test-pn`.
-3. Do not ask the user to re-supply keys for cursor-test-pn if those files exist.
-4. Do not commit `.local/`, log Key 1/Key 2 / passcode / pn name, or paste secrets into git, PRs, or plan files.
-5. Dual-pN scripts may load `test-pn` + `cursor-test-pn` only when the user asked for dual-pN messaging QA.
-
-Crypto and auth acceptance stays on hermetic package tests. A flow a person can see is headed QA on `cursor-test-pn`. See `how-we-work.mdc`.
+1. Do not commit `.local/`, log Key 1/Key 2 / passcode / pn name, or paste secrets into git, PRs, or plan files.
+2. Do not create, mint, or live-create identities unless the user explicitly asks for that workflow.
+3. Dual-pN / fixture scripts may load `test-pn` + `cursor-test-pn` only when the user explicitly asks. Still follow `agent-scope.mdc` (no browser MCP unless the user requests it in that chat).
+4. Crypto and auth acceptance stays on hermetic package tests.

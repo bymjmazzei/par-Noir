@@ -84,7 +84,10 @@ describe('pen feed UX chrome', () => {
 
   it('PenNotebookPage is the single unlocked notebook chrome', () => {
     const notebook = readFileSync(resolve(root, 'components/PenNotebookPage.tsx'), 'utf8');
-    const list = readFileSync(resolve(root, 'pages/DocListPage.tsx'), 'utf8');
+    const list = [
+      readFileSync(resolve(root, 'pages/docList/DocListShell.tsx'), 'utf8'),
+      readFileSync(resolve(root, 'pages/docList/useDocListController.ts'), 'utf8')
+    ].join('\n');
     const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
     const templates = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');
     expect(notebook).toMatch(/pen-library-page/);
@@ -114,7 +117,10 @@ describe('pen feed UX chrome', () => {
   });
 
   it('Library and Templates share Social rail; Library keeps trash; no double gallery head', () => {
-    const list = readFileSync(resolve(root, 'pages/DocListPage.tsx'), 'utf8');
+    const list = [
+      readFileSync(resolve(root, 'pages/docList/DocListShell.tsx'), 'utf8'),
+      readFileSync(resolve(root, 'pages/docList/useDocListController.ts'), 'utf8')
+    ].join('\n');
     const feed = readFileSync(resolve(root, 'components/DocFeedScroller.tsx'), 'utf8');
     expect(list).toMatch(/MinusIcon/);
     expect(list).toMatch(/toggleBulkMode/);
@@ -250,7 +256,7 @@ describe('pen feed UX chrome', () => {
   });
 
   it('DocEditorPage social live preview uses shared SocialFeedPhonePreview', () => {
-    const src = readFileSync(resolve(root, 'pages/DocEditorPage.tsx'), 'utf8');
+    const src = readFileSync(resolve(root, 'pages/docEditor/DocEditorSocialPreview.tsx'), 'utf8');
     expect(src).toMatch(/pen-social-live-preview/);
     expect(src).toMatch(/SocialFeedPhonePreview/);
     expect(src).not.toMatch(/engagementOverlay/);
@@ -286,8 +292,8 @@ describe('pen feed UX chrome', () => {
   });
 
   it('DocEditorPage social live preview mounts LayersPopover for action layers', () => {
-    const src = readFileSync(resolve(root, 'pages/DocEditorPage.tsx'), 'utf8');
-    const social = src.slice(src.indexOf('isSocialDoc ?'));
+    const src = readFileSync(resolve(root, 'pages/docEditor/DocEditorSocialPreview.tsx'), 'utf8');
+    const social = src;
     expect(social).toMatch(/<LayersPopover/);
     expect(social).toMatch(/ActionLayerPhoneOverlay/);
     expect(social).toMatch(/ActionBindStrip/);
@@ -315,7 +321,7 @@ describe('pen feed UX chrome', () => {
 
   it('public templates feed is routed at /templates via TemplatesBrowse', () => {
     const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
-    const verified = readFileSync(resolve(root, 'services/penVerified.ts'), 'utf8');
+    const verified = readFileSync(resolve(root, 'services/penAuthorVerification.ts'), 'utf8');
     expect(app).toMatch(/path="\/templates"/);
     expect(app).toMatch(/TemplatesBrowse/);
     expect(app).not.toMatch(/PublicTemplatesFeedPage/);

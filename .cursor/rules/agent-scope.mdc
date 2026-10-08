@@ -1,0 +1,40 @@
+---
+description: Agent scope — no browser MCP by default, scoped search, hermetic tests for done
+alwaysApply: true
+---
+
+# Agent scope (token + verification)
+
+**Precedence:** the current chat wins over this file for explicit user instructions (e.g. user asks for browser help in that chat).
+
+## Done (agent)
+
+- Hermetic package/app tests pass for the touched area; report which commands ran.
+- Summarize what changed and what was **not** run (e.g. no live API, no UI).
+- **User** validates visible flows on their own pN. Agent does not block completion on browser verification or “onboarding-ready” UI checks.
+
+## Browser MCP — default off
+
+Do **not** use `cursor-ide-browser` (navigate, snapshot, click, type, screenshot, CDP) unless the user **explicitly** requests browser help **in that chat** (e.g. “open in browser and check X”).
+
+## Playwright / live UX scripts — default off
+
+Do not run headed or live unlock flows (`ux-*.mjs`, `playwright test`, dashboard `test:e2e`, or similar) unless the user explicitly asks in that chat.
+
+## Search scope
+
+1. Start from the path the user named (`apps/pen`, `apps/id-dashboard`, `api`, etc.).
+2. Read/grep under that app plus `packages/*` (and `api/`) that it directly imports.
+3. Repo-wide search only when stuck, reuse is unclear, or the task is auth / Drive / `ownerFetch` / OAuth (then follow `diagnostic-discipline.mdc`).
+
+## Pen spine (extra roots when task requires it)
+
+When the task mentions publish, templates feed, Pen Mini, or `pen-protocol`, these roots are in scope without searching the whole monorepo:
+
+- `apps/pen/`, `packages/pen-protocol/`, `packages/feed-tile/`
+- `apps/aggregator-browser/` Pen-related files
+- `api/` pen modules
+
+## Full trace
+
+Root-cause tracing across Drive, API, Redis, Postgres, or device boundaries applies to those boundaries only — not to local UI-only edits in one app.

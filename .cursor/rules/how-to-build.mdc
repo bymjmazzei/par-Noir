@@ -7,7 +7,7 @@ alwaysApply: false
 
 **What we're building:** Identity (L1) → dashboard (L2) → API (L3) → browser (L4) → third parties (L5). Full product north star: `guiding-principles.mdc`, SHARED_CODE_RULES.md.
 
-- **Before adding code:** Search `packages/`, `core/`, and the other app for existing types, utils, or services. Reuse; do not duplicate.
+- **Before adding code:** Search the named app plus `packages/` and `core/` for existing types, utils, or services. Reuse; do not duplicate. Repo-wide search only when reuse is unclear or the work crosses auth/Drive/OAuth boundaries (`agent-scope.mdc`).
 - **New shared behavior:** Implement in `packages/` first, then add thin app-specific UI or wiring in each app.
 - **Pure logic:** Keep in `packages/` or `services/`. Do not put pure logic (e.g. PDF processing, token generation) inside React components; components import from packages or services.
 - **Large components:** Prefer splitting. Avoid multi-thousand-line components; extract subcomponents and hooks.

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
-const editorPath = resolve(__dirname, 'pages/DocEditorPage.tsx');
+const editorPath = resolve(__dirname, 'pages/docEditor/useDocEditorController.ts');
 
 describe('Pen promote single-append gate', () => {
   const src = readFileSync(editorPath, 'utf8');

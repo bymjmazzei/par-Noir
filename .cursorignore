@@ -1,0 +1,22 @@
+# Build / deploy outputs
+dist/
+build/
+out/
+.firebase/
+**/dist-messaging/
+
+# Dependencies
+node_modules/
+
+# Local fixtures and secrets
+.local/
+
+# Large non-source trees
+apps/desktop-dashboard/resources/veracrypt/
+
+# Capacitor native stubs (edit in-repo only when user asks)
+**/android/
+**/ios/
+
+# Pen sticker/binary assets (source lives in code references)
+apps/pen/src/assets/

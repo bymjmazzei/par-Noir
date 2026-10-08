@@ -12,7 +12,7 @@ const root = resolve(__dirname);
 
 describe('widget preview builder', () => {
   it('puts the widget editor in the side pane beside the preview', () => {
-    const page = readFileSync(resolve(root, '../pages/DocEditorPage.tsx'), 'utf8');
+    const page = readFileSync(resolve(root, '../pages/docEditor/DocEditorShell.tsx'), 'utf8');
     const side = page.slice(page.indexOf('activeMediaLayer && section'));
     const widget = side.indexOf('<WidgetEditorPanel');
     const prose = side.indexOf('<PageCanvas');

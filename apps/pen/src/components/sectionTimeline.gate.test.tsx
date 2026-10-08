@@ -637,7 +637,7 @@ describe('section timeline', () => {
   });
 
   it('mounts the timeline under the text editor', () => {
-    const page = readFileSync(resolve(__dirname, '../pages/DocEditorPage.tsx'), 'utf8');
+    const page = readFileSync(resolve(__dirname, '../pages/docEditor/DocEditorShell.tsx'), 'utf8');
     const writing = page.indexOf('writingEnabled && canvasSection && section');
     const timeline = page.indexOf('<SectionTimeline', writing);
     const fallback = page.indexOf('Select Body or a text layer to write.', writing);

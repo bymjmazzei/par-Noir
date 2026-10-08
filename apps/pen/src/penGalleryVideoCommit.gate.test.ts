@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const editorPath = resolve(__dirname, 'pages/DocEditorPage.tsx');
+const editorPath = resolve(__dirname, 'pages/docEditor/useDocEditorController.ts');
 
 describe('Pen gallery video Commit gate', () => {
   const src = readFileSync(editorPath, 'utf8');

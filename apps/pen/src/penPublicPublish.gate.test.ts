@@ -78,7 +78,7 @@ describe('Pen owner-cloud publish', () => {
   });
 
   it('the editor does not open Browse to finish publish', () => {
-    const editor = readFileSync(resolve(here, 'pages/DocEditorPage.tsx'), 'utf8');
+    const editor = readFileSync(resolve(here, 'pages/docEditor/useDocEditorController.ts'), 'utf8');
     const publish = readFileSync(resolve(here, 'services/penPublish.ts'), 'utf8');
     const menu = readFileSync(resolve(here, 'components/PublishMenu.tsx'), 'utf8');
     for (const src of [editor, publish, menu]) {

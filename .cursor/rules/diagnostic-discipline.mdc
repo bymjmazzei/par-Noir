@@ -15,13 +15,13 @@ Commit `e4306317` ("Align dashboard Drive calls with custody owner routes") norm
 
 - Every diagnostic states **up front** the observation that would prove the hypothesis **wrong**.
 - If that observation cannot be made, **stop and report**. Do not proceed to implementation on an unverified hypothesis.
-- A blocked headed check does not void the rest of the work. Say what was not verified. See `how-we-work.mdc`.
 - A check that has never failed is not a check. When adding a guard or test, prove it fails on a synthetic violation before trusting it.
 
 ## 2. Done means the symptom is reproduced as absent
 
 - Acceptance is written in terms of **what the user sees**, before any code is written.
 - Not "endpoint returns 200". Not "tests pass". Not "all touch points updated". Those are structural; they can all pass while the bug is untouched.
+- Agent verification is hermetic tests plus an honest report; user-visible acceptance is **user-verified** on their pN unless they explicitly requested browser MCP in that chat (`agent-scope.mdc`).
 - If the symptom cannot be demonstrated gone, say so plainly. Do not declare completion.
 - "All touch points corrected" only covers the touch points already assumed to be involved. It is circular and is not verification.
 
