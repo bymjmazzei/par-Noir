@@ -138,6 +138,43 @@ export async function upsertDeviceOwnerFile(
   await writeSheetValues(accessToken, spreadsheetId, 'Files!A2:E', rows, fetchImpl);
 }
 
+/** Public-file-index row (Files!A:E — same layout as IndexSheetsService.addFile). */
+export function publicIndexRowFromEntry(entry: Record<string, unknown>): string[] {
+  const fileId = typeof entry.fileId === 'string' ? entry.fileId : '';
+  const googleDriveFileId =
+    (typeof entry.googleDriveFileId === 'string' && entry.googleDriveFileId) ||
+    (typeof entry.backendFileId === 'string' && entry.backendFileId) ||
+    fileId;
+  const visibility = entry.isPublic === true ? 'public' : 'private';
+  const uploadedAt =
+    (typeof entry.uploadedAt === 'string' && entry.uploadedAt) ||
+    (typeof entry.uploadDate === 'string' && entry.uploadDate) ||
+    new Date().toISOString();
+  const { fileId: _f, googleDriveFileId: _g, backendFileId: _b, isPublic: _p, ...rest } = entry;
+  return [fileId, googleDriveFileId, visibility, uploadedAt, JSON.stringify({ fileId, ...rest })];
+}
+
+export async function upsertDevicePublicIndexFile(
+  accessToken: string,
+  spreadsheetId: string,
+  entry: Record<string, unknown>,
+  fetchImpl?: typeof fetch
+): Promise<void> {
+  const fileId = typeof entry.fileId === 'string' ? entry.fileId : '';
+  if (!fileId) {
+    throw new Error('public index row requires fileId');
+  }
+  const rows = await readSheetValues(accessToken, spreadsheetId, 'Files!A2:E', fetchImpl);
+  const index = rows.findIndex((row) => row[0] === fileId);
+  const values = publicIndexRowFromEntry(entry);
+  if (index < 0) {
+    await appendSheetValues(accessToken, spreadsheetId, 'Files!A:E', [values], fetchImpl);
+    return;
+  }
+  rows[index] = values;
+  await writeSheetValues(accessToken, spreadsheetId, 'Files!A2:E', rows, fetchImpl);
+}
+
 export async function listDeviceActivities(
   accessToken: string,
   spreadsheetId: string,

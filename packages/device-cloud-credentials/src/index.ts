@@ -164,6 +164,8 @@ export type { OwnerBlobFolders, ContentBlobClass } from './ownerBlobFolders.js';
 export {
   listDeviceOwnerFiles,
   upsertDeviceOwnerFile,
+  upsertDevicePublicIndexFile,
+  publicIndexRowFromEntry,
   listDeviceActivities,
   listDeviceOwnedAssets,
   upsertDeviceOwnedAsset,

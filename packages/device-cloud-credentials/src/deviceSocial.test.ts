@@ -96,13 +96,20 @@ describe('device connection sheet', () => {
     expect(notes[0]?.read).toBe(false);
   });
 
-  it('appends a public index row only to the existing layout sheet', async () => {
+  it('upserts a public index row on Files!A:E', async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(String(url)).toContain('spreadsheets/sheet-public/');
-      expect(String(url)).not.toContain('/v4/spreadsheets?');
+      expect(String(url)).toContain('Files');
+      expect(String(url)).not.toContain('Index!');
       expect(String(url)).not.toContain('api.parnoir.com');
-      const body = JSON.parse(String(init?.body)) as { values: string[][] };
-      expect(JSON.parse(body.values[0][0]).fileId).toBe('file-1');
+      if (!init?.method || init.method === 'GET') {
+        return new Response(JSON.stringify({ values: [] }), { status: 200 });
+      }
+      expect(String(url)).toContain(':append');
+      const body = JSON.parse(String(init.body)) as { values: string[][] };
+      expect(body.values[0]?.[0]).toBe('file-1');
+      expect(body.values[0]?.[2]).toBe('public');
+      expect(JSON.parse(body.values[0][4]).fileId).toBe('file-1');
       return new Response('{}', { status: 200 });
     });
     await appendPublicIndexRow(

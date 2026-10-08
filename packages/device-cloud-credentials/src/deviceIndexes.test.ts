@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   listDeviceActivities,
   listDeviceOwnerFiles,
+  publicIndexRowFromEntry,
   replaceIdentityInCell,
   upsertDeviceOwnerFile,
+  upsertDevicePublicIndexFile,
 } from './deviceIndexes.js';
 
 describe('device index sheets', () => {
@@ -25,6 +27,34 @@ describe('device index sheets', () => {
     const headers = (fetchImpl.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer google-token');
     expect(headers['X-PN-Cloud-Access-Token']).toBeUndefined();
+  });
+
+  it('builds a public index row with visibility from isPublic', () => {
+    const row = publicIndexRowFromEntry({
+      fileId: 'file-pub',
+      isPublic: true,
+      title: 'Hello',
+    });
+    expect(row[0]).toBe('file-pub');
+    expect(row[2]).toBe('public');
+    expect(JSON.parse(row[4]).title).toBe('Hello');
+  });
+
+  it('upserts a public index row on Files!A:E', async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (!init?.method || init.method === 'GET') {
+        return new Response(JSON.stringify({ values: [] }), { status: 200 });
+      }
+      expect(String(url)).toContain('Files');
+      expect(String(url)).toContain(':append');
+      return new Response('{}', { status: 200 });
+    });
+    await upsertDevicePublicIndexFile(
+      'google-token',
+      'sheet-public',
+      { fileId: 'file-pub-2', isPublic: true },
+      fetchImpl as unknown as typeof fetch
+    );
   });
 
   it('appends a new owner index row to Google', async () => {

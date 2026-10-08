@@ -319,7 +319,15 @@ async function processShareSettingsUpdate(
     updateBody.expiresAt = null;
     updateBody.persistOnDiscover = false;
   }
-  
+
+  const { catalogFieldsForMetadataPut } = await import('./shareMetadataPutBody');
+  Object.assign(
+    updateBody,
+    catalogFieldsForMetadataPut(
+      existingMetadata as Record<string, unknown> | undefined
+    )
+  );
+
   const metadataResponse = await ownerFetch(
     'PUT',
     `/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`,

@@ -4,6 +4,7 @@
  */
 
 import { appendSheetValues, readSheetValues, writeSheetValues } from './deviceSheet.js';
+import { upsertDevicePublicIndexFile } from './deviceIndexes.js';
 import type { DeviceDriveLayout } from './deviceDriveLayout.js';
 import { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
 import { getSessionDriveIndex, setSessionDriveIndex } from './sessionMemory.js';
@@ -268,13 +269,7 @@ export async function appendPublicIndexRow(
   entry: Record<string, unknown>,
   fetchImpl?: typeof fetch
 ): Promise<void> {
-  await appendSheetValues(
-    accessToken,
-    spreadsheetId,
-    'Index!A:A',
-    [[JSON.stringify(entry)]],
-    fetchImpl
-  );
+  await upsertDevicePublicIndexFile(accessToken, spreadsheetId, entry, fetchImpl);
 }
 
 export async function ensureSessionDriveIndex(args: {
