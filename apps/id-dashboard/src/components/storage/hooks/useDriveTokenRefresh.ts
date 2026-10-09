@@ -157,6 +157,10 @@ export function useDriveTokenRefresh({
               const mode = isKeyedSession
                 ? 'sealed'
                 : resolveCloudPersistMode({ hasKeyedDevices });
+              const { cloudDisconnectGeneration, discardIfCloudDisconnected } = await import(
+                '../../../services/disconnectCloud'
+              );
+              const seenDisconnect = cloudDisconnectGeneration(pnId);
               await persistCloudCredentials({
                 identityId: pnId,
                 credentials: {
@@ -173,6 +177,7 @@ export function useDriveTokenRefresh({
                 },
                 mode
               });
+              if (await discardIfCloudDisconnected(pnId, seenDisconnect)) return;
               try {
                 const { publishCloudVaultForIdentity } = await import(
                   '../../../services/deviceCloudCredentials'
@@ -198,6 +203,15 @@ export function useDriveTokenRefresh({
                       '[FileStorageAggregator] Cloud vault refresh publish incomplete:',
                       vault.error || 'unknown'
                     );
+                  } else if (await discardIfCloudDisconnected(pnId, seenDisconnect)) {
+                    await publishCloudVaultForIdentity({
+                      identityId: pnId,
+                      authToken: authTok,
+                      pnName: sessionCreds.pnName,
+                      passcode: sessionCreds.passcode,
+                      credentials: { googleDriveAccounts: [] }
+                    }).catch(() => undefined);
+                    return;
                   }
                 }
               } catch (e) {

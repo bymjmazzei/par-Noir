@@ -721,6 +721,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         authToken={apiToken ?? undefined}
         sessionId={authenticatedUser?.id ?? null}
         onConnectGoogleDrive={handleConnectGoogleDrive}
+        onDisconnectGoogleDrive={async () => {
+          const ids = driveAccounts.map((account) => account.backendId);
+          if (ids.length === 0) {
+            const sessionId = authenticatedUser?.id || authenticatedUser?.publicKey || null;
+            const creds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+            const token = apiToken ?? resolveOwnerApiToken(cloudPnIdentifier);
+            if (!cloudPnIdentifier || !token || !creds?.pnName || !creds.passcode) {
+              throw new Error('Unlock again to disconnect Google Drive.');
+            }
+            const { commitDashboardGoogleDriveDisconnect } = await import(
+              '../../services/disconnectCloud'
+            );
+            await commitDashboardGoogleDriveDisconnect({
+              pnIdentifier: cloudPnIdentifier,
+              authToken: token,
+              pnName: creds.pnName,
+              passcode: creds.passcode,
+              publicKey: authenticatedUser?.publicKey,
+            });
+            return;
+          }
+          for (const id of ids) {
+            await handleDisconnect(id);
+          }
+        }}
         googleDriveConnectedCount={driveAccounts.length}
         driveConnectDisabled={isLoading || showDriveSetupProgress}
         connectedStorageCount={connectedStorageCount}

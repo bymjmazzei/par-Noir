@@ -12,6 +12,7 @@ alwaysApply: true
 - Hermetic package/app tests pass for the touched area; report which commands ran.
 - Summarize what changed and what was **not** run (e.g. no live API, no UI).
 - **User** validates visible flows on their own pN. Agent does not block completion on browser verification or “onboarding-ready” UI checks.
+- After that, commit, push, and deploy (`how-we-work.mdc`). Do not wait to be asked again.
 
 ## Browser MCP — default off
 

@@ -37,10 +37,9 @@ alwaysApply: false
 
 ## Shipping
 
-When work is complete, **propose** ship steps (commit message, push, `./deploy.sh`). Commit, push, and deploy **only when the user asks**. Do not commit or push unprompted.
+When the edit is done and its tests have passed, commit, push, and deploy. Do not stop at a proposal. See `how-we-work.mdc`.
 
-Ship checklist when asked:
 1. `git add` changed files (no .env or secrets; pre-commit runs `scripts/check-secrets.sh`).
 2. `git commit` with a clear message.
-3. `git push` to the deploy branch if asked.
-4. Prefer repo root `./deploy.sh` (exports `VITE_API_ENDPOINT`, builds hosting apps, `firebase deploy --only hosting`). Align API host deploy to the same commit.
+3. `git push` to the current branch.
+4. Repo root `./deploy.sh` (exports `VITE_API_ENDPOINT`, builds hosting apps, `firebase deploy --only hosting`). If `api/` changed, deploy the API host to the same commit.

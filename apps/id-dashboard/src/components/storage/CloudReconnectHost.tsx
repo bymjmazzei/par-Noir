@@ -20,6 +20,10 @@ import { DevicePairFromReconnect } from '../DevicePairFromReconnect';
 import { isKeyableClient } from '@par-noir/device-client';
 import { APP_DOWNLOAD_URL } from '../../config/appDownload';
 import { publishCloudVaultForIdentity } from '../../services/deviceCloudCredentials';
+import {
+  cloudDisconnectGeneration,
+  discardIfCloudDisconnected,
+} from '../../services/disconnectCloud';
 import { ownerFetch } from '../../services/ownerApiService';
 import { CloudLayoutUpdateBanner } from './CloudLayoutUpdateBanner';
 
@@ -74,6 +78,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     let cancelled = false;
     setMigrateSettled(false);
     void (async () => {
+      const seenDisconnect = cloudDisconnectGeneration(pnIdentifier);
       const { awaitMigrateFlushForIdentity } = await import('../../services/deviceCloudCredentials');
       const { readShellMlKem } = await import('../../services/shellMlKem');
       let warmed: StorageCredentialsEnvelope | null = null;
@@ -101,6 +106,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               }
             }));
           if (env && envelopeHasUsableSecrets(env)) {
+            if (await discardIfCloudDisconnected(pnIdentifier, seenDisconnect)) break;
             warmed = env;
             setSessionCloudCredentials(pnIdentifier, env);
             break;
@@ -141,11 +147,17 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
             pnName: creds?.pnName,
             passcode: creds?.passcode
           });
-          if (status === 'ready') {
+          if (await discardIfCloudDisconnected(pnIdentifier, seenDisconnect)) {
+            warmed = null;
+          } else if (status === 'ready') {
             warmed = getSessionCloudCredentials(pnIdentifier);
           }
         }
-        if (creds && envelopeHasUsableSecrets(warmed || getSessionCloudCredentials(pnIdentifier))) {
+        if (
+          creds &&
+          !(await discardIfCloudDisconnected(pnIdentifier, seenDisconnect)) &&
+          envelopeHasUsableSecrets(warmed || getSessionCloudCredentials(pnIdentifier))
+        ) {
           const toPublish = warmed || getSessionCloudCredentials(pnIdentifier);
           if (toPublish) {
             try {
@@ -180,6 +192,17 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               },
               mode: 'sealed'
             }).catch(() => null);
+            if (await discardIfCloudDisconnected(pnIdentifier, seenDisconnect)) {
+              await publishCloudVaultForIdentity({
+                identityId: pnIdentifier,
+                authToken: apiToken,
+                pnName: creds.pnName,
+                passcode: creds.passcode,
+                credentials: { googleDriveAccounts: [] },
+                publicKey: sessionId,
+                mlKemSecretKey
+              }).catch(() => undefined);
+            }
           }
         }
         setMigrateSettled(true);
@@ -227,6 +250,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       if (!pnIdentifier || !sessionId) return;
       const creds = SecureCredentialManager.getCredentials(sessionId);
       if (!creds) throw new Error('Session credentials missing — unlock again.');
+      const seenDisconnect = cloudDisconnectGeneration(pnIdentifier);
       await persistCloudCredentials({
         identityId: pnIdentifier,
         credentials: envelope,
@@ -237,7 +261,9 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         },
         mode: effectivePersistMode
       });
+      if (await discardIfCloudDisconnected(pnIdentifier, seenDisconnect)) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
+      if (await discardIfCloudDisconnected(pnIdentifier, seenDisconnect)) return;
       if (apiToken) {
         const vault = await publishCloudVaultForIdentity({
           identityId: pnIdentifier,
@@ -249,6 +275,17 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         });
         if (!vault.ok) {
           throw new Error(vault.error || 'Failed to publish cloud vault for other apps');
+        }
+        if (await discardIfCloudDisconnected(pnIdentifier, seenDisconnect)) {
+          await publishCloudVaultForIdentity({
+            identityId: pnIdentifier,
+            authToken: apiToken,
+            pnName: creds.pnName,
+            passcode: creds.passcode,
+            credentials: { googleDriveAccounts: [] },
+            publicKey: sessionId
+          }).catch(() => undefined);
+          return;
         }
         try {
           const accounts = Array.isArray(envelope.googleDriveAccounts)

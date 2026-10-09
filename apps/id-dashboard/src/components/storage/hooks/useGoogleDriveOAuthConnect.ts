@@ -19,7 +19,6 @@ import {
 } from '@par-noir/device-cloud-credentials';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { API_ENDPOINT } from '../../../config/api';
-import { ownerFetch } from '../../../services/ownerApiService';
 import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../../config/googleDriveClientId';
 import { persistDriveAccounts } from '../storageHelpers';
 import { AggregatedFile, ShareToken } from '../../../types/aggregator';
@@ -90,7 +89,6 @@ export function useGoogleDriveOAuthConnect({
   getPasscodeFromSecureStorage,
   getStorageIdentityCandidates,
   driveCredentialCacheRef,
-  cleanupDuplicateCacheEntries,
   resolveIdentifiersForEmail,
   buildStorageCredentialPayload,
   persistStorageCredentialsToAPI,
@@ -446,33 +444,57 @@ export function useGoogleDriveOAuthConnect({
   };
 
   const handleDisconnect = async (backendId: string) => {
+    if (!aggregatorService) {
+      const message = 'Storage is not ready. Unlock and try again.';
+      setError(message);
+      throw new Error(message);
+    }
+
+    const accountToRemove = driveAccounts.find((acc) => acc.backendId === backendId);
+    const accountEmail = accountToRemove
+      ? userEmails.get(accountToRemove.backendId) || null
+      : null;
+    const identityCandidates = getStorageIdentityCandidates();
+    const pnId =
+      identityCandidates.find((id) => id?.startsWith('pn-')) ?? null;
+    const disconnectToken = pnId ? resolveOwnerApiToken(pnId) : null;
+    const sessionId =
+      authenticatedUser?.id || (authenticatedUser as { publicKey?: string })?.publicKey || null;
+    const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+    if (!pnId || !disconnectToken || !sessionCreds?.pnName || !sessionCreds.passcode) {
+      const message = 'Unlock again to disconnect Google Drive.';
+      setError(message);
+      throw new Error(message);
+    }
+
+    disconnectTimestampRef.current = Date.now();
+    disconnectedBackendIdsRef.current.add(backendId);
+
     try {
-      if (!aggregatorService) {
-        console.warn('⚠️ [handleDisconnect] Aggregator service unavailable');
-        return;
-      }
+      const { commitDashboardGoogleDriveDisconnect } = await import(
+        '../../../services/disconnectCloud'
+      );
+      await commitDashboardGoogleDriveDisconnect({
+        pnIdentifier: pnId,
+        authToken: disconnectToken,
+        pnName: sessionCreds.pnName,
+        passcode: sessionCreds.passcode,
+        publicKey: authenticatedUser?.publicKey,
+        backendId,
+      });
+    } catch (err) {
+      disconnectedBackendIdsRef.current.delete(backendId);
+      const message = err instanceof Error ? err.message : 'Disconnect failed';
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
+    }
 
-      // Find the account to get its email for metadata removal
-      const accountToRemove = driveAccounts.find(acc => acc.backendId === backendId);
-      const accountEmail = accountToRemove
-        ? userEmails.get(accountToRemove.backendId) || null
-        : null;
-
+    try {
       const backend = aggregatorService.getBackend(backendId);
       if (backend) {
-        // Disconnect the backend (clears tokens, folder cache, encrypted credentials)
         await backend.disconnect();
-        console.log(`✅ [handleDisconnect] Backend ${backendId} disconnected`);
       }
-
-      // CRITICAL: Mark disconnect timestamp and backendId to prevent immediate re-connection
-      disconnectTimestampRef.current = Date.now();
-      disconnectedBackendIdsRef.current.add(backendId);
-
-      // Remove account from state FIRST (before updating API/metadata)
-      // This ensures buildStorageCredentialPayload() excludes the removed account
       removeDriveAccount(backendId);
-      console.log(`✅ [handleDisconnect] Account ${(backendId || '').substring(0, 8)}... removed from dashboard state and blocked for ${DISCONNECT_BLOCK_DURATION_MS}ms`);
 
       // Remove account from encrypted metadata storage
       // This prevents it from being restored after lock/unlock
@@ -555,149 +577,10 @@ export function useGoogleDriveOAuthConnect({
           }
         } catch (metadataError) {
           console.error('❌ [handleDisconnect] Failed to remove account from encrypted metadata:', metadataError);
-          // Continue with API update even if metadata update fails
         }
-      } else {
-        console.warn('⚠️ [handleDisconnect] Missing authenticatedUser.id or accountEmail - skipping metadata removal');
-      }
-
-      // CRITICAL: Update API storage credentials to remove the account
-      // This prevents it from being restored via hydrateStorageCredentialsFromAPI
-      // We need to explicitly send the current state (without the removed account) to the API
-      try {
-        console.log('🔄 [handleDisconnect] Updating API storage credentials to remove account...');
-
-        // CRITICAL: Clean up cache BEFORE building payload to ensure duplicates are removed
-        cleanupDuplicateCacheEntries();
-
-        // Build payload from current state (after removal)
-        const payload = buildStorageCredentialPayload();
-        const remainingAccounts = payload?.googleDriveAccounts?.length || 0;
-        // Explicit disconnect wipe: empty accounts + null layout so API merge cannot keep
-        // stale pnDriveIndex / legacy googleDrive after the user deletes Drive folders.
-        const disconnectCredentials =
-          remainingAccounts > 0
-            ? payload
-            : {
-                googleDriveAccounts: [] as unknown[],
-                googleDrive: null,
-                pnDriveIndex: null,
-                cachedFolderIds: null,
-                driveFolderId: null,
-                socialCloudProvider: null,
-                socialCloudAccountId: null,
-              };
-
-        // Even if payload is empty (no accounts left), we need to persist it to clear the API
-        // This ensures the disconnected account is removed from API storage
-        // CRITICAL: Use ONLY pn identifier - getStorageIdentityCandidates now returns only pn identifier
-        const identityCandidates = getStorageIdentityCandidates();
-        const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
-
-        if (pnId) {
-          const disconnectToken = resolveOwnerApiToken();
-          if (disconnectToken) {
-          try {
-            const response = await ownerFetch(
-              disconnectToken,
-              'PUT',
-              `/api/storage/credentials/${encodeURIComponent(pnId)}`,
-              {
-                credentials: disconnectCredentials,
-                cid: null,
-              },
-              { pnIdentifier: pnId }
-            );
-
-              if (!response.ok) {
-                const errorText = await response.text().catch(() => 'Unknown error');
-                console.warn('⚠️ [handleDisconnect] Failed to update API storage credentials:', {
-                  status: response.status,
-                  error: errorText,
-                });
-              } else {
-                console.log(`✅ [handleDisconnect] API storage credentials updated (account removed). Current accounts: ${remainingAccounts}`);
-              }
-            } catch (apiError) {
-              console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
-            }
-          }
-
-          // Clear device-cloud vault/session so reconnect cannot hydrate deleted Drive accounts
-          // and CloudReconnectHost does not treat Drive as still linked.
-          if (remainingAccounts === 0) {
-            try {
-              const {
-                clearSessionCloudCredentials,
-                wipeSealedCloudCredentials,
-              } = await import('@par-noir/device-cloud-credentials');
-              clearSessionCloudCredentials(pnId);
-              await wipeSealedCloudCredentials(pnId);
-              if (disconnectToken) {
-                const sessionId =
-                  authenticatedUser?.id ||
-                  (authenticatedUser as { publicKey?: string })?.publicKey ||
-                  null;
-                const sessionCreds = sessionId
-                  ? SecureCredentialManager.getCredentials(sessionId)
-                  : null;
-                if (sessionCreds) {
-                  try {
-                    const { publishCloudVaultForIdentity } = await import(
-                      '../../../services/deviceCloudCredentials'
-                    );
-                    await publishCloudVaultForIdentity({
-                      identityId: pnId,
-                      authToken: disconnectToken,
-                      pnName: sessionCreds.pnName,
-                      passcode: sessionCreds.passcode,
-                      credentials: { googleDriveAccounts: [] },
-                      publicKey: authenticatedUser?.publicKey,
-                    });
-                  } catch {
-                    /* best-effort vault clear */
-                  }
-                }
-              }
-            } catch (vaultClearErr) {
-              console.warn(
-                '⚠️ [handleDisconnect] Failed to clear device-cloud vault (non-blocking):',
-                vaultClearErr
-              );
-            }
-          }
-        } else {
-          console.warn('⚠️ [handleDisconnect] No pn identifier available for API update');
-        }
-      } catch (apiError) {
-        console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
-        // Non-critical - account is already removed from state
       }
     } catch (err) {
-      console.error('❌ [handleDisconnect] Error disconnecting:', err);
-      // Still try to remove from state even if backend.disconnect() fails
-      removeDriveAccount(backendId);
-      // Try to update API even on error
-      try {
-        const payload = buildStorageCredentialPayload();
-        // CRITICAL: Use ONLY pn identifier - getStorageIdentityCandidates now returns only pn identifier
-        const identityCandidates = getStorageIdentityCandidates();
-        const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
-
-        if (pnId) {
-          const errToken = resolveOwnerApiToken();
-          if (errToken) {
-            await ownerFetch(errToken, 'PUT', `/api/storage/credentials/${encodeURIComponent(pnId)}`, {
-              credentials: payload || { googleDriveAccounts: [] },
-              cid: null,
-            }, { pnIdentifier: pnId });
-          }
-        } else {
-          console.warn('⚠️ [handleDisconnect] No pn identifier available for API update after error');
-        }
-      } catch (apiError) {
-        console.error('❌ [handleDisconnect] Failed to update API after error:', apiError);
-      }
+      console.error('❌ [handleDisconnect] Error clearing Drive after disconnect:', err);
     }
   };
 

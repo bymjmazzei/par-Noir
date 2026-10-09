@@ -27,6 +27,8 @@ interface MultiCloudStoragePanelProps {
   sessionId?: string | null;
   onConnected?: () => void;
   onConnectGoogleDrive?: () => void;
+  /** Clears the Google vault and layout. Rejects when the vault write fails. */
+  onDisconnectGoogleDrive?: () => Promise<void>;
   googleDriveConnectedCount?: number;
   driveConnectDisabled?: boolean;
   connectedStorageCount?: number;
@@ -60,6 +62,7 @@ export function MultiCloudStoragePanel({
   sessionId,
   onConnected,
   onConnectGoogleDrive,
+  onDisconnectGoogleDrive,
   googleDriveConnectedCount = 0,
   driveConnectDisabled = false,
   connectedStorageCount = 0,
@@ -162,6 +165,22 @@ export function MultiCloudStoragePanel({
       if (debounceTimer != null) clearTimeout(debounceTimer);
     };
   }, []);
+
+  const disconnectGoogleDrive = () => {
+    if (!onDisconnectGoogleDrive) return;
+    setLoading(true);
+    setError(null);
+    void onDisconnectGoogleDrive()
+      .then(async () => {
+        setMessage('Google Drive disconnected.');
+        lastAccountsSnapshotRef.current = '';
+        await refreshAccounts({ force: true });
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : 'Disconnect failed');
+      })
+      .finally(() => setLoading(false));
+  };
 
   const disconnectAccount = async (provider: string, accountId: string) => {
     if (!pnIdentifier || !authToken) return;
@@ -450,7 +469,7 @@ export function MultiCloudStoragePanel({
       </div>
 
       {selected === 'google_drive' && onConnectGoogleDrive && (
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap gap-2">
           <button
             type="button"
             disabled={driveConnectDisabled || !pnIdentifier}
@@ -461,6 +480,16 @@ export function MultiCloudStoragePanel({
               ? `Google Drive connected (${googleDriveConnectedCount}) — add or re-authenticate`
               : 'Connect Google Drive'}
           </button>
+          {googleDriveConnectedCount > 0 && onDisconnectGoogleDrive ? (
+            <button
+              type="button"
+              disabled={loading || !pnIdentifier}
+              onClick={disconnectGoogleDrive}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/60 text-red-300 text-sm disabled:opacity-50"
+            >
+              Disconnect Google Drive
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -557,6 +586,16 @@ export function MultiCloudStoragePanel({
                   Set as social cloud
                 </button>
               )}
+              {a.provider === 'google_drive' && onDisconnectGoogleDrive ? (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={disconnectGoogleDrive}
+                  className="text-xs text-red-400 hover:text-red-300 underline"
+                >
+                  Disconnect
+                </button>
+              ) : null}
               {a.provider !== 'google_drive' && (
                 <button
                   type="button"

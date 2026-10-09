@@ -33,6 +33,17 @@ A new user-facing workflow in any app or package lands with a test file next to 
 
 Hermetic tests pass for the touched area; crypto and auth stay on package tests. Report what was run and what was not verified (e.g. live API, UI). Files written and todos checked are not done alone. Your confirmation on your own pN is what makes visible flows onboarding-ready. See `agent-scope.mdc`.
 
+## Ship when the edit is done
+
+After that test pass, commit, push, and deploy in the same turn. Do not stop at a proposal.
+
+1. `git add` the edit (no `.env`, secrets, `.local/`, or `.firebase` cache).
+2. `git commit` with a message that says why.
+3. `git push` to the current branch.
+4. From the repo root, `./deploy.sh` (hosting). If the edit changes `api/`, deploy the API host to the same commit as well.
+
+Skip ship only when this chat said not to commit, push, or deploy. A failed hook or deploy is fixed and retried; do not amend a pushed commit.
+
 ## Hard-ban ratchets
 
 `scripts/check-*.sh` is only for a new hard ban. Do not weaken, skip, or grow allowlists. A workflow test is a package test file, not a new check script.
