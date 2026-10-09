@@ -12,10 +12,22 @@ import {
 } from '../../types/aggregator';
 import {
   deviceDriveCall,
+  getSessionDriveIndex,
   isAccessTokenFresh,
   refreshDriveAccessToken,
   type GoogleAccountRow
 } from '@par-noir/device-cloud-credentials';
+function normalizePnId(pnIdentifier: string): string {
+  return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+}
+
+function canonicalPnRootFolderName(pnIdentifier: string): string {
+  return `par-noir-${normalizePnId(pnIdentifier)}`;
+}
+
+function legacyPnRootDisplayName(pnIdentifier: string): string {
+  return `par Noir - ${normalizePnId(pnIdentifier)}`;
+}
 import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../config/googleDriveClientId';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { getStoredToken } from '../parNoirOAuthInline';
@@ -607,9 +619,86 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     return folderId;
   }
 
+  /** Resolve canonical pN root (session index, search, or create par-noir-pn-*). */
+  private async resolvePnRootFolderId(pnIdentifier: string): Promise<string> {
+    if (!this.token && !(await this.ensureAccessToken())) {
+      return 'NOT_CONNECTED';
+    }
+
+    const sessionIndex = getSessionDriveIndex(pnIdentifier);
+    if (sessionIndex?.pnFolderId) {
+      this.pnFolderCache.set(pnIdentifier, sessionIndex.pnFolderId);
+      this.parNoirFolderId = sessionIndex.pnFolderId;
+      this.saveFolderCache();
+      return sessionIndex.pnFolderId;
+    }
+
+    if (this.pnFolderCache.has(pnIdentifier)) {
+      const cached = this.pnFolderCache.get(pnIdentifier)!;
+      try {
+        const validateResponse = await this.driveFetch(
+          'GET',
+          `/api/drive/files/${encodeURIComponent(cached)}`,
+          undefined,
+          pnIdentifier
+        );
+        if (validateResponse.ok) return cached;
+      } catch {
+        /* fall through */
+      }
+      this.pnFolderCache.delete(pnIdentifier);
+      this.saveFolderCache();
+    }
+
+    const rootNames = [canonicalPnRootFolderName(pnIdentifier), legacyPnRootDisplayName(pnIdentifier)];
+    for (const rootName of rootNames) {
+      const sanitized = rootName.replace(/'/g, "\\'");
+      const searchQuery = `name='${sanitized}' and mimeType='${FOLDER_MIME}' and trashed=false`;
+      const searchParams = new URLSearchParams({ q: searchQuery, pageSize: '5' });
+      const searchResponse = await this.driveFetch(
+        'GET',
+        `/api/drive/files?${searchParams.toString()}`,
+        undefined,
+        pnIdentifier
+      );
+      if (!searchResponse.ok) continue;
+      const searchData = (await searchResponse.json()) as { files?: DriveApiFile[] };
+      const hit = (searchData.files || []).find((f) => f.id && f.name === rootName);
+      if (hit?.id) {
+        this.pnFolderCache.set(pnIdentifier, hit.id);
+        this.parNoirFolderId = hit.id;
+        this.saveFolderCache();
+        return hit.id;
+      }
+    }
+
+    const createResponse = await this.driveFetch(
+      'POST',
+      '/api/drive/folders',
+      { folderName: canonicalPnRootFolderName(pnIdentifier) },
+      pnIdentifier
+    );
+    if (!createResponse.ok) {
+      throw new Error('Failed to create pN root folder');
+    }
+    const created = (await createResponse.json()) as { folder?: DriveApiFile };
+    const folderId = created.folder?.id;
+    if (!folderId) {
+      throw new Error('Failed to create pN root folder: no id returned');
+    }
+    this.pnFolderCache.set(pnIdentifier, folderId);
+    this.parNoirFolderId = folderId;
+    this.saveFolderCache();
+    return folderId;
+  }
+
   /** Cabinet uploads. A child of the pN root, never the root itself. */
   async ensureFilesFolder(pnIdentifier: string): Promise<string> {
-    const pnFolderId = await this.getOrCreateFolder('par Noir', pnIdentifier);
+    const sessionIndex = getSessionDriveIndex(pnIdentifier);
+    if (sessionIndex?.filesFolderId) {
+      return sessionIndex.filesFolderId;
+    }
+    const pnFolderId = await this.resolvePnRootFolderId(pnIdentifier);
     if (!pnFolderId || pnFolderId === 'NOT_CONNECTED') return pnFolderId;
     return this.getOrCreateFolder('files', undefined, pnFolderId);
   }

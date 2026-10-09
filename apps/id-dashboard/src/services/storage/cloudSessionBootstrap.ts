@@ -223,7 +223,7 @@ async function ensureDriveLayout(pnIdentifier: string, apiToken: string): Promis
   if (!cloudTok) return false;
 
   const { ensureDeviceDriveLayout, setSessionDriveIndex } = await import('@par-noir/device-cloud-credentials');
-  const pnDriveIndex = await ensureDeviceDriveLayout(cloudTok);
+  const pnDriveIndex = await ensureDeviceDriveLayout(cloudTok, pnIdentifier);
   setSessionDriveIndex(pnIdentifier, pnDriveIndex);
   const initRes = await fetch(
     `${API_ENDPOINT.replace(/\/$/, '')}/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`,

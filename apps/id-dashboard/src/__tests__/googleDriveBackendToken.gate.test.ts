@@ -79,11 +79,30 @@ jest.mock('@par-noir/device-cloud-credentials', () => {
     return { token: minted, reason: 'ok' as const, expiresAt: Date.now() + expiresIn * 1000 };
   }
 
+  async function deviceDriveCall(
+    method: string,
+    path: string,
+    body: unknown,
+    _init?: { accessToken?: string }
+  ): Promise<Response> {
+    const authToken = 'owner-api-token';
+    if (method === 'GET') {
+      const res = await ownerGet(authToken, path);
+      const data = await res.json();
+      return new Response(JSON.stringify(data), { status: res.ok ? 200 : 500 });
+    }
+    const res = await ownerFetch(authToken, method, path, body);
+    const data = await res.json();
+    return new Response(JSON.stringify(data), { status: res.ok ? 200 : 500 });
+  }
+
   return {
     GOOGLE_TOKEN_URL,
     DRIVE_TOKEN_SKEW_MS,
     isAccessTokenFresh,
-    refreshDriveAccessToken
+    refreshDriveAccessToken,
+    getSessionDriveIndex: () => null,
+    deviceDriveCall
   };
 });
 

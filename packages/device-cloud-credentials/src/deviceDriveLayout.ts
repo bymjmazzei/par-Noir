@@ -1,10 +1,17 @@
 /**
  * Build the par Noir Drive folder and sheet index on the device.
- * The Google token is sent to Google only. The API later stores the ids.
+ * Layout matches api pnDriveInit / GOOGLE_DRIVE_STRUCTURE (canonical pN root name).
  */
 
-import { deviceDriveCall } from './deviceDriveCall.js';
+import { pnRootFolderName } from '@par-noir/user-owned-storage';
 import { ensureDeviceOwnedAssetsSheet } from './deviceIndexes.js';
+import {
+  DEVICE_PN_LAYOUT,
+  findOrCreateFolder,
+  findOrCreateSpreadsheet,
+  findPnRootFolderId,
+  normalizePnIdentifier,
+} from './deviceDriveFind.js';
 
 const SHEET_KEYS = [
   'connections',
@@ -42,72 +49,98 @@ export type DeviceDriveLayout = {
   conversationSheets: Record<string, string>;
 };
 
-async function createFolder(
-  accessToken: string,
-  folderName: string,
-  parentFolderId: string | undefined,
-  fetchImpl?: typeof fetch
-): Promise<string> {
-  const res = await deviceDriveCall(
-    'POST',
-    '/api/drive/folders',
-    { folderName, parentFolderId },
-    { accessToken, fetchImpl }
-  );
-  if (!res.ok) {
-    throw new Error(`Drive folder create failed (${res.status})`);
-  }
-  const body = (await res.json()) as { folder?: { id?: string } };
-  const id = body.folder?.id;
-  if (!id) throw new Error('Drive folder create returned no id');
-  return id;
-}
-
-async function createSheet(
-  accessToken: string,
-  name: string,
-  parentFolderId: string,
-  fetchImpl?: typeof fetch
-): Promise<string> {
-  const res = await deviceDriveCall(
-    'POST',
-    '/api/drive/native',
-    { fileName: name, mimeType: 'application/vnd.google-apps.spreadsheet', parents: [parentFolderId] },
-    { accessToken, fetchImpl }
-  );
-  if (!res.ok) {
-    throw new Error(`Drive sheet create failed (${res.status})`);
-  }
-  const body = (await res.json()) as { file?: { id?: string } };
-  const id = body.file?.id;
-  if (!id) throw new Error('Drive sheet create returned no id');
-  return id;
-}
-
 export async function ensureDeviceDriveLayout(
   accessToken: string,
+  pnIdentifier: string,
   fetchImpl?: typeof fetch
 ): Promise<DeviceDriveLayout> {
-  const pnFolderId = await createFolder(accessToken, 'par Noir', undefined, fetchImpl);
-  const metadataFolderId = await createFolder(accessToken, '_metadata', pnFolderId, fetchImpl);
-  const integratorsRootId = await createFolder(accessToken, 'integrators', pnFolderId, fetchImpl);
-  const messagesFolderId = await createFolder(accessToken, 'messages', pnFolderId, fetchImpl);
+  const normalized = normalizePnIdentifier(pnIdentifier);
+  let pnFolderId = await findPnRootFolderId(accessToken, normalized, fetchImpl);
+  if (!pnFolderId) {
+    pnFolderId = await findOrCreateFolder(
+      accessToken,
+      pnRootFolderName(normalized),
+      undefined,
+      fetchImpl
+    );
+  }
+
+  const metadataFolderId = await findOrCreateFolder(
+    accessToken,
+    DEVICE_PN_LAYOUT.metadataDir,
+    pnFolderId,
+    fetchImpl
+  );
+  const integratorsRootId = await findOrCreateFolder(
+    accessToken,
+    DEVICE_PN_LAYOUT.integratorsDir,
+    pnFolderId,
+    fetchImpl
+  );
+  const messagesFolderId = await findOrCreateFolder(
+    accessToken,
+    DEVICE_PN_LAYOUT.messagesDir,
+    pnFolderId,
+    fetchImpl
+  );
+
   const sheetIds: Record<string, string> = {};
   for (const key of SHEET_KEYS) {
-    sheetIds[key] = await createSheet(accessToken, key, metadataFolderId, fetchImpl);
+    sheetIds[key] = await findOrCreateSpreadsheet(
+      accessToken,
+      key,
+      metadataFolderId,
+      fetchImpl
+    );
   }
-  const inboxSheetId = await createSheet(accessToken, 'inbox', messagesFolderId, fetchImpl);
-  sheetIds['owned-assets'] = await ensureDeviceOwnedAssetsSheet(accessToken, metadataFolderId, fetchImpl);
-  const filesFolderId = await createFolder(accessToken, 'files', pnFolderId, fetchImpl);
-  const contentFolderId = await createFolder(accessToken, 'content', pnFolderId, fetchImpl);
-  const contentNotesFolderId = await createFolder(accessToken, 'notes', contentFolderId, fetchImpl);
-  const contentMediaFolderId = await createFolder(accessToken, 'media', contentFolderId, fetchImpl);
-  const contentCollectionsFolderId = await createFolder(
+
+  const inboxSheetId = await findOrCreateSpreadsheet(
     accessToken,
-    'collections',
+    DEVICE_PN_LAYOUT.inboxSheetName,
+    messagesFolderId,
+    fetchImpl
+  );
+  sheetIds['owned-assets'] = await ensureDeviceOwnedAssetsSheet(
+    accessToken,
+    metadataFolderId,
+    fetchImpl
+  );
+
+  for (const className of DEVICE_PN_LAYOUT.contentClassDirs) {
+    await findOrCreateFolder(accessToken, className, metadataFolderId, fetchImpl);
+  }
+
+  const filesFolderId = await findOrCreateFolder(
+    accessToken,
+    DEVICE_PN_LAYOUT.filesDir,
+    pnFolderId,
+    fetchImpl
+  );
+  const contentFolderId = await findOrCreateFolder(
+    accessToken,
+    DEVICE_PN_LAYOUT.contentDir,
+    pnFolderId,
+    fetchImpl
+  );
+  const contentNotesFolderId = await findOrCreateFolder(
+    accessToken,
+    DEVICE_PN_LAYOUT.contentNotes,
     contentFolderId,
     fetchImpl
   );
+  const contentMediaFolderId = await findOrCreateFolder(
+    accessToken,
+    DEVICE_PN_LAYOUT.contentMedia,
+    contentFolderId,
+    fetchImpl
+  );
+  const contentCollectionsFolderId = await findOrCreateFolder(
+    accessToken,
+    DEVICE_PN_LAYOUT.contentCollections,
+    contentFolderId,
+    fetchImpl
+  );
+
   return {
     schemaVersion: 1,
     pnFolderId,

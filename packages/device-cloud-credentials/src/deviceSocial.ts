@@ -286,7 +286,11 @@ export async function ensureSessionDriveIndex(args: {
     setSessionDriveIndex(args.identityId, stored);
     return stored;
   }
-  const built = await ensureDeviceDriveLayout(args.accessToken, args.fetchImpl);
+  const built = await ensureDeviceDriveLayout(
+    args.accessToken,
+    args.identityId,
+    args.fetchImpl
+  );
   setSessionDriveIndex(args.identityId, built);
   await args.persistIndex?.(built);
   return built;
