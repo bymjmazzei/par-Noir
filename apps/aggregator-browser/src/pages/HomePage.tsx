@@ -19,7 +19,7 @@ import { ContentRatingBadge } from '../components/ContentRatingBadge';
 import { NotificationBell } from '../components/NotificationBell';
 import { FeedBrandSplash } from '../components/FeedBrandSplash';
 import { useFeedFirstPaintSplash } from '../hooks/useFeedFirstPaintSplash';
-import { requestFeedMediaRetry } from '../services/feedFirstPaintGate';
+import { requestFeedMediaRetry, settleFeedSplashWhenFeedCannotPaint } from '../services/feedFirstPaintGate';
 import { Settings, Upload, Plus } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { HomePageContext } from '../contexts/HomePageContext';
@@ -149,6 +149,23 @@ export function HomePage() {
     }, 280);
     return () => window.clearTimeout(t);
   }, [showSplash, splashMounted]);
+
+  useEffect(() => {
+    settleFeedSplashWhenFeedCannotPaint({
+      viewMode,
+      activeFeedId,
+      isLoading,
+      canPaintFeed: indexedFiles.length > 0 && filteredFilesByFeed.length > 0,
+      hasError: Boolean(error),
+    });
+  }, [
+    viewMode,
+    activeFeedId,
+    isLoading,
+    indexedFiles.length,
+    filteredFilesByFeed.length,
+    error,
+  ]);
 
   const coverWithBrandSplash =
     viewMode === 'feed' && activeFeedId !== 'discovery' && splashMounted;

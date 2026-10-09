@@ -81,4 +81,27 @@ export function shouldShowFeedBrandSplash(): boolean {
   return !memoryDone;
 }
 
+/**
+ * Brand splash only leaves via a painted poster inside FullScreenFeed.
+ * An empty or failed catalog never mounts that feed, so the logo would stay up.
+ * Dismiss once discovery has settled and there is nothing to paint.
+ */
+export function settleFeedSplashWhenFeedCannotPaint(input: {
+  viewMode: string;
+  activeFeedId: string;
+  isLoading: boolean;
+  canPaintFeed: boolean;
+  hasError: boolean;
+}): void {
+  if (memoryDone) return;
+  if (input.isLoading && !input.hasError) return;
+  const waitingOnPoster =
+    input.viewMode === 'feed' &&
+    input.activeFeedId !== 'discovery' &&
+    input.canPaintFeed &&
+    !input.hasError;
+  if (waitingOnPoster) return;
+  markFeedFirstPaintDone();
+}
+
 clearLegacyStorage();
