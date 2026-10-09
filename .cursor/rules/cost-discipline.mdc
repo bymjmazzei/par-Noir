@@ -1,5 +1,5 @@
 ---
-description: Token cost — targeted tests, hosting-only ship, no stale-doc reads, no extra tools
+description: Token cost — targeted tests, commit/push ship (user deploys), no stale-doc reads
 alwaysApply: true
 ---
 
@@ -24,7 +24,7 @@ Run only the script for the paths you changed. If several areas changed, run tho
 | `api/` | `npm run test:api` |
 | `packages/<name>/` | `cd packages/<name> && npm test` |
 
-Rules-only or docs-only edits do not need a package test. `./deploy.sh` builds shared packages; do not run a second full monorepo build first.
+Rules-only or docs-only edits do not need a package test. Do not run `./deploy.sh` or full monorepo builds unless this chat explicitly asks to deploy.
 
 ## Search and tools
 
@@ -36,4 +36,4 @@ Prefer code and tests over markdown. Do not Read or grep `docs/archive/**`, `doc
 
 ## Ship
 
-After the targeted test (or when no test applies): `git add` (no `.env`, secrets, `.local/`, `.firebase`) → commit → push → repo root `./deploy.sh` (hosting only). Do not deploy or health-check the API host unless this chat asks. If `./deploy.sh` fails, report the output once and stop.
+After the targeted test (or when no test applies): `git add` (no `.env`, secrets, `.local/`, `.firebase`) → commit → push. Do **not** run `./deploy.sh`, `firebase deploy`, or API-host deploy unless this chat explicitly asks. Remind the user once: live hosting updates when they run `./deploy.sh` from the repo root in their terminal.

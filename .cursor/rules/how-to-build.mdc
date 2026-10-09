@@ -37,9 +37,10 @@ alwaysApply: false
 
 ## Shipping
 
-When the edit is done and its tests have passed, commit, push, and deploy. Do not stop at a proposal. See `how-we-work.mdc`.
+When the edit is done and its tests have passed, commit and push. Do not stop at a proposal. See `how-we-work.mdc`.
 
 1. `git add` changed files (no .env or secrets; pre-commit runs `scripts/check-secrets.sh`).
 2. `git commit` with a clear message.
 3. `git push` to the current branch.
-4. Repo root `./deploy.sh` (exports `VITE_API_ENDPOINT`, builds hosting apps, `firebase deploy --only hosting`). Do not deploy or wait on the API host unless this chat asks. If deploy fails, report once and stop (`cost-discipline.mdc`).
+
+Do not run `./deploy.sh` unless this chat explicitly asks. User deploys hosting locally (`cost-discipline.mdc`).

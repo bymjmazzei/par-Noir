@@ -21,6 +21,10 @@ Read a named section. Do not load the whole `docs/` tree.
 
 You validate visible flows on `.local/test-pn/`. The agent does not open that fixture. See `.cursor/rules/local-test-pn.mdc`.
 
+## Live hosting
+
+After the agent commits and pushes, update live sites from the repo root in your terminal: `./deploy.sh` (agent does not run deploy unless you ask in chat).
+
 ## Cursor settings (your machine)
 
 These are not in git. They cut token cost more than repo rules:

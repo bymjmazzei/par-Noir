@@ -12,7 +12,7 @@ alwaysApply: true
 - Targeted hermetic tests from `cost-discipline.mdc` pass for the touched area; report which commands ran.
 - Summarize what changed and what was **not** run (e.g. no live API, no UI).
 - **User** validates visible flows on their own pN. Agent does not block completion on browser verification or “onboarding-ready” UI checks.
-- Ship checklist is `how-we-work.mdc` plus `cost-discipline.mdc` (commit, push, `./deploy.sh` hosting only).
+- Ship checklist is `how-we-work.mdc` plus `cost-discipline.mdc` (commit and push only; user runs `./deploy.sh` for live hosting).
 
 ## Browser MCP — default off
 

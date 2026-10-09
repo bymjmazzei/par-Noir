@@ -35,14 +35,15 @@ Run the targeted hermetic test in `cost-discipline.mdc` (crypto and auth stay on
 
 ## Ship when the edit is done
 
-After that test pass, commit, push, and deploy hosting in the same turn. Do not stop at a proposal.
+After that test pass, commit and push in the same turn. Do not stop at a proposal.
 
 1. `git add` the edit (no `.env`, secrets, `.local/`, or `.firebase` cache).
 2. `git commit` with a message that says why.
 3. `git push` to the current branch.
-4. From the repo root, `./deploy.sh` (hosting only). Do not deploy or wait on the API host unless this chat asks.
 
-Skip ship only when this chat said not to commit, push, or deploy. If `./deploy.sh` fails, report the output once and stop. Do not amend a pushed commit.
+Do **not** run `./deploy.sh`, `firebase deploy`, or any API-host deploy unless this chat explicitly asks (e.g. “deploy now”). The user deploys hosting locally when they want live sites updated.
+
+Skip commit/push only when this chat said not to commit or push. Do not amend a pushed commit.
 
 ## Hard-ban ratchets
 
