@@ -14,7 +14,10 @@ fi
 
 # All Vite apps require VITE_API_ENDPOINT in production builds (see apps/*/src/config/api.ts).
 # Export once so every `npm run build` inherits it. Override for staging: VITE_API_ENDPOINT=https://… ./deploy.sh
-export VITE_API_ENDPOINT="${VITE_API_ENDPOINT:-https://api.parnoir.com}"
+# Note: bash ${VAR:-default} does not apply when VAR is set but empty — treat empty as unset.
+if [ -z "${VITE_API_ENDPOINT:-}" ]; then
+  export VITE_API_ENDPOINT="https://api.parnoir.com"
+fi
 echo "📌 Using VITE_API_ENDPOINT=$VITE_API_ENDPOINT (set env before ./deploy.sh to override)"
 
 # Pen: verified-author bypass for agent/user QA fixtures (.local/cursor-test-pn + .local/test-pn).

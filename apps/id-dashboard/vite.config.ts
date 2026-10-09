@@ -2,12 +2,15 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import { resolve, normalize } from 'path'
+import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-endpoint.mjs'
 
 /** Only our app config — NOT vendor `src/config/...` paths, which would break the bundle with TDZ errors */
 const APP_CONFIG_DIR = normalize(resolve(__dirname, 'src/config')).replace(/\\/g, '/')
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => {
+  assertViteApiEndpointForBuild({ command, mode, root: __dirname })
+  return {
   base: './', // Required for Capacitor: assets load from file:// in WebView
   plugins: [
     react(),
@@ -219,4 +222,4 @@ export default defineConfig(({ mode }) => ({
     // Skip TypeScript checking during build
     logOverride: { 'this-is-undefined-in-esm': 'silent' }
   }
-}))
+}})

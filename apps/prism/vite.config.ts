@@ -2,10 +2,13 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
+import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-endpoint.mjs';
 
 const pqcSrc = path.resolve(__dirname, '../../packages/pqc-crypto/src');
 
-export default defineConfig({
+export default defineConfig(({ command, mode }) => {
+  assertViteApiEndpointForBuild({ command, mode, root: __dirname });
+  return {
   base: './', // Capacitor WebView loads from file:// or https://localhost
   plugins: [
     react(),
@@ -33,4 +36,5 @@ export default defineConfig({
   server: {
     port: 5174,
   },
+};
 });

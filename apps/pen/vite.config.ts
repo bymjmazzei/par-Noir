@@ -2,12 +2,15 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
+import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-endpoint.mjs';
 
 const pqcSrc = path.resolve(__dirname, '../../packages/pqc-crypto/src');
 const penSrc = path.resolve(__dirname, '../../packages/pen-protocol/src');
 const aggregatorDomainSrc = path.resolve(__dirname, '../../packages/aggregator-domain/src');
 
-export default defineConfig({
+export default defineConfig(({ command, mode }) => {
+  assertViteApiEndpointForBuild({ command, mode, root: __dirname });
+  return {
   base: './',
   plugins: [
     react(),
@@ -34,4 +37,5 @@ export default defineConfig({
     commonjsOptions: { transformMixedEsModules: true },
   },
   server: { port: 5177 },
+};
 });

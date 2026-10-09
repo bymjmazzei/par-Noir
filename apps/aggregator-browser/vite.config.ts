@@ -2,8 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
+import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-endpoint.mjs';
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => {
+  assertViteApiEndpointForBuild({ command, mode, root: __dirname });
+  return {
   plugins: [
     react(),
     nodePolyfills({ include: ['crypto'] }),
@@ -45,5 +48,6 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 3001
   }
-}));
+};
+});
 

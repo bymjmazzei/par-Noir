@@ -2,11 +2,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
+import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-endpoint.mjs';
 
 const pqcSrc = path.resolve(__dirname, '../../packages/pqc-crypto/src');
 const oauthUiSrc = path.resolve(__dirname, '../../packages/oauth-ui/src');
 
-export default defineConfig({
+export default defineConfig(({ command, mode }) => {
+  assertViteApiEndpointForBuild({ command, mode, root: __dirname });
+  return {
   // Absolute base so /oauth/consent does not resolve assets as /oauth/assets/*
   // (Firebase SPA rewrite would serve index.html as JS and the app would never mount).
   base: '/',
@@ -38,4 +41,5 @@ export default defineConfig({
   server: {
     port: 5178,
   },
+};
 });
