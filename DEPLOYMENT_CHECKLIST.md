@@ -225,7 +225,7 @@ If using subdomain support:
 
 - **API Documentation**: See `docs/api/API_REFERENCE.md`
 - **Technical Breakdown**: See `TECHNICAL_BREAKDOWN.md`
-- **Implementation Plan**: See `IMPLEMENTATION_PLAN.md`
+- **Implementation Plan**: See `docs/archive/plans/IMPLEMENTATION_PLAN.md`
 - **Setup Guide**: See `SETUP_GUIDE.md`
 
 ---

@@ -42,4 +42,4 @@ When the edit is done and its tests have passed, commit, push, and deploy. Do no
 1. `git add` changed files (no .env or secrets; pre-commit runs `scripts/check-secrets.sh`).
 2. `git commit` with a clear message.
 3. `git push` to the current branch.
-4. Repo root `./deploy.sh` (exports `VITE_API_ENDPOINT`, builds hosting apps, `firebase deploy --only hosting`). If `api/` changed, deploy the API host to the same commit.
+4. Repo root `./deploy.sh` (exports `VITE_API_ENDPOINT`, builds hosting apps, `firebase deploy --only hosting`). Do not deploy or wait on the API host unless this chat asks. If deploy fails, report once and stop (`cost-discipline.mdc`).

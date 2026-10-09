@@ -447,7 +447,7 @@ Enough to classify flows: **entity type**, **who** sells maintenance (**MoR** qu
 
 ## Related documentation
 
-- [IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (implementation phases; cost notes may evolve—**economics canonical here**)
+- [IMPLEMENTATION_PLAN.md](../archive/plans/IMPLEMENTATION_PLAN.md) (implementation phases; cost notes may evolve—**economics canonical here**)
 - [SHARED_CODE_RULES.md](../../SHARED_CODE_RULES.md) (guiding principles, including crypto without blockchain)
 - [third-party sharing and L5](../developer/third-party-sharing-and-L5.md)
 - Identity verification (product): [IDENTITY_VERIFICATION.md](../../apps/id-dashboard/docs/IDENTITY_VERIFICATION.md)

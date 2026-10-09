@@ -11,7 +11,7 @@ You prompt and decide product behavior. The agent writes code. Each of you QAs o
 |---|---|
 | `.local/test-pn/` | You, on your machine |
 
-The agent never opens, unlocks, or uploads `.local/test-pn/`. Fixture boundaries: `local-test-pn.mdc`. Verification (tests, no browser MCP by default): `agent-scope.mdc`. Hard bans: `auth-trust-boundary.mdc`.
+The agent never opens, unlocks, or uploads `.local/test-pn/`. Boundaries and bans: `local-test-pn.mdc`, `agent-scope.mdc`, `auth-trust-boundary.mdc`, `cost-discipline.mdc`.
 
 ## Precedence
 
@@ -31,18 +31,18 @@ A new user-facing workflow in any app or package lands with a test file next to 
 
 ## Done
 
-Hermetic tests pass for the touched area; crypto and auth stay on package tests. Report what was run and what was not verified (e.g. live API, UI). Files written and todos checked are not done alone. Your confirmation on your own pN is what makes visible flows onboarding-ready. See `agent-scope.mdc`.
+Run the targeted hermetic test in `cost-discipline.mdc` (crypto and auth stay on package tests). Report what was run and what was not verified (e.g. live API, UI). Your confirmation on your own pN is what makes visible flows onboarding-ready.
 
 ## Ship when the edit is done
 
-After that test pass, commit, push, and deploy in the same turn. Do not stop at a proposal.
+After that test pass, commit, push, and deploy hosting in the same turn. Do not stop at a proposal.
 
 1. `git add` the edit (no `.env`, secrets, `.local/`, or `.firebase` cache).
 2. `git commit` with a message that says why.
 3. `git push` to the current branch.
-4. From the repo root, `./deploy.sh` (hosting). If the edit changes `api/`, deploy the API host to the same commit as well.
+4. From the repo root, `./deploy.sh` (hosting only). Do not deploy or wait on the API host unless this chat asks.
 
-Skip ship only when this chat said not to commit, push, or deploy. A failed hook or deploy is fixed and retried; do not amend a pushed commit.
+Skip ship only when this chat said not to commit, push, or deploy. If `./deploy.sh` fails, report the output once and stop. Do not amend a pushed commit.
 
 ## Hard-ban ratchets
 

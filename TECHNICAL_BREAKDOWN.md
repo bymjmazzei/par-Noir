@@ -1048,5 +1048,5 @@ EnhancedThoughtCreator
 
 ---
 
-**This document serves as a technical reference during implementation. Refer to IMPLEMENTATION_PLAN.md for the overall strategy and timeline.**
+**This document serves as a technical reference during implementation. Refer to docs/archive/plans/IMPLEMENTATION_PLAN.md for the overall strategy and timeline.**
 

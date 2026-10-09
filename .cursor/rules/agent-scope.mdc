@@ -9,10 +9,10 @@ alwaysApply: true
 
 ## Done (agent)
 
-- Hermetic package/app tests pass for the touched area; report which commands ran.
+- Targeted hermetic tests from `cost-discipline.mdc` pass for the touched area; report which commands ran.
 - Summarize what changed and what was **not** run (e.g. no live API, no UI).
 - **User** validates visible flows on their own pN. Agent does not block completion on browser verification or “onboarding-ready” UI checks.
-- After that, commit, push, and deploy (`how-we-work.mdc`). Do not wait to be asked again.
+- Ship checklist is `how-we-work.mdc` plus `cost-discipline.mdc` (commit, push, `./deploy.sh` hosting only).
 
 ## Browser MCP — default off
 
@@ -20,7 +20,7 @@ Do **not** use `cursor-ide-browser` (navigate, snapshot, click, type, screenshot
 
 ## Playwright / live UX scripts — default off
 
-Do not run headed or live unlock flows (`ux-*.mjs`, `playwright test`, dashboard `test:e2e`, or similar) unless the user explicitly asks in that chat.
+Do not run headed or live unlock flows (`ux-*.mjs`, `playwright test`, `test:e2e*`, dashboard `test:e2e`, or similar) unless the user explicitly asks in that chat.
 
 ## Search scope
 

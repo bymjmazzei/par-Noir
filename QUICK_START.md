@@ -44,7 +44,7 @@ npm run dev
 ## 📚 Documentation
 
 - **SETUP_GUIDE.md** - Detailed setup instructions
-- **IMPLEMENTATION_PLAN.md** - Full implementation strategy
+- **docs/archive/plans/IMPLEMENTATION_PLAN.md** - Full implementation strategy
 - **TECHNICAL_BREAKDOWN.md** - Technical specifications
 - **IMPLEMENTATION_CHECKLIST.md** - Task tracking
 - **UPGRADE_SUMMARY.md** - Overview

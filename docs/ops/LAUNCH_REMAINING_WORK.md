@@ -523,8 +523,8 @@ These are **policy or backlog**, not accidental gaps:
 |-------|--------------|-----|
 | Platform paid **feed subscriptions** (viewer pays creator on par Noir) | Returns `410`; MoR liability avoided | [FEEDS_AND_THIRD_PARTY_MONETIZATION.md](../business/FEEDS_AND_THIRD_PARTY_MONETIZATION.md) |
 | Creator-owned paywall connectors | Phase 2 design only | Same |
-| Gemini AI moderation | Planning / IMPLEMENTATION_PLAN | `IMPLEMENTATION_PLAN.md` |
-| FEED_SYSTEM production plan phases | Large checklist mostly unchecked | `FEED_SYSTEM_PRODUCTION_PLAN.md` |
+| Gemini AI moderation | Planning / IMPLEMENTATION_PLAN | `docs/archive/plans/IMPLEMENTATION_PLAN.md` |
+| FEED_SYSTEM production plan phases | Large checklist mostly unchecked | `docs/archive/plans/FEED_SYSTEM_PRODUCTION_PLAN.md` |
 | Self-hosted Tier 3 feeds / plugin marketplace | Phase 4+ in `plan` | Root `plan` file |
 | PWA offline / service worker | Install-only by design | MOBILE_READINESS_REPORT §2.3 |
 

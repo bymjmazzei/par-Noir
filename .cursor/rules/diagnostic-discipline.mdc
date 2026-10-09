@@ -43,7 +43,7 @@ Commit `e4306317` ("Align dashboard Drive calls with custody owner routes") norm
   - `scripts/token-resolver-allowlist.txt` — paths not yet on `resolveOwnerDriveToken`
   - `scripts/peer-credential-allowlist.txt` — paths that still read raw peer `access_token` from DB shells (identity migrate under custody is known dead debt)
 - Sync cloud-header builders that cannot mint after AT expiry are a known fail mode — see `packages/device-cloud-credentials/src/syncHeaderGap.gate.test.ts`. Do not paper over with a second resolver.
-- SoT for custody data movement: `docs/architecture/ADR_DEVICE_CLOUD_CUSTODY.md` (owner path section).
+- SoT for custody data movement: `docs/architecture/ADR_DEVICE_CLOUD_CUSTODY.md` — read only the owner-path section when tracing custody, not the rest of `docs/`.
 
 ## 5. No silent dead ends on a credential path
 

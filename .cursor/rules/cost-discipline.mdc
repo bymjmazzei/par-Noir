@@ -1,0 +1,39 @@
+---
+description: Token cost — targeted tests, hosting-only ship, no stale-doc reads, no extra tools
+alwaysApply: true
+---
+
+# Cost discipline
+
+User validates UI on their own pN. Agent verification is the smallest hermetic test for touched paths, then ship per `how-we-work.mdc`.
+
+## Verification off by default
+
+Do not use browser MCP, Playwright, `ux-*.mjs`, or npm scripts matching `test:e2e*` unless this chat explicitly asks.
+
+## Tests before ship
+
+Run only the script for the paths you changed. If several areas changed, run those scripts in sequence. Do not run `test:all`, `test:packages` (whole loop), `security:comprehensive`, `performance:optimize`, or `integration:test`.
+
+| Touched area | Command |
+|---|---|
+| `apps/aggregator-browser/` | `npm run test:browser:unit` |
+| `apps/id-dashboard/` | `npm run test:dashboard:unit` |
+| `apps/pen/` | `npm run test:pen` |
+| `apps/prism/` or prism API | `npm run test:prism` |
+| `api/` | `npm run test:api` |
+| `packages/<name>/` | `cd packages/<name> && npm test` |
+
+Rules-only or docs-only edits do not need a package test. `./deploy.sh` builds shared packages; do not run a second full monorepo build first.
+
+## Search and tools
+
+Follow `agent-scope.mdc` search scope. No repo-wide grep for UI-only work. Open `diagnostic-discipline.mdc` only for auth, Drive, OAuth, or `ownerFetch`. No WebSearch, Task, subagent, Bugbot, or security-review unless this chat asks. Named paths first; at most one widening search, then ask the user.
+
+## Docs
+
+Prefer code and tests over markdown. Do not Read or grep `docs/archive/**`, `docs/legal/**`, `**/DIAGNOSTIC_*.md`, `**/*REFACTORING*PLAN*.md`, `FIX_PLAN.md`, `IMPLEMENTATION_PLAN.md`, `FEED_SYSTEM_PRODUCTION_PLAN.md`, or `BROWSER_REDESIGN_PLAN.md` unless the user `@`-mentions that file. Do not open `SHARED_CODE_RULES.md` unless the task is shared-architecture or the user `@`s it. Live SoTs when needed: `docs/architecture/ADR_*.md`, `docs/architecture/PEN_*_V0.md`, `docs/architecture/overview.md` — named sections only. Index: `docs/README.md`.
+
+## Ship
+
+After the targeted test (or when no test applies): `git add` (no `.env`, secrets, `.local/`, `.firebase`) → commit → push → repo root `./deploy.sh` (hosting only). Do not deploy or health-check the API host unless this chat asks. If `./deploy.sh` fails, report the output once and stop.

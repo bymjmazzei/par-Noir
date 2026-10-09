@@ -19,7 +19,7 @@ This comprehensive upgrade adds four major features to par Noir:
 
 ## 📚 Documentation Structure
 
-### 1. **IMPLEMENTATION_PLAN.md**
+### 1. **docs/archive/plans/IMPLEMENTATION_PLAN.md**
    - **Purpose**: Strategic planning document
    - **Contents**:
      - Business context and model
@@ -231,7 +231,7 @@ par Noir Ecosystem
 ## 🚀 Getting Started
 
 1. **Review Documentation**:
-   - Read `IMPLEMENTATION_PLAN.md` for strategy
+   - Read `docs/archive/plans/IMPLEMENTATION_PLAN.md` for strategy
    - Read `TECHNICAL_BREAKDOWN.md` for technical details
    - Use `IMPLEMENTATION_CHECKLIST.md` to track progress
 
@@ -256,7 +256,7 @@ par Noir Ecosystem
 
 For questions or clarifications:
 - **Technical**: See `TECHNICAL_BREAKDOWN.md`
-- **Planning**: See `IMPLEMENTATION_PLAN.md`
+- **Planning**: See `docs/archive/plans/IMPLEMENTATION_PLAN.md`
 - **Progress**: See `IMPLEMENTATION_CHECKLIST.md`
 
 ---
