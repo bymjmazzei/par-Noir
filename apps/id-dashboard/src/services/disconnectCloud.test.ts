@@ -12,6 +12,7 @@ import {
   setSessionCloudCredentials,
 } from '@par-noir/device-cloud-credentials';
 import {
+  canSealCloudDisconnect,
   cloudDisconnectGeneration,
   commitGoogleDriveDisconnect,
 } from './disconnectCloud';
@@ -64,6 +65,22 @@ beforeEach(() => {
 
 afterEach(() => {
   clearAllSessionCloudCredentials();
+});
+
+test('shell unlock can disconnect without a passcode', () => {
+  expect(
+    canSealCloudDisconnect({
+      pnIdentifier: PN,
+      authToken: 'owner-jwt',
+      mlKemSecretKey: 'mlkem-secret',
+    })
+  ).toBe(true);
+  expect(
+    canSealCloudDisconnect({
+      pnIdentifier: PN,
+      authToken: 'owner-jwt',
+    })
+  ).toBe(false);
 });
 
 test('vault PUT failure leaves the session token and does not clear the seal', async () => {

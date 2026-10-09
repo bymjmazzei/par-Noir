@@ -120,8 +120,8 @@ export async function sealAndStoreCloudCredentials(opts: {
 export async function publishCloudVaultForIdentity(opts: {
   identityId: string;
   authToken: string;
-  pnName: string;
-  passcode: string;
+  pnName?: string | null;
+  passcode?: string | null;
   credentials: StorageCredentialsEnvelope;
   /** Optional storage public key when identityId is a pn- identifier */
   publicKey?: string | null;
@@ -129,7 +129,7 @@ export async function publishCloudVaultForIdentity(opts: {
 }): Promise<{ ok: boolean; error?: string }> {
   const { publishCloudCredentialsVault } = await import('@par-noir/device-cloud-credentials');
   let mlKemSecretKey = opts.mlKemSecretKey || null;
-  if (!mlKemSecretKey) {
+  if (!mlKemSecretKey && opts.pnName && opts.passcode) {
     const { resolveIdentityMlKemSecret } = await import('./resolveIdentityMlKem');
     mlKemSecretKey = await resolveIdentityMlKemSecret({
       identityId: opts.identityId,

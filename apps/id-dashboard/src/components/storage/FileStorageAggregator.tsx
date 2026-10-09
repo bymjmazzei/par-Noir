@@ -726,19 +726,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           if (ids.length === 0) {
             const sessionId = authenticatedUser?.id || authenticatedUser?.publicKey || null;
             const creds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-            const token = apiToken ?? resolveOwnerApiToken(cloudPnIdentifier);
-            if (!cloudPnIdentifier || !token || !creds?.pnName || !creds.passcode) {
-              throw new Error('Unlock again to disconnect Google Drive.');
-            }
+            const token =
+              (cloudPnIdentifier ? resolveOwnerApiToken(cloudPnIdentifier) : null) ||
+              apiToken ||
+              resolveOwnerApiToken();
+            const { readShellMlKem } = await import('../../services/shellMlKem');
             const { commitDashboardGoogleDriveDisconnect } = await import(
               '../../services/disconnectCloud'
             );
             await commitDashboardGoogleDriveDisconnect({
-              pnIdentifier: cloudPnIdentifier,
-              authToken: token,
-              pnName: creds.pnName,
-              passcode: creds.passcode,
-              publicKey: authenticatedUser?.publicKey,
+              pnIdentifier: cloudPnIdentifier || '',
+              authToken: token || '',
+              pnName: creds?.pnName,
+              passcode: creds?.passcode,
+              publicKey: authenticatedUser?.publicKey ?? sessionId,
+              mlKemSecretKey:
+                readShellMlKem(cloudPnIdentifier) ||
+                readShellMlKem(sessionId) ||
+                readShellMlKem(authenticatedUser?.publicKey),
             });
             return;
           }

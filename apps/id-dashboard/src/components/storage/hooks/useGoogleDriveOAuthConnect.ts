@@ -457,11 +457,25 @@ export function useGoogleDriveOAuthConnect({
     const identityCandidates = getStorageIdentityCandidates();
     const pnId =
       identityCandidates.find((id) => id?.startsWith('pn-')) ?? null;
-    const disconnectToken = pnId ? resolveOwnerApiToken(pnId) : null;
+    const disconnectToken = (pnId ? resolveOwnerApiToken(pnId) : null) || resolveOwnerApiToken();
     const sessionId =
       authenticatedUser?.id || (authenticatedUser as { publicKey?: string })?.publicKey || null;
     const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-    if (!pnId || !disconnectToken || !sessionCreds?.pnName || !sessionCreds.passcode) {
+    const { readShellMlKem } = await import('../../../services/shellMlKem');
+    const { canSealCloudDisconnect } = await import('../../../services/disconnectCloud');
+    const mlKemSecretKey =
+      readShellMlKem(pnId) ||
+      readShellMlKem(sessionId) ||
+      readShellMlKem(authenticatedUser?.publicKey);
+    if (
+      !canSealCloudDisconnect({
+        pnIdentifier: pnId,
+        authToken: disconnectToken,
+        pnName: sessionCreds?.pnName,
+        passcode: sessionCreds?.passcode,
+        mlKemSecretKey,
+      })
+    ) {
       const message = 'Unlock again to disconnect Google Drive.';
       setError(message);
       throw new Error(message);
@@ -475,11 +489,12 @@ export function useGoogleDriveOAuthConnect({
         '../../../services/disconnectCloud'
       );
       await commitDashboardGoogleDriveDisconnect({
-        pnIdentifier: pnId,
-        authToken: disconnectToken,
-        pnName: sessionCreds.pnName,
-        passcode: sessionCreds.passcode,
-        publicKey: authenticatedUser?.publicKey,
+        pnIdentifier: pnId!,
+        authToken: disconnectToken!,
+        pnName: sessionCreds?.pnName,
+        passcode: sessionCreds?.passcode,
+        publicKey: authenticatedUser?.publicKey ?? sessionId,
+        mlKemSecretKey,
         backendId,
       });
     } catch (err) {

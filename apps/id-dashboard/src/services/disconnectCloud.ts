@@ -138,13 +138,27 @@ export async function commitGoogleDriveDisconnect(opts: {
   return remaining;
 }
 
+/** Shell unlock has no passcode. The ML-KEM key from that unlock can still seal the vault. */
+export function canSealCloudDisconnect(opts: {
+  pnIdentifier: string | null | undefined;
+  authToken: string | null | undefined;
+  pnName?: string | null;
+  passcode?: string | null;
+  mlKemSecretKey?: string | null;
+}): boolean {
+  if (!opts.pnIdentifier?.startsWith('pn-') || !opts.authToken) return false;
+  if (opts.mlKemSecretKey) return true;
+  return Boolean(opts.pnName && opts.passcode);
+}
+
 async function currentDriveEnvelope(opts: {
   pnIdentifier: string;
-  pnName: string;
-  passcode: string;
+  pnName?: string | null;
+  passcode?: string | null;
 }): Promise<StorageCredentialsEnvelope | null> {
   const fromSession = getSessionCloudCredentials(opts.pnIdentifier);
   if (fromSession) return fromSession;
+  if (!opts.pnName || !opts.passcode) return null;
   return loadLocalCloudCredentials({
     identityId: opts.pnIdentifier,
     session: {
@@ -159,11 +173,23 @@ async function currentDriveEnvelope(opts: {
 export async function commitDashboardGoogleDriveDisconnect(opts: {
   pnIdentifier: string;
   authToken: string;
-  pnName: string;
-  passcode: string;
+  pnName?: string | null;
+  passcode?: string | null;
   publicKey?: string | null;
+  mlKemSecretKey?: string | null;
   backendId?: string | null;
 }): Promise<void> {
+  if (
+    !canSealCloudDisconnect({
+      pnIdentifier: opts.pnIdentifier,
+      authToken: opts.authToken,
+      pnName: opts.pnName,
+      passcode: opts.passcode,
+      mlKemSecretKey: opts.mlKemSecretKey,
+    })
+  ) {
+    throw new Error('Unlock again to disconnect Google Drive.');
+  }
   const current = await currentDriveEnvelope(opts);
   const { publishCloudVaultForIdentity } = await import('./deviceCloudCredentials');
   const { ownerFetch } = await import('./ownerApiService');
@@ -179,6 +205,7 @@ export async function commitDashboardGoogleDriveDisconnect(opts: {
         passcode: opts.passcode,
         credentials,
         publicKey: opts.publicKey,
+        mlKemSecretKey: opts.mlKemSecretKey,
       }),
     putLayout: async (credentials) => {
       const res = await ownerFetch(
