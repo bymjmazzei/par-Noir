@@ -7,7 +7,8 @@ Runtime Google Drive layout is **never discovered by name**. Storage init writes
 - `pnDriveIndex.schemaVersion` — index **object shape** (still `1`).
 - `credentials.cloudLayoutVersion` + `credentials.appliedMigrations[]` — **product layout migrations** (additive). Required generation is `CURRENT_CLOUD_LAYOUT_VERSION` in `api/src/server/modules/storage/cloudLayoutMigrations.ts`.
 - Status: `GET /api/storage/:identityId/layout/status` (no Drive writes).
-- Upgrade: `POST /api/storage/:identityId/layout/upgrade` (custody: forward `X-PN-Cloud-Access-Token`). Runs pending migrations under indexed sheet/folder ids only — **not** full `POST /storage/initialize`.
+- Upgrade (Google Drive): run migrations on the **device**, then `POST /api/storage/:identityId/layout/commit-migration` per step (metadata stamp only). Portable social cloud may still use `POST .../layout/upgrade` on the server.
+- Device `POST /api/storage/initialize` with a complete v2 `pnDriveIndex` (`filesFolderId` set) stamps `cloudLayoutVersion` — **not** full server-side `POST /storage/initialize` for Drive I/O.
 - Full initialize stamps layout current after persist. Incomplete index still uses initialize; version drift uses upgrade.
 
 ## Schema (`schemaVersion: 1`)

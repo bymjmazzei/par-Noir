@@ -163,6 +163,14 @@ export {
   isDeviceDriveLayoutComplete,
 } from './deviceDriveLayout.js';
 export type { DeviceDriveLayout } from './deviceDriveLayout.js';
+export {
+  ensureDeviceInboxChannelColumn,
+  MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
+  MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2,
+  runDeviceCloudLayoutMigration,
+  runPendingDeviceCloudLayoutMigrations,
+} from './deviceCloudLayoutUpgrade.js';
+export type { DeviceCloudLayoutMigrationId } from './deviceCloudLayoutUpgrade.js';
 export { findPnRootFolderId } from './deviceDriveFind.js';
 export { ensureOwnerBlobFolders, blobFolderId } from './ownerBlobFolders.js';
 export type { OwnerBlobFolders, ContentBlobClass } from './ownerBlobFolders.js';

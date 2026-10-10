@@ -380,64 +380,73 @@ describe('storage credentials routes', () => {
       expect(mockGetCredentials).not.toHaveBeenCalled();
     });
 
-    it('returns 404 when no Google Drive account is connected', async () => {
-      mockGetCredentials.mockResolvedValue({ credentials: {} });
+    it('returns 404 when storage credentials record is missing', async () => {
+      mockGetCredentials.mockResolvedValue(null);
 
       const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(404);
-      expect(res.body.error).toBe('No Google Drive accounts connected');
+      expect(res.body.error).toBe('No storage credentials found for identity');
     });
 
-    it('returns 409 cloud_token_required when no access token can be obtained', async () => {
+    it('returns 409 cloud_on_device when pnDriveIndex is not submitted', async () => {
       mockGetCredentials.mockResolvedValue({
         credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
       });
-      mockGetAccessToken.mockRejectedValue(new Error('device custody'));
 
       const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(409);
-      expect(res.body.error).toBe('cloud_token_required');
+      expect(res.body.error).toBe('cloud_on_device');
       expect(mockRunFullDriveInit).not.toHaveBeenCalled();
     });
 
-    it('returns 202 and starts Drive init without awaiting completion', async () => {
-      mockGetCredentials.mockResolvedValue({
-        credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
-      });
-      mockGetAccessToken.mockResolvedValue('fresh-token');
-      mockRunFullDriveInit.mockResolvedValue({
-        metadataFolderId: 'meta-folder',
-        pnFolderId: 'pn-folder',
+    it('commits layout migration via layoutMigrationCommit body', async () => {
+      const creds: Record<string, unknown> = {
+        pnDriveIndex: completePnDriveIndex(),
+      };
+      mockGetCredentials.mockImplementation(async () => ({ credentials: { ...creds } }));
+      mockUpsertCredentials.mockImplementation(async (_id: string, next: Record<string, unknown>) => {
+        Object.assign(creds, next);
+        return upsertResult();
       });
 
       const res = await request(buildApp())
         .post(`/api/storage/initialize/${PN}`)
-        .set('X-PN-Cloud-Access-Token', 'fresh-token')
-        .expect(202);
+        .send({ layoutMigrationCommit: MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1 })
+        .expect(200);
 
-      expect(res.body).toMatchObject({
-        success: true,
-        initInProgress: true,
-        identityId: PN,
-      });
-      expect(res.body.metadataFolderId).toBeUndefined();
-      await new Promise((r) => setImmediate(r));
-      expect(mockRunFullDriveInit).toHaveBeenCalled();
+      expect(res.body.complete).toBe(false);
+      expect(res.body.appliedMigrations).toContain(MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1);
     });
 
-    it('still returns 202 when background Drive init fails later', async () => {
-      mockGetCredentials.mockResolvedValue({
-        credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
+    it('persists device pnDriveIndex and stamps cloud layout when v2 folders are present', async () => {
+      const creds: Record<string, unknown> = {
+        googleDriveAccounts: [{ backendId: 'acct-1' }],
+      };
+      mockGetCredentials.mockResolvedValue({ credentials: creds });
+      mockUpsertCredentials.mockImplementation(async (_id: string, next: Record<string, unknown>) => {
+        Object.assign(creds, next);
+        return upsertResult();
       });
-      mockGetAccessToken.mockResolvedValue('fresh-token');
-      mockRunFullDriveInit.mockRejectedValue(new Error('rateLimitExceeded'));
-      mockIsRetryable.mockReturnValue(true);
+
+      const pnDriveIndex = {
+        ...completePnDriveIndex(),
+        filesFolderId: 'files-folder',
+        contentFolderId: 'content-folder',
+      };
 
       const res = await request(buildApp())
         .post(`/api/storage/initialize/${PN}`)
-        .set('X-PN-Cloud-Access-Token', 'fresh-token')
-        .expect(202);
-      expect(res.body.initInProgress).toBe(true);
-      await new Promise((r) => setImmediate(r));
-      expect(mockRunFullDriveInit).toHaveBeenCalled();
+        .send({ pnDriveIndex })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(creds.cloudLayoutVersion).toBe(CURRENT_CLOUD_LAYOUT_VERSION);
+      expect(creds.appliedMigrations).toEqual([
+        MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
+        MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2,
+      ]);
+      expect((creds.pnDriveIndex as { filesFolderId?: string }).filesFolderId).toBe('files-folder');
+
+      const statusRes = await request(buildApp()).get(`/api/storage/${PN}/layout/status`).expect(200);
+      expect(statusRes.body.complete).toBe(true);
     });
   });
 
@@ -606,8 +615,7 @@ describe('storage credentials routes', () => {
   });
 
   describe('POST /api/storage/:identityId/layout/upgrade', () => {
-    it('returns 409 cloud_token_required under custody without X-PN-Cloud-Access-Token', async () => {
-      mockCustodyEnabled.mockReturnValue(true);
+    it('returns 409 cloud_on_device for Google Drive (migrations run on device)', async () => {
       mockGetCredentials.mockResolvedValue({
         credentials: {
           googleDriveAccounts: [{ backendId: 'acct-1' }],
@@ -616,12 +624,13 @@ describe('storage credentials routes', () => {
       });
 
       const res = await request(buildApp()).post(`/api/storage/${PN}/layout/upgrade`).expect(409);
-      expect(res.body.error).toBe('cloud_token_required');
+      expect(res.body.error).toBe('cloud_on_device');
       expect(mockEnsureInboxChannel).not.toHaveBeenCalled();
     });
+  });
 
-    it('runs inbox migration and stamps complete when cloud token is forwarded', async () => {
-      mockCustodyEnabled.mockReturnValue(true);
+  describe('POST /api/storage/:identityId/layout/commit-migration', () => {
+    it('commits migrations in catalog order', async () => {
       const creds: Record<string, unknown> = {
         googleDriveAccounts: [{ backendId: 'acct-1' }],
         pnDriveIndex: completePnDriveIndex(),
@@ -632,15 +641,36 @@ describe('storage credentials routes', () => {
         return upsertResult();
       });
 
-      const res = await request(buildApp())
-        .post(`/api/storage/${PN}/layout/upgrade`)
-        .set('X-PN-Cloud-Access-Token', 'ya29.test-upgrade')
+      const first = await request(buildApp())
+        .post(`/api/storage/${PN}/layout/commit-migration`)
+        .send({ migrationId: MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1 })
         .expect(200);
 
-      expect(mockEnsureInboxChannel).toHaveBeenCalled();
-      expect(res.body.success).toBe(true);
-      expect(res.body.complete).toBe(true);
-      expect(res.body.appliedMigrations).toContain(MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1);
+      expect(first.body.complete).toBe(false);
+      expect(first.body.appliedMigrations).toContain(MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1);
+
+      const second = await request(buildApp())
+        .post(`/api/storage/${PN}/layout/commit-migration`)
+        .send({ migrationId: MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2 })
+        .expect(200);
+
+      expect(second.body.complete).toBe(true);
+      expect(second.body.current).toBe(CURRENT_CLOUD_LAYOUT_VERSION);
+    });
+
+    it('rejects out-of-order migration id', async () => {
+      mockGetCredentials.mockResolvedValue({
+        credentials: {
+          pnDriveIndex: completePnDriveIndex(),
+        },
+      });
+
+      const res = await request(buildApp())
+        .post(`/api/storage/${PN}/layout/commit-migration`)
+        .send({ migrationId: MIGRATION_ROOT_BLOBS_OUT_OF_PN_ROOT_V2 })
+        .expect(400);
+
+      expect(res.body.error).toBe('MIGRATION_ORDER');
     });
   });
 

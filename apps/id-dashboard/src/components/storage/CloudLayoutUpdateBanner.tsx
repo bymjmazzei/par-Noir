@@ -10,6 +10,27 @@ import {
   type CloudLayoutStatus,
 } from '../../services/cloudLayoutService';
 
+export function layoutUpdateDismissStorageKey(pnIdentifier: string): string {
+  return `pn_layout_update_dismiss:${pnIdentifier}`;
+}
+
+export function isLayoutUpdateDismissed(pnIdentifier: string): boolean {
+  if (typeof sessionStorage === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(layoutUpdateDismissStorageKey(pnIdentifier)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function clearLayoutUpdateDismiss(pnIdentifier: string): void {
+  try {
+    sessionStorage.removeItem(layoutUpdateDismissStorageKey(pnIdentifier));
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface CloudLayoutUpdateBannerProps {
   apiToken: string | null | undefined;
   pnIdentifier: string | null | undefined;
@@ -32,6 +53,15 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
   const [status, setStatus] = useState<CloudLayoutStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!pnIdentifier) {
+      setDismissed(false);
+      return;
+    }
+    setDismissed(isLayoutUpdateDismissed(pnIdentifier));
+  }, [pnIdentifier, refreshKey]);
 
   const refresh = useCallback(async () => {
     if (!apiToken || !pnIdentifier) {
@@ -42,6 +72,10 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
       const next = await fetchCloudLayoutStatus(apiToken, pnIdentifier);
       setStatus(next);
       setError(null);
+      if (next?.complete) {
+        clearLayoutUpdateDismiss(pnIdentifier);
+        setDismissed(false);
+      }
     } catch {
       setStatus(null);
     }
@@ -58,6 +92,10 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
     try {
       const next = await upgradeCloudLayout(apiToken, pnIdentifier);
       setStatus(next);
+      if (next.complete && pnIdentifier) {
+        clearLayoutUpdateDismiss(pnIdentifier);
+        setDismissed(false);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Cloud layout update failed');
     } finally {
@@ -65,7 +103,17 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
     }
   };
 
-  if (!status || status.complete) return null;
+  if (!status || status.complete || dismissed) return null;
+
+  const onDismiss = () => {
+    if (!pnIdentifier) return;
+    try {
+      sessionStorage.setItem(layoutUpdateDismissStorageKey(pnIdentifier), '1');
+    } catch {
+      /* ignore */
+    }
+    setDismissed(true);
+  };
 
   const pendingLabels = status.pending.map((p) => p.description).filter(Boolean);
 
@@ -102,6 +150,14 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
             Open Storage
           </button>
         ) : null}
+        <button
+          type="button"
+          onClick={onDismiss}
+          disabled={busy}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-transparent text-amber-200/80 hover:text-amber-50 text-sm"
+        >
+          Remind me later
+        </button>
       </div>
     </div>
   );

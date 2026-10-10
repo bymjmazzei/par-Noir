@@ -281,31 +281,93 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
           return res.status(404).json({ error: 'No storage credentials found for identity' });
         }
 
-        const submittedIndex = req.body?.pnDriveIndex as {
-          pnFolderId?: string;
-          metadataFolderId?: string;
-          sheetIds?: Record<string, string>;
-        } | undefined;
-        if (submittedIndex?.pnFolderId && submittedIndex?.metadataFolderId && submittedIndex.sheetIds) {
-          const { persistPnDriveIndex } = await import('../pnDriveIndex');
-          await persistPnDriveIndex(
-            pnIdentifier,
-            credentials.credentials as Record<string, unknown>,
-            {
-              schemaVersion: 1,
-              pnFolderId: submittedIndex.pnFolderId,
-              metadataFolderId: submittedIndex.metadataFolderId,
-              integratorsRootId: String((submittedIndex as { integratorsRootId?: string }).integratorsRootId || ''),
-              messagesFolderId: String((submittedIndex as { messagesFolderId?: string }).messagesFolderId || ''),
-              inboxSheetId: String((submittedIndex as { inboxSheetId?: string }).inboxSheetId || ''),
-              sheetIds: submittedIndex.sheetIds,
-              conversationSheets: ((submittedIndex as { conversationSheets?: Record<string, string> }).conversationSheets) || {},
+        const layoutMigrationCommit =
+          typeof req.body?.layoutMigrationCommit === 'string'
+            ? req.body.layoutMigrationCommit.trim()
+            : '';
+        if (layoutMigrationCommit) {
+          const { commitCloudLayoutMigration } = await import('./cloudLayoutMigrations');
+          try {
+            const layoutStatus = await commitCloudLayoutMigration(
+              pnIdentifier,
+              layoutMigrationCommit
+            );
+            return res.json({ success: true, identityId: pnIdentifier, ...layoutStatus });
+          } catch (commitErr: unknown) {
+            const code =
+              commitErr && typeof commitErr === 'object' && 'code' in commitErr
+                ? String((commitErr as { code: unknown }).code)
+                : '';
+            if (code === 'MIGRATION_ORDER' || code === 'MIGRATION_UNKNOWN') {
+              return res.status(400).json({
+                error: code,
+                message: commitErr instanceof Error ? commitErr.message : 'Invalid migration',
+              });
             }
-          );
+            if (code === 'DRIVE_NOT_INITIALIZED') {
+              return res.status(404).json({
+                error: 'NO_STORAGE_CREDENTIALS',
+                message: 'Connect cloud storage first',
+              });
+            }
+            throw commitErr;
+          }
+        }
+
+        const submittedIndex = req.body?.pnDriveIndex as Record<string, unknown> | undefined;
+        if (
+          submittedIndex?.pnFolderId &&
+          submittedIndex?.metadataFolderId &&
+          submittedIndex?.sheetIds
+        ) {
+          const { persistPnDriveIndex, isPnDriveIndexComplete } = await import('../pnDriveIndex');
+          const creds = { ...(credentials.credentials as Record<string, unknown>) };
+          const sub = submittedIndex as {
+            pnFolderId: string;
+            metadataFolderId: string;
+            integratorsRootId?: string;
+            messagesFolderId?: string;
+            inboxSheetId?: string;
+            sheetIds: Record<string, string>;
+            conversationSheets?: Record<string, string>;
+            zkpDocsFolderId?: string;
+            filesFolderId?: string;
+            contentFolderId?: string;
+            contentNotesFolderId?: string;
+            contentMediaFolderId?: string;
+            contentCollectionsFolderId?: string;
+          };
+          const index = {
+            schemaVersion: 1 as const,
+            pnFolderId: String(sub.pnFolderId),
+            metadataFolderId: String(sub.metadataFolderId),
+            integratorsRootId: String(sub.integratorsRootId || ''),
+            messagesFolderId: String(sub.messagesFolderId || ''),
+            inboxSheetId: String(sub.inboxSheetId || ''),
+            sheetIds: sub.sheetIds,
+            conversationSheets: sub.conversationSheets || {},
+            ...(sub.zkpDocsFolderId ? { zkpDocsFolderId: String(sub.zkpDocsFolderId) } : {}),
+            ...(sub.filesFolderId ? { filesFolderId: String(sub.filesFolderId) } : {}),
+            ...(sub.contentFolderId ? { contentFolderId: String(sub.contentFolderId) } : {}),
+            ...(sub.contentNotesFolderId
+              ? { contentNotesFolderId: String(sub.contentNotesFolderId) }
+              : {}),
+            ...(sub.contentMediaFolderId
+              ? { contentMediaFolderId: String(sub.contentMediaFolderId) }
+              : {}),
+            ...(sub.contentCollectionsFolderId
+              ? { contentCollectionsFolderId: String(sub.contentCollectionsFolderId) }
+              : {}),
+          };
+          if (isPnDriveIndexComplete(index) && index.filesFolderId?.trim()) {
+            const { stampCloudLayoutCurrent } = await import('./cloudLayoutMigrations');
+            stampCloudLayoutCurrent(creds);
+          }
+          await persistPnDriveIndex(pnIdentifier, creds, index);
           return res.json({
             success: true,
-            pnFolderId: submittedIndex.pnFolderId,
-            metadataFolderId: submittedIndex.metadataFolderId,
+            pnFolderId: index.pnFolderId,
+            metadataFolderId: index.metadataFolderId,
           });
         }
         return res.status(409).json({
@@ -404,7 +466,53 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
       }
     });
 
-    /** POST /api/storage/:identityId/layout/upgrade — run pending additive layout migrations */
+    /** POST /api/storage/:identityId/layout/commit-migration — stamp one migration after device execution */
+    app.post('/api/storage/:identityId/layout/commit-migration', async (req: Request, res: Response) => {
+      try {
+        const rawId = req.params.identityId;
+        if (!rawId) return res.status(400).json({ error: 'identityId required' });
+        const pnIdentifier = rawId.startsWith('pn-') ? rawId : `pn-${rawId}`;
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
+
+        const migrationId =
+          typeof req.body?.migrationId === 'string' ? req.body.migrationId.trim() : '';
+        if (!migrationId) {
+          return res.status(400).json({ error: 'migrationId required' });
+        }
+
+        const { commitCloudLayoutMigration } = await import('./cloudLayoutMigrations');
+        try {
+          const status = await commitCloudLayoutMigration(pnIdentifier, migrationId);
+          return res.json({ success: true, identityId: pnIdentifier, ...status });
+        } catch (commitErr: unknown) {
+          const code =
+            commitErr && typeof commitErr === 'object' && 'code' in commitErr
+              ? String((commitErr as { code: unknown }).code)
+              : '';
+          if (code === 'MIGRATION_ORDER' || code === 'MIGRATION_UNKNOWN') {
+            return res.status(400).json({
+              error: code,
+              message: commitErr instanceof Error ? commitErr.message : 'Invalid migration',
+            });
+          }
+          if (code === 'DRIVE_NOT_INITIALIZED') {
+            return res.status(404).json({
+              error: 'NO_STORAGE_CREDENTIALS',
+              message: 'Connect cloud storage first',
+            });
+          }
+          throw commitErr;
+        }
+      } catch (error: unknown) {
+        console.error('Error committing cloud layout migration:', error);
+        return res.status(500).json({
+          error: 'Failed to commit cloud layout migration',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
+        });
+      }
+    });
+
+    /** POST /api/storage/:identityId/layout/upgrade — portable only; Google uses device + commit-migration */
     app.post('/api/storage/:identityId/layout/upgrade', async (req: Request, res: Response) => {
       try {
         const rawId = req.params.identityId;

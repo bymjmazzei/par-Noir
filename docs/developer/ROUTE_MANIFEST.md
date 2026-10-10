@@ -33,7 +33,8 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | GET | `/api/storage/credentials/:identityId` | Retrieve credentials |
 | POST | `/api/storage/initialize/:identityId` | Re-init Drive folders (first connect / incomplete index); stamps `cloudLayoutVersion` |
 | GET | `/api/storage/:identityId/layout/status` | Owner — cloud layout version vs required migrations (no Drive writes) |
-| POST | `/api/storage/:identityId/layout/upgrade` | Owner — run pending additive layout migrations (custody: cloud access token) |
+| POST | `/api/storage/:identityId/layout/commit-migration` | Owner — record one layout migration after device execution (body: `migrationId`) |
+| POST | `/api/storage/:identityId/layout/upgrade` | Owner — portable social cloud only; Google Drive returns `cloud_on_device` |
 
 ## Feeds & aggregator (selection)
 

@@ -250,10 +250,42 @@ export async function loadCloudLayoutStatus(pnIdentifier: string): Promise<Cloud
 }
 
 /**
- * Upgrade entry used by HTTP route: resolve token for Google, skip for portable.
+ * Record one migration after the device executed it locally (no Drive on server).
+ */
+export async function commitCloudLayoutMigration(
+  pnIdentifier: string,
+  migrationId: string
+): Promise<CloudLayoutStatus> {
+  const normalized = normalizePnIdentifier(pnIdentifier);
+  const record = await storageCredentialsService.getCredentials(normalized);
+  if (!record?.credentials) {
+    throw Object.assign(new Error('No storage credentials'), { code: 'DRIVE_NOT_INITIALIZED' });
+  }
+  const credentials = record.credentials as Record<string, unknown>;
+  const pending = getPendingMigrations(credentials);
+  if (pending.length === 0) {
+    return getLayoutStatus(credentials);
+  }
+  const next = pending[0];
+  if (next.id !== migrationId) {
+    throw Object.assign(
+      new Error(`Expected next migration ${next.id}, got ${migrationId}`),
+      { code: 'MIGRATION_ORDER' }
+    );
+  }
+  const known = CLOUD_LAYOUT_MIGRATIONS.find((m) => m.id === migrationId);
+  if (!known) {
+    throw Object.assign(new Error(`Unknown migration ${migrationId}`), { code: 'MIGRATION_UNKNOWN' });
+  }
+  const updated = await persistAppliedMigration(normalized, migrationId, known.version);
+  return getLayoutStatus(updated);
+}
+
+/**
+ * Upgrade entry used by HTTP route: portable runs on server; Google Drive is device-only.
  */
 export async function upgradeCloudLayoutFromRequest(
-  req: Request,
+  _req: Request,
   pnIdentifier: string
 ): Promise<CloudLayoutStatus> {
   const normalized = normalizePnIdentifier(pnIdentifier);
@@ -261,11 +293,9 @@ export async function upgradeCloudLayoutFromRequest(
   if (portable) {
     return runPendingMigrations({ pnIdentifier: normalized });
   }
-  const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
-  const resolved = await resolveOwnerDriveToken(req, normalized);
-  return runPendingMigrations({
-    pnIdentifier: normalized,
-    token: resolved.token,
-    accountId: resolved.accountId,
-  });
+  const { DriveIndexError } = await import('../pnDriveIndex');
+  throw new DriveIndexError(
+    'Run layout migrations on the device, then POST layout/commit-migration for each step.',
+    'CLOUD_ON_DEVICE'
+  );
 }
