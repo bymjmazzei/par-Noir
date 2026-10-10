@@ -102,6 +102,7 @@ jest.mock('@par-noir/device-cloud-credentials', () => {
     isAccessTokenFresh,
     refreshDriveAccessToken,
     getSessionDriveIndex: () => null,
+    findPnRootFolderId: async () => null,
     deviceDriveCall
   };
 });

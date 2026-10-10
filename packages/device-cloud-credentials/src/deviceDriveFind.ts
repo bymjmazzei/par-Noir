@@ -77,8 +77,11 @@ export async function findPnRootFolderId(
   const normalized = normalizePnIdentifier(pnIdentifier);
   const candidates = [pnRootFolderName(normalized), pnDriveDisplayName(normalized)];
   for (const name of candidates) {
-    const id = await findFolderByName(accessToken, name, undefined, fetchImpl);
-    if (id) return id;
+    const escaped = escapeDriveQueryName(name);
+    const q = `name='${escaped}' and mimeType='${FOLDER_MIME}' and trashed=false`;
+    const files = await listDriveFiles(accessToken, q, fetchImpl);
+    const hit = files.find((f) => f.id && f.name === name);
+    if (hit?.id) return hit.id;
   }
   return null;
 }

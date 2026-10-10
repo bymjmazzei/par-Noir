@@ -39,6 +39,11 @@ const SHEET_KEYS: DeviceMetadataSheetKey[] = [
   'following',
 ];
 
+/** Pace metadata sheet creates to reduce Sheets/Drive 429s during full init. */
+const METADATA_SHEET_PACE_MS = 120;
+
+const layoutInflight = new Map<string, Promise<DeviceDriveLayout>>();
+
 export type DeviceDriveLayout = {
   schemaVersion: 1;
   pnFolderId: string;
@@ -55,7 +60,20 @@ export type DeviceDriveLayout = {
   conversationSheets: Record<string, string>;
 };
 
-export async function ensureDeviceDriveLayout(
+export function isDeviceDriveLayoutComplete(
+  layout: DeviceDriveLayout | null | undefined
+): boolean {
+  if (!layout?.pnFolderId || !layout.metadataFolderId || !layout.inboxSheetId) return false;
+  if (!layout.sheetIds?.connections || !layout.sheetIds['owner-file-index']) return false;
+  if (!layout.filesFolderId) return false;
+  return true;
+}
+
+function pace(ms = METADATA_SHEET_PACE_MS): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function buildDeviceDriveLayout(
   accessToken: string,
   pnIdentifier: string,
   fetchImpl?: typeof fetch
@@ -91,13 +109,17 @@ export async function ensureDeviceDriveLayout(
   );
 
   const sheetIds: Record<string, string> = {};
-  for (const key of SHEET_KEYS) {
+  for (let i = 0; i < SHEET_KEYS.length; i++) {
+    const key = SHEET_KEYS[i];
     sheetIds[key] = await ensureDeviceMetadataSheet(
       accessToken,
       key,
       metadataFolderId,
       fetchImpl
     );
+    if (i < SHEET_KEYS.length - 1) {
+      await pace();
+    }
   }
 
   const inboxSheetId = await ensureDeviceInboxSheet(accessToken, messagesFolderId, fetchImpl);
@@ -116,7 +138,9 @@ export async function ensureDeviceDriveLayout(
       fetchImpl
     );
     await ensureDeviceIndexSheet(accessToken, classFolderId, 'owner', className as ContentClassName, fetchImpl);
+    await pace();
     await ensureDeviceIndexSheet(accessToken, classFolderId, 'public', className as ContentClassName, fetchImpl);
+    await pace();
   }
 
   const filesFolderId = await findOrCreateFolder(
@@ -165,4 +189,32 @@ export async function ensureDeviceDriveLayout(
     sheetIds,
     conversationSheets: {},
   };
+}
+
+/**
+ * One in-flight full layout per pN — reconnect must not run parallel inits (duplicate roots + 429s).
+ */
+export function ensureDeviceDriveLayout(
+  accessToken: string,
+  pnIdentifier: string,
+  fetchImpl?: typeof fetch
+): Promise<DeviceDriveLayout> {
+  const key = normalizePnIdentifier(pnIdentifier);
+  const existing = layoutInflight.get(key);
+  if (existing) return existing;
+
+  const promise = buildDeviceDriveLayout(accessToken, key, fetchImpl).finally(() => {
+    layoutInflight.delete(key);
+  });
+  layoutInflight.set(key, promise);
+  return promise;
+}
+
+/** Test-only: clear in-flight layout guard. */
+export function clearDeviceDriveLayoutInflight(pnIdentifier?: string): void {
+  if (pnIdentifier) {
+    layoutInflight.delete(normalizePnIdentifier(pnIdentifier));
+    return;
+  }
+  layoutInflight.clear();
 }

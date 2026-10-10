@@ -34,6 +34,21 @@ function googleHeaders(accessToken: string): Record<string, string> {
   };
 }
 
+async function fetchWithRateLimitRetry(
+  fetchImpl: typeof fetch,
+  url: string,
+  init?: RequestInit,
+  attempts = 5
+): Promise<Response> {
+  let last: Response | null = null;
+  for (let i = 0; i < attempts; i++) {
+    last = await fetchImpl(url, init);
+    if (last.status !== 429 && last.status !== 503) return last;
+    await new Promise((resolve) => setTimeout(resolve, 500 * Math.pow(2, i)));
+  }
+  return last!;
+}
+
 export async function findSpreadsheetInFolder(
   accessToken: string,
   driveFileName: string,
@@ -49,7 +64,8 @@ async function moveSpreadsheetToFolder(
   parentFolderId: string,
   fetchImpl: typeof fetch
 ): Promise<void> {
-  const parentsRes = await fetchImpl(
+  const parentsRes = await fetchWithRateLimitRetry(
+    fetchImpl,
     `${DRIVE}/files/${encodeURIComponent(spreadsheetId)}?fields=parents`,
     { headers: googleHeaders(accessToken) }
   );
@@ -59,11 +75,15 @@ async function moveSpreadsheetToFolder(
   const move = new URLSearchParams();
   move.set('addParents', parentFolderId);
   if (parents.length) move.set('removeParents', parents.join(','));
-  await fetchImpl(`${DRIVE}/files/${encodeURIComponent(spreadsheetId)}?${move.toString()}`, {
-    method: 'PATCH',
-    headers: googleHeaders(accessToken),
-    body: '{}',
-  });
+  await fetchWithRateLimitRetry(
+    fetchImpl,
+    `${DRIVE}/files/${encodeURIComponent(spreadsheetId)}?${move.toString()}`,
+    {
+      method: 'PATCH',
+      headers: googleHeaders(accessToken),
+      body: '{}',
+    }
+  );
 }
 
 export async function createSpreadsheetInFolder(
@@ -72,7 +92,7 @@ export async function createSpreadsheetInFolder(
   spec: SpreadsheetSpec,
   fetchImpl: typeof fetch = fetch
 ): Promise<string> {
-  const created = await fetchImpl(SHEETS, {
+  const created = await fetchWithRateLimitRetry(fetchImpl, SHEETS, {
     method: 'POST',
     headers: googleHeaders(accessToken),
     body: JSON.stringify({

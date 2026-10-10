@@ -157,8 +157,13 @@ export {
 export { requireOnlineCloudForSend } from './requireOnlineCloudForSend.js';
 export { deviceDriveCall, extractApiDrivePath, fetchDeviceDriveForSession } from './deviceDriveCall.js';
 export type { DeviceDriveInit } from './deviceDriveCall.js';
-export { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
+export {
+  clearDeviceDriveLayoutInflight,
+  ensureDeviceDriveLayout,
+  isDeviceDriveLayoutComplete,
+} from './deviceDriveLayout.js';
 export type { DeviceDriveLayout } from './deviceDriveLayout.js';
+export { findPnRootFolderId } from './deviceDriveFind.js';
 export { ensureOwnerBlobFolders, blobFolderId } from './ownerBlobFolders.js';
 export type { OwnerBlobFolders, ContentBlobClass } from './ownerBlobFolders.js';
 export {

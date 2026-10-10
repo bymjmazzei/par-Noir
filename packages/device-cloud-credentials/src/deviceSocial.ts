@@ -6,7 +6,7 @@
 import { appendSheetValues, readSheetValues, writeSheetValues } from './deviceSheet.js';
 import { upsertDevicePublicIndexFile } from './deviceIndexes.js';
 import type { DeviceDriveLayout } from './deviceDriveLayout.js';
-import { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
+import { ensureDeviceDriveLayout, isDeviceDriveLayoutComplete } from './deviceDriveLayout.js';
 import { getSessionDriveIndex, setSessionDriveIndex } from './sessionMemory.js';
 
 export type DeviceConnection = {
@@ -280,11 +280,11 @@ export async function ensureSessionDriveIndex(args: {
   fetchImpl?: typeof fetch;
 }): Promise<DeviceDriveLayout> {
   const existing = getSessionDriveIndex(args.identityId);
-  if (existing?.inboxSheetId && existing.sheetIds.connections) return existing;
+  if (isDeviceDriveLayoutComplete(existing)) return existing!;
   const stored = await args.readStoredIndex?.();
-  if (stored?.inboxSheetId && stored.sheetIds?.connections) {
-    setSessionDriveIndex(args.identityId, stored);
-    return stored;
+  if (isDeviceDriveLayoutComplete(stored)) {
+    setSessionDriveIndex(args.identityId, stored!);
+    return stored!;
   }
   const built = await ensureDeviceDriveLayout(
     args.accessToken,
