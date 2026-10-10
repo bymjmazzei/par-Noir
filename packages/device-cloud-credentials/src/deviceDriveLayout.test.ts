@@ -8,6 +8,7 @@ describe('ensureDeviceDriveLayout', () => {
   it('searches for the canonical root, creates par-noir-pn-* layout, and never calls the API', async () => {
     const createdRoots: string[] = [];
     let n = 0;
+    const sheetCreateBodies: unknown[] = [];
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(String(url)).not.toContain('api.parnoir.com');
       const urlStr = String(url);
@@ -16,8 +17,12 @@ describe('ensureDeviceDriveLayout', () => {
       }
       n += 1;
       const id = `id-${n}`;
-      if (urlStr.includes('sheets.googleapis.com/v4/spreadsheets') && !urlStr.includes('/values/')) {
+      if (urlStr.includes('sheets.googleapis.com/v4/spreadsheets') && init?.method === 'POST') {
+        sheetCreateBodies.push(JSON.parse(String(init.body)));
         return new Response(JSON.stringify({ spreadsheetId: id }), { status: 200 });
+      }
+      if (urlStr.includes('/values/')) {
+        return new Response(JSON.stringify({}), { status: 200 });
       }
       if (urlStr.includes('fields=parents')) {
         return new Response(JSON.stringify({ parents: [] }), { status: 200 });
@@ -44,6 +49,12 @@ describe('ensureDeviceDriveLayout', () => {
     expect(layout.sheetIds.connections).toBeTruthy();
     expect(layout.inboxSheetId).toBeTruthy();
     expect(layout.filesFolderId).toBeTruthy();
+    const indexCreate = sheetCreateBodies.find((b) => {
+      const body = b as { properties?: { title?: string } };
+      return body.properties?.title === 'owner-file-index.xlsx';
+    }) as { sheets?: Array<{ properties?: { title?: string } }> } | undefined;
+    expect(indexCreate?.sheets?.[0]?.properties?.title).toBe('Files');
+    expect(fetchImpl.mock.calls.some((c) => String(c[0]).includes('/values/Files'))).toBe(true);
     const auth = (fetchImpl.mock.calls.find((c) => String(c[0]).includes('drive'))?.[1] as RequestInit)
       ?.headers as Headers;
     expect(auth?.get?.('Authorization') ?? (auth as Record<string, string>)?.Authorization).toBe(

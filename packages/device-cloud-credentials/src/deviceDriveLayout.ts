@@ -8,12 +8,18 @@ import { ensureDeviceOwnedAssetsSheet } from './deviceIndexes.js';
 import {
   DEVICE_PN_LAYOUT,
   findOrCreateFolder,
-  findOrCreateSpreadsheet,
   findPnRootFolderId,
   normalizePnIdentifier,
 } from './deviceDriveFind.js';
+import {
+  ensureDeviceInboxSheet,
+  ensureDeviceIndexSheet,
+  ensureDeviceMetadataSheet,
+  type ContentClassName,
+  type DeviceMetadataSheetKey,
+} from './deviceMetadataSheetCatalog.js';
 
-const SHEET_KEYS = [
+const SHEET_KEYS: DeviceMetadataSheetKey[] = [
   'connections',
   'third-party-permissions',
   'devices',
@@ -31,7 +37,7 @@ const SHEET_KEYS = [
   'owner-file-index',
   'followers',
   'following',
-] as const;
+];
 
 export type DeviceDriveLayout = {
   schemaVersion: 1;
@@ -86,7 +92,7 @@ export async function ensureDeviceDriveLayout(
 
   const sheetIds: Record<string, string> = {};
   for (const key of SHEET_KEYS) {
-    sheetIds[key] = await findOrCreateSpreadsheet(
+    sheetIds[key] = await ensureDeviceMetadataSheet(
       accessToken,
       key,
       metadataFolderId,
@@ -94,12 +100,8 @@ export async function ensureDeviceDriveLayout(
     );
   }
 
-  const inboxSheetId = await findOrCreateSpreadsheet(
-    accessToken,
-    DEVICE_PN_LAYOUT.inboxSheetName,
-    messagesFolderId,
-    fetchImpl
-  );
+  const inboxSheetId = await ensureDeviceInboxSheet(accessToken, messagesFolderId, fetchImpl);
+
   sheetIds['owned-assets'] = await ensureDeviceOwnedAssetsSheet(
     accessToken,
     metadataFolderId,
@@ -107,7 +109,14 @@ export async function ensureDeviceDriveLayout(
   );
 
   for (const className of DEVICE_PN_LAYOUT.contentClassDirs) {
-    await findOrCreateFolder(accessToken, className, metadataFolderId, fetchImpl);
+    const classFolderId = await findOrCreateFolder(
+      accessToken,
+      className,
+      metadataFolderId,
+      fetchImpl
+    );
+    await ensureDeviceIndexSheet(accessToken, classFolderId, 'owner', className as ContentClassName, fetchImpl);
+    await ensureDeviceIndexSheet(accessToken, classFolderId, 'public', className as ContentClassName, fetchImpl);
   }
 
   const filesFolderId = await findOrCreateFolder(
