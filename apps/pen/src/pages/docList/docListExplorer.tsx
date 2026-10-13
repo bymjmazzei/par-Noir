@@ -76,7 +76,7 @@ export function isConsumerClass(c: PenClass): boolean {
   return !c.audience || c.audience === 'consumer';
 }
 
-function resolveDocClassId(d: LocalDocSummary): string | undefined {
+export function resolveDocClassId(d: LocalDocSummary): string | undefined {
   if (d.classId) return d.classId;
   return getTemplate(d.templateId)?.classId;
 }

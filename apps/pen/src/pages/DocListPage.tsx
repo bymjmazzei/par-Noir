@@ -29,5 +29,5 @@ export function DocListPage({
     addIntent,
     onAddIntentConsumed
   });
-  return <DocListShell state={state} />;
+  return <DocListShell {...state} />;
 }
