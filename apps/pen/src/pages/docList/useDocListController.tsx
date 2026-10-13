@@ -87,7 +87,9 @@ import {
   CreateNewGalleryTile,
   PersonalTemplateGalleryCard
 } from './docListExplorer';
+import { penControllerReady } from '../penControllerReady';
 
+/** Ready keys validated by controllerReadyState.gate.test.ts */
 export type DocListReadyState = {
   phase: 'ready';
   [key: string]: unknown;
@@ -685,7 +687,9 @@ export function useDocListController(props: {
       </div>
     ) : null;
 
-  return {
+  // Ready keys must be hook-level bindings; shells must not use bare identifiers.
+  // Enforced by controllerReadyState.gate.test.ts
+  return penControllerReady({
     phase: 'ready',
     session,
     docs,
@@ -780,5 +784,5 @@ export function useDocListController(props: {
     setBlankWizardOpen,
     setError,
     setBusy,
-  };
+  });
 }

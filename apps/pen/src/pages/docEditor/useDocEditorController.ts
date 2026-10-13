@@ -230,7 +230,9 @@ import { loadDocKey } from '../../services/penDocCrypto';
 import { useNavigate } from 'react-router-dom';
 import type { PenSession } from '../../services/penSession';
 import { peerRoutes } from './peerRoutes';
+import { penControllerReady } from '../penControllerReady';
 
+/** Ready keys validated by controllerReadyState.gate.test.ts */
 export type DocEditorReadyState = {
   phase: 'ready';
   [key: string]: unknown;
@@ -2146,7 +2148,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
 
   if (hydrating) return { phase: 'loading' };
   if (!bundle || !section) return { phase: 'notFound' };
-  return {
+  // Ready keys must be hook-level bindings; shells must not use bare identifiers.
+  // Enforced by controllerReadyState.gate.test.ts
+  return penControllerReady({
     phase: 'ready',
     acceptSuggestion,
     activeLayerId,
@@ -2208,7 +2212,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     onStageAction,
     onStoryBlockHeights,
     pageExportRoot,
-    peerPk,
     persist,
     persistSection,
     persistWritingDoc,
@@ -2241,7 +2244,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     section,
     sectionNeedsSheet,
     sectionTitle,
-    sections,
     selectedConnectionPns,
     sendCorrespondence,
     session,
@@ -2276,6 +2278,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     socialActionLayer,
     socialLayersBtnRef,
     socialLayersOpen,
+    setSocialLayersOpen,
     socialSelectedIds,
     stampAt,
     status,
@@ -2283,7 +2286,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     template,
     timelineGroupId,
     timelinePlaying,
-    toc,
     toggledKeys,
     undoEdit,
     verifiedAuthor,
@@ -2295,5 +2297,5 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     widgetStripLayer,
     writingEnabled,
     writingLabel,
-  };
+  });
 }
