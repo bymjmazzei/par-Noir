@@ -24,5 +24,5 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       </div>
     );
   }
-  return <DocEditorShell state={state} />;
+  return <DocEditorShell {...state} />;
 }
