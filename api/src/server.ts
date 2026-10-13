@@ -582,8 +582,8 @@ class ProductionServer {
           'X-PN-Device-Signature',
           'X-PN-Device-Timestamp',
           'X-PN-Device-Nonce',
-          // Ephemeral Drive token under device cloud custody (reconnect / device register)
-          // Rejected if presented. Drive tokens stay on the device.
+          // Ephemeral Google AT for custody-gated routes (initialize, Drive proxy); not persisted server-side.
+          'X-PN-Cloud-Access-Token',
           // Anonymous feed view metering (browse public-media)
           'X-PN-Anon-Id',
         ],
