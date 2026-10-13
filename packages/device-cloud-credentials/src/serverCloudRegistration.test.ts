@@ -107,6 +107,15 @@ describe('ensureServerCloudRegistration', () => {
       true
     );
     expect(calls.some((c) => c.startsWith('GET ') && c.includes('/storage/accounts/'))).toBe(true);
+
+    const initCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).includes('/api/storage/initialize/') && init?.method === 'POST'
+    );
+    expect(initCall).toBeDefined();
+    const initHeaders = (initCall![1]?.headers ?? {}) as Record<string, string>;
+    expect(initHeaders['X-PN-Cloud-Access-Token']).toBeUndefined();
+    expect(initHeaders['x-pn-cloud-access-token']).toBeUndefined();
   });
 
   it('throws when POST initialize runs without prior PUT row (404)', async () => {

@@ -2,9 +2,9 @@
  * Decides whether a credential-persist response should trigger a server-side Drive init.
  *
  * Device custody: `clientSideLayoutRequired` means the API has no Google secrets.
- * Callers must still POST /storage/initialize with `X-PN-Cloud-Access-Token` (see
- * useDriveStorageCredentials) — do not treat this flag as "never initialize".
- * `shouldSkipServerDriveInit` only means "do not call secretless initialize".
+ * Callers build Drive layout on the device, then POST /storage/initialize with
+ * `pnDriveIndex` only (no X-PN-Cloud-Access-Token — the API rejects that header).
+ * `shouldSkipServerDriveInit` means "do not call secretless server-side init".
  */
 
 export interface DrivePersistResult {

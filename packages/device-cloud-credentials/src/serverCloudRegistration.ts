@@ -10,8 +10,6 @@ import {
 } from '@par-noir/user-owned-storage';
 import { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
 import { normalizePnIdentifier } from './deviceDriveFind.js';
-import { PN_CLOUD_ACCESS_TOKEN_HEADER } from './cloudVault.js';
-
 export const SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT = 'pn-server-cloud-registered';
 
 export type CloudRegistrationPhase =
@@ -213,6 +211,7 @@ export async function ensureServerCloudRegistration(
     throw new CloudRegistrationIncomplete('init_failed', msg);
   }
 
+  // POST initialize only persists pnDriveIndex — the API rejects X-PN-Cloud-Access-Token globally.
   const initRes = await fetchImpl(
     `${base}/api/storage/initialize/${encodeURIComponent(pnNormalized)}`,
     {
@@ -221,7 +220,6 @@ export async function ensureServerCloudRegistration(
         Authorization: `Bearer ${opts.authToken}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        [PN_CLOUD_ACCESS_TOKEN_HEADER]: googleTok,
       },
       body: JSON.stringify({ pnDriveIndex }),
     }
