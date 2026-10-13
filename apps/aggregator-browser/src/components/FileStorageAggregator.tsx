@@ -14,7 +14,11 @@ import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useLoadFilesForAccount } from '../hooks/useLoadFilesForAccount';
 import type { DriveFile } from './storage/storageTypes';
 import { API_ENDPOINT } from '../config/api';
-import { downloadStorageBlob, fetchStorageAccounts } from '../services/storageApiClient';
+import {
+  downloadStorageBlob,
+  fetchStorageAccounts,
+  StorageAccountsFetchError,
+} from '../services/storageApiClient';
 import { fetchMusicRegistryCatalog, type CatalogTrack } from '../services/musicRegistryApi';
 import { apiGet, ownerFetch } from '../services/ownerApiFetch';
 import {
@@ -44,7 +48,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [filesByAccount, setFilesByAccount] = useState<Map<string, DriveFile[]>>(new Map());
   const [error, setError] = useState<string | null>(null);
-  const [cloudBanner, setCloudBanner] = useState<'none' | 'unlinked' | 'linkedInactive'>('none');
+  const [cloudBanner, setCloudBanner] = useState<
+    'none' | 'unlinked' | 'linkedInactive' | 'api_error'
+  >('none');
   const { accounts: driveAccounts, setSelectedId: setSelectedAccountId, setAccounts: setDriveAccounts } = useDriveAccounts({
     authenticatedUserId: authenticatedUser?.id,
     userState: { isUnlocked: userState.isUnlocked, pnIdentifier: userState.pnIdentifier },
@@ -84,8 +90,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       } else {
         setCloudBanner('unlinked');
       }
-    } catch {
-      setCloudBanner(driveAccounts.length === 0 ? 'unlinked' : 'none');
+    } catch (err) {
+      if (err instanceof StorageAccountsFetchError) {
+        setCloudBanner('api_error');
+      } else {
+        setCloudBanner(driveAccounts.length === 0 ? 'unlinked' : 'none');
+      }
     }
   }, [userState.isUnlocked, userState.pnIdentifier, driveAccounts.length]);
 
@@ -1437,6 +1447,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             >
               Reconnect cloud
             </button>
+          </div>
+        </div>
+      )}
+      {driveAccounts.length === 0 && cloudBanner === 'api_error' && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-4 w-4 text-yellow-400" />
+            <span className="text-yellow-400 text-sm">
+              Could not load cloud status from the server. Reconnect cloud here or try again shortly.
+            </span>
           </div>
         </div>
       )}

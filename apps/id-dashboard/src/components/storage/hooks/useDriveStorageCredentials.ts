@@ -299,10 +299,47 @@ export function useDriveStorageCredentials({
 
         const accessToken = await waitForOwnerApiToken(pnIdentifier);
         if (!accessToken) {
+          if (force) {
+            throw new Error('No par Noir OAuth token; unlock the dashboard before connecting cloud storage.');
+          }
           console.warn('⚠️ [StorageCredentials] No par Noir OAuth token; skipping credential persistence');
           globalPersistenceLockRef.current = false;
           persistenceInProgressRef.current = false;
           return;
+        }
+
+        const googleTokFromPayload =
+          (payload.googleDriveAccounts?.[0] as { accessToken?: string; access_token?: string } | undefined)
+            ?.accessToken ||
+          (payload.googleDriveAccounts?.[0] as { access_token?: string } | undefined)?.access_token;
+        let googleTok = typeof googleTokFromPayload === 'string' ? googleTokFromPayload : '';
+        if (!googleTok.trim()) {
+          for (const entry of driveCredentialCacheRef.current.values()) {
+            if (typeof entry.accessToken === 'string' && entry.accessToken.trim()) {
+              googleTok = entry.accessToken.trim();
+              break;
+            }
+          }
+        }
+
+        if (force && googleTok.trim()) {
+          const { ensureServerCloudRegistration } = await import('@par-noir/device-cloud-credentials');
+          await ensureServerCloudRegistration({
+            apiEndpoint: API_ENDPOINT,
+            authToken: accessToken,
+            pnIdentifier,
+            envelope: payload,
+            googleAccessToken: googleTok.trim(),
+          });
+          if (loadFilesRef.current) {
+            void loadFilesRef.current();
+          }
+          return;
+        }
+        if (force) {
+          throw new Error(
+            'No Google access token available to register cloud layout on the server — reconnect Drive.'
+          );
         }
 
         const credPath = `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`;
@@ -429,6 +466,9 @@ export function useDriveStorageCredentials({
           void loadFilesRef.current();
         }
       } catch (error) {
+        if (force) {
+          throw error;
+        }
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
           error: error instanceof Error ? error.message : 'Unknown persistence error',
         });

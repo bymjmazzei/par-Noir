@@ -397,17 +397,21 @@ export function useGoogleDriveOAuthConnect({
           );
         }
         }
-      }
 
-      // Layout-only API persistence (no live Google tokens in SecureMetadata).
-      // Force: disconnect may have PUT within the debounce window; connect must still run initialize.
-      try {
-        const payload = buildStorageCredentialPayload();
-        if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
-          await persistStorageCredentialsToAPI(payload, null, { force: true });
+        const authTokReg = resolveOwnerApiToken(pnIdentifier);
+        if (!authTokReg) {
+          throw new Error(
+            'Drive connected locally, but no owner API session — unlock the dashboard, then reconnect Drive.'
+          );
         }
-      } catch (persistError) {
-        console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist layout to API (non-critical):', persistError);
+        const { ensureServerCloudRegistration } = await import('@par-noir/device-cloud-credentials');
+        await ensureServerCloudRegistration({
+          apiEndpoint: API_ENDPOINT,
+          authToken: authTokReg,
+          pnIdentifier,
+          envelope: cloudEnvelope,
+          googleAccessToken: token,
+        });
       }
 
       // Signal Drive-ready only after access token is in session (OAuth just minted it).

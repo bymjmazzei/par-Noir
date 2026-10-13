@@ -289,6 +289,37 @@ export async function bootstrapCloudSession(opts: {
 
       if (envelope) {
         await registerBackendsFromEnvelope(pnIdentifier, envelope, apiToken, sessionId);
+      }
+
+      const googleForRepair =
+        tok ||
+        (envelope?.googleDriveAccounts?.map((a) => accountToken(a)).find((t) => t) ?? null);
+      const repairEnvelope =
+        envelope ?? getSessionCloudCredentials(pnIdentifier) ?? undefined;
+      if (repairEnvelope && googleForRepair) {
+        const { repairServerCloudRegistrationIfNeeded } = await import(
+          '@par-noir/device-cloud-credentials'
+        );
+        try {
+          const repaired = await repairServerCloudRegistrationIfNeeded({
+            apiEndpoint: API_ENDPOINT,
+            authToken: apiToken,
+            pnIdentifier,
+            localEnvelope: repairEnvelope,
+            googleAccessToken: googleForRepair,
+          });
+          if (repaired) {
+            setStorageAccountsCache(pnIdentifier, {
+              accounts: repaired.accounts,
+              socialCloudProvider: repaired.socialCloudProvider,
+            });
+          }
+        } catch (regErr) {
+          lastStatus = 'error';
+          lastError =
+            regErr instanceof Error ? regErr.message : 'Server cloud registration failed';
+          return { status: 'error', error: lastError };
+        }
       } else if (!getStorageAccountsCache(pnIdentifier)) {
         // Still warm accounts cache for reconnect gate (no second GET after bootstrap).
         try {

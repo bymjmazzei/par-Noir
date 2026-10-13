@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  accountAccessToken,
+  ensureServerCloudRegistration,
   loadLocalCloudCredentials,
   persistCloudCredentials,
   resolveCloudPersistMode,
@@ -24,7 +26,6 @@ import {
   cloudDisconnectGeneration,
   discardIfCloudDisconnected,
 } from '../../services/disconnectCloud';
-import { ownerFetch } from '../../services/ownerApiService';
 import { CloudLayoutUpdateBanner } from './CloudLayoutUpdateBanner';
 
 export interface CloudReconnectHostProps {
@@ -287,33 +288,19 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           }).catch(() => undefined);
           return;
         }
-        try {
-          const accounts = Array.isArray(envelope.googleDriveAccounts)
-            ? envelope.googleDriveAccounts
-            : [];
-          const layoutAccounts = accounts.map((a) => ({
-            backendId: a.backendId || a.accountId,
-            keyPrefix: a.keyPrefix,
-            email: a.email,
-            connectedAt: a.connectedAt
-          }));
-          await ownerFetch(
-            apiToken,
-            'PUT',
-            `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`,
-            {
-              credentials: {
-                socialCloudProvider: envelope.socialCloudProvider || 'google_drive',
-                socialCloudAccountId: envelope.socialCloudAccountId,
-                googleDriveAccounts: layoutAccounts
-              },
-              cid: null
-            },
-            { pnIdentifier }
-          );
-        } catch {
-          /* best-effort */
+        const googleTok = accountAccessToken(
+          (envelope.googleDriveAccounts?.[0] ?? {}) as Record<string, unknown>
+        );
+        if (!googleTok?.trim()) {
+          throw new Error('Google access token missing — reconnect Google Drive.');
         }
+        await ensureServerCloudRegistration({
+          apiEndpoint: API_ENDPOINT,
+          authToken: apiToken,
+          pnIdentifier,
+          envelope,
+          googleAccessToken: googleTok.trim(),
+        });
       }
     },
     [pnIdentifier, sessionId, effectivePersistMode, apiToken]

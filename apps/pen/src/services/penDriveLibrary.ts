@@ -6,11 +6,15 @@ import {
   deviceDriveCall,
   ensureSessionDriveIndex,
   getCloudAccessTokenFromSession,
+  getSessionCloudCredentials,
   getSessionDriveIndex,
+  repairServerCloudRegistrationIfNeeded,
   type DeviceDriveLayout,
 } from '@par-noir/device-cloud-credentials';
 import { PEN_ROOT, docRootPath, sanitizeSegment } from '@par-noir/pen-protocol';
+import { API_ENDPOINT } from '../config/api';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
+import { loadPenSession } from './penSession';
 
 const FOLDER = 'application/vnd.google-apps.folder';
 
@@ -20,6 +24,17 @@ export async function penSessionDrive(identityId: string): Promise<{
 }> {
   const accessToken = getCloudAccessTokenFromSession(identityId);
   if (!accessToken) throw new Error('cloud_on_device');
+  const oauth = loadPenSession();
+  const localEnv = getSessionCloudCredentials(identityId);
+  if (oauth?.accessToken && localEnv) {
+    await repairServerCloudRegistrationIfNeeded({
+      apiEndpoint: API_ENDPOINT,
+      authToken: oauth.accessToken,
+      pnIdentifier: identityId,
+      localEnvelope: localEnv,
+      googleAccessToken: accessToken,
+    }).catch(() => undefined);
+  }
   const cached = getSessionDriveIndex(identityId);
   if (cached?.pnFolderId) return { accessToken, index: cached };
   const index = await ensureSessionDriveIndex({

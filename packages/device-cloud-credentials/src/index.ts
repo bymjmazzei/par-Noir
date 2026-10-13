@@ -162,6 +162,21 @@ export {
   ensureDeviceDriveLayout,
   isDeviceDriveLayoutComplete,
 } from './deviceDriveLayout.js';
+export {
+  SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT,
+  CloudRegistrationIncomplete,
+  buildLayoutCredentialsForPut,
+  storageAccountsHasLayout,
+  ensureServerCloudRegistration,
+  repairServerCloudRegistrationIfNeeded,
+} from './serverCloudRegistration.js';
+export type {
+  CloudRegistrationPhase,
+  StorageAccountsLayout,
+  EnsureServerCloudRegistrationOpts,
+  EnsureServerCloudRegistrationResult,
+  RepairServerCloudRegistrationOpts,
+} from './serverCloudRegistration.js';
 export type { DeviceDriveLayout } from './deviceDriveLayout.js';
 export {
   ensureDeviceInboxChannelColumn,

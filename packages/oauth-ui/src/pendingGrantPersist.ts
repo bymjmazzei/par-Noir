@@ -13,7 +13,11 @@
  * (`consent_shown=1`). Consent-skip unlocks must not re-flush every time.
  */
 
-import { ensureCloudAccessToken } from '@par-noir/device-cloud-credentials';
+import {
+  ensureCloudAccessToken,
+  getSessionCloudCredentials,
+  repairServerCloudRegistrationIfNeeded,
+} from '@par-noir/device-cloud-credentials';
 
 interface PendingGrant {
   clientId: string;
@@ -145,6 +149,13 @@ export async function flushPendingGrant(params: {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         if (body.error === 'drive_index_incomplete') {
           console.warn('[OAuth] Grant persist waiting on Drive index — initializing');
+          await repairServerCloudRegistrationIfNeeded({
+            apiEndpoint: params.apiEndpoint,
+            authToken: params.authToken,
+            pnIdentifier: params.pnIdentifier,
+            localEnvelope: getSessionCloudCredentials(params.pnIdentifier),
+            googleAccessToken: accessToken,
+          }).catch(() => null);
           const ready = await waitForDriveInit(
             params.apiEndpoint,
             params.authToken,

@@ -2,7 +2,10 @@ import { API_ENDPOINT } from '../config/api';
 import { accountsCacheService } from './accountsCacheService';
 import { apiGet, ownerFetch, ownerGet } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
-import { ensureOwnerBlobFolders } from '@par-noir/device-cloud-credentials';
+import {
+  ensureOwnerBlobFolders,
+  SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT,
+} from '@par-noir/device-cloud-credentials';
 import { sessionDriveFor } from './sessionDrive';
 
 /** Canonical cache/API key for viewer storage accounts (bare id, no pn- prefix). */
@@ -401,6 +404,17 @@ export type StorageAccountsResult = {
   socialCloudProvider?: string | null;
 };
 
+/** Thrown when GET /api/storage/accounts fails (do not treat as "never linked"). */
+export class StorageAccountsFetchError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message?: string) {
+    super(message ?? `Storage accounts request failed (${status})`);
+    this.name = 'StorageAccountsFetchError';
+    this.status = status;
+  }
+}
+
 const storageAccountsInflight = new Map<string, Promise<StorageAccountsResult>>();
 
 /** Clear cached storage accounts (call on lock or after account mutations). */
@@ -458,7 +472,7 @@ export async function fetchStorageAccounts(
       pnIdentifier: resolvedPnId
     });
     if (!res.ok) {
-      return { connected: false, accounts: [], socialCloudProvider: null };
+      throw new StorageAccountsFetchError(res.status);
     }
     const data = await res.json();
     const accounts = Array.isArray(data.accounts) ? data.accounts : [];
@@ -478,4 +492,13 @@ export async function fetchStorageAccounts(
 
   storageAccountsInflight.set(resolvedPnId, work);
   return work;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT, (ev) => {
+    const detail = (ev as CustomEvent<{ pnIdentifier?: string }>).detail;
+    if (detail?.pnIdentifier) {
+      invalidateStorageAccountsCache(detail.pnIdentifier);
+    }
+  });
 }

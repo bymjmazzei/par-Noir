@@ -5,7 +5,9 @@ import {
   publishCloudCredentialsVault
 } from '@par-noir/oauth-ui';
 import {
+  accountAccessToken,
   clearCloudCredentialsOnLock,
+  ensureServerCloudRegistration,
   loadLocalCloudCredentials,
   persistCloudCredentials,
   resolveCloudPersistMode,
@@ -266,6 +268,21 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
             credentials: envelope
           }).catch(() => ({ ok: false }));
         }
+      }
+      if (authToken && pnIdentifier) {
+        const googleTok = accountAccessToken(
+          (envelope.googleDriveAccounts?.[0] ?? {}) as Record<string, unknown>
+        );
+        if (!googleTok?.trim()) {
+          throw new Error('Google access token missing — reconnect Google Drive.');
+        }
+        await ensureServerCloudRegistration({
+          apiEndpoint: API_ENDPOINT,
+          authToken,
+          pnIdentifier,
+          envelope,
+          googleAccessToken: googleTok.trim(),
+        });
       }
       setVaultHydrated(true);
     },
