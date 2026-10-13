@@ -9,7 +9,74 @@ export type ControllerReadyStateCheck = {
   consumerKeys: string[];
   orphanReturnKeys: string[];
   missingConsumerKeys: string[];
+  unboundShellRefs: string[];
 };
+
+const KEYWORDS = new Set([
+  'as',
+  'async',
+  'await',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'debugger',
+  'default',
+  'delete',
+  'do',
+  'else',
+  'export',
+  'extends',
+  'false',
+  'finally',
+  'for',
+  'function',
+  'if',
+  'import',
+  'in',
+  'instanceof',
+  'let',
+  'new',
+  'null',
+  'return',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'typeof',
+  'undefined',
+  'var',
+  'void',
+  'while',
+  'with',
+  'yield'
+]);
+
+const GLOBALS = new Set([
+  'Array',
+  'Boolean',
+  'CSS',
+  'Date',
+  'Error',
+  'JSON',
+  'Math',
+  'Number',
+  'Object',
+  'Promise',
+  'String',
+  'clearTimeout',
+  'console',
+  'document',
+  'flushSync',
+  'navigator',
+  'requestAnimationFrame',
+  'setTimeout',
+  'window'
+]);
 
 /** Extract property names from the ready-phase `return { ... }` object. */
 export function extractReadyReturnKeys(controllerSource: string): string[] {
@@ -155,6 +222,85 @@ export function extractConsumerDestructuringKeys(shellSource: string, shellExpor
   return keys;
 }
 
+function extractImportBindings(source: string): Set<string> {
+  const names = new Set<string>();
+  const importFrom = /^import\s+(?:type\s+)?\{([^}]+)\}\s+from/gm;
+  let m: RegExpExecArray | null;
+  while ((m = importFrom.exec(source))) {
+    for (const part of m[1].split(',')) {
+      const chunk = part.trim();
+      if (!chunk || chunk.startsWith('type ')) continue;
+      const alias = chunk.split(/\s+as\s+/);
+      const name = (alias[1] || alias[0]).trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
+    }
+  }
+  const defaultImport = /^import\s+(\w+)\s+from/gm;
+  while ((m = defaultImport.exec(source))) names.add(m[1]);
+  return names;
+}
+
+function extractShellLocalBindings(shellBody: string): Set<string> {
+  const names = new Set<string>();
+  const fnDecl = /^\s+(?:async )?function (\w+)\s*\(/gm;
+  let m: RegExpExecArray | null;
+  while ((m = fnDecl.exec(shellBody))) names.add(m[1]);
+  const constAssign = /^\s+const (\w+)\s*[=:]/gm;
+  while ((m = constAssign.exec(shellBody))) names.add(m[1]);
+  const useStatePair = /^\s+const \[([^,\]]*),\s*(\w+)\]\s*=\s*useState/gm;
+  while ((m = useStatePair.exec(shellBody))) {
+    const a = m[1].trim();
+    if (a) names.add(a);
+    names.add(m[2]);
+  }
+  const arrowParam = /\(([^)]*)\)\s*=>/g;
+  while ((m = arrowParam.exec(shellBody))) {
+    for (const part of m[1].split(',')) {
+      const name = part.trim().split(':')[0]?.trim();
+      if (name && /^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
+    }
+  }
+  return names;
+}
+
+function shellBodyAfterState(shellSource: string, shellExportName: string): string {
+  const fnNeedle = `export function ${shellExportName}`;
+  const fnStart = shellSource.indexOf(fnNeedle);
+  if (fnStart < 0) return '';
+  const slice = shellSource.slice(fnStart, fnStart + 200_000);
+  const stateEnd = slice.indexOf('} = state;');
+  if (stateEnd < 0) return '';
+  return slice.slice(stateEnd + '} = state;'.length);
+}
+
+/** Identifiers used bare in the shell (not `obj.prop`) that must be in scope. */
+export function extractUnboundShellIdentifiers(
+  shellSource: string,
+  shellExportName: string
+): string[] {
+  const body = shellBodyAfterState(shellSource, shellExportName);
+  if (!body) return [];
+
+  const allowed = new Set<string>([...KEYWORDS, ...GLOBALS]);
+  extractImportBindings(shellSource).forEach((n) => allowed.add(n));
+  extractConsumerDestructuringKeys(shellSource, shellExportName).forEach((n) => allowed.add(n));
+  extractShellLocalBindings(body).forEach((n) => allowed.add(n));
+
+  const used = new Set<string>();
+  const propValue = /=\{([A-Za-z_$][\w$]*)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = propValue.exec(body))) used.add(m[1]);
+
+  const lineCompare = /^\s+([A-Za-z_$][\w$]*)\s*===/gm;
+  while ((m = lineCompare.exec(body))) {
+    const line = body.slice(Math.max(0, m.index - 80), m.index + m[0].length);
+    if (/^\s*(?:const|let|var)\s/.test(line.split('\n').pop() || '')) continue;
+    used.add(m[1]);
+  }
+
+  return [...used].filter((n) => !allowed.has(n)).sort();
+}
+
 export function checkControllerReadyState(args: {
   controllerSource: string;
   hookName: string;
@@ -176,11 +322,20 @@ export function checkControllerReadyState(args: {
   );
   const missingConsumerKeys = [...new Set(consumerKeys)].filter((k) => !returnSet.has(k));
 
+  const unboundShellRefs = [
+    ...new Set(
+      args.shellSources.flatMap((s) =>
+        extractUnboundShellIdentifiers(s.source, s.exportName)
+      )
+    )
+  ].sort();
+
   return {
     readyReturnKeys,
     hookBindings,
     consumerKeys,
     orphanReturnKeys,
-    missingConsumerKeys
+    missingConsumerKeys,
+    unboundShellRefs
   };
 }

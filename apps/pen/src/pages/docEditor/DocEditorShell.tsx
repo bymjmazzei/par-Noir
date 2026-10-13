@@ -293,6 +293,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     onStageAction,
     onStoryBlockHeights,
     pageExportRoot,
+    pageLayout,
     persist,
     persistSection,
     persistWritingDoc,

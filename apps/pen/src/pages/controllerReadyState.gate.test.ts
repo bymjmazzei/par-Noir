@@ -30,6 +30,10 @@ describe('controller ready-state wiring', () => {
       result.missingConsumerKeys,
       `missing exports for consumers: ${result.missingConsumerKeys.join(', ')}`
     ).toEqual([]);
+    expect(
+      result.unboundShellRefs,
+      `unbound shell identifiers: ${result.unboundShellRefs.join(', ')}`
+    ).toEqual([]);
   });
 
   it('doc list return keys are hook bindings; shell only uses exported keys', () => {
@@ -46,6 +50,10 @@ describe('controller ready-state wiring', () => {
     expect(
       result.missingConsumerKeys,
       `missing exports for consumers: ${result.missingConsumerKeys.join(', ')}`
+    ).toEqual([]);
+    expect(
+      result.unboundShellRefs,
+      `unbound shell identifiers: ${result.unboundShellRefs.join(', ')}`
     ).toEqual([]);
   });
 });

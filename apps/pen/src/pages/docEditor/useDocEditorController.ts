@@ -2212,6 +2212,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     onStageAction,
     onStoryBlockHeights,
     pageExportRoot,
+    pageLayout,
     persist,
     persistSection,
     persistWritingDoc,
