@@ -149,6 +149,7 @@ import {
   IconHistory,
   IconPreview,
   IconRedo,
+  IconSocial,
   IconUndo
 } from '../../components/icons/PenIcons';
 import { useVerifiedAuthor } from '../../hooks/useVerifiedAuthor';
@@ -229,7 +230,6 @@ import { loadDocKey } from '../../services/penDocCrypto';
 
 import { Link } from 'react-router-dom';
 import type { DocEditorReadyState } from './useDocEditorController';
-import { DocEditorSocialPreview } from './DocEditorSocialPreview';
 
 export function DocEditorShell(state: DocEditorReadyState) {
   const {
@@ -281,7 +281,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     inviteRole,
     inviteSelectedConnections,
     isSocialActive,
-    isSocialDoc,
     isStickerDoc,
     isWidgetDoc,
     joinLink,
@@ -878,25 +877,19 @@ export function DocEditorShell(state: DocEditorReadyState) {
         />
         <button
           type="button"
-          className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-            isSocialActive
-              ? 'bg-neutral-900 text-white hover:bg-neutral-800'
-              : 'text-neutral-500 hover:bg-neutral-100 hover:text-black'
+          className={`inline-flex items-center px-2 py-0.5 ${
+            isSocialActive ? 'text-black' : 'text-neutral-600 hover:text-black'
           }`}
           title={
             isSocialActive
               ? 'Social post enabled (click to disable)'
               : 'Social post disabled (click to enable)'
           }
+          aria-label="Social post"
           aria-pressed={isSocialActive}
           onClick={() => toggleSocial()}
         >
-          <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${
-              isSocialActive ? 'bg-emerald-400' : 'bg-neutral-400'
-            }`}
-          />
-          Social
+          <IconSocial />
         </button>
         <PublishMenu
           projectEnabled={projectEnabled}
@@ -1330,9 +1323,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
 
         {showPreview && !showHistory && !sidePanel && (
           <div className="hidden min-h-0 min-w-0 flex-1 flex-col sm:flex">
-            {isSocialDoc ? (
-            <DocEditorSocialPreview {...state} />
-            ) : section ? (
+            {section ? (
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <div
                   ref={setPreviewToolbarHost}

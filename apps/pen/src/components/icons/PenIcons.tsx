@@ -12,6 +12,7 @@ import {
   Eraser,
   Eye,
   EyeOff,
+  Globe,
   Indent,
   Link2,
   List,
@@ -53,6 +54,9 @@ export function IconSave(p: SVGProps<SVGSVGElement>) {
 }
 export function IconPublish(p: SVGProps<SVGSVGElement>) {
   return <Upload {...sz} {...p} />;
+}
+export function IconSocial(p: SVGProps<SVGSVGElement>) {
+  return <Globe {...sz} {...p} />;
 }
 export function IconChevron(p: SVGProps<SVGSVGElement>) {
   return <ChevronDown width={12} height={12} strokeWidth={2} {...p} />;
