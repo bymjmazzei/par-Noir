@@ -87,7 +87,12 @@ describe('Pen owner-cloud publish', () => {
     }
     expect(editor).toContain('publishPostToOwnerCloud');
     expect(editor).toContain('publishTemplateToOwnerCloud');
+    expect(editor).toContain('toggleSocial');
     expect(menu).toContain('Make public');
+    expect(menu).toContain('Social post');
+    expect(menu).not.toContain('Send preview to a pN');
+    expect(menu).not.toContain('previewPn');
+    expect(menu).not.toContain('onSendPreview');
   });
 
   it('a reusable template is a second index row after the post', async () => {

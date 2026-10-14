@@ -24,10 +24,9 @@ export function PublishMenu({
   pnIdentifier,
   onPublishLive,
   onShareToAggregators,
-  feedEnabled = true,
-  previewPn,
-  onPreviewPnChange,
-  onSendPreview,
+  isSocial = false,
+  onToggleSocial,
+  feedEnabled,
   onPublishTemplate,
   onSendCorrespondence,
   onTemplatePrivate,
@@ -52,11 +51,11 @@ export function PublishMenu({
   pnIdentifier?: string;
   onPublishLive: () => void;
   onShareToAggregators: (feedIds: string[]) => void;
-  /** Social docs only. Non-social docs use Send preview. */
+  /** Whether this doc is formatted as a social post. */
+  isSocial?: boolean;
+  onToggleSocial?: () => void;
+  /** @deprecated Use isSocial */
   feedEnabled?: boolean;
-  previewPn?: string;
-  onPreviewPnChange?: (value: string) => void;
-  onSendPreview?: () => void;
   onPublishTemplate?: (licensing: PenLicensingRoot) => void;
   onSendCorrespondence?: () => void;
   onTemplatePrivate: () => void;
@@ -84,6 +83,7 @@ export function PublishMenu({
     canPublishPublicTemplate === true &&
     (hasPublishedPost === true || widgetTemplatesOnly === true);
   const showLicensing = membership === true;
+  const socialActive = isSocial || feedEnabled === true;
 
   useEffect(() => {
     if (!open) return;
@@ -163,6 +163,27 @@ export function PublishMenu({
       </button>
       {open && (
         <div className="absolute right-0 top-full z-40 mt-1 min-w-[15rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
+          {onToggleSocial && (
+            <div className="flex items-center justify-between border-b border-stone-100 px-3 py-1.5 text-[12px] text-stone-800">
+              <span>Social post</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={socialActive}
+                className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  socialActive ? 'bg-black' : 'bg-stone-300'
+                }`}
+                onClick={onToggleSocial}
+                title={socialActive ? 'Turn off social post' : 'Make social post'}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    socialActive ? 'translate-x-3' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          )}
           <button
             type="button"
             title="Update the live current/ version for collaborators"
@@ -174,43 +195,21 @@ export function PublishMenu({
           >
             Publish live
           </button>
-          {feedEnabled ? (
           <button
             type="button"
             title="Publish this post to your cloud and choose which feeds aggregate it"
             className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
             onClick={() => {
+              if (!socialActive && onToggleSocial) {
+                onToggleSocial();
+              }
               setShareOpen((v) => !v);
               setTemplateOpen(false);
             }}
           >
             Connect to feed…
           </button>
-          ) : (
-          <div className="border-t border-stone-100 px-3 py-2">
-            <label className="block text-[11px] text-stone-600">Send preview to a pN</label>
-            <input
-              className="mt-1 w-full rounded border border-stone-300 px-2 py-1 text-[12px]"
-              placeholder="pN"
-              value={previewPn || ''}
-              onChange={(e) => onPreviewPnChange?.(e.target.value)}
-            />
-            <button
-              type="button"
-              className="mt-2 text-[11px] font-bold text-black hover:opacity-60"
-              onClick={() => {
-                onSendPreview?.();
-                setOpen(false);
-              }}
-            >
-              Send preview
-            </button>
-            <p className="mt-1 text-[10px] text-stone-500">
-              Seals this doc to that pN. It is not added to a feed.
-            </p>
-          </div>
-          )}
-          {feedEnabled && shareOpen && (
+          {shareOpen && (
             <div className="border-t border-stone-100 bg-stone-50 px-3 py-2">
               {showLicensing && licensing && onLicensingChange && (
                 <div className="mb-2 border-b border-stone-200 pb-2">

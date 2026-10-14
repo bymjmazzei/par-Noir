@@ -367,6 +367,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     template,
     timelineGroupId,
     timelinePlaying,
+    toggleSocial,
     toggledKeys,
     undoEdit,
     verifiedAuthor,
@@ -874,6 +875,28 @@ export function DocEditorShell(state: DocEditorReadyState) {
           onCommit={() => void promote()}
           onSuggest={() => void proposeSuggestion()}
         />
+        <button
+          type="button"
+          className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
+            isSocialDoc
+              ? 'bg-neutral-900 text-white hover:bg-neutral-800'
+              : 'text-neutral-500 hover:bg-neutral-100 hover:text-black'
+          }`}
+          title={
+            isSocialDoc
+              ? 'Social post enabled (click to switch to private document)'
+              : 'Private document (click to switch to social post)'
+          }
+          aria-pressed={isSocialDoc}
+          onClick={() => toggleSocial()}
+        >
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${
+              isSocialDoc ? 'bg-emerald-400' : 'bg-neutral-400'
+            }`}
+          />
+          Social
+        </button>
         <PublishMenu
           projectEnabled={projectEnabled}
           correspondenceEnabled={correspondenceEnabled}
@@ -883,12 +906,8 @@ export function DocEditorShell(state: DocEditorReadyState) {
           pnIdentifier={session.pnIdentifier}
           onPublishLive={() => void publishLive()}
           onShareToAggregators={(feedIds) => publishSocial(feedIds)}
-          feedEnabled={isSocialDoc}
-          previewPn={invitePn}
-          onPreviewPnChange={setInvitePn}
-          onSendPreview={() => {
-            void inviteCollaborator('viewer');
-          }}
+          isSocial={isSocialDoc}
+          onToggleSocial={toggleSocial}
           onPublishTemplate={(licensing) => publishTemplate(licensing)}
           onSendCorrespondence={sendCorrespondence}
           onTemplatePrivate={publishAsTemplate}

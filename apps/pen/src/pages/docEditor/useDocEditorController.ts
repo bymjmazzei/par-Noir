@@ -435,6 +435,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   }, [bundle, template]);
 
   const isSocialDoc = useMemo(() => {
+    if (bundle?.manifest.isSocial !== undefined) {
+      return Boolean(bundle.manifest.isSocial);
+    }
     const classId = bundle?.manifest.classId || template?.classId;
     if (!classId) return false;
     const form = getClass(classId);
@@ -1813,8 +1816,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   }
 
   function publishSocial(feedIds: string[]) {
-    const classId = bundleRef.current?.manifest.classId || bundle?.manifest.classId || '';
-    if (!socialFeedPublishAllowed(classId)) {
+    const m = bundleRef.current?.manifest || bundle?.manifest;
+    const classId = m?.classId || '';
+    if (!socialFeedPublishAllowed(classId) && !m?.isSocial) {
       setError('social_feed_only');
       return;
     }
@@ -1962,6 +1966,45 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       window.setTimeout(() => setStatus(null), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'send_failed');
+    }
+  }
+
+  function toggleSocial() {
+    const b = bundleRef.current || bundle;
+    if (!b) return;
+    const currentIsSocial =
+      b.manifest.isSocial !== undefined
+        ? Boolean(b.manifest.isSocial)
+        : getClass(b.manifest.classId)?.parentId === 'social';
+
+    if (currentIsSocial) {
+      const restoredClass = b.manifest.nonSocialClassId || 'custom.doc';
+      const leaf = restoredClass.includes('.')
+        ? restoredClass.slice(restoredClass.lastIndexOf('.') + 1)
+        : restoredClass;
+      const nextManifest: PenDocManifest = {
+        ...b.manifest,
+        classId: restoredClass,
+        docType: leaf,
+        isSocial: false,
+        updatedAt: new Date().toISOString()
+      };
+      persist({ ...b, manifest: nextManifest });
+      setStatus('Switched to private document');
+      window.setTimeout(() => setStatus(null), 2500);
+    } else {
+      const nextManifest: PenDocManifest = {
+        ...b.manifest,
+        nonSocialClassId: b.manifest.classId || 'custom.doc',
+        classId: 'social.note',
+        docType: 'note',
+        isSocial: true,
+        pageLayout: 'flow',
+        updatedAt: new Date().toISOString()
+      };
+      persist({ ...b, manifest: nextManifest });
+      setStatus('Switched to social post');
+      window.setTimeout(() => setStatus(null), 2500);
     }
   }
 
@@ -2287,6 +2330,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     template,
     timelineGroupId,
     timelinePlaying,
+    toggleSocial,
     toggledKeys,
     undoEdit,
     verifiedAuthor,

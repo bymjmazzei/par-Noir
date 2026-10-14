@@ -531,6 +531,10 @@ export interface PenDocManifest {
   basedOnFileId?: string;
   /** Work license + open creator contracts (normalized on create/load). */
   licensing?: PenLicensingRoot;
+  /** Author explicit social post toggle (true = social note/post, false = private/non-social). */
+  isSocial?: boolean;
+  /** Restored classId when toggling isSocial from true back to false. */
+  nonSocialClassId?: string;
   /**
    * Custom fonts actively used in this doc.
    * Bytes live under par-noir-pen/{docId}/fonts/{fontId}.penfont (docKey envelopes).
