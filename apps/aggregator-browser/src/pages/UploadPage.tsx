@@ -7,7 +7,7 @@ import { Feed } from '../types/aggregator';
 
 export interface UploadPageProps {
   feeds: Feed[];
-  onClose: () => void;
+  onClose?: () => void;
   onUploadComplete: (contentClass?: 'media' | 'note' | 'collection') => void;
 }
 

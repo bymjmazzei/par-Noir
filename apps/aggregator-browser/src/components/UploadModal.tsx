@@ -10,17 +10,17 @@ import { ContentPreferencesPanel } from './ContentPreferencesPanel';
 import { useUserState } from '../contexts/UserStateContext';
 import { TextPostData, Feed } from '../types/aggregator';
 import { FeedService } from '../services/feedService';
-import { Settings, X } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { uploadQueueService } from '../services/uploadQueueService';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 
 interface UploadModalProps {
   feeds?: Feed[];
-  onClose: () => void;
+  onClose?: () => void;
   onUploadComplete?: (contentClass?: 'media' | 'note' | 'collection') => void;
 }
 
-export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: UploadModalProps) {
+export function UploadModal({ feeds: propsFeeds, onUploadComplete }: UploadModalProps) {
   const { userState } = useUserState();
   const [showTextEditor, setShowTextEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -229,14 +229,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           Upload from Secure Cloud
         </h2>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-2 text-text-secondary hover:text-white transition-colors"
-          title="Close upload"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="w-9" aria-hidden="true" />
       </div>
 
       <div
