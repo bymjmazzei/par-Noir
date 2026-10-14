@@ -1,50 +1,31 @@
 ---
-description: Co-dev process — root cause before edits, chat wins, workflow tests, onboarding done-criteria
+description: Co-dev process — root cause before edits, chat precedence, test before ship, fixture boundaries
 alwaysApply: true
 ---
 
 # How we work
 
-You prompt and decide product behavior. The agent writes code. Each of you QAs on your own identity.
+You prompt and decide product behavior. The agent writes code. Precedence: chat instructions win over rules and docs.
 
-| Fixture | Who |
-|---|---|
-| `.local/test-pn/` | You, on your machine |
+## 1. Boundaries & Fixtures
+- **Test pN:** Agent **never** opens, unlocks, or uploads `.local/test-pn/`. Never commit `.local/`, log passcodes/pn names, or paste secrets. No third fixture.
+- **Tools off by default:** No browser MCP (`cursor-ide-browser`), Playwright, `ux-*.mjs`, `test:e2e*`, WebSearch, Task, or subagents unless explicitly requested in this chat.
+- **Search scope:** Start from named path + direct imports (`packages/*`, `api/`). Repo-wide grep only when stuck or tracing auth/Drive/OAuth. No stale-doc reads (`docs/archive/**`, plans, logs).
 
-The agent never opens, unlocks, or uploads `.local/test-pn/`. Boundaries and bans: `local-test-pn.mdc`, `agent-scope.mdc`, `auth-trust-boundary.mdc`, `cost-discipline.mdc`.
+## 2. Root Cause Before Edits
+- Name the user-visible symptom, trace to the external system (Drive, API, Redis, Postgres, device), and find the exact failing function.
+- Fix on the path in `packages/` (apps stay thin). Delete the broken dual/shim; do not patch symptoms or leave dead paths.
 
-## Precedence
+## 3. Targeted Hermetic Tests
+- Run **only** the test script for the touched area before ship (never full suite / deploy preflights):
+  - `apps/aggregator-browser/`: `npm run test:browser:unit`
+  - `apps/id-dashboard/`: `npm run test:dashboard:unit`
+  - `apps/pen/`: `npm run test:pen`
+  - `apps/prism/`: `npm run test:prism`
+  - `api/`: `npm run test:api`
+  - `packages/<name>/`: `cd packages/<name> && npm test`
+- Workflow tests land next to new workflows. User confirms visible UI on their own pN.
 
-When this chat and a rule or doc disagree, follow the chat. Do not implement a path the chat just rejected. Do not mark the requested behavior as follow-on or out of scope because a spec says so.
-
-## Root cause before the first edit
-
-Name the user-visible symptom, the path from that action to the external system (Drive, API, Redis, Postgres, or the device), and the function on that path that returns early, returns null, or swallows the error. The edit goes on that path. A UI change that hides the symptom while that boundary still fails is not the fix. If that path cannot be read, stop and say so. Do not guess a patch.
-
-## Architecture
-
-Once that path is identified: one implementation in `packages/` (apps stay thin). Delete the wrong dual, shim, or second resolver. Leave a path that is already correct alone. Do not rebuild a subsystem as a substitute for the trace. Do not leave the broken path beside the fix.
-
-## Workflow tests in the same change
-
-A new user-facing workflow in any app or package lands with a test file next to the code. The test calls the workflow and asserts the outcome. It uses that package's existing runner (Vitest or Jest) and that package's existing test script. If that package is missing from root `package.json` `"test"`, add one `test:<app>` entry to that root script in the same change. Dashboard and browse are already on it. Pen and Prism have test scripts and are not.
-
-## Done
-
-Run the targeted hermetic test in `cost-discipline.mdc` (crypto and auth stay on package tests). Report what was run and what was not verified (e.g. live API, UI). Your confirmation on your own pN is what makes visible flows onboarding-ready.
-
-## Ship when the edit is done
-
-After that test pass, commit and push in the same turn. Do not stop at a proposal.
-
-1. `git add` the edit (no `.env`, secrets, `.local/`, or `.firebase` cache).
-2. `git commit` with a message that says why.
-3. `git push` to the current branch.
-
-Do **not** run `./deploy.sh`, `firebase deploy`, or any API-host deploy unless this chat explicitly asks (e.g. “deploy now”). The user deploys hosting locally when they want live sites updated.
-
-Skip commit/push only when this chat said not to commit or push. Do not amend a pushed commit.
-
-## Hard-ban ratchets
-
-`scripts/check-*.sh` is only for a new hard ban. Do not weaken, skip, or grow allowlists. A workflow test is a package test file, not a new check script.
+## 4. Ship
+- After targeted test passes: `git add` (no `.env`, secrets, `.local/`, `.firebase` cache) → `git commit` with why → `git push`.
+- Do **not** run `./deploy.sh`, `firebase deploy`, or API deploy unless explicitly asked. Remind user once: live hosting updates when they run `./deploy.sh` from repo root.

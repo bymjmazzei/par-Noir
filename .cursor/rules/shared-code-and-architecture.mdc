@@ -1,45 +1,27 @@
 ---
-description: Monorepo shared-code and architecture rules. Enforces one source of truth, packages for cross-app code, and app boundaries. Full details in SHARED_CODE_RULES.md.
-globs: packages/**,core/**,sdk/**,scripts/check-app-import-boundary.sh
+description: Monorepo architecture — packages for cross-app code, thin apps, rebuild over patch, machine enforcement
+globs: packages/**,core/**,sdk/**,apps/**/services/**,scripts/check-*.sh
 alwaysApply: false
 ---
 
-# par Noir — Shared Code and Architecture Rules
+# Architecture & Shared Code
 
-Apply these on every edit. Product north star: `guiding-principles.mdc`. Full doc: SHARED_CODE_RULES.md.
+One source of truth. Apps stay thin and consume packages; packages do not import from apps.
 
-## 1. One source of truth — no duplication across apps
+## Monorepo Boundaries
 
-- Types, API clients, encryption, and business logic used by more than one of: id-dashboard, aggregator-browser, api → MUST live in **`core/`**, **`sdk/`**, or `packages/` (when used), not in an app.
-- Before adding a type, util, or service in an app: check `core/`, `sdk/`, and `packages/`. If it exists in the other app, move it to shared code and have both apps import it.
-- Never create two separate implementations of the same thing in two apps. One implementation in core/, sdk/, or packages/; apps import.
+- **One canonical source:** Shared logic, models, schemas, and crypto live in `packages/` (or `sdk/`/`core/`).
+- **No cross-app imports:** Apps (`apps/*`) must never import directly from sibling apps. Common behavior belongs in a shared package.
+- **Thin app rule:** App services handle orchestration and presentation only. Business logic, cryptographic signing, and storage resolvers reside in packages.
+- **No plain-text secrets:** Keys, passcodes, and tokens never live in code or committed config.
 
-## 2. Where shared code lives
+## Rebuild Over Patch
 
-- **Identity / crypto:** `packages/identity-crypto`, `packages/pqc-crypto` (canonical). Prefer these over app-local crypto. Apps must **not** import `@identity-protocol/identity-core` — enforced by `scripts/check-no-identity-core-in-apps.sh`.
-- **SDK / client helpers:** `sdk/` (e.g. identity-sdk).
-- **Types, API clients, central metadata:** When shared by multiple apps, use `core/`, `sdk/`, or `packages/`. Browser: fetch only. Dashboard: fetch + submit.
-- **Pure logic:** `packages/` or `services/` in one app; if both need it → `core/`, `sdk/`, or `packages/`.
-- **Apps**: UI, app-specific flows, wiring only. No duplicated types, API logic, or encryption.
+- When an architecture path, shim, or abstraction is structurally broken or redundant, **delete the dead path** rather than layering shims, adapters, or fallback branches over it.
+- Implement the canonical solution once in the responsible package under `packages/`.
+- Trace imports and remove orphaned files, exports, and dead toggles in the same commit.
 
-## 3. Hard rules
+## Machine Enforcement & Ratchets
 
-1. **Apps do not import from each other.** Shared code is in `core/`, `sdk/`, or `packages/`. Enforced by `scripts/check-app-import-boundary.sh`.
-2. **Services do NOT import from UI components** to get a function. Put the function in `packages/` or `services/`; the component imports it.
-3. **Aggregator-browser: storage is API-only.** No direct `googleapis.com` or `oauth2.googleapis.com`. Storage = par Noir API.
-4. **When adding shared code:** Prefer `core/` or `sdk/`. If using `packages/`: create `packages/<name>/` with `package.json` and `src/index.ts`; add `packages/*` to root `workspaces`; apps use `"@par-noir/<name>": "workspace:*"`.
-5. **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior. See `rebuild-not-patch.mdc`.
-6. **Do not patch symptoms.** Find the root cause and fix it. Avoid workarounds, compatibility shims, or "quick fixes" that hide the real bug.
-7. **Do not commit .env, API keys, secrets, or other sensitive config to git.** Pre-commit runs `scripts/check-secrets.sh`; do not bypass or remove it.
-8. **Do not add hardcoded API keys, client IDs, or secrets as fallbacks** when env is unset. Use `VITE_*` only; fail when required and unset.
-9. **When the API provides an endpoint** (e.g. token refresh, drive), use it. Do not add a direct-Google fallback.
-10. **No sensitive data in plain text.** pn name, passcode, Google Drive account, age, email, and everything the identity protocol and ZKPs protect — encrypt or ZKP; never raw.
-11. **Feature hierarchy.** Identity-direct behavior → dashboard + APIs for third parties. Browser-only → browser only.
-
-## 4. Before you write
-
-- Could the other app need this? → put it in `core/`, `sdk/`, or `packages/` first.
-- Am I copying something from the other app? → stop; move to shared and import.
-- Am I importing a React component from a service? → stop; move pure logic out.
-- Am I logging pn name, passcode, email, age, Google Drive account, or identity/ZKP-protected data in plain text? → stop.
-- Is this identity-direct? → dashboard + APIs. Browser-only? → browser only.
+- Hard bans and architectural boundaries require automated CI/test ratchets (e.g. `scripts/check-*.sh`), not passive prose.
+- Do not weaken, bypass, or expand allowlists in check scripts to make a change pass. Fix the violating import or abstraction at the root.

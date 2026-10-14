@@ -22,7 +22,7 @@ Commit `e4306317` ("Align dashboard Drive calls with custody owner routes") norm
 
 - Acceptance is written in terms of **what the user sees**, before any code is written.
 - Not "endpoint returns 200". Not "tests pass". Not "all touch points updated". Those are structural; they can all pass while the bug is untouched.
-- Agent verification is hermetic tests plus an honest report; user-visible acceptance is **user-verified** on their pN unless they explicitly requested browser MCP in that chat (`agent-scope.mdc`).
+- Agent verification is hermetic tests plus an honest report; user-visible acceptance is **user-verified** on their pN unless they explicitly requested browser MCP in that chat (`how-we-work.mdc`).
 - If the symptom cannot be demonstrated gone, say so plainly. Do not declare completion.
 - "All touch points corrected" only covers the touch points already assumed to be involved. It is circular and is not verification.
 
