@@ -1,5 +1,6 @@
 ---
 description: Monorepo shared-code and architecture rules. Enforces one source of truth, packages for cross-app code, and app boundaries. Full details in SHARED_CODE_RULES.md.
+globs: packages/**,core/**,sdk/**,scripts/check-app-import-boundary.sh
 alwaysApply: false
 ---
 

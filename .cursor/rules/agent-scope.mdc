@@ -1,6 +1,7 @@
 ---
 description: Agent scope — no browser MCP by default, scoped search, hermetic tests for done
-alwaysApply: true
+globs: scripts/**,tests/**,**/*.test.*,**/*.spec.*
+alwaysApply: false
 ---
 
 # Agent scope (token + verification)

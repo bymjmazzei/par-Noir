@@ -1,5 +1,6 @@
 ---
 description: Drive tokens, ownerFetch, OAuth grants, and silent nulls. One resolver — resolveOwnerDriveToken.
+globs: api/src/**/owner*,api/src/**/drive*,api/src/**/oauthDrive*,packages/device-cloud-credentials/**,scripts/*token-resolver*,scripts/*owner-fetch*
 alwaysApply: false
 ---
 

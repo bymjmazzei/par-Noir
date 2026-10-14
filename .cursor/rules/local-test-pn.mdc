@@ -1,6 +1,7 @@
 ---
 description: Local pN fixture boundary — never touch the user's test-pn; no secrets in git
-alwaysApply: true
+globs: .local/**,scripts/*test-pn*
+alwaysApply: false
 ---
 
 # Local pN fixtures (boundary)

@@ -1,6 +1,7 @@
 ---
 description: Machine-enforced auth trust boundary — do not weaken scripts or grow allowlists
-alwaysApply: true
+globs: scripts/check-*.sh,scripts/*allowlist*.txt,packages/*crypto*/**,packages/oauth-ui/**,api/src/**/*auth*,api/src/**/*oauth*
+alwaysApply: false
 ---
 
 # Auth trust boundary (harness)

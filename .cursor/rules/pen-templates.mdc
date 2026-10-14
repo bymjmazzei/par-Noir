@@ -1,6 +1,6 @@
 ---
 description: Pen vocabulary and package location. The current chat defines behavior.
-globs: apps/pen/**,packages/pen-protocol/**,packages/pen-curriculum/**,packages/feed-tile/**,apps/aggregator-browser/**/*[Pp]en*
+globs: apps/pen/**,packages/pen-protocol/**,packages/pen-curriculum/**,packages/feed-tile/**,apps/aggregator-browser/src/**/*[Pp]en*
 alwaysApply: false
 ---
 

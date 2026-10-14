@@ -1,6 +1,7 @@
 ---
 description: Token cost — targeted tests, commit/push ship (user deploys), no stale-doc reads
-alwaysApply: true
+globs: package.json,**/package.json,deploy.sh,scripts/test*.sh,**/*.test.*,**/*.spec.*
+alwaysApply: false
 ---
 
 # Cost discipline
