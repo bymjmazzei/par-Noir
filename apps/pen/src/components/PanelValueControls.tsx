@@ -135,7 +135,7 @@ export function ColorSliders({
   );
 }
 
-function colorToHex(value: string): string {
+export function colorToHex(value: string): string {
   const parsed = parseCssColor(value);
   const channel = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
   return `#${channel(parsed.r)}${channel(parsed.g)}${channel(parsed.b)}`;

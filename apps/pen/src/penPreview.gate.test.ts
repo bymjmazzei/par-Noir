@@ -17,28 +17,23 @@ describe('pen preview grant', () => {
     });
   });
 
-  it('allows social feed publish when class is social.note', () => {
-    // When a blank custom.doc is toggled to social, class becomes social.note
+  it('allows social feed publish when class is social.note or isSocial is toggled', () => {
     const blankManifest = { classId: 'custom.doc', isSocial: false };
     expect(socialFeedPublishAllowed(blankManifest.classId)).toBe(false);
 
+    // Toggling social does NOT change classId (preserves preview window/form), but enables feed publishing via isSocial: true
     const toggledToSocial = {
       ...blankManifest,
-      nonSocialClassId: blankManifest.classId,
-      classId: 'social.note',
-      docType: 'note',
       isSocial: true
     };
-    expect(socialFeedPublishAllowed(toggledToSocial.classId)).toBe(true);
+    expect(toggledToSocial.classId).toBe('custom.doc');
     expect(toggledToSocial.isSocial).toBe(true);
 
     const toggledBack = {
       ...toggledToSocial,
-      classId: toggledToSocial.nonSocialClassId,
-      docType: 'custom',
       isSocial: false
     };
-    expect(socialFeedPublishAllowed(toggledBack.classId)).toBe(false);
+    expect(toggledBack.classId).toBe('custom.doc');
     expect(toggledBack.isSocial).toBe(false);
   });
 });

@@ -435,14 +435,18 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   }, [bundle, template]);
 
   const isSocialDoc = useMemo(() => {
-    if (bundle?.manifest.isSocial !== undefined) {
-      return Boolean(bundle.manifest.isSocial);
-    }
     const classId = bundle?.manifest.classId || template?.classId;
     if (!classId) return false;
     const form = getClass(classId);
     return form?.parentId === 'social';
   }, [bundle, template]);
+
+  const isSocialActive = useMemo(() => {
+    if (bundle?.manifest.isSocial !== undefined) {
+      return Boolean(bundle.manifest.isSocial);
+    }
+    return isSocialDoc;
+  }, [bundle?.manifest.isSocial, isSocialDoc]);
 
   const isWidgetDoc = useMemo(() => {
     const classId = bundle?.manifest.classId || template?.classId;
@@ -1975,37 +1979,16 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     const currentIsSocial =
       b.manifest.isSocial !== undefined
         ? Boolean(b.manifest.isSocial)
-        : getClass(b.manifest.classId)?.parentId === 'social';
-
-    if (currentIsSocial) {
-      const restoredClass = b.manifest.nonSocialClassId || 'custom.doc';
-      const leaf = restoredClass.includes('.')
-        ? restoredClass.slice(restoredClass.lastIndexOf('.') + 1)
-        : restoredClass;
-      const nextManifest: PenDocManifest = {
-        ...b.manifest,
-        classId: restoredClass,
-        docType: leaf,
-        isSocial: false,
-        updatedAt: new Date().toISOString()
-      };
-      persist({ ...b, manifest: nextManifest });
-      setStatus('Switched to private document');
-      window.setTimeout(() => setStatus(null), 2500);
-    } else {
-      const nextManifest: PenDocManifest = {
-        ...b.manifest,
-        nonSocialClassId: b.manifest.classId || 'custom.doc',
-        classId: 'social.note',
-        docType: 'note',
-        isSocial: true,
-        pageLayout: 'flow',
-        updatedAt: new Date().toISOString()
-      };
-      persist({ ...b, manifest: nextManifest });
-      setStatus('Switched to social post');
-      window.setTimeout(() => setStatus(null), 2500);
-    }
+        : isSocialDoc;
+    const nextIsSocial = !currentIsSocial;
+    const nextManifest: PenDocManifest = {
+      ...b.manifest,
+      isSocial: nextIsSocial,
+      updatedAt: new Date().toISOString()
+    };
+    persist({ ...b, manifest: nextManifest });
+    setStatus(nextIsSocial ? 'Social publishing enabled' : 'Social publishing disabled');
+    window.setTimeout(() => setStatus(null), 2500);
   }
 
   async function publishLive() {
@@ -2242,6 +2225,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     invitePn,
     inviteRole,
     inviteSelectedConnections,
+    isSocialActive,
     isSocialDoc,
     isStickerDoc,
     isWidgetDoc,

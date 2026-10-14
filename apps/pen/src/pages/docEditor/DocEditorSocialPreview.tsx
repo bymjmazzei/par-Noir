@@ -118,6 +118,7 @@ import {
   workspaceGuideSpan
 } from '../../components/PreviewPageBar';
 import { clampEditorPanePx } from '../../components/editorSplit';
+import { colorToHex } from '../../components/PanelValueControls';
 import { pageFrameStyle } from '../../components/LayerObjectToolbar';
 import { SocialFeedPhonePreview } from '../../components/SocialFeedPhonePreview';
 import { LayersPopover } from '../../components/LayersPanel';
@@ -273,12 +274,12 @@ export function DocEditorSocialPreview(state: DocEditorReadyState) {
                     Bg
                     <input
                       type="color"
-                      value={
+                      value={colorToHex(
                         mergePagePresentation(
                           defaultPagePresentation(),
                           bundle.manifest.pagePresentation
                         ).backgroundColor
-                      }
+                      )}
                       onChange={(e) => {
                         const next = mergePagePresentation(
                           defaultPagePresentation(),
@@ -299,12 +300,12 @@ export function DocEditorSocialPreview(state: DocEditorReadyState) {
                     Text
                     <input
                       type="color"
-                      value={
+                      value={colorToHex(
                         mergePagePresentation(
                           defaultPagePresentation(),
                           bundle.manifest.pagePresentation
                         ).textColor
-                      }
+                      )}
                       onChange={(e) => {
                         const next = mergePagePresentation(
                           defaultPagePresentation(),

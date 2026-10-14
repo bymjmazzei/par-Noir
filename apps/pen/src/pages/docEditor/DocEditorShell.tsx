@@ -280,6 +280,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     invitePn,
     inviteRole,
     inviteSelectedConnections,
+    isSocialActive,
     isSocialDoc,
     isStickerDoc,
     isWidgetDoc,
@@ -878,21 +879,21 @@ export function DocEditorShell(state: DocEditorReadyState) {
         <button
           type="button"
           className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-            isSocialDoc
+            isSocialActive
               ? 'bg-neutral-900 text-white hover:bg-neutral-800'
               : 'text-neutral-500 hover:bg-neutral-100 hover:text-black'
           }`}
           title={
-            isSocialDoc
-              ? 'Social post enabled (click to switch to private document)'
-              : 'Private document (click to switch to social post)'
+            isSocialActive
+              ? 'Social post enabled (click to disable)'
+              : 'Social post disabled (click to enable)'
           }
-          aria-pressed={isSocialDoc}
+          aria-pressed={isSocialActive}
           onClick={() => toggleSocial()}
         >
           <span
             className={`inline-block h-1.5 w-1.5 rounded-full ${
-              isSocialDoc ? 'bg-emerald-400' : 'bg-neutral-400'
+              isSocialActive ? 'bg-emerald-400' : 'bg-neutral-400'
             }`}
           />
           Social
@@ -906,7 +907,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
           pnIdentifier={session.pnIdentifier}
           onPublishLive={() => void publishLive()}
           onShareToAggregators={(feedIds) => publishSocial(feedIds)}
-          isSocial={isSocialDoc}
+          isSocial={isSocialActive}
           onToggleSocial={toggleSocial}
           onPublishTemplate={(licensing) => publishTemplate(licensing)}
           onSendCorrespondence={sendCorrespondence}
