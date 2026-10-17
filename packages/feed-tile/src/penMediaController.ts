@@ -22,6 +22,7 @@ export class PenMediaController {
   private removed = false;
   private holdingFrame = false;
   private playbackWanted = false;
+  private emitScheduled = false;
 
   muted = true;
   paused = true;
@@ -55,7 +56,7 @@ export class PenMediaController {
     const onTime = () => {
       if (!v.duration) return;
       this.progress = v.currentTime / v.duration;
-      this.emit();
+      this.scheduleEmit();
     };
     const onPlay = () => {
       this.paused = false;
@@ -95,6 +96,16 @@ export class PenMediaController {
 
   private emit(): void {
     for (const fn of this.listeners) fn();
+  }
+
+  /** Coalesce timeupdate-driven UI sync to one frame. */
+  private scheduleEmit(): void {
+    if (this.emitScheduled) return;
+    this.emitScheduled = true;
+    requestAnimationFrame(() => {
+      this.emitScheduled = false;
+      if (!this.removed) this.emit();
+    });
   }
 
   private destroy(): void {
@@ -179,6 +190,31 @@ export class PenMediaController {
     const v = this.master;
     v.muted = this.muted;
     v.loop = false;
+    const dur = v.duration;
+    const target =
+      Number.isFinite(dur) && dur > 0
+        ? Math.min(dur, Math.max(0, seconds))
+        : Math.max(0, seconds);
+    const fastSeek = (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek;
+
+    if (v.ended && target <= 0.02) {
+      try {
+        if (typeof fastSeek === 'function') fastSeek.call(v, 0);
+        else v.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+      try {
+        await v.play();
+        this.paused = false;
+        this.emit();
+      } catch {
+        this.paused = true;
+        this.emit();
+      }
+      return;
+    }
+
     await this.seekToTime(seconds);
     try {
       await v.play();

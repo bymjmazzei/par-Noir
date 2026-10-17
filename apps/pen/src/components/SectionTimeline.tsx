@@ -437,6 +437,7 @@ function clipFace(layer: PenPageLayer): { text: string; svg?: string } {
 function ClipDecor({
   src,
   still,
+  videoStill,
   docId,
   session,
   playing,
@@ -444,6 +445,8 @@ function ClipDecor({
 }: {
   src?: string;
   still?: boolean;
+  /** Timeline video clips: never mount <img src=blob:video> (decodes whole file on main thread). */
+  videoStill?: boolean;
   docId?: string;
   session?: PenSession | null;
   playing: boolean;
@@ -477,6 +480,15 @@ function ClipDecor({
     };
   }, [resolved, playing, still]);
   if (still && resolved) {
+    if (videoStill) {
+      return (
+        <div
+          data-clip-frames
+          className="pointer-events-none absolute inset-0 h-full w-full bg-stone-300"
+          aria-hidden
+        />
+      );
+    }
     return (
       <img
         data-clip-frames
@@ -2069,6 +2081,7 @@ export function SectionTimeline({
                     <ClipDecor
                       src={playbackSrc}
                       still={owner.kind === 'image' || owner.kind === 'video'}
+                      videoStill={owner.kind === 'video'}
                       docId={docId}
                       session={session}
                       playing={playing}
