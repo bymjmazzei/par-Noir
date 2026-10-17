@@ -9,7 +9,6 @@
 import type { PenSectionContent } from '@par-noir/pen-protocol';
 import { rasterizeElementToPosterBlob, rasterizeElementSafeStill } from './rasterizePagePoster';
 import { playbackMode } from './playbackMode';
-import { seekSectionVideosAtTime } from './timelineVideoDrive';
 
 export const COMPOSE_VIDEO_MAX_DURATION_SEC = 60;
 export const COMPOSE_VIDEO_MAX_EDGE = 1080;
@@ -202,20 +201,15 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.85): Promise<Bl
   });
 }
 
+/** Drive editor playhead for layer poses during encode. Do not seek shared pen-layer masters here. */
 function sampleTimeline(
   opts: {
-    clockDurationSec?: number;
     onSample?: (timeSec: number) => void;
-    section?: PenSectionContent;
   },
-  root: HTMLElement,
+  _root: HTMLElement,
   timeSec: number
 ) {
-  const t = timeSec;
-  opts.onSample?.(t);
-  if (opts.section) {
-    seekSectionVideosAtTime(opts.section, root, t);
-  }
+  opts.onSample?.(timeSec);
 }
 
 /**
@@ -377,7 +371,7 @@ export async function composePageToVideo(
   opts?.onProgress?.(5);
   recorder.start(200);
 
-  if (!inertOnly && !timelineLocked) {
+  if (!inertOnly) {
     await Promise.all(slots.map((s) => s.el.play().catch(() => undefined)));
   }
 
@@ -396,12 +390,10 @@ export async function composePageToVideo(
       for (const slot of drawSlots) {
         if (slot.el.readyState >= 2) {
           ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
-          framesDrawn += 1;
         }
       }
-    } else {
-      framesDrawn += 1;
     }
+    framesDrawn += 1;
     opts?.onProgress?.(Math.min(95, 5 + (elapsed / durationSec) * 90));
     raf = requestAnimationFrame(draw);
   };

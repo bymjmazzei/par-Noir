@@ -1770,6 +1770,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setGalleryComposeCapture(false);
     setCaptureLayers(false);
     setActiveSlug(prevSlug);
+    setPlayheadSec(0);
   }
 
   function sharePublishErrorMessage(e: unknown): string {
@@ -1779,6 +1780,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     }
     if (raw === 'compose_export_root_missing') {
       return 'Could not prepare the page for export. Switch to the video page and retry.';
+    }
+    if (raw === 'compose_no_video_frames' || raw === 'compose_empty_video') {
+      return 'Could not record the page video for the feed. Wait for the clip to finish loading, then try Share again.';
     }
     if (/toBlob|tainted|rasterize_/i.test(raw)) {
       return 'Could not capture a page for the feed. Wait for media to load, then try Share again.';
