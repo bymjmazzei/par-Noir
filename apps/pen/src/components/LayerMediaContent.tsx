@@ -19,7 +19,9 @@ import { paintGradedFrame, peekPenMediaController, PenMediaPlayer, type TonalGra
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { cachedMediaAspect, probeMediaAspect } from '../services/penMediaAspect';
+import { layerOriginalForProxy } from '../services/editProxy';
 import type { PenSession } from '../services/penSession';
+import { VideoLayoutStill } from './VideoLayoutStill';
 
 const ASPECT_SLACK = 0.03;
 const PARTICLE_NOISE =
@@ -88,6 +90,8 @@ export function LayerMediaContent({
     layer.kind === 'video' ||
     Boolean(layer.videoSrc) ||
     (Boolean(layer.backgroundVideo) && layer.kind !== 'image');
+  const awaitingProxy =
+    playback === 'edit' && isVideo && Boolean(layerOriginalForProxy(layer));
   const src = isVideo
     ? playback === 'publish'
       ? publishPlaybackSrc(layer)
@@ -95,7 +99,9 @@ export function LayerMediaContent({
     : layer.kind === 'image'
       ? layer.imageSrc || layer.backgroundImage
       : layer.backgroundImage;
-  const { resolved } = useResolvedMediaSrc(src, { docId, session });
+  const originalVideoRef = isVideo ? publishPlaybackSrc(layer) : null;
+  const resolveRef = awaitingProxy ? originalVideoRef : src;
+  const { resolved } = useResolvedMediaSrc(resolveRef, { docId, session });
   const { resolved: overlayResolved } = useResolvedMediaSrc(layer.paintOverlaySrc, {
     docId,
     session
@@ -132,14 +138,15 @@ export function LayerMediaContent({
   }, [resolved, isVideo]);
 
   useEffect(() => {
-    if (!isVideo || !resolved) return;
+    if (!isVideo || !resolved || awaitingProxy) return;
     const ctrl = peekPenMediaController(`pen-layer:${layer.id}`);
     if (!ctrl) return;
     ctrl.setPlaybackRate(layer.playbackRate ?? 1);
     ctrl.setClipAudio((layer.mediaGain ?? 100) / 100, layer.mediaMuted === false);
-  }, [isVideo, resolved, layer.id, layer.playbackRate, layer.mediaGain, layer.mediaMuted]);
+  }, [isVideo, resolved, awaitingProxy, layer.id, layer.playbackRate, layer.mediaGain, layer.mediaMuted]);
 
-  if (!src || !resolved) return null;
+  if (!resolveRef) return null;
+  if (!awaitingProxy && !resolved) return null;
 
   const grade = mergeMediaFilter(layer.mediaFilter);
   const filter = mediaFilterCss(layer);
@@ -183,20 +190,30 @@ export function LayerMediaContent({
       <div className="absolute" style={cropFrame ?? { inset: 0 }}>
       <div className="absolute inset-0" style={transform ? { transform } : undefined}>
         {isVideo ? (
-          <PenMediaPlayer
-            src={resolved}
-            syncKey={`pen-layer:${layer.id}`}
-            autoPlay={false}
-            className="absolute inset-0 bg-transparent"
-            videoStyle={innerStyle}
-            tapToToggle={selected}
-            grade={tonal}
-          />
+          awaitingProxy ? (
+            <VideoLayoutStill
+              src={resolved}
+              placeholder={!resolved}
+              className="bg-transparent"
+              videoStyle={innerStyle}
+              grade={tonal}
+            />
+          ) : (
+            <PenMediaPlayer
+              src={resolved!}
+              syncKey={`pen-layer:${layer.id}`}
+              autoPlay={false}
+              className="absolute inset-0 bg-transparent"
+              videoStyle={innerStyle}
+              tapToToggle={selected}
+              grade={tonal}
+            />
+          )
         ) : tonal ? (
-          <GradedStill src={resolved} fit="contain" grade={tonal} style={innerStyle} />
+          <GradedStill src={resolved!} fit="contain" grade={tonal} style={innerStyle} />
         ) : (
           <img
-            src={resolved}
+            src={resolved!}
             alt=""
             className="absolute inset-0"
             style={innerStyle}

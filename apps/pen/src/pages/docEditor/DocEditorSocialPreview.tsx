@@ -139,7 +139,6 @@ import {
   pngBlobsToPdf,
   saveDownload
 } from '../../services/penDownload';
-import { ensureEditProxy, layerOriginalForProxy } from '../../services/editProxy';
 import { WidgetEditorPanel } from '../../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../../components/LayerPartsMenu';
 import { useVerifiedAuthor } from '../../hooks/useVerifiedAuthor';

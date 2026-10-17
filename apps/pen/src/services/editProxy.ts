@@ -5,7 +5,9 @@
 
 import {
   publishPlaybackSrc,
-  type PenPageLayer
+  type PenPageLayer,
+  type PenPagePresentation,
+  type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { downloadCloudMediaBlob } from './penAttach';
 import {
@@ -21,6 +23,28 @@ export const EDIT_PROXY_LONG_EDGE = 720;
 const ready = new Map<string, string>();
 const failed = new Set<string>();
 const inflight = new Map<string, Promise<string | null>>();
+
+export type EditProxyProgressEvent = {
+  docId: string;
+  originalRef: string;
+  pct: number;
+  jobIndex?: number;
+  jobCount?: number;
+};
+
+type ProgressListener = (event: EditProxyProgressEvent | null) => void;
+const progressListeners = new Set<ProgressListener>();
+
+export function subscribeEditProxyProgress(listener: ProgressListener): () => void {
+  progressListeners.add(listener);
+  return () => {
+    progressListeners.delete(listener);
+  };
+}
+
+function emitEditProxyProgress(event: EditProxyProgressEvent | null): void {
+  for (const listener of progressListeners) listener(event);
+}
 
 export function proxySize(
   width: number,
@@ -58,6 +82,27 @@ export function layerOriginalForProxy(layer: PenPageLayer): string | null {
   if (layer.kind === 'image') return null;
   if (layer.kind !== 'video' && !layer.backgroundVideo?.trim()) return null;
   return publishPlaybackSrc(layer) || null;
+}
+
+/** Page background video still needs editProxySrc on the presentation. */
+export function presentationAwaitingEditProxy(
+  presentation?: Pick<PenPagePresentation, 'backgroundVideo' | 'editProxySrc'> | null
+): boolean {
+  const video = presentation?.backgroundVideo?.trim();
+  if (!video) return false;
+  if (presentation?.editProxySrc?.trim()) return false;
+  return true;
+}
+
+export function sectionAwaitingEditProxy(
+  section: PenSectionContent,
+  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo' | 'editProxySrc'> | null
+): boolean {
+  if (presentationAwaitingEditProxy(pagePresentation)) return true;
+  for (const layer of section.layers || []) {
+    if (layerOriginalForProxy(layer)) return true;
+  }
+  return false;
 }
 
 function cacheKey(docId: string, originalRef: string): string {
@@ -112,7 +157,10 @@ function waitVideoMeta(video: HTMLVideoElement): Promise<void> {
  * Play the original once into a 720 canvas. Returns 'reuse' when no second file is needed.
  * Returns null when recording fails — the caller leaves editProxySrc unset.
  */
-export async function encodeEditProxyBlob(fileUrl: string): Promise<Blob | 'reuse' | null> {
+export async function encodeEditProxyBlob(
+  fileUrl: string,
+  opts?: { onProgress?: (pct: number) => void }
+): Promise<Blob | 'reuse' | null> {
   if (typeof document === 'undefined') return null;
   const video = document.createElement('video');
   video.muted = true;
@@ -158,16 +206,23 @@ export async function encodeEditProxyBlob(fileUrl: string): Promise<Blob | 'reus
       recorder!.onerror = () => reject(new Error('proxy_record_failed'));
     });
     recorder.start(200);
+    opts?.onProgress?.(5);
     await video.play();
     await new Promise<void>((resolve) => {
       const timer = window.setTimeout(resolve, (duration + 0.5) * 1000);
+      const report = () => {
+        const pct = Math.min(95, 5 + (video.currentTime / duration) * 90);
+        opts?.onProgress?.(pct);
+      };
       const draw = () => {
         if (video.ended || video.paused) return;
+        report();
         ctx.drawImage(video, 0, 0, sized.width, sized.height);
         requestAnimationFrame(draw);
       };
       video.onended = () => {
         window.clearTimeout(timer);
+        opts?.onProgress?.(100);
         resolve();
       };
       draw();
@@ -218,10 +273,25 @@ async function buildProxy(params: {
   docId: string;
   originalRef: string;
   session?: { pnIdentifier: string } | null;
+  onProgress?: (pct: number) => void;
+  jobIndex?: number;
+  jobCount?: number;
 }): Promise<string | null> {
   const key = cacheKey(params.docId, params.originalRef);
   if (ready.has(key)) return ready.get(key) || null;
   if (failed.has(key)) return null;
+
+  const report = (pct: number) => {
+    params.onProgress?.(pct);
+    emitEditProxyProgress({
+      docId: params.docId,
+      originalRef: params.originalRef,
+      pct,
+      jobIndex: params.jobIndex,
+      jobCount: params.jobCount
+    });
+  };
+
   try {
     let url: string | null;
     try {
@@ -230,7 +300,7 @@ async function buildProxy(params: {
       return null;
     }
     if (!url) return null;
-    const encoded = await encodeEditProxyBlob(url);
+    const encoded = await encodeEditProxyBlob(url, { onProgress: report });
     if (encoded === 'reuse') {
       ready.set(key, params.originalRef);
       return params.originalRef;
@@ -245,6 +315,8 @@ async function buildProxy(params: {
   } catch {
     failed.add(key);
     return null;
+  } finally {
+    emitEditProxyProgress(null);
   }
 }
 
@@ -253,6 +325,9 @@ export function ensureEditProxy(params: {
   docId: string;
   originalRef: string;
   session?: { pnIdentifier: string } | null;
+  onProgress?: (pct: number) => void;
+  jobIndex?: number;
+  jobCount?: number;
 }): Promise<string | null> {
   const key = cacheKey(params.docId, params.originalRef);
   const pending = inflight.get(key);

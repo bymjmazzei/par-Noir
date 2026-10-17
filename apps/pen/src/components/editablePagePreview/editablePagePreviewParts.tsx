@@ -77,7 +77,9 @@ import { LayerMediaContent } from '../LayerMediaContent';
 import { PenMediaPlayer, PublishedEngagementBar } from '@par-noir/feed-tile';
 import { usePlaybackMode } from '../../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../../hooks/useResolvedMediaSrc';
+import { presentationAwaitingEditProxy } from '../../services/editProxy';
 import type { PenSession } from '../../services/penSession';
+import { VideoLayoutStill } from '../VideoLayoutStill';
 export function ResolvedPageBackground({
   src,
   kind,
@@ -94,25 +96,43 @@ export function ResolvedPageBackground({
   videoSrc?: string;
 }) {
   const playback = usePlaybackMode();
+  const awaitingProxy =
+    playback === 'edit' &&
+    kind === 'video' &&
+    presentationAwaitingEditProxy({ backgroundVideo: src, editProxySrc });
   const playSrc =
     kind === 'video'
       ? playback === 'publish'
         ? publishPlaybackSrc({ videoSrc, backgroundVideo: src })
         : editorPlaybackSrc({ editProxySrc, videoSrc, backgroundVideo: src })
       : src;
-  const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
-  if (!playSrc || !resolved) return null;
+  const originalSrc =
+    kind === 'video' ? publishPlaybackSrc({ videoSrc, backgroundVideo: src }) : playSrc;
+  const resolveSrc = awaitingProxy ? originalSrc : playSrc;
+  const { resolved } = useResolvedMediaSrc(resolveSrc, { docId, session });
+  if (!resolveSrc) return null;
   if (kind === 'video') {
+    if (!awaitingProxy && !resolved) return null;
     return (
       <div data-pen-playback={playback} className="pointer-events-none absolute inset-0 z-0">
-        <PenMediaPlayer
-          src={resolved}
-          className="h-full w-full"
-          videoStyle={{ objectFit: 'cover' }}
-        />
+        {awaitingProxy ? (
+          <VideoLayoutStill
+            src={resolved}
+            placeholder={!resolved}
+            className="h-full w-full"
+            videoStyle={{ objectFit: 'cover' }}
+          />
+        ) : (
+          <PenMediaPlayer
+            src={resolved!}
+            className="h-full w-full"
+            videoStyle={{ objectFit: 'cover' }}
+          />
+        )}
       </div>
     );
   }
+  if (!resolved) return null;
   return (
     <div
       className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"

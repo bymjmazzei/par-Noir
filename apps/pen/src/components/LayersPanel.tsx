@@ -271,7 +271,7 @@ export function LayersPopover({
     onSelectedIdsChange([placed.layerId]);
   }
 
-  function attachPickedMedia(src: string) {
+  function attachPickedMedia(src: string, _meta?: { blobUrl?: string }) {
     const active = allLayers.find((layer) => layer.id === activeLayerId);
     const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
     const placed = placeWidgetLayer(prepared, groupId, 'image');
@@ -674,7 +674,7 @@ export function LayersPopover({
         kindSwitch
         onKindChange={setMediaKind}
         docId={docId}
-        onPickMediaSrc={(src) => attachPickedMedia(src)}
+        onPickMediaSrc={(src, meta) => attachPickedMedia(src, meta)}
       />
 
       <ul

@@ -62,6 +62,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
+import { layerOriginalForProxy, sectionAwaitingEditProxy } from '../services/editProxy';
 import type { PenSession } from '../services/penSession';
 import lookSwatch from '../assets/look-apple.jpg';
 
@@ -1007,13 +1008,14 @@ export function SectionTimeline({
   showAnimations?: boolean;
   /** Media editor opens its Transitions tab from the selected join. */
   onJoinSelect?: (point: TrackJoinPoint | null) => void;
-  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo'>;
+  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo' | 'editProxySrc'>;
 }) {
   const widget = mode === 'widget';
   const timelineCtx = {
     pageBackgroundVideo: pagePresentation?.backgroundVideo
   };
   const timelineActive = isSectionTimelineActive(section, timelineCtx);
+  const videoProxyPending = sectionAwaitingEditProxy(section, pagePresentation);
   const needsPlayheadDrive = sectionNeedsPlayheadDrive(section);
   const duration = timelineActive ? resolveTimelineDuration(section, undefined, timelineCtx) : 0;
   const [rulerPlayhead, setRulerPlayhead] = useState(playheadSec);
@@ -1166,6 +1168,7 @@ export function SectionTimeline({
 
   function videoController(layer: PenPageLayer, create: boolean): PenMediaController | null {
     if (layer.kind !== 'video') return null;
+    if (playback === 'edit' && layerOriginalForProxy(layer)) return null;
     const raw = layer.videoSrc || layer.backgroundVideo;
     if (!raw) return null;
     const key = `pen-layer:${layer.id}`;
@@ -1776,11 +1779,13 @@ export function SectionTimeline({
         <button
           type="button"
           aria-label={playing ? 'Pause' : 'Play'}
-          title={playing ? 'Pause' : 'Play'}
-          disabled={!timelineActive}
+          title={
+            videoProxyPending ? 'Preparing preview…' : playing ? 'Pause' : 'Play'
+          }
+          disabled={!timelineActive || videoProxyPending}
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600 disabled:opacity-40"
           onClick={() => {
-            if (!timelineActive) return;
+            if (!timelineActive || videoProxyPending) return;
             const next = !playing;
             const at = next && playheadSec >= playSpan - 0.05 ? 0 : playheadSec;
             playheadRef.current = at;
@@ -2212,6 +2217,7 @@ export function SectionTimeline({
               {trackLayers.map((item) => {
                 const playbackSrc = playback === 'publish' ? publishPlaybackSrc(item) : editorPlaybackSrc(item);
                 if (item.kind !== 'video' || !playbackSrc) return null;
+                if (playback === 'edit' && layerOriginalForProxy(item)) return null;
                 return (
                   <RememberVideoSrc
                     key={item.id}

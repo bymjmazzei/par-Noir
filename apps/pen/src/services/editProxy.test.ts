@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { proxyRefForFrame, proxySize, reverseProxyAllowed } from './editProxy';
+import {
+  layerOriginalForProxy,
+  presentationAwaitingEditProxy,
+  proxyRefForFrame,
+  proxySize,
+  reverseProxyAllowed,
+  sectionAwaitingEditProxy
+} from './editProxy';
+import type { PenSectionContent } from '@par-noir/pen-protocol';
 
 describe('edit proxy size', () => {
   it('fits a 4K frame to a 720 long edge', () => {
@@ -21,5 +29,37 @@ describe('edit proxy size', () => {
     expect(reverseProxyAllowed(15)).toBe(true);
     expect(reverseProxyAllowed(15.01)).toBe(false);
     expect(reverseProxyAllowed(0)).toBe(false);
+  });
+});
+
+describe('edit proxy awaiting', () => {
+  const emptySection: PenSectionContent = { slug: 'p', layers: [] };
+
+  it('detects page background without editProxySrc', () => {
+    expect(presentationAwaitingEditProxy({ backgroundVideo: 'penlocal:v' })).toBe(true);
+    expect(
+      presentationAwaitingEditProxy({ backgroundVideo: 'penlocal:v', editProxySrc: 'penlocal:p' })
+    ).toBe(false);
+  });
+
+  it('detects video layers missing editProxySrc', () => {
+    const section: PenSectionContent = {
+      slug: 'p',
+      layers: [
+        {
+          id: 'v',
+          kind: 'video',
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          zIndex: 1,
+          videoSrc: 'penlocal:clip'
+        }
+      ]
+    };
+    expect(layerOriginalForProxy(section.layers![0]!)).toBe('penlocal:clip');
+    expect(sectionAwaitingEditProxy(section)).toBe(true);
+    expect(sectionAwaitingEditProxy(emptySection)).toBe(false);
   });
 });

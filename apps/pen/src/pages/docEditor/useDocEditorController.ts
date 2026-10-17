@@ -568,15 +568,30 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     let cancelled = false;
     void (async () => {
       const updates: Array<(b: Bundle) => Bundle> = [];
-      for (const job of jobs) {
+      const jobCount = jobs.length;
+      for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i]!;
+        const jobIndex = i + 1;
         const ref = await ensureEditProxy({
           docId,
           originalRef: job.original,
-          session
+          session,
+          jobIndex,
+          jobCount,
+          onProgress: (pct) => {
+            if (cancelled) return;
+            const prefix =
+              jobCount > 1
+                ? `Preparing preview (${jobIndex}/${jobCount})… `
+                : 'Preparing preview… ';
+            setStatus(`${prefix}${Math.round(pct)}%`);
+          }
         });
         if (ref) updates.push((b) => job.apply(ref, b));
       }
-      if (cancelled || !updates.length) return;
+      if (cancelled) return;
+      setStatus((s) => (s?.startsWith('Preparing preview') ? null : s));
+      if (!updates.length) return;
       const latest = bundleRef.current;
       if (!latest) return;
       let next = latest;
