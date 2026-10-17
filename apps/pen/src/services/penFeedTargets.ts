@@ -78,7 +78,7 @@ export function resolveShareFeedIds(params: {
   selectedHostedFeedIds: string[];
 }): string[] {
   const rail = contentClassToRailId(params.contentClass);
-  const out = new Set<string>([rail]);
+  const out = new Set<string>(['public', rail]);
   for (const id of params.selectedHostedFeedIds) {
     const trimmed = id.trim();
     if (trimmed) out.add(trimmed);

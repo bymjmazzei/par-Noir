@@ -87,6 +87,7 @@ describe('Pen owner-cloud publish', () => {
     expect(contentClassToRailId('media')).toBe('media');
     expect(contentClassToRailId('collection')).toBe('collections');
     expect(resolveShareFeedIds({ contentClass: 'media', selectedHostedFeedIds: [] })).toEqual([
+      'public',
       'media'
     ]);
     expect(
@@ -94,7 +95,7 @@ describe('Pen owner-cloud publish', () => {
         contentClass: 'note',
         selectedHostedFeedIds: ['community-feed-1']
       })
-    ).toEqual(['notes', 'community-feed-1']);
+    ).toEqual(['public', 'notes', 'community-feed-1']);
   });
 
   it('warms feed previews through the API instead of cross-origin R2 PUT', () => {

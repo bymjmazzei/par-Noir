@@ -1,9 +1,14 @@
-/** Rows with feedIds stay on those rails. Rows without feedIds stay on every public rail. */
+/** First-party rails: PUBLIC is union of class-tagged posts; empty feedIds = all rails. */
 import { describe, expect, it } from 'vitest';
 import type { IndexedFile } from '../types/aggregator';
 import { filterFilesForFeed } from './filterFilesForFeed';
 
-function file(id: string, feedIds?: string[], fileType = 'note'): IndexedFile {
+function file(
+  id: string,
+  feedIds?: string[],
+  fileType = 'note',
+  extra: Record<string, unknown> = {}
+): IndexedFile {
   return {
     metadata: {
       fileId: id,
@@ -11,7 +16,8 @@ function file(id: string, feedIds?: string[], fileType = 'note'): IndexedFile {
       backendFileId: id,
       fileType,
       isPublic: true,
-      ...(feedIds ? { feedIds } : {})
+      ...(feedIds ? { feedIds } : {}),
+      ...extra
     }
   } as IndexedFile;
 }
@@ -22,12 +28,17 @@ const userState = {
   preferences: {}
 };
 
-function notes(files: IndexedFile[]) {
+function filterRail(
+  feedId: string,
+  mediaFiles: IndexedFile[] = [],
+  notesFiles: IndexedFile[] = [],
+  collectionsFiles: IndexedFile[] = []
+) {
   return filterFilesForFeed({
-    mediaFiles: [],
-    notesFiles: files,
-    collectionsFiles: [],
-    feedId: 'notes',
+    mediaFiles,
+    notesFiles,
+    collectionsFiles,
+    feedId,
     userState,
     connectionsList: [],
     feeds: []
@@ -36,21 +47,34 @@ function notes(files: IndexedFile[]) {
 
 describe('filterFilesForFeed feedIds', () => {
   it('keeps legacy rows with no feedIds on the notes rail', () => {
-    expect(notes([file('legacy'), file('scoped', ['public'])])).toEqual(['legacy']);
+    expect(filterRail('notes', [], [file('legacy'), file('scoped', ['public'])])).toEqual([
+      'legacy',
+      'scoped'
+    ]);
   });
 
-  it('shows a scoped row only on the rail listed in feedIds', () => {
+  it('class-tagged row appears on PUBLIC and its class rail', () => {
     const row = file('only-notes', ['notes']);
-    expect(notes([row])).toEqual(['only-notes']);
-    const onPublic = filterFilesForFeed({
-      mediaFiles: [],
-      notesFiles: [row],
-      collectionsFiles: [],
-      feedId: 'public',
-      userState,
-      connectionsList: [],
-      feeds: []
-    });
-    expect(onPublic).toEqual([]);
+    expect(filterRail('notes', [], [row])).toEqual(['only-notes']);
+    expect(filterRail('public', [], [row])).toEqual(['only-notes']);
+    expect(filterRail('media', [], [row])).toEqual([]);
+  });
+
+  it('collections-tagged row appears on PUBLIC and collections', () => {
+    const row = file('coll', ['collections'], 'collection');
+    expect(filterRail('public', [], [], [row])).toEqual(['coll']);
+    expect(filterRail('collections', [], [], [row])).toEqual(['coll']);
+    expect(filterRail('notes', [], [], [row])).toEqual([]);
+  });
+
+  it('community-only row stays off PUBLIC', () => {
+    const row = file('comm', ['community-x']);
+    expect(filterRail('public', [], [row])).toEqual([]);
+  });
+
+  it('excludes collection parts from first-party rails', () => {
+    const part = file('part', ['collection-part'], 'video', { isPartOfCollection: true });
+    expect(filterRail('public', [part], [], [])).toEqual([]);
+    expect(filterRail('media', [part], [], [])).toEqual([]);
   });
 });

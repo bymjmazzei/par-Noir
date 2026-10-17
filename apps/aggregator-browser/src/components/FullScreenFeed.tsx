@@ -7,7 +7,6 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { IndexedFile } from '../types/aggregator';
 import { FeedEngagementSidebar } from './FeedEngagementSidebar';
 import { EngagementOverlay } from './EngagementOverlay';
-import { PlaybackControls } from './PlaybackControls';
 import { CompanionAudioMix, companionAudioFileIdsOf } from './CompanionAudioMix';
 import { ContentRatingBadge } from './ContentRatingBadge';
 import { File } from 'lucide-react';
@@ -28,6 +27,8 @@ import {
   resolvePublicFeedObjectUrl,
   resolvePublicMediaObjectUrl,
   isNetworkFeedMediaError,
+  feedPlaybackVariant,
+  type FeedPlaybackMetadata,
 } from '../services/feedPreviewPlayback';
 import { isFeedPreviewPlaceholder } from '@par-noir/aggregator-domain';
 
@@ -78,6 +79,120 @@ async function loadMemberFeedMeta(fileId: string): Promise<Record<string, unknow
   } catch {
     return null;
   }
+}
+
+function feedMetadataIsVideo(meta: FeedPlaybackMetadata | null | undefined): boolean {
+  if (!meta) return false;
+  return feedPlaybackVariant(meta) === 'sd';
+}
+
+function CollectionMemberSlide({
+  memberFileId,
+  posterUrl,
+  videoUrl,
+  isVideo,
+  dimensionKey,
+  fileName,
+  idx,
+  scalingStyles,
+  onDimensions,
+}: {
+  memberFileId: string;
+  posterUrl?: string;
+  videoUrl?: string;
+  isVideo: boolean;
+  dimensionKey: string;
+  fileName: string;
+  idx: number;
+  scalingStyles: ReturnType<typeof calculateMediaScaling>;
+  onDimensions: (key: string, width: number, height: number) => void;
+}) {
+  const slideRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!isVideo || !videoUrl) return;
+    const slideEl = slideRef.current;
+    const video = videoRef.current;
+    if (!slideEl || !video) return;
+    const scrollRoot = slideEl.parentElement;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          void video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      },
+      { root: scrollRoot, threshold: [0, 0.5, 1] }
+    );
+    observer.observe(slideEl);
+    return () => observer.disconnect();
+  }, [isVideo, videoUrl]);
+
+  return (
+    <div
+      ref={slideRef}
+      className="flex-shrink-0 w-full h-full snap-start relative"
+      style={{
+        height: '100%',
+        maxHeight: '100%',
+        minHeight: '100%',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
+        width: '100%',
+      }}
+    >
+      {posterUrl ? (
+        <img
+          src={posterUrl}
+          alt=""
+          className="absolute"
+          style={scalingStyles.background}
+          loading="eager"
+          decoding="async"
+        />
+      ) : null}
+      <div className="w-full h-full flex items-center justify-center relative z-10">
+        {isVideo && videoUrl ? (
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            poster={posterUrl || undefined}
+            className="max-w-full max-h-full object-contain"
+            style={scalingStyles.mainMedia}
+            controls={false}
+            muted
+            loop
+            playsInline
+            onLoadedMetadata={(e) => {
+              const el = e.currentTarget;
+              onDimensions(dimensionKey, el.videoWidth, el.videoHeight);
+            }}
+          />
+        ) : posterUrl ? (
+          <img
+            src={posterUrl}
+            alt={`${fileName} - ${idx + 1}`}
+            style={scalingStyles.mainMedia}
+            loading="eager"
+            decoding="sync"
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              onDimensions(dimensionKey, img.naturalWidth, img.naturalHeight);
+            }}
+            onError={(e) => {
+              e.currentTarget.src = '/placeholder-thumbnail.png';
+            }}
+          />
+        ) : (
+          <div className="w-full h-full bg-black" aria-hidden />
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface FullScreenFeedProps {
@@ -166,6 +281,9 @@ export function FullScreenFeed({
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
+  const [collectionMemberMeta, setCollectionMemberMeta] = useState<Map<string, FeedPlaybackMetadata>>(
+    new Map()
+  );
   const [failedThumbnails, setFailedThumbnails] = useState<Set<string>>(new Set());
   const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
   const fetchingCollectionRef = useRef<Set<string>>(new Set()); // Track files currently being fetched to prevent duplicates
@@ -1026,7 +1144,14 @@ export function FullScreenFeed({
             clearLoadingState(cfId);
             return;
           }
-          const posterUrl = await resolvePublicFeedObjectUrl(cfId, meta as any, {
+          const playbackMeta = meta as FeedPlaybackMetadata;
+          setCollectionMemberMeta((prev) => {
+            if (prev.has(cfId)) return prev;
+            const newMap = new Map(prev);
+            newMap.set(cfId, playbackMeta);
+            return newMap;
+          });
+          const posterUrl = await resolvePublicFeedObjectUrl(cfId, playbackMeta, {
             variant: 'poster',
           });
           setThumbnails((prev) => {
@@ -1035,6 +1160,15 @@ export function FullScreenFeed({
             newMap.set(cfId, posterUrl);
             return newMap;
           });
+          if (feedMetadataIsVideo(playbackMeta)) {
+            const sdUrl = await resolvePublicFeedObjectUrl(cfId, playbackMeta, { variant: 'sd' });
+            setVideoBlobs((prev) => {
+              if (prev.has(cfId)) return prev;
+              const newMap = new Map(prev);
+              newMap.set(cfId, sdUrl);
+              return newMap;
+            });
+          }
         } catch (err) {
           if (import.meta.env.DEV) {
             console.warn(`[FullScreenFeed] CDN collection member failed ${cfId}:`, err);
@@ -1535,25 +1669,6 @@ export function FullScreenFeed({
                     playsInline
                     autoPlay={visibleFileId === fileId}
                   />
-                  {/* Playback Controls */}
-                  {visibleFileId === fileId && (
-                    <div className="absolute top-4 left-4 z-20">
-                      <PlaybackControls
-                        videoElement={videoRefs.current.get(fileId) || null}
-                        isPlaying={videoPlaying.get(fileId) || false}
-                        onPlayPause={() => {
-                          const videoElement = videoRefs.current.get(fileId);
-                          if (videoElement) {
-                            if (videoElement.paused) {
-                              videoElement.play();
-                            } else {
-                              videoElement.pause();
-                            }
-                          }
-                        }}
-                      />
-                    </div>
-                  )}
                 </>
               );
             })()}
@@ -1759,98 +1874,59 @@ export function FullScreenFeed({
             {/* Collection - Simple thumbnail slideshow */}
             {!isConnectionPlaceholder && isCollectionFile && (collectionData || collectionDataCache.get(fileId))?.collectionFileIds ? (
               (() => {
-                // Use cached collection data if available
                 const finalCollectionData = collectionData || collectionDataCache.get(fileId);
-                
-                // Get thumbnails from Map for collection file IDs
-                const collectionThumbnails = finalCollectionData.collectionFileIds
-                  .map((fileId: string): string | undefined => thumbnails.get(fileId))
-                  .filter((url: string | undefined): url is string => url !== undefined);
-                
-                if (collectionThumbnails.length > 0) {
-                  const containerDims = getContainerDimensions(64);
-                  
-                  // Render horizontal slideshow of thumbnails with individual scaling
-                  return (
-                    <div 
-                      className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
-                      style={{
-                        height: '100%',
-                        maxHeight: '100%',
-                        minHeight: '100%',
-                        overflowY: 'hidden', // Prevent vertical scrolling
-                        overflowX: 'auto', // Allow horizontal scrolling
-                        boxSizing: 'border-box',
-                        position: 'relative'
-                      }}
-                    >
-                      {collectionThumbnails.map((thumbnailUrl: string, idx: number) => {
-                        // Use composite key for dimension tracking: collection file ID + index
-                        // Or use the individual file ID from the collection if available
-                        const collectionFileId = finalCollectionData.collectionFileIds[idx];
-                        const dimensionKey = collectionFileId || `${fileId}-${idx}`;
-                        const dims = mediaDimensions.get(dimensionKey);
-                        const scalingStyles = calculateMediaScaling(dims, containerDims);
-                        
-                        return (
-                          <div
-                            key={`${fileId}-${idx}`}
-                            className="flex-shrink-0 w-full h-full snap-start relative"
-                            style={{
-                              height: '100%',
-                              maxHeight: '100%',
-                              minHeight: '100%',
-                              overflow: 'hidden', // Prevent any content overflow
-                              boxSizing: 'border-box',
-                              width: '100%'
-                            }}
-                          >
-                            {/* Blurred background image */}
-                            <img
-                              src={thumbnailUrl}
-                              alt=""
-                              className="absolute"
-                              style={scalingStyles.background}
-                              loading="eager"
-                              decoding="async"
-                              onError={() => {
-                                import.meta.env.DEV && console.warn(`[FullScreenFeed] Background image failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
-                              }}
-                            />
-                            {/* Main image container */}
-                            <div className="w-full h-full flex items-center justify-center relative z-10">
-                              <img
-                                src={thumbnailUrl}
-                                alt={`${fileName} - ${idx + 1}`}
-                                style={scalingStyles.mainMedia}
-                                onError={(e) => {
-                                  import.meta.env.DEV && console.warn(`[FullScreenFeed] Thumbnail failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
-                                  e.currentTarget.src = '/placeholder-thumbnail.png';
-                                }}
-                                onLoad={(e) => {
-                                  const img = e.currentTarget;
-                                  // Track dimensions for this specific image in the collection
-                                  setMediaDimensions(prev => {
-                                    const newMap = new Map(prev);
-                                    newMap.set(dimensionKey, { width: img.naturalWidth, height: img.naturalHeight });
-                                    return newMap;
-                                  });
-                                  console.log(`[FullScreenFeed] Thumbnail loaded successfully for collection ${fileId}, index ${idx}, dimensions: ${img.naturalWidth}x${img.naturalHeight}`);
-                                }}
-                                loading="eager"
-                                decoding="sync"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                } else {
-                  // No thumbnails loaded yet - render empty/minimal placeholder
-                  // Thumbnails should be loading in background, will render when ready
-                  return null;
-                }
+                const memberIds: string[] = finalCollectionData.collectionFileIds;
+                const containerDims = getContainerDimensions(64);
+
+                return (
+                  <div
+                    className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+                    style={{
+                      height: '100%',
+                      maxHeight: '100%',
+                      minHeight: '100%',
+                      overflowY: 'hidden',
+                      overflowX: 'auto',
+                      boxSizing: 'border-box',
+                      position: 'relative',
+                    }}
+                  >
+                    {memberIds.map((collectionFileId: string, idx: number) => {
+                      const posterUrl = thumbnails.get(collectionFileId);
+                      const memberMeta =
+                        collectionMemberMeta.get(collectionFileId) ||
+                        (files.find((f) => f.metadata?.fileId === collectionFileId)?.metadata as
+                          | FeedPlaybackMetadata
+                          | undefined);
+                      const isVideoMember = feedMetadataIsVideo(memberMeta);
+                      const videoUrl = videoBlobs.get(collectionFileId);
+                      const dimensionKey = collectionFileId || `${fileId}-${idx}`;
+                      const dims = mediaDimensions.get(dimensionKey);
+                      const scalingStyles = calculateMediaScaling(dims, containerDims);
+
+                      return (
+                        <CollectionMemberSlide
+                          key={`${fileId}-${collectionFileId}`}
+                          memberFileId={collectionFileId}
+                          posterUrl={posterUrl}
+                          videoUrl={videoUrl}
+                          isVideo={isVideoMember}
+                          dimensionKey={dimensionKey}
+                          fileName={fileName}
+                          idx={idx}
+                          scalingStyles={scalingStyles}
+                          onDimensions={(key, width, height) => {
+                            setMediaDimensions((prev) => {
+                              const newMap = new Map(prev);
+                              newMap.set(key, { width, height });
+                              return newMap;
+                            });
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                );
               })()
             ) : (() => {
               // DEBUG: Log why collection is NOT rendering

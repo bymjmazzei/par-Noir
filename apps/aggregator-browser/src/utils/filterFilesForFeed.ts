@@ -9,6 +9,31 @@ import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
 import { COMMUNITY_FEED_PREFIX } from '../utils/communityFeed';
 import { excludePenTemplates, onlyPenTemplates } from './penTemplateFeed';
 
+const FIRST_PARTY_CLASS_RAILS = new Set(['media', 'notes', 'collections']);
+
+function isCollectionPart(file: IndexedFile): boolean {
+  const m = file.metadata;
+  if (m.isPartOfCollection === true) return true;
+  const ids = m.feedIds;
+  if (ids?.length === 1 && ids[0] === 'collection-part') return true;
+  return false;
+}
+
+function onFirstPartyPublicRail(file: IndexedFile): boolean {
+  const ids = file.metadata.feedIds;
+  if (!ids?.length) return true;
+  if (ids.includes('public')) return true;
+  if (ids.some((id) => FIRST_PARTY_CLASS_RAILS.has(id))) return true;
+  return false;
+}
+
+function onFirstPartyClassRail(file: IndexedFile, railId: string): boolean {
+  const ids = file.metadata.feedIds;
+  if (!ids?.length) return true;
+  if (ids.includes('public')) return true;
+  return ids.includes(railId);
+}
+
 export type FeedFilterUserState = {
   isUnlocked: boolean;
   pnIdentifier?: string;
@@ -125,19 +150,14 @@ export function filterFilesForFeed(params: FilterFilesForFeedParams): IndexedFil
     );
   };
 
-  const filteredMedia = excludePenTemplates(
-    mediaFiles.filter((f) => shouldShowFile(f) && !shouldExcludeNotePage(f))
-  );
-  const filteredNotes = excludePenTemplates(
-    notesFiles.filter((f) => shouldShowFile(f) && !shouldExcludeNotePage(f))
-  );
-  const filteredCollections = excludePenTemplates(
-    collectionsFiles.filter((f) => shouldShowFile(f) && !shouldExcludeNotePage(f))
-  );
+  const passesBaseFeedFilters = (f: IndexedFile): boolean =>
+    shouldShowFile(f) && !shouldExcludeNotePage(f) && !isCollectionPart(f);
 
-  const allRaw = [...mediaFiles, ...notesFiles, ...collectionsFiles].filter(
-    (f) => shouldShowFile(f) && !shouldExcludeNotePage(f)
-  );
+  const filteredMedia = excludePenTemplates(mediaFiles.filter(passesBaseFeedFilters));
+  const filteredNotes = excludePenTemplates(notesFiles.filter(passesBaseFeedFilters));
+  const filteredCollections = excludePenTemplates(collectionsFiles.filter(passesBaseFeedFilters));
+
+  const allRaw = [...mediaFiles, ...notesFiles, ...collectionsFiles].filter(passesBaseFeedFilters);
 
   if (feedId === 'pen-templates') {
     return sortByScore(onlyPenTemplates(allRaw), userState.isUnlocked);
@@ -171,22 +191,29 @@ export function filterFilesForFeed(params: FilterFilesForFeedParams): IndexedFil
     return processed;
   };
 
-  const onThisRail = (file: IndexedFile): boolean => {
-    const ids = file.metadata.feedIds;
-    if (!ids || ids.length === 0) return true;
-    return ids.includes(feedId);
-  };
-
   if (feedId === 'public') {
     return processPublicFeed(
-      [...filteredMedia, ...filteredNotes, ...filteredCollections].filter(onThisRail),
+      [...filteredMedia, ...filteredNotes, ...filteredCollections].filter(onFirstPartyPublicRail),
       connectionsList
     );
   }
-  if (feedId === 'media') return processPublicFeed(filteredMedia.filter(onThisRail), connectionsList);
-  if (feedId === 'notes') return processPublicFeed(filteredNotes.filter(onThisRail), connectionsList);
+  if (feedId === 'media') {
+    return processPublicFeed(
+      filteredMedia.filter((f) => onFirstPartyClassRail(f, 'media')),
+      connectionsList
+    );
+  }
+  if (feedId === 'notes') {
+    return processPublicFeed(
+      filteredNotes.filter((f) => onFirstPartyClassRail(f, 'notes')),
+      connectionsList
+    );
+  }
   if (feedId === 'collections') {
-    return processPublicFeed(filteredCollections.filter(onThisRail), connectionsList);
+    return processPublicFeed(
+      filteredCollections.filter((f) => onFirstPartyClassRail(f, 'collections')),
+      connectionsList
+    );
   }
   if (feedId === 'discovery') return [];
 
