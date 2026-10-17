@@ -39,7 +39,7 @@ export class PenMediaController {
     }
     v.muted = true;
     v.defaultMuted = true;
-    v.loop = true;
+    v.loop = autoPlay;
     v.playsInline = true;
     v.preload = 'auto';
     v.setAttribute('playsinline', '');
@@ -139,10 +139,47 @@ export class PenMediaController {
     this.emit();
   }
 
-  async ensurePlaying(): Promise<void> {
+  /** Seek the master to a media timestamp and wait for seeked (or timeout). */
+  async seekToTime(seconds: number): Promise<void> {
+    if (this.removed) return;
+    const v = this.master;
+    const dur = v.duration;
+    const target =
+      Number.isFinite(dur) && dur > 0
+        ? Math.min(dur, Math.max(0, seconds))
+        : Math.max(0, seconds);
+    if (!v.ended && Math.abs((v.currentTime || 0) - target) <= 0.02) return;
+
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        window.clearTimeout(timer);
+        v.removeEventListener('seeked', onSeeked);
+        resolve();
+      };
+      const onSeeked = () => finish();
+      const timer = window.setTimeout(finish, 500);
+      v.addEventListener('seeked', onSeeked);
+      try {
+        v.currentTime = target;
+      } catch {
+        finish();
+      }
+    });
+
+    if (Number.isFinite(v.duration) && v.duration > 0) {
+      this.progress = v.currentTime / v.duration;
+    }
+    this.emit();
+  }
+
+  /** Seek then play — timeline transport and replay after ended. */
+  async playAtTime(seconds: number): Promise<void> {
+    if (this.removed) return;
     this.playbackWanted = true;
     const v = this.master;
     v.muted = this.muted;
+    v.loop = false;
+    await this.seekToTime(seconds);
     try {
       await v.play();
       this.paused = false;
@@ -151,6 +188,12 @@ export class PenMediaController {
       this.paused = true;
       this.emit();
     }
+  }
+
+  async ensurePlaying(): Promise<void> {
+    const v = this.master;
+    const at = v.ended ? 0 : v.currentTime || 0;
+    await this.playAtTime(at);
   }
 
   pause(): void {
@@ -164,8 +207,9 @@ export class PenMediaController {
 
   togglePlay(): void {
     const v = this.master;
-    if (v.paused) {
-      void this.ensurePlaying();
+    if (v.paused || v.ended) {
+      if (v.ended) void this.playAtTime(0);
+      else void this.ensurePlaying();
     } else {
       this.pause();
     }
@@ -197,9 +241,7 @@ export class PenMediaController {
     const v = this.master;
     if (!v.duration) return;
     const t = Math.min(1, Math.max(0, ratio));
-    v.currentTime = t * v.duration;
-    this.progress = t;
-    this.emit();
+    void this.seekToTime(t * v.duration);
   }
 }
 

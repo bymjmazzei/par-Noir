@@ -680,6 +680,12 @@ describe('section timeline', () => {
     expect(timeline).not.toContain('editorVideoReady');
   });
 
+  it('uses playAtTime for timeline play and does not set loop on pause', () => {
+    const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
+    expect(timeline).toContain('playAtTime');
+    expect(timeline).not.toMatch(/mode === 'pause'[\s\S]{0,120}master\.loop = true/);
+  });
+
   it('mounts the timeline under the text editor', () => {
     const page = readFileSync(resolve(__dirname, '../pages/docEditor/DocEditorShell.tsx'), 'utf8');
     const writing = page.indexOf('writingEnabled && canvasSection && section');

@@ -591,18 +591,6 @@ function AudioLane({
   return <audio ref={audioRef} src={resolved} preload="metadata" />;
 }
 
-function placeVideo(master: HTMLVideoElement, at: number, force = false) {
-  const dur = master.duration;
-  if (!dur || !Number.isFinite(dur)) return;
-  const target = Math.min(dur, Math.max(0, at));
-  if (!force && Math.abs((master.currentTime || 0) - target) <= 0.35) return;
-  try {
-    master.currentTime = target;
-  } catch {
-    /* metadata not ready */
-  }
-}
-
 /** Reads a video file's length once so the clip is the file, not the clock. */
 function VideoFileDuration({
   layerId,
@@ -1198,22 +1186,25 @@ export function SectionTimeline({
         if (!ctrl) continue;
         if (mode === 'pause') {
           ctrl.pause();
-          ctrl.master.loop = true;
           continue;
         }
         const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
         ctrl.setPlaybackRate(rate);
         const mediaAt = layerMediaTime(layer, at, rate, layerClockSpan(section, layer));
         const reversed = Boolean(layer.mediaReversed);
-        if (mode === 'play') ctrl.master.loop = false;
         if (!shouldSeekTimelineVideo(mode, reversed)) continue;
         if (reversed) {
           ctrl.pause();
-          placeVideo(ctrl.master, mediaAt, true);
+          void ctrl.seekToTime(mediaAt);
           continue;
         }
-        placeVideo(ctrl.master, mediaAt, true);
-        if (mode === 'play') void ctrl.ensurePlaying();
+        if (mode === 'seek') {
+          void ctrl.seekToTime(mediaAt).then(() => ctrl.pause());
+          continue;
+        }
+        if (mode === 'play') {
+          void ctrl.playAtTime(mediaAt);
+        }
       }
     }
   }
