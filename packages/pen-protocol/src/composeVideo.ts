@@ -38,7 +38,7 @@ export function sectionHasNoteContent(
 export type PublishSectionPartition = {
   /** Slugs / sections that should encode as composed video pages. */
   videoSections: PenSectionContent[];
-  /** Sections with prose and no video layer — stay Note pages. */
+  /** Non-video feed pages (prose, stills, text layers). */
   noteSections: PenSectionContent[];
 };
 
@@ -55,7 +55,7 @@ export function partitionSectionsForPublish(
     const sec = sectionWithoutActionLayers(normalizeSection(raw));
     if (sectionHasVisibleVideoLayer(sec)) {
       videoSections.push(sec);
-    } else if (sectionHasNoteContent(sec)) {
+    } else if (sectionIsFeedPage(sec)) {
       noteSections.push(sec);
     }
   }
@@ -69,6 +69,8 @@ export function partitionSectionsForPublish(
 export function shouldPublishAsSingleComposedVideo(
   sections: PenSectionContent[] | null | undefined
 ): boolean {
+  const feedPages = (sections || []).filter(sectionIsFeedPage);
+  if (feedPages.length !== 1) return false;
   const { videoSections, noteSections } = partitionSectionsForPublish(sections);
   return videoSections.length === 1 && noteSections.length === 0;
 }
@@ -95,6 +97,20 @@ export function sectionIsFeedPage(section: PenSectionContent | null | undefined)
     if (layer.kind === 'text' && docToPlainText(layer.textDoc).trim()) return true;
   }
   return false;
+}
+
+/** First visible image layer src on a section, for still-page publish. */
+export function primaryVisibleImageSrc(
+  section: PenSectionContent | null | undefined
+): string | null {
+  if (!section) return null;
+  const sec = sectionWithoutActionLayers(normalizeSection(section));
+  for (const layer of sec.layers || []) {
+    if (layer.visible === false || layer.kind !== 'image') continue;
+    const src = String(layer.imageSrc || '').trim();
+    if (src) return src;
+  }
+  return null;
 }
 
 /** Plain text for a collection page: body first, then text layers. */

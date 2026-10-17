@@ -147,6 +147,104 @@ describe('text collection publish', () => {
     expect(deletePrior).toBe(true);
   });
 
+  it('collection template still slide uploads image child and collections feedIds', async () => {
+    const collectionDoc = {
+      manifest: {
+        docId: 'doc-coll',
+        title: 'Coll',
+        docType: 'collection',
+        classId: 'social.collection',
+        templateId: 'collection.basic.v1',
+        templateVersion: '1',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        toc: ['slide-1', 'slide-2'],
+        ownerPnHash: 'owner'
+      },
+      sections: [
+        { slug: 'slide-1', doc: prose('Page one') },
+        {
+          slug: 'slide-2',
+          doc: prose(''),
+          layers: [
+            {
+              id: 'img',
+              kind: 'image',
+              x: 0,
+              y: 0,
+              w: 100,
+              h: 100,
+              zIndex: 1,
+              imageSrc: 'https://example.com/slide2.jpg'
+            }
+          ]
+        }
+      ],
+      chain: { docId: 'doc-coll', genesis: { hash: 'g' }, links: [] }
+    } as unknown as LocalDocBundle;
+
+    const handoff = writeTextCollectionHandoff(collectionDoc, { canPublishPublicTemplate: false });
+    expect(handoff.pages).toHaveLength(2);
+    expect(handoff.pages[0]?.kind).toBe('note');
+    expect(handoff.pages[1]?.kind).toBe('still');
+
+    let n = 0;
+    const puts: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const request = async (method: string, path: string, body?: unknown) => {
+      if (path === '/api/drive/files') {
+        n += 1;
+        return new Response(JSON.stringify({ id: `file-${n}` }), { status: 200 });
+      }
+      if (path.includes('/api/aggregator/feed-media/owner-upload')) {
+        return new Response(JSON.stringify({ key: `preview-${n}` }), { status: 200 });
+      }
+      if (path.includes('/api/aggregator/feed-media/confirm-upload')) {
+        return new Response('{}', { status: 200 });
+      }
+      if (path.includes('/ensure-public')) {
+        const id = `file-${n}`;
+        return new Response(
+          JSON.stringify({
+            publicContentRef: {
+              objectId: id,
+              publicUrl: `https://drive.google.com/uc?export=download&id=${id}`,
+              backend: 'google_drive'
+            }
+          }),
+          { status: 200 }
+        );
+      }
+      if (method === 'PUT' && path.includes('/api/aggregator/metadata-index/')) {
+        puts.push({ path, body: body as Record<string, unknown> });
+        return new Response('{}', { status: 200 });
+      }
+      return new Response('unexpected', { status: 500 });
+    };
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(new Blob([1, 2, 3], { type: 'image/jpeg' }), { status: 200 });
+    try {
+      await publishPostToOwnerCloud({
+        bundle: collectionDoc,
+        feedIds: ['public', 'media'],
+        pnIdentifier: 'pn',
+        parentFolderId: 'public-folder',
+        membership: false,
+        request,
+        mixed: handoff
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const parent = puts[puts.length - 1]?.body;
+    expect(parent?.contentClass).toBe('collection');
+    expect((parent?.feedIds as string[]) || []).toContain('collections');
+    expect(puts[0]?.body.fileType).toBe('note-collection-page');
+    expect(puts[1]?.body.fileType).toBe('image');
+  });
+
   it('an article title and body stay a single note', () => {
     const article = {
       manifest: {

@@ -18,7 +18,9 @@ import {
   shouldPublishAsMixedPages,
   shouldPublishSocialAsCollection,
   sectionIsFeedPage,
+  sectionHasVisibleVideoLayer,
   feedPagePlainText,
+  primaryVisibleImageSrc,
   partitionSectionsForPublish,
   resolveTimelineDuration,
   sectionHasMotion,
@@ -68,6 +70,7 @@ import type { FeedPublishExtras } from './penFeedMetadata';
 import { metadataFieldsFromPublishForm } from './penFeedMetadata';
 import { resolvePenMediaSrc } from './penLocalMedia';
 import { isTemplatesCatalogClass } from './classFeedRailItems';
+import { ensureShareFeedIds } from './penFeedTargets';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
 /** Legacy browse handoff key — still written alongside for one release. */
@@ -326,7 +329,8 @@ function waitTwoFrames(): Promise<void> {
 
 export type MixedPublishPage =
   | { kind: 'note'; slug: string; content: string; style?: unknown; doc?: unknown }
-  | { kind: 'video'; slug: string; videoIndex: number };
+  | { kind: 'video'; slug: string; videoIndex: number }
+  | { kind: 'still'; slug: string; imageSrc: string };
 
 export type MixedPagesPublish = {
   contentClass: 'collection';
@@ -399,20 +403,24 @@ export async function writeMixedPagesPublishHandoff(
 
   const videoIndexBySlug = new Map(videos.map((v, i) => [v.slug, i]));
   const pages: MixedPublishPage[] = [];
-  for (const raw of bundle.sections) {
+  for (const raw of sectionsInTocOrder(bundle)) {
     const slug = raw.slug;
     if (videoIndexBySlug.has(slug)) {
       pages.push({ kind: 'video', slug, videoIndex: videoIndexBySlug.get(slug)! });
       continue;
     }
-    const text = docToPlainText(raw.doc).trim();
-    if (!text) continue;
+    if (!sectionIsFeedPage(raw)) continue;
     const sec = normalizeSection(raw);
+    const imageSrc = primaryVisibleImageSrc(sec);
+    if (imageSrc && !sectionHasVisibleVideoLayer(sec)) {
+      pages.push({ kind: 'still', slug, imageSrc });
+      continue;
+    }
     const base = mergePagePresentation(presentation);
     pages.push({
       kind: 'note',
       slug,
-      content: text,
+      content: feedPagePlainText(sec),
       style: { ...base, textStyle: inferPageTextStyle(sec.doc) },
       doc: raw.doc
     });
@@ -489,6 +497,11 @@ export function writeTextCollectionHandoff(
   for (const raw of sectionsInTocOrder(bundle)) {
     if (!sectionIsFeedPage(raw)) continue;
     const sec = normalizeSection(raw);
+    const imageSrc = primaryVisibleImageSrc(sec);
+    if (imageSrc && !sectionHasVisibleVideoLayer(sec)) {
+      pages.push({ kind: 'still', slug: raw.slug, imageSrc });
+      continue;
+    }
     const base = mergePagePresentation(presentation);
     pages.push({
       kind: 'note',
@@ -644,6 +657,18 @@ async function supersedePriorPublishedPost(
   throw new Error(`supersede_prior_publish_${res.status} ${text}`);
 }
 
+async function loadStillBytesForPublish(
+  imageSrc: string,
+  docId: string
+): Promise<{ bytes: Uint8Array; mime: string; blob: Blob }> {
+  const url = (await resolvePenMediaSrc(imageSrc, docId)) || imageSrc;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('publish_still_fetch_failed');
+  const blob = await res.blob();
+  const mime = blob.type || 'image/jpeg';
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), mime, blob };
+}
+
 /** Publish the compiled post to the owner cloud. No template flag. */
 export async function publishPostToOwnerCloud(params: {
   bundle: LocalDocBundle;
@@ -683,9 +708,15 @@ export async function publishPostToOwnerCloud(params: {
     connectReady: params.connectReady,
     musicAsset: params.bundle.manifest.classId === 'library.music'
   });
+  const effectiveFeedIds =
+    params.mixed != null
+      ? ensureShareFeedIds(params.feedIds, 'collection')
+      : params.video != null
+        ? ensureShareFeedIds(params.feedIds, 'media')
+        : params.feedIds;
   const companion = await uploadCompanionAudioFiles({ ...params, parentFolderId });
   const base = {
-    ...provenanceFor(params.bundle, licensing, params.feedIds),
+    ...provenanceFor(params.bundle, licensing, effectiveFeedIds),
     ...(companion.fileIds.length
       ? {
           companionAudioFileIds: companion.fileIds,
@@ -728,6 +759,8 @@ export async function publishPostToOwnerCloud(params: {
 
   if (params.mixed) {
     const childIds: string[] = [];
+    let parentPoster: Blob | undefined;
+    const docId = params.bundle.manifest.docId;
     for (const page of params.mixed.pages) {
       if (page.kind === 'video') {
         const video = params.mixed.videos[page.videoIndex];
@@ -736,7 +769,7 @@ export async function publishPostToOwnerCloud(params: {
           request: params.request,
           parentFolderId,
           bytes: new Uint8Array(await video.videoBlob.arrayBuffer()),
-          fileName: `pen-${params.bundle.manifest.docId}-${page.slug}.video`,
+          fileName: `pen-${docId}-${page.slug}.video`,
           title: `${publishTitle} — ${page.slug}`,
           poster: video.posterBlob,
           videoForSd: video.videoBlob,
@@ -750,15 +783,39 @@ export async function publishPostToOwnerCloud(params: {
             isPartOfCollection: true
           }
         });
+        if (!parentPoster) parentPoster = video.posterBlob;
+        childIds.push(uploaded.fileId);
+      } else if (page.kind === 'still') {
+        const still = await loadStillBytesForPublish(page.imageSrc, docId);
+        const uploaded = await publishPublicCloudFile({
+          request: params.request,
+          parentFolderId,
+          bytes: still.bytes,
+          fileName: `pen-${docId}-${page.slug}.jpg`,
+          title: `${publishTitle} — ${page.slug}`,
+          poster: still.blob,
+          posterContentType: still.mime,
+          indexingPermissions,
+          metadata: {
+            ...publishMeta,
+            ...provenanceFor(params.bundle, licensing, ['collection-part']),
+            fileType: 'image',
+            contentClass: 'media',
+            isPartOfCollection: true
+          }
+        });
+        if (!parentPoster) parentPoster = still.blob;
         childIds.push(uploaded.fileId);
       } else {
         const textPost = { content: page.content, style: page.style || {} };
+        const notePoster = await renderNotePoster(`${publishTitle} — ${page.slug}`, textPost.content);
         const uploaded = await publishPublicCloudFile({
           request: params.request,
           parentFolderId,
           bytes: new TextEncoder().encode(JSON.stringify({ textPost, version: '1.0' })),
-          fileName: `pen-${params.bundle.manifest.docId}-${page.slug}.json`,
+          fileName: `pen-${docId}-${page.slug}.json`,
           title: `${publishTitle} — ${page.slug}`,
+          poster: notePoster,
           indexingPermissions,
           metadata: {
             ...publishMeta,
@@ -769,10 +826,11 @@ export async function publishPostToOwnerCloud(params: {
             isPartOfCollection: true
           }
         });
+        if (!parentPoster && notePoster) parentPoster = notePoster;
         childIds.push(uploaded.fileId);
       }
     }
-    const poster = params.mixed.videos[0]?.posterBlob;
+    const poster = parentPoster ?? params.mixed.videos[0]?.posterBlob;
     return publishPublicCloudFile({
       request: params.request,
       parentFolderId,

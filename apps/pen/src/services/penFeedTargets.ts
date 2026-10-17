@@ -88,6 +88,20 @@ export function resolveShareFeedIds(params: {
   return ids;
 }
 
+/** Align feedIds with the shape actually published (collection parent, single video, etc.). */
+export function ensureShareFeedIds(
+  feedIds: string[],
+  contentClass: FeedContentClass
+): string[] {
+  const rail = contentClassToRailId(contentClass);
+  const out = new Set<string>(['public', rail]);
+  for (const id of feedIds) {
+    const trimmed = id.trim();
+    if (trimmed && trimmed !== 'collection-part') out.add(trimmed);
+  }
+  return [...out];
+}
+
 /**
  * @deprecated Make public → every active content feed.
  */

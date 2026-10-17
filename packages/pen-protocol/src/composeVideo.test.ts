@@ -78,6 +78,28 @@ describe('composeVideo per-page', () => {
     const part = partitionSectionsForPublish([textPage, videoWithProse]);
     expect(part.noteSections.map((s) => s.slug)).toEqual(['intro']);
     expect(part.videoSections.map((s) => s.slug)).toEqual(['reel']);
+
+    const imagePage: PenSectionContent = {
+      slug: 'still',
+      doc: emptyTipTapDoc(),
+      layers: [
+        {
+          id: 'img',
+          kind: 'image',
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          zIndex: 1,
+          imageSrc: 'https://example.com/still.jpg'
+        }
+      ]
+    };
+    expect(shouldPublishAsSingleComposedVideo([videoOnly, imagePage])).toBe(false);
+    expect(shouldPublishAsMixedPages([videoOnly, imagePage])).toBe(true);
+    const mixedPart = partitionSectionsForPublish([videoOnly, imagePage]);
+    expect(mixedPart.videoSections.map((s) => s.slug)).toEqual(['body']);
+    expect(mixedPart.noteSections.map((s) => s.slug)).toEqual(['still']);
   });
 
   it('download kind is video, image, or doc', () => {
