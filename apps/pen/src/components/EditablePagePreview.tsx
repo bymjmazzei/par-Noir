@@ -816,15 +816,19 @@ export function EditablePagePreview({
                 docId={manifest.docId}
                 session={session}
               />
-              <PageBackgroundVideoDuration
-                src={presentation.backgroundVideo}
-                editProxySrc={presentation.editProxySrc}
-                docId={manifest.docId}
-                session={session}
-                onDuration={(seconds) =>
-                  onSectionChange(sectionWithPageBackgroundDuration(section, seconds))
-                }
-              />
+              {!(section.pageBackgroundDurationSec && section.pageBackgroundDurationSec > 0) ? (
+                <PageBackgroundVideoDuration
+                  src={presentation.backgroundVideo}
+                  editProxySrc={presentation.editProxySrc}
+                  docId={manifest.docId}
+                  session={session}
+                  onDuration={(seconds) => {
+                    const next = sectionWithPageBackgroundDuration(section, seconds);
+                    if (next === section) return;
+                    onSectionChange(next);
+                  }}
+                />
+              ) : null}
             </>
           )}
           {!presentation.backgroundVideo && presentation.backgroundImage && (

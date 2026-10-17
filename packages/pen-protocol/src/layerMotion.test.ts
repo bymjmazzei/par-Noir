@@ -225,6 +225,7 @@ describe('timeline duration and layout writes', () => {
     expect(resolveTimelineDuration(grown, undefined, { pageBackgroundVideo: 'penmedia:bg' })).toBe(
       12
     );
+    expect(applyPageBackgroundVideoDuration(grown, 12)).toBe(grown);
   });
 
   it('stamps clip span when layers are inserted', () => {

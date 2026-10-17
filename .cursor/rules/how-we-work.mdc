@@ -27,6 +27,6 @@ You prompt and decide product behavior. The agent writes code. Precedence: chat 
 - Workflow tests land next to new workflows. User confirms visible UI on their own pN.
 
 ## 4. Done & Ship
-- Once the single targeted test passes: `git add` the changed files for this task (no `.env`, secrets, `.local/`, `.firebase` cache) → `git commit` with why → `git push`, unless this chat explicitly says not to commit or push.
+- **Commit and push are part of done.** After each completed coding task (fix, feature, or follow-up), once the single targeted test passes: `git add` only the files for that task (no `.env`, secrets, `.local/`, `.firebase` cache, unrelated local edits) → `git commit` with why → `git push`. Do **not** wait for the user to ask; do **not** end the turn with uncommitted task work unless this chat explicitly says not to commit or push.
 - Then output a short summary of changes and stop. Do NOT run follow-up git diffs, redundant verification loops, or full-suite tests.
 - Do **not** run `./deploy.sh`, `firebase deploy`, or API deploy unless explicitly asked. Remind user once: live hosting updates when they run `./deploy.sh` from repo root.

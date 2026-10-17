@@ -139,18 +139,27 @@ export function PageBackgroundVideoDuration({
   const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
   const report = useRef(onDuration);
   report.current = onDuration;
+  const reportedForSrc = useRef<string | null>(null);
   useEffect(() => {
     if (!resolved) return;
+    if (reportedForSrc.current === resolved) return;
     const video = document.createElement('video');
     video.preload = 'metadata';
+    let done = false;
     const finish = () => {
+      if (done) return;
       const seconds = video.duration;
-      if (Number.isFinite(seconds) && seconds > 0) report.current(seconds);
+      if (!Number.isFinite(seconds) || !(seconds > 0)) return;
+      done = true;
+      reportedForSrc.current = resolved;
+      report.current(seconds);
     };
     video.addEventListener('loadedmetadata', finish);
+    video.addEventListener('durationchange', finish);
     video.src = resolved;
     return () => {
       video.removeEventListener('loadedmetadata', finish);
+      video.removeEventListener('durationchange', finish);
       video.removeAttribute('src');
       video.load();
     };

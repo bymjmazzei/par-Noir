@@ -570,7 +570,19 @@ export function applyPageBackgroundVideoDuration(
   fileDurationSec: number
 ): PenSectionContent {
   if (!Number.isFinite(fileDurationSec) || !(fileDurationSec > 0)) return section;
-  const withMeta = { ...section, pageBackgroundDurationSec: fileDurationSec };
+  const prevBg = section.pageBackgroundDurationSec;
+  const clock = section.timelineDurationSec ?? 0;
+  if (
+    prevBg != null &&
+    Math.abs(prevBg - fileDurationSec) < 0.001 &&
+    clock >= fileDurationSec - 0.001
+  ) {
+    return section;
+  }
+  const withMeta =
+    prevBg != null && Math.abs(prevBg - fileDurationSec) < 0.001
+      ? section
+      : { ...section, pageBackgroundDurationSec: fileDurationSec };
   return raiseTimelineTo(withMeta, fileDurationSec);
 }
 
