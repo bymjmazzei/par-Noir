@@ -9,17 +9,15 @@ import type { PenDocManifest, PenPagePresentation, PenSectionContent, PenTipTapN
 import {
   normalizeSection,
   resolveTimelineDuration,
-  sectionHasMotion,
   sectionHasVisibleVideoLayer,
   type PenPageLayer
 } from '@par-noir/pen-protocol';
-import { emitTimelineSample } from './timelineSample';
 import { setPlaybackMode } from './playbackMode';
 import {
   collectUntaintedVideoSlots,
   rootHasUntaintedPlayableVideo
 } from './composePageVideoEncode';
-import { composePageVideoWithoutActions } from './penFeedPagePublish';
+import { composePageVideoWithoutActions, composeTimelineEncodeOpts } from './penFeedPagePublish';
 import {
   rasterizeElementToPosterBlob,
   rasterizeElementSafeStill
@@ -262,17 +260,11 @@ export async function buildAndStoreGalleryPreview(params: {
     let encoded: Awaited<ReturnType<typeof composePageToVideo>>;
     try {
       root = await waitForUntaintedComposeVideos(root);
-      const motion =
-        params.clockSection && sectionHasMotion(params.clockSection) ? params.clockSection : null;
+      const clockSection = params.clockSection ? normalizeSection(params.clockSection) : null;
       encoded = await composePageVideoWithoutActions(
         root,
         params.sections,
-        motion
-          ? {
-              clockDurationSec: resolveTimelineDuration(motion),
-              onSample: emitTimelineSample
-            }
-          : undefined
+        clockSection ? composeTimelineEncodeOpts(clockSection) : undefined
       );
     } finally {
       setPlaybackMode('edit');

@@ -25,7 +25,6 @@ import {
   primaryVisibleImageSrc,
   partitionSectionsForPublish,
   resolveTimelineDuration,
-  sectionHasMotion,
   audioPublishPlan,
   mergePagePresentation,
   docToPlainText,
@@ -41,7 +40,6 @@ import {
   type ResolvePenEmbed
 } from '@par-noir/pen-protocol';
 import { composePageToVideo } from './composePageVideoEncode';
-import { emitTimelineSample } from './timelineSample';
 import { findComposeExportRoot, waitForUntaintedComposeVideos } from './penGalleryPreview';
 import { setPlaybackMode } from './playbackMode';
 import type { PenSession } from '../App';
@@ -75,7 +73,7 @@ import { isTemplatesCatalogClass } from './classFeedRailItems';
 import { ensureShareFeedIds } from './penFeedTargets';
 import {
   composePageVideoWithoutActions,
-  minimalOverlayStillBlob,
+  composeTimelineEncodeOpts,
   penFeedPageForSection,
   penPresentationFields
 } from './penFeedPagePublish';
@@ -322,11 +320,8 @@ export async function writeComposedVideoPublishHandoff(
 }
 
 function composeClock(section: PenSectionContent | undefined) {
-  if (!section || !sectionHasMotion(section)) return {};
-  return {
-    clockDurationSec: resolveTimelineDuration(section),
-    onSample: emitTimelineSample
-  };
+  if (!section) return {};
+  return composeTimelineEncodeOpts(section);
 }
 
 function waitTwoFrames(): Promise<void> {
@@ -492,7 +487,9 @@ export async function writeSocialTocCollectionHandoff(
     throw new Error('not_social_toc_collection');
   }
   const ordered = sectionsInTocOrder(bundle);
-  const videoSections = ordered.filter((section) => sectionHasVisibleVideoLayer(section));
+  const inertEncodeSections = ordered.filter(
+    (section) => sectionHasVisibleVideoLayer(section) || sectionNeedsRasterSnapshot(section)
+  );
   const presentation = manifest.pagePresentation || defaultPagePresentation();
   const videos: Array<{
     slug: string;
@@ -503,20 +500,22 @@ export async function writeSocialTocCollectionHandoff(
 
   setPlaybackMode('publish');
   try {
-    for (let i = 0; i < videoSections.length; i++) {
-      const sec = videoSections[i]!;
-      opts.onProgress?.(Math.round((i / Math.max(videoSections.length, 1)) * 70));
+    for (let i = 0; i < inertEncodeSections.length; i++) {
+      const sec = inertEncodeSections[i]!;
+      opts.onProgress?.(Math.round((i / Math.max(inertEncodeSections.length, 1)) * 95));
       await opts.activateSection(sec.slug);
       await waitTwoFrames();
       await new Promise((r) => setTimeout(r, 200));
       const root0 = await opts.resolveExportRoot(sec.slug);
       if (!root0) throw new Error('compose_export_root_missing');
-      const root = await waitForUntaintedComposeVideos(root0);
+      const root = sectionHasVisibleVideoLayer(sec)
+        ? await waitForUntaintedComposeVideos(root0)
+        : root0;
       const encoded = await composePageVideoWithoutActions(root, bundle.sections, {
         ...composeClock(sec),
         onProgress: (p) => {
-          const base = (i / videoSections.length) * 70;
-          opts.onProgress?.(Math.round(base + (p / 100) * (70 / videoSections.length)));
+          const base = (i / inertEncodeSections.length) * 95;
+          opts.onProgress?.(Math.round(base + (p / 100) * (95 / inertEncodeSections.length)));
         }
       });
       videos.push({
@@ -530,11 +529,8 @@ export async function writeSocialTocCollectionHandoff(
     setPlaybackMode('edit');
   }
 
-  const overlayStill = await minimalOverlayStillBlob(manifest);
   const videoIndexBySlug = new Map(videos.map((v, i) => [v.slug, i]));
   const pages: MixedPublishPage[] = [];
-  const overlayWeight = Math.max(ordered.length - videoSections.length, 1);
-  let overlayDone = 0;
 
   for (const raw of ordered) {
     const slug = raw.slug;
@@ -558,12 +554,6 @@ export async function writeSocialTocCollectionHandoff(
         doc: raw.doc
       });
       continue;
-    }
-    if (sectionNeedsRasterSnapshot(raw)) {
-      opts.onProgress?.(
-        Math.round(70 + (++overlayDone / overlayWeight) * 25)
-      );
-      pages.push({ kind: 'overlay', slug, posterBlob: overlayStill });
     }
   }
 
@@ -837,8 +827,12 @@ export async function publishPostToOwnerCloud(params: {
   /** Test hook. Production uploads each own lane as its own audio file. */
   uploadCompanionAudio?: (bytes: Uint8Array, index: number, mime: string) => Promise<string>;
   feedPublish?: FeedPublishExtras;
-}): Promise<{ fileId: string }> {
+}): Promise<{
+  fileId: string;
+  penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
+}> {
   if (!params.feedIds.length) throw new Error('feed_required');
+  const penFeedMediaBySlug: NonNullable<PenDocManifest['penFeedMediaBySlug']> = {};
   await supersedePriorPublishedPost(
     params.request,
     params.bundle.manifest.publishedFileId
@@ -899,7 +893,7 @@ export async function publishPostToOwnerCloud(params: {
             )
           }
         : {};
-    return publishPublicCloudFile({
+    const uploaded = await publishPublicCloudFile({
       request: params.request,
       parentFolderId,
       bytes,
@@ -920,6 +914,13 @@ export async function publishPostToOwnerCloud(params: {
         description: caption || params.video.title
       }
     });
+    if (videoSlug) {
+      penFeedMediaBySlug[videoSlug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'video' };
+    }
+    return {
+      fileId: uploaded.fileId,
+      penFeedMediaBySlug: Object.keys(penFeedMediaBySlug).length ? penFeedMediaBySlug : undefined
+    };
   }
 
   if (params.mixed) {
@@ -958,6 +959,7 @@ export async function publishPostToOwnerCloud(params: {
         });
         if (!parentPoster) parentPoster = video.posterBlob;
         childIds.push(uploaded.fileId);
+        penFeedMediaBySlug[page.slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'video' };
       } else if (page.kind === 'still') {
         const still = await loadStillBytesForPublish(page.imageSrc, docId);
         const uploaded = await publishPublicCloudFile({
@@ -987,6 +989,7 @@ export async function publishPostToOwnerCloud(params: {
         });
         if (!parentPoster) parentPoster = still.blob;
         childIds.push(uploaded.fileId);
+        penFeedMediaBySlug[page.slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'image' };
       } else if (page.kind === 'raster' || page.kind === 'overlay') {
         const uploaded = await publishPublicCloudFile({
           request: params.request,
@@ -1015,6 +1018,7 @@ export async function publishPostToOwnerCloud(params: {
         });
         if (!parentPoster) parentPoster = page.posterBlob;
         childIds.push(uploaded.fileId);
+        penFeedMediaBySlug[page.slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'image' };
       } else {
         const textPost = { content: page.content, style: page.style || {} };
         const notePoster = await renderNotePoster(`${publishTitle} — ${page.slug}`, textPost.content);
@@ -1048,7 +1052,7 @@ export async function publishPostToOwnerCloud(params: {
       }
     }
     const poster = parentPoster ?? params.mixed.videos[0]?.posterBlob;
-    return publishPublicCloudFile({
+    const uploaded = await publishPublicCloudFile({
       request: params.request,
       parentFolderId,
       bytes: new TextEncoder().encode(
@@ -1069,6 +1073,10 @@ export async function publishPostToOwnerCloud(params: {
         description: caption
       }
     });
+    return {
+      fileId: uploaded.fileId,
+      penFeedMediaBySlug: Object.keys(penFeedMediaBySlug).length ? penFeedMediaBySlug : undefined
+    };
   }
 
   const compiled = await writeSocialPublishHandoff(params.bundle, {
@@ -1082,7 +1090,7 @@ export async function publishPostToOwnerCloud(params: {
     style: page?.style || {}
   };
   const poster = await renderNotePoster(compiled.title, textPost.content);
-  return publishPublicCloudFile({
+  const uploaded = await publishPublicCloudFile({
     request: params.request,
     parentFolderId,
     bytes: new TextEncoder().encode(
@@ -1102,6 +1110,7 @@ export async function publishPostToOwnerCloud(params: {
       description: caption || textPost.content
     }
   });
+  return { fileId: uploaded.fileId };
 }
 
 /**

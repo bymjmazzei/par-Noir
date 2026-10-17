@@ -14,6 +14,18 @@ import {
 } from '@par-noir/pen-protocol';
 import { composePageToVideo, type ComposePageVideoResult } from './composePageVideoEncode';
 import { actionLayerIds, hideActionLayers } from './penDownload';
+import { emitTimelineSample } from './timelineSample';
+
+/** Timeline clock + playhead for feed compose (all layers, not only motion keys). */
+export function composeTimelineEncodeOpts(section: PenSectionContent) {
+  const sec = normalizeSection(section);
+  return {
+    clockDurationSec: resolveTimelineDuration(sec),
+    section: sec,
+    onSample: emitTimelineSample,
+    allowInertOnly: true as const
+  };
+}
 
 export function penPresentationFields(
   manifest: PenDocManifest

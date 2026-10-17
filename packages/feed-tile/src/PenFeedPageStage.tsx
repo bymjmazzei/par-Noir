@@ -112,8 +112,7 @@ export function PenFeedPageStage({
     return () => cancelAnimationFrame(raf);
   }, [externalClockSec, mediaKind, duration, mediaSrc]);
 
-  const overlayTime =
-    externalClockSec != null ? externalClockSec : mediaKind === 'video' ? videoTime : 0;
+  const overlayTime = externalClockSec != null ? externalClockSec : videoTime;
 
   const layers = useMemo(
     () => buildActionOverlayAtTime(penFeedPage.actionSection, overlayTime),

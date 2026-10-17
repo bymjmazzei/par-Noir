@@ -16,5 +16,11 @@ describe('pen feed playback gate', () => {
     expect(src).toMatch(/buildPenFeedTileModelForPost/);
     expect(src).toMatch(/buildPenCollectionFeedTileModel/);
     expect(src).toMatch(/!isPenFeedPost/);
+    expect(src).toMatch(/handleFeedPenAction/);
+  });
+
+  it('buildPenCollectionFeedTileModel carries penFeedPage from member meta', () => {
+    const src = readFileSync(resolve(root, 'utils/penFeedTileModel.ts'), 'utf8');
+    expect(src).toMatch(/penFeedPageFromMetadata/);
   });
 });

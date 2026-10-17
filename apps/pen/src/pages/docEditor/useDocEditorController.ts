@@ -69,7 +69,6 @@ import {
   downloadKindForSections,
   partitionSectionsForPublish,
   resolveTimelineDuration,
-  sectionHasMotion,
   sectionIsFeedPage,
   isGooglePenFont,
   remapSectionsForAspect,
@@ -131,6 +130,7 @@ import { SectionTimeline } from '../../components/SectionTimeline';
 import { bindTimelineSample, emitTimelineSample } from '../../services/timelineSample';
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
 import { composePageToVideo } from '../../services/composePageVideoEncode';
+import { composeTimelineEncodeOpts } from '../../services/penFeedPagePublish';
 import { setPlaybackMode } from '../../services/playbackMode';
 import {
   rasterizeElementSafeStill,
@@ -1712,10 +1712,19 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setStatus('Link copied');
   }
 
-  function rememberPostFileId(b: NonNullable<typeof bundle>, fileId: string) {
+  function rememberPostFileId(
+    b: NonNullable<typeof bundle>,
+    fileId: string,
+    penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug']
+  ) {
     const next = {
       ...b,
-      manifest: { ...b.manifest, publishedFileId: fileId, updatedAt: new Date().toISOString() }
+      manifest: {
+        ...b.manifest,
+        publishedFileId: fileId,
+        ...(penFeedMediaBySlug ? { penFeedMediaBySlug } : {}),
+        updatedAt: new Date().toISOString()
+      }
     };
     persist(next);
   }
@@ -1815,12 +1824,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         const encoded = await withActionsHidden(root, () =>
           composePageToVideo(
             root,
-            section && sectionHasMotion(section)
-              ? {
-                  clockDurationSec: resolveTimelineDuration(section),
-                  onSample: emitTimelineSample
-                }
-              : {}
+            section ? composeTimelineEncodeOpts(section) : undefined
           )
         );
         const ext = encoded.videoContentType.includes('mp4') ? 'mp4' : 'webm';
@@ -1901,7 +1905,10 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           indexingPermissions: input.indexingPermissions
         };
         setStatus('Publishing to your cloud…');
-        let fileId: string;
+        let publishResult: {
+          fileId: string;
+          penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
+        };
         const prevSlug = activeSlugRef.current;
         const feedManifest = {
           classId: b.manifest.classId,
@@ -1946,17 +1953,15 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               }
             });
             setStatus('Publishing to your cloud…');
-            fileId = (
-              await publishPostToOwnerCloud({
-                bundle: b,
-                feedIds: input.feedIds,
-                pnIdentifier: session.pnIdentifier,
-                membership: verifiedAuthor,
-                connectReady,
-                mixed,
-                feedPublish
-              })
-            ).fileId;
+            publishResult = await publishPostToOwnerCloud({
+              bundle: b,
+              feedIds: input.feedIds,
+              pnIdentifier: session.pnIdentifier,
+              membership: verifiedAuthor,
+              connectReady,
+              mixed,
+              feedPublish
+            });
           } else if (
             shouldPublishAsSingleComposedVideoForFeed(b.sections, feedManifest)
           ) {
@@ -1976,17 +1981,15 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             }
           });
           setStatus('Publishing to your cloud…');
-          fileId = (
-            await publishPostToOwnerCloud({
-              bundle: b,
-              feedIds: input.feedIds,
-              pnIdentifier: session.pnIdentifier,
-              membership: verifiedAuthor,
-              connectReady,
-              video,
-              feedPublish
-            })
-          ).fileId;
+          publishResult = await publishPostToOwnerCloud({
+            bundle: b,
+            feedIds: input.feedIds,
+            pnIdentifier: session.pnIdentifier,
+            membership: verifiedAuthor,
+            connectReady,
+            video,
+            feedPublish
+          });
           } else if (shouldPublishAsMixedPages(b.sections)) {
           setStatus('Encoding video pages…');
           const mixed = await writeMixedPagesPublishHandoff(b, {
@@ -1999,17 +2002,15 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             }
           });
           setStatus('Publishing to your cloud…');
-          fileId = (
-            await publishPostToOwnerCloud({
-              bundle: b,
-              feedIds: input.feedIds,
-              pnIdentifier: session.pnIdentifier,
-              membership: verifiedAuthor,
-              connectReady,
-              mixed,
-              feedPublish
-            })
-          ).fileId;
+          publishResult = await publishPostToOwnerCloud({
+            bundle: b,
+            feedIds: input.feedIds,
+            pnIdentifier: session.pnIdentifier,
+            membership: verifiedAuthor,
+            connectReady,
+            mixed,
+            feedPublish
+          });
           } else {
           const template = getTemplate(b.manifest.templateId);
           const asCollection = shouldPublishSocialAsCollection({
@@ -2020,21 +2021,23 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             templateSectionSlugs: template?.sections.map((section) => section.slug),
             sections: b.sections
           });
-          fileId = (
-            await publishPostToOwnerCloud({
-              bundle: b,
-              feedIds: input.feedIds,
-              pnIdentifier: session.pnIdentifier,
-              membership: verifiedAuthor,
-              connectReady,
-              feedPublish,
-              ...(asCollection
-                ? { mixed: writeTextCollectionHandoff(b, publishOpts) }
-                : {})
-            })
-          ).fileId;
+          publishResult = await publishPostToOwnerCloud({
+            bundle: b,
+            feedIds: input.feedIds,
+            pnIdentifier: session.pnIdentifier,
+            membership: verifiedAuthor,
+            connectReady,
+            feedPublish,
+            ...(asCollection
+              ? { mixed: writeTextCollectionHandoff(b, publishOpts) }
+              : {})
+          });
           }
-          rememberPostFileId(bundleRef.current || b, fileId);
+          rememberPostFileId(
+            bundleRef.current || b,
+            publishResult.fileId,
+            publishResult.penFeedMediaBySlug
+          );
           setStatus('Published to your cloud');
           window.setTimeout(() => setStatus(null), 4000);
         } finally {

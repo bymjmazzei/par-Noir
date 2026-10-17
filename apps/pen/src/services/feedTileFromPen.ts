@@ -25,7 +25,10 @@ function primaryMediaLayer(layers: PenPageLayer[] | undefined): PenPageLayer | n
 export function sectionsToFeedPages(
   sections: PenSectionContent[],
   titleFallback: string,
-  manifest?: Pick<PenDocManifest, 'pagePresentation' | 'galleryAspect' | 'docId'>
+  manifest?: Pick<
+    PenDocManifest,
+    'pagePresentation' | 'galleryAspect' | 'docId' | 'penFeedMediaBySlug'
+  >
 ): FeedTilePage[] {
   const pres = mergePagePresentation(
     defaultPagePresentation(),
@@ -50,7 +53,11 @@ export function sectionsToFeedPages(
       backgroundColor: pres.backgroundColor,
       textColor: pres.textColor
     };
-    if (media?.kind === 'video' && media.videoSrc) {
+    const published = manifest?.penFeedMediaBySlug?.[s.slug];
+    if (published?.ref) {
+      page.mediaSrc = published.ref;
+      page.mediaKind = published.kind === 'video' ? 'video' : 'image';
+    } else if (media?.kind === 'video' && media.videoSrc) {
       page.mediaSrc = media.videoSrc;
       page.mediaKind = 'video';
     } else if (media?.kind === 'image' && media.imageSrc) {
@@ -83,11 +90,13 @@ export function bundleToFeedTileModel(input: {
   galleryPreviewKind?: 'image' | 'video';
   galleryPreviewPosterRef?: string;
   galleryAspect?: PenDocManifest['galleryAspect'];
+  penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
 }): FeedTileViewModel {
   const pages = sectionsToFeedPages(input.sections, input.title, {
     pagePresentation: input.pagePresentation,
     galleryAspect: input.galleryAspect,
-    docId: input.fileId
+    docId: input.fileId,
+    penFeedMediaBySlug: input.penFeedMediaBySlug
   });
   if (input.galleryPreviewRef && pages[0]) {
     pages[0] = {

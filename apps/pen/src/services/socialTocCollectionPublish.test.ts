@@ -17,7 +17,11 @@ vi.mock('./penFeedPagePublish', () => ({
     height: 640,
     durationMs: 5000
   })),
-  minimalOverlayStillBlob: vi.fn(async () => new Blob([7, 8], { type: 'image/jpeg' })),
+  composeTimelineEncodeOpts: vi.fn(() => ({
+    clockDurationSec: 5,
+    allowInertOnly: true,
+    onSample: vi.fn()
+  })),
   penFeedPageForSection: vi.fn(),
   penPresentationFields: vi.fn(() => ({}))
 }));
@@ -103,8 +107,8 @@ describe('social TOC collection publish', () => {
     const handoff = await handoffPromise;
     vi.useRealTimers();
     expect(handoff.contentClass).toBe('collection');
-    expect(handoff.pages.map((p) => p.kind)).toEqual(['video', 'overlay']);
-    expect(handoff.videos).toHaveLength(1);
+    expect(handoff.pages.map((p) => p.kind)).toEqual(['video', 'video']);
+    expect(handoff.videos).toHaveLength(2);
     expect(handoff.videos[0]?.slug).toBe('page-1');
   });
 });

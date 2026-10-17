@@ -6,8 +6,10 @@
  * cross-origin http frames taint canvas.toBlob / captureStream exports.
  */
 
+import type { PenSectionContent } from '@par-noir/pen-protocol';
 import { rasterizeElementToPosterBlob, rasterizeElementSafeStill } from './rasterizePagePoster';
 import { playbackMode } from './playbackMode';
+import { seekSectionVideosAtTime } from './timelineVideoDrive';
 
 export const COMPOSE_VIDEO_MAX_DURATION_SEC = 60;
 export const COMPOSE_VIDEO_MAX_EDGE = 1080;
@@ -200,6 +202,22 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.85): Promise<Bl
   });
 }
 
+function sampleTimeline(
+  opts: {
+    clockDurationSec?: number;
+    onSample?: (timeSec: number) => void;
+    section?: PenSectionContent;
+  },
+  root: HTMLElement,
+  timeSec: number
+) {
+  const t = timeSec;
+  opts.onSample?.(t);
+  if (opts.section) {
+    seekSectionVideosAtTime(opts.section, root, t);
+  }
+}
+
 /**
  * Encode the live Pen preview root into a composed video + JPEG poster.
  * `root` should be the page sheet / content box that contains Body + layers.
@@ -209,12 +227,12 @@ export async function composePageToVideo(
   opts?: {
     maxDurationSec?: number;
     onProgress?: (pct: number) => void;
-    /**
-     * When a page has layer keys, record this clock instead of the raw video
-     * length. onSample lets the preview sample that time before the next frame.
-     */
     clockDurationSec?: number;
     onSample?: (timeSec: number) => void;
+    /** Section clock — seeks videos and drives playhead via onSample. */
+    section?: PenSectionContent;
+    /** Record timeline-length video with no video layers (graphics / action-only inert). */
+    allowInertOnly?: boolean;
   }
 ): Promise<ComposePageVideoResult> {
   if (typeof MediaRecorder === 'undefined') {
@@ -230,26 +248,31 @@ export async function composePageToVideo(
   const sx = w / srcW;
   const sy = h / srcH;
 
-  const slots = collectUntaintedVideoSlots(root);
-  if (!slots.length) {
+  let slots = collectUntaintedVideoSlots(root);
+  const inertOnly = Boolean(opts?.allowInertOnly && slots.length === 0);
+  if (!slots.length && !inertOnly) {
     throw new Error('compose_no_untainted_video');
   }
 
-  for (const slot of slots) {
-    slot.el.muted = true;
-    slot.el.playsInline = true;
-    try {
-      slot.el.currentTime = 0;
-    } catch {
-      /* ignore */
+  const timelineLocked = Boolean(opts?.section && (opts.onSample || opts.clockDurationSec));
+
+  if (!inertOnly) {
+    for (const slot of slots) {
+      slot.el.muted = true;
+      slot.el.playsInline = true;
+      try {
+        slot.el.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+      await waitVideoReady(slot.el);
     }
-    await waitVideoReady(slot.el);
   }
 
   let durationSec = 0;
   if (opts?.clockDurationSec && opts.clockDurationSec > 0) {
     durationSec = opts.clockDurationSec;
-  } else {
+  } else if (!inertOnly) {
     for (const slot of slots) {
       const d = slot.el.duration;
       if (Number.isFinite(d) && d > durationSec) durationSec = d;
@@ -257,63 +280,83 @@ export async function composePageToVideo(
     if (!Number.isFinite(durationSec) || durationSec <= 0) {
       durationSec = 5;
     }
+  } else {
+    durationSec = 5;
   }
   durationSec = Math.min(durationSec, maxDurationSec);
 
+  sampleTimeline(opts || {}, root, 0);
   let backdrop = await buildStaticBackdrop(root, w, h);
   let backdropTicket = 0;
-  let backdropTimer = 0;
-  if (opts?.onSample) {
-    const refreshBackdrop = () => {
-      const ticket = ++backdropTicket;
-      void buildStaticBackdrop(root, w, h)
-        .then((next) => {
-          if (ticket === backdropTicket) backdrop = next;
-        })
-        .catch(() => {
-          /* keep the last backdrop */
-        });
-    };
-    backdropTimer = window.setInterval(refreshBackdrop, 200);
-  }
+  let backdropInFlight = false;
+
+  const scheduleBackdropRefresh = () => {
+    if (!opts?.onSample || backdropInFlight) return;
+    backdropInFlight = true;
+    const ticket = ++backdropTicket;
+    void buildStaticBackdrop(root, w, h)
+      .then((next) => {
+        if (ticket === backdropTicket) backdrop = next;
+      })
+      .catch(() => {
+        /* keep last backdrop */
+      })
+      .finally(() => {
+        backdropInFlight = false;
+      });
+  };
+
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: false });
   if (!ctx) {
-    if (backdropTimer) window.clearInterval(backdropTimer);
     throw new Error('canvas_unavailable');
   }
 
-  // Poster at ~0.5s or first frame — only untainted draws
   const seekPoster = Math.min(0.5, durationSec * 0.1);
-  for (const slot of slots) {
-    try {
-      slot.el.currentTime = seekPoster;
-      await new Promise<void>((r) => {
-        const done = () => {
-          slot.el.removeEventListener('seeked', done);
-          r();
-        };
-        slot.el.addEventListener('seeked', done);
-        setTimeout(r, 400);
-      });
-    } catch {
-      /* ignore */
+  if (!inertOnly && !timelineLocked) {
+    for (const slot of slots) {
+      try {
+        slot.el.currentTime = seekPoster;
+        await new Promise<void>((r) => {
+          const done = () => {
+            slot.el.removeEventListener('seeked', done);
+            r();
+          };
+          slot.el.addEventListener('seeked', done);
+          setTimeout(r, 400);
+        });
+      } catch {
+        /* ignore */
+      }
     }
+  } else if (!inertOnly) {
+    sampleTimeline(opts || {}, root, seekPoster);
+    slots = collectUntaintedVideoSlots(root);
   }
+
   ctx.drawImage(backdrop, 0, 0);
-  for (const slot of slots) {
-    ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
+  if (!inertOnly) {
+    for (const slot of slots) {
+      if (slot.el.readyState >= 2) {
+        ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
+      }
+    }
   }
   const posterBlob = await canvasToJpegBlob(canvas);
 
-  for (const slot of slots) {
-    try {
-      slot.el.currentTime = 0;
-    } catch {
-      /* ignore */
+  if (!inertOnly && !timelineLocked) {
+    for (const slot of slots) {
+      try {
+        slot.el.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
     }
+  } else if (!inertOnly) {
+    sampleTimeline(opts || {}, root, 0);
+    slots = collectUntaintedVideoSlots(root);
   }
 
   const { mimeType, contentType } = pickRecorderMime();
@@ -334,22 +377,30 @@ export async function composePageToVideo(
   opts?.onProgress?.(5);
   recorder.start(200);
 
-  await Promise.all(slots.map((s) => s.el.play().catch(() => undefined)));
+  if (!inertOnly && !timelineLocked) {
+    await Promise.all(slots.map((s) => s.el.play().catch(() => undefined)));
+  }
 
   const started = performance.now();
   let raf = 0;
   let framesDrawn = 0;
   const draw = () => {
     const elapsed = (performance.now() - started) / 1000;
-    opts?.onSample?.(Math.min(durationSec, elapsed));
+    const t = Math.min(durationSec, elapsed);
+    sampleTimeline(opts || {}, root, t);
+    scheduleBackdropRefresh();
     ctx.drawImage(backdrop, 0, 0);
-    const live = opts?.onSample ? collectUntaintedVideoSlots(root) : slots;
-    const drawSlots = live.length ? live : slots;
-    for (const slot of drawSlots) {
-      if (slot.el.readyState >= 2) {
-        ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
-        framesDrawn += 1;
+    if (!inertOnly) {
+      const live = timelineLocked || opts?.onSample ? collectUntaintedVideoSlots(root) : slots;
+      const drawSlots = live.length ? live : slots;
+      for (const slot of drawSlots) {
+        if (slot.el.readyState >= 2) {
+          ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
+          framesDrawn += 1;
+        }
       }
+    } else {
+      framesDrawn += 1;
     }
     opts?.onProgress?.(Math.min(95, 5 + (elapsed / durationSec) * 90));
     raf = requestAnimationFrame(draw);
@@ -357,23 +408,14 @@ export async function composePageToVideo(
   raf = requestAnimationFrame(draw);
 
   await new Promise<void>((resolve) => {
-    const timer = window.setTimeout(() => resolve(), (durationSec + 0.35) * 1000);
-    if (opts?.clockDurationSec) return;
-    const checkEnded = () => {
-      if (slots.every((s) => s.el.ended || s.el.paused)) {
-        window.clearTimeout(timer);
-        resolve();
-      }
-    };
-    for (const s of slots) {
-      s.el.addEventListener('ended', checkEnded);
-    }
+    window.setTimeout(() => resolve(), (durationSec + 0.35) * 1000);
   });
 
   cancelAnimationFrame(raf);
-  if (backdropTimer) window.clearInterval(backdropTimer);
-  for (const s of slots) {
-    s.el.pause();
+  if (!inertOnly) {
+    for (const s of slots) {
+      s.el.pause();
+    }
   }
   recorder.stop();
   stream.getTracks().forEach((t) => t.stop());

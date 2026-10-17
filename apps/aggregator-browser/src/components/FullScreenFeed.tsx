@@ -37,6 +37,8 @@ import {
   buildPenCollectionFeedTileModel,
   buildPenFeedTileModelForPost
 } from '../utils/penFeedTileModel';
+import type { PenActionMessage } from '@par-noir/pen-protocol';
+import { handleFeedPenAction } from '../services/penFeedActionHandler';
 
 function feedPosterUnderlayStyle(
   metadata: IndexedFile['metadata'] | undefined
@@ -1597,16 +1599,30 @@ export function FullScreenFeed({
             {!isConnectionPlaceholder &&
               isPenFeedPost &&
               isVideoFinal &&
-              videoBlobs.get(fileId) && (
-                <PenFeedTilePlayer
-                  aspectRatio={penTileAspect}
-                  model={buildPenFeedTileModelForPost(indexedFile, {
-                    src: videoBlobs.get(fileId),
-                    posterUrl: thumbnails.get(fileId),
-                    kind: 'video'
-                  })}
-                />
-              )}
+              videoBlobs.get(fileId) &&
+              (() => {
+                const penModel = buildPenFeedTileModelForPost(indexedFile, {
+                  src: videoBlobs.get(fileId),
+                  posterUrl: thumbnails.get(fileId),
+                  kind: 'video'
+                });
+                return (
+                  <PenFeedTilePlayer
+                    aspectRatio={penTileAspect}
+                    model={penModel}
+                    onAction={(message) => {
+                      if (!userState.isUnlocked || !userState.pnIdentifier) return;
+                      void handleFeedPenAction({
+                        message: message as PenActionMessage,
+                        model: penModel,
+                        penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
+                        creatorPnIdentifier: creatorId,
+                        userPnIdentifier: userState.pnIdentifier
+                      });
+                    }}
+                  />
+                );
+              })()}
 
             {/* Full-screen video */}
             {!isConnectionPlaceholder &&
@@ -1781,16 +1797,30 @@ export function FullScreenFeed({
               isPenFeedPost &&
               !isMePageCover &&
               isImageFinal &&
-              thumbnails.get(fileId) && (
-                <PenFeedTilePlayer
-                  aspectRatio={penTileAspect}
-                  model={buildPenFeedTileModelForPost(indexedFile, {
-                    src: thumbnails.get(fileId),
-                    posterUrl: thumbnails.get(fileId),
-                    kind: 'image'
-                  })}
-                />
-              )}
+              thumbnails.get(fileId) &&
+              (() => {
+                const penModel = buildPenFeedTileModelForPost(indexedFile, {
+                  src: thumbnails.get(fileId),
+                  posterUrl: thumbnails.get(fileId),
+                  kind: 'image'
+                });
+                return (
+                  <PenFeedTilePlayer
+                    aspectRatio={penTileAspect}
+                    model={penModel}
+                    onAction={(message) => {
+                      if (!userState.isUnlocked || !userState.pnIdentifier) return;
+                      void handleFeedPenAction({
+                        message: message as PenActionMessage,
+                        model: penModel,
+                        penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
+                        creatorPnIdentifier: creatorId,
+                        userPnIdentifier: userState.pnIdentifier
+                      });
+                    }}
+                  />
+                );
+              })()}
 
             {!isConnectionPlaceholder &&
               !isPenFeedPost &&
@@ -1910,28 +1940,42 @@ export function FullScreenFeed({
             {!isConnectionPlaceholder &&
               isPenFeedPost &&
               isCollectionFile &&
-              (collectionData || collectionDataCache.get(fileId))?.collectionFileIds && (
-                <PenFeedTilePlayer
-                  aspectRatio={penTileAspect}
-                  model={buildPenCollectionFeedTileModel(
-                    indexedFile,
-                    (collectionData || collectionDataCache.get(fileId))!.collectionFileIds,
-                    (memberId) => {
-                      const memberMeta =
-                        collectionMemberMeta.get(memberId) ||
-                        (files.find((f) => f.metadata?.fileId === memberId)?.metadata as
-                          | Record<string, unknown>
-                          | undefined);
-                      if (!memberMeta) return null;
-                      return {
-                        meta: memberMeta,
-                        videoUrl: videoBlobs.get(memberId),
-                        posterUrl: thumbnails.get(memberId)
-                      };
-                    }
-                  )}
-                />
-              )}
+              (collectionData || collectionDataCache.get(fileId))?.collectionFileIds &&
+              (() => {
+                const penModel = buildPenCollectionFeedTileModel(
+                  indexedFile,
+                  (collectionData || collectionDataCache.get(fileId))!.collectionFileIds,
+                  (memberId) => {
+                    const memberMeta =
+                      collectionMemberMeta.get(memberId) ||
+                      (files.find((f) => f.metadata?.fileId === memberId)?.metadata as
+                        | Record<string, unknown>
+                        | undefined);
+                    if (!memberMeta) return null;
+                    return {
+                      meta: memberMeta,
+                      videoUrl: videoBlobs.get(memberId),
+                      posterUrl: thumbnails.get(memberId)
+                    };
+                  }
+                );
+                return (
+                  <PenFeedTilePlayer
+                    aspectRatio={penTileAspect}
+                    model={penModel}
+                    onAction={(message) => {
+                      if (!userState.isUnlocked || !userState.pnIdentifier) return;
+                      void handleFeedPenAction({
+                        message: message as PenActionMessage,
+                        model: penModel,
+                        penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
+                        creatorPnIdentifier: creatorId,
+                        userPnIdentifier: userState.pnIdentifier
+                      });
+                    }}
+                  />
+                );
+              })()}
 
             {/* Collection - Simple thumbnail slideshow */}
             {!isConnectionPlaceholder &&

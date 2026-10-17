@@ -511,6 +511,8 @@ export interface PenDocManifest {
   galleryPreviewKind?: 'image' | 'video';
   /** JPEG poster when galleryPreviewKind is video. */
   galleryPreviewPosterRef?: string;
+  /** Composed inert media per TOC slug after feed publish (`penmedia:{fileId}`). */
+  penFeedMediaBySlug?: Record<string, { ref: string; kind: 'video' | 'image' }>;
   /** Head hash / commit id the gallery preview was built from. */
   galleryPreviewCommitHash?: string;
   /** When true, overlay objects snap to page center/middle while dragging. */
