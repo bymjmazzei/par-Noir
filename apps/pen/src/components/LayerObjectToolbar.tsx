@@ -24,6 +24,7 @@ import { parseCssColor } from './PanelValueControls';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
 import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
+import { setAttachPoster } from '../services/attachPosterCache';
 import { isPenMediaSrcRef, resolvePenMediaSrc } from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
 
@@ -420,6 +421,7 @@ export function LayerObjectToolbar({
   }
 
   async function applyMediaSrc(src: string, meta?: { blobUrl?: string }) {
+    if (meta?.blobUrl) setAttachPoster(src, meta.blobUrl);
     // Probe aspect against a playable URL (blob:), store the tiny ref on the layer.
     const playable =
       meta?.blobUrl || (await resolvePenMediaSrc(src, docId)) || src;

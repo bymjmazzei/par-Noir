@@ -77,9 +77,12 @@ import { LayerMediaContent } from '../LayerMediaContent';
 import { PenMediaPlayer, PublishedEngagementBar } from '@par-noir/feed-tile';
 import { usePlaybackMode } from '../../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../../hooks/useResolvedMediaSrc';
-import { presentationAwaitingEditProxy } from '../../services/editProxy';
+import { getAttachPoster } from '../../services/attachPosterCache';
+import {
+  editorPageBackgroundPlayable,
+  editorVideoNeedsProxyForPresentation
+} from '../../services/editorVideoReady';
 import type { PenSession } from '../../services/penSession';
-import { VideoLayoutStill } from '../VideoLayoutStill';
 export function ResolvedPageBackground({
   src,
   kind,
@@ -96,39 +99,46 @@ export function ResolvedPageBackground({
   videoSrc?: string;
 }) {
   const playback = usePlaybackMode();
-  const awaitingProxy =
-    playback === 'edit' &&
-    kind === 'video' &&
-    presentationAwaitingEditProxy({ backgroundVideo: src, editProxySrc });
+  const pres = { backgroundVideo: src, editProxySrc };
+  const needsProxy =
+    playback === 'edit' && kind === 'video' && editorVideoNeedsProxyForPresentation(pres);
   const playSrc =
     kind === 'video'
       ? playback === 'publish'
         ? publishPlaybackSrc({ videoSrc, backgroundVideo: src })
         : editorPlaybackSrc({ editProxySrc, videoSrc, backgroundVideo: src })
       : src;
-  const originalSrc =
-    kind === 'video' ? publishPlaybackSrc({ videoSrc, backgroundVideo: src }) : playSrc;
-  const resolveSrc = awaitingProxy ? originalSrc : playSrc;
-  const { resolved } = useResolvedMediaSrc(resolveSrc, { docId, session });
-  if (!resolveSrc) return null;
+  const resolvePlayer =
+    kind !== 'video' ||
+    playback === 'publish' ||
+    !needsProxy ||
+    Boolean(editProxySrc?.trim());
+  const { resolved } = useResolvedMediaSrc(resolvePlayer ? playSrc : null, { docId, session });
+  const playable =
+    kind !== 'video' ||
+    playback === 'publish' ||
+    editorPageBackgroundPlayable(pres, { resolvedPlayUrl: resolved });
+  const posterUrl =
+    needsProxy && !playable
+      ? getAttachPoster(publishPlaybackSrc({ videoSrc, backgroundVideo: src }))
+      : playable && !resolved
+        ? getAttachPoster(publishPlaybackSrc({ videoSrc, backgroundVideo: src }))
+        : null;
+  if (!playSrc && kind === 'video') return null;
   if (kind === 'video') {
-    if (!awaitingProxy && !resolved) return null;
+    const videoStyle = { objectFit: 'cover' as const };
     return (
       <div data-pen-playback={playback} className="pointer-events-none absolute inset-0 z-0">
-        {awaitingProxy ? (
-          <VideoLayoutStill
-            src={resolved}
-            placeholder={!resolved}
-            className="h-full w-full"
-            videoStyle={{ objectFit: 'cover' }}
-          />
-        ) : (
-          <PenMediaPlayer
-            src={resolved!}
-            className="h-full w-full"
-            videoStyle={{ objectFit: 'cover' }}
-          />
-        )}
+        {(needsProxy && !playable) || (playable && !resolved) ? (
+          posterUrl ? (
+            <img src={posterUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+          ) : (
+            <div className="h-full w-full bg-neutral-200/80" aria-hidden />
+          )
+        ) : null}
+        {playable && resolved ? (
+          <PenMediaPlayer src={resolved} className="h-full w-full" videoStyle={videoStyle} />
+        ) : null}
       </div>
     );
   }

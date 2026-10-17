@@ -585,18 +585,29 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
                 ? `Preparing preview (${jobIndex}/${jobCount})… `
                 : 'Preparing preview… ';
             setStatus(`${prefix}${Math.round(pct)}%`);
+          },
+          onSaving: () => {
+            if (!cancelled) setStatus('Saving preview…');
           }
         });
         if (ref) updates.push((b) => job.apply(ref, b));
+        else if (!cancelled) {
+          setError('preview_prepare_failed');
+          setStatus(null);
+        }
       }
       if (cancelled) return;
-      setStatus((s) => (s?.startsWith('Preparing preview') ? null : s));
       if (!updates.length) return;
       const latest = bundleRef.current;
       if (!latest) return;
       let next = latest;
       for (const update of updates) next = update(next);
-      if (next !== latest) persist(next);
+      if (next !== latest) {
+        persist(next);
+        setStatus((s) =>
+          s?.startsWith('Preparing preview') || s === 'Saving preview…' ? null : s
+        );
+      }
     })();
     return () => {
       cancelled = true;

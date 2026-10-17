@@ -21,7 +21,7 @@ describe('layer media without a proxy', () => {
       />
     );
     expect(html).toContain('data-pen-playback="edit"');
-    expect(html).toContain('<canvas');
+    expect(html).toContain('bg-neutral-200/80');
     expect(html).not.toContain('data-pen-media-key');
   });
 

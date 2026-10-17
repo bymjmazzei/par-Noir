@@ -9,6 +9,7 @@ import {
   pickDeviceVideoFile,
   type CloudImageItem
 } from '../services/penAttach';
+import { setAttachPoster } from '../services/attachPosterCache';
 import {
   penMediaRef,
   putLocalMedia,
@@ -77,7 +78,9 @@ export function CloudFeedMediaPicker({
         docId
       );
       const put = await putLocalMediaForDriveFile({ docId, fileId: item.id, blob });
-      onPickMediaSrc(penMediaRef(item.id), { blobUrl: put.blobUrl });
+      const ref = penMediaRef(item.id);
+      setAttachPoster(ref, put.blobUrl);
+      onPickMediaSrc(ref, { blobUrl: put.blobUrl });
       onClose();
     } catch {
       setError('Could not open that file');
@@ -97,6 +100,7 @@ export function CloudFeedMediaPicker({
     setError(null);
     try {
       const put = await putLocalMedia({ docId, blob: file });
+      setAttachPoster(put.ref, put.blobUrl);
       onPickMediaSrc(put.ref, { blobUrl: put.blobUrl });
       onClose();
     } catch {

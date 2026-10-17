@@ -36,6 +36,7 @@ import {
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
+import { setAttachPoster } from '../services/attachPosterCache';
 import { ActionLayerMenu } from './ActionLayerMenu';
 import { SoundCatalogMenu } from './SoundCatalogMenu';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
@@ -271,7 +272,8 @@ export function LayersPopover({
     onSelectedIdsChange([placed.layerId]);
   }
 
-  function attachPickedMedia(src: string, _meta?: { blobUrl?: string }) {
+  function attachPickedMedia(src: string, meta?: { blobUrl?: string }) {
+    if (meta?.blobUrl) setAttachPoster(src, meta.blobUrl);
     const active = allLayers.find((layer) => layer.id === activeLayerId);
     const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
     const placed = placeWidgetLayer(prepared, groupId, 'image');

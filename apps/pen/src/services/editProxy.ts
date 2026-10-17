@@ -274,6 +274,7 @@ async function buildProxy(params: {
   originalRef: string;
   session?: { pnIdentifier: string } | null;
   onProgress?: (pct: number) => void;
+  onSaving?: () => void;
   jobIndex?: number;
   jobCount?: number;
 }): Promise<string | null> {
@@ -309,6 +310,8 @@ async function buildProxy(params: {
       failed.add(key);
       return null;
     }
+    params.onSaving?.();
+    report(98);
     const put = await putLocalMedia({ docId: params.docId, blob: encoded });
     ready.set(key, put.ref);
     return put.ref;
@@ -326,6 +329,7 @@ export function ensureEditProxy(params: {
   originalRef: string;
   session?: { pnIdentifier: string } | null;
   onProgress?: (pct: number) => void;
+  onSaving?: () => void;
   jobIndex?: number;
   jobCount?: number;
 }): Promise<string | null> {

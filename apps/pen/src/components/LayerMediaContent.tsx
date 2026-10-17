@@ -19,9 +19,13 @@ import { paintGradedFrame, peekPenMediaController, PenMediaPlayer, type TonalGra
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { cachedMediaAspect, probeMediaAspect } from '../services/penMediaAspect';
-import { layerOriginalForProxy } from '../services/editProxy';
+import { getAttachPoster } from '../services/attachPosterCache';
+import {
+  editorVideoNeedsProxy,
+  editorVideoPlayable,
+  layerPosterRef
+} from '../services/editorVideoReady';
 import type { PenSession } from '../services/penSession';
-import { VideoLayoutStill } from './VideoLayoutStill';
 
 const ASPECT_SLACK = 0.03;
 const PARTICLE_NOISE =
@@ -67,6 +71,33 @@ function GradedStill({
   return <canvas ref={ref} className="absolute inset-0 h-full w-full" style={style} />;
 }
 
+function LayoutPoster({
+  posterUrl,
+  innerStyle
+}: {
+  posterUrl: string | null;
+  innerStyle: CSSProperties;
+}) {
+  if (posterUrl) {
+    return (
+      <img
+        src={posterUrl}
+        alt=""
+        className="absolute inset-0"
+        style={innerStyle}
+        draggable={false}
+      />
+    );
+  }
+  return (
+    <div
+      className="absolute inset-0 bg-neutral-200/80"
+      aria-hidden
+      style={innerStyle}
+    />
+  );
+}
+
 export function LayerMediaContent({
   layer,
   className,
@@ -90,22 +121,36 @@ export function LayerMediaContent({
     layer.kind === 'video' ||
     Boolean(layer.videoSrc) ||
     (Boolean(layer.backgroundVideo) && layer.kind !== 'image');
-  const awaitingProxy =
-    playback === 'edit' && isVideo && Boolean(layerOriginalForProxy(layer));
-  const src = isVideo
+  const playSrc = isVideo
     ? playback === 'publish'
       ? publishPlaybackSrc(layer)
       : editorPlaybackSrc(layer)
     : layer.kind === 'image'
       ? layer.imageSrc || layer.backgroundImage
       : layer.backgroundImage;
-  const originalVideoRef = isVideo ? publishPlaybackSrc(layer) : null;
-  const resolveRef = awaitingProxy ? originalVideoRef : src;
-  const { resolved } = useResolvedMediaSrc(resolveRef, { docId, session });
+
+  const needsProxy = playback === 'edit' && isVideo && editorVideoNeedsProxy(layer);
+  const resolvePlayer =
+    Boolean(playSrc) &&
+    (playback === 'publish' || !isVideo || !needsProxy || Boolean(layer.editProxySrc?.trim()));
+
+  const { resolved } = useResolvedMediaSrc(resolvePlayer ? playSrc : null, { docId, session });
   const { resolved: overlayResolved } = useResolvedMediaSrc(layer.paintOverlaySrc, {
     docId,
     session
   });
+
+  const playable =
+    !isVideo ||
+    playback === 'publish' ||
+    editorVideoPlayable(layer, { resolvedPlayUrl: resolved });
+  const posterUrl =
+    playback === 'edit' && isVideo && needsProxy && !playable
+      ? getAttachPoster(layerPosterRef(layer))
+      : playback === 'edit' && isVideo && playable && !resolved
+        ? getAttachPoster(layerPosterRef(layer))
+        : null;
+
   /** One report per media src — reshape must not re-trigger probing. */
   const reportedSrc = useRef<string | null>(null);
   const onNaturalAspectRef = useRef(onNaturalAspect);
@@ -113,18 +158,19 @@ export function LayerMediaContent({
   const layerRef = useRef(layer);
   layerRef.current = layer;
 
+  const aspectSrc = resolved || posterUrl;
   useEffect(() => {
-    if (!resolved || !onNaturalAspectRef.current) return;
-    if (reportedSrc.current === resolved) return;
+    if (!aspectSrc || !onNaturalAspectRef.current) return;
+    if (reportedSrc.current === aspectSrc) return;
 
     let cancelled = false;
     const kind = isVideo ? 'video' : 'image';
 
     void (async () => {
-      const cached = cachedMediaAspect(resolved);
-      const aspect = cached ?? (await probeMediaAspect(resolved, kind));
+      const cached = cachedMediaAspect(aspectSrc);
+      const aspect = cached ?? (await probeMediaAspect(aspectSrc, kind));
       if (cancelled || !(aspect > 0)) return;
-      reportedSrc.current = resolved;
+      reportedSrc.current = aspectSrc;
       const l = layerRef.current;
       const layerAspect = l.w / Math.max(1, l.h);
       if (Math.abs(layerAspect - aspect) / aspect <= ASPECT_SLACK) return;
@@ -135,18 +181,18 @@ export function LayerMediaContent({
       cancelled = true;
     };
     // Intentionally omit layer.w/h — reshape must not re-enter this effect.
-  }, [resolved, isVideo]);
+  }, [aspectSrc, isVideo]);
 
   useEffect(() => {
-    if (!isVideo || !resolved || awaitingProxy) return;
+    if (!isVideo || !resolved || !playable) return;
     const ctrl = peekPenMediaController(`pen-layer:${layer.id}`);
     if (!ctrl) return;
     ctrl.setPlaybackRate(layer.playbackRate ?? 1);
     ctrl.setClipAudio((layer.mediaGain ?? 100) / 100, layer.mediaMuted === false);
-  }, [isVideo, resolved, awaitingProxy, layer.id, layer.playbackRate, layer.mediaGain, layer.mediaMuted]);
+  }, [isVideo, resolved, playable, layer.id, layer.playbackRate, layer.mediaGain, layer.mediaMuted]);
 
-  if (!resolveRef) return null;
-  if (!awaitingProxy && !resolved) return null;
+  if (!playSrc && !isVideo) return null;
+  if (isVideo && !playSrc && !posterUrl) return null;
 
   const grade = mergeMediaFilter(layer.mediaFilter);
   const filter = mediaFilterCss(layer);
@@ -181,6 +227,10 @@ export function LayerMediaContent({
     objectFit: 'contain'
   };
 
+  const showPosterOnly = isVideo && playback === 'edit' && needsProxy && !playable;
+  const showPlayer = isVideo && playable && resolved;
+  const showPosterUnderPlayer = isVideo && playable && !resolved;
+
   return (
     <div
       data-pen-playback={isVideo ? playback : undefined}
@@ -190,25 +240,22 @@ export function LayerMediaContent({
       <div className="absolute" style={cropFrame ?? { inset: 0 }}>
       <div className="absolute inset-0" style={transform ? { transform } : undefined}>
         {isVideo ? (
-          awaitingProxy ? (
-            <VideoLayoutStill
-              src={resolved}
-              placeholder={!resolved}
-              className="bg-transparent"
-              videoStyle={innerStyle}
-              grade={tonal}
-            />
-          ) : (
-            <PenMediaPlayer
-              src={resolved!}
-              syncKey={`pen-layer:${layer.id}`}
-              autoPlay={false}
-              className="absolute inset-0 bg-transparent"
-              videoStyle={innerStyle}
-              tapToToggle={selected}
-              grade={tonal}
-            />
-          )
+          <>
+            {showPosterOnly || showPosterUnderPlayer ? (
+              <LayoutPoster posterUrl={posterUrl} innerStyle={innerStyle} />
+            ) : null}
+            {showPlayer ? (
+              <PenMediaPlayer
+                src={resolved}
+                syncKey={`pen-layer:${layer.id}`}
+                autoPlay={false}
+                className="absolute inset-0 bg-transparent"
+                videoStyle={innerStyle}
+                tapToToggle={selected}
+                grade={tonal}
+              />
+            ) : null}
+          </>
         ) : tonal ? (
           <GradedStill src={resolved!} fit="contain" grade={tonal} style={innerStyle} />
         ) : (

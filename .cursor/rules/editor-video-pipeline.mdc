@@ -1,0 +1,12 @@
+---
+description: Single editor video preview pipeline — no parallel decode paths
+globs: apps/pen/src/components/LayerMediaContent.tsx,apps/pen/src/components/SectionTimeline.tsx,apps/pen/src/components/editablePagePreview/**,apps/pen/src/services/editProxy.ts,apps/pen/src/services/editorVideoReady.ts
+alwaysApply: false
+---
+
+# Editor video pipeline
+
+- **Playback** in the doc editor uses one path: `editorPlaybackSrc` → resolved blob URL → `PenMediaPlayer` + `PenMediaController` (`syncKey` `pen-layer:{id}`). Timeline uses `driveVideos`, `RememberVideoSrc`, and video-only `timeupdate` sync — do not gate or bypass these for cosmetic work without an explicit product ask.
+- **While a 720p edit proxy is encoding (option B):** UI shows a static **`<img>` poster** from `attachPosterCache` (picker `blobUrl` only). **No** second UI `<video>`, **no** `video.play()` on the original in components. Only `encodeEditProxyBlob` may decode the original during prep.
+- **Do not** fork preview into alternate components that decode source media. Extend `editorVideoReady` (`needsProxy` / `playable`) and status text instead.
+- **Status** clears only after `editProxySrc` is persisted and proxy URL can resolve — not at encode 100% alone.

@@ -670,6 +670,13 @@ describe('section timeline', () => {
     expect(css).toContain('@keyframes pen-motion-unfold');
   });
 
+  it('uses editorVideoReady for playback gating, not a parallel still player', () => {
+    const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
+    expect(timeline).toContain('sectionBlocksPlayback');
+    expect(timeline).not.toContain('VideoLayoutStill');
+    expect(timeline).not.toContain('sectionAwaitingEditProxy');
+  });
+
   it('mounts the timeline under the text editor', () => {
     const page = readFileSync(resolve(__dirname, '../pages/docEditor/DocEditorShell.tsx'), 'utf8');
     const writing = page.indexOf('writingEnabled && canvasSection && section');
