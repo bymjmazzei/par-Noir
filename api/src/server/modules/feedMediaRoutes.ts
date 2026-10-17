@@ -346,6 +346,69 @@ export function registerFeedMediaRoutes(app: Application): void {
     }
   });
 
+  /** Browser-safe R2 warm upload (avoids cross-origin PUT to *.r2.cloudflarestorage.com). */
+  app.post('/api/aggregator/feed-media/owner-upload', async (req: Request, res: Response) => {
+    try {
+      if (!getFeedR2()) {
+        return res.status(503).json({ error: 'feed_r2_not_configured' });
+      }
+      const { getBearerTokenPayload } = await import('../middleware/authMiddleware');
+      const tokenPayload = getBearerTokenPayload(req);
+      if (!tokenPayload?.pnIdentifier) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      const fileId = String(req.body?.fileId || '');
+      const variant = variantFromParam(String(req.body?.variant || ''));
+      const contentType = String(req.body?.contentType || 'application/octet-stream');
+      const contentLength = Number(req.body?.contentLength || 0);
+      const planId = typeof req.body?.planId === 'string' ? req.body.planId : 'floor';
+      const dataBase64 = req.body?.dataBase64;
+
+      if (!fileId || !variant || typeof dataBase64 !== 'string' || !dataBase64.length) {
+        return res.status(400).json({ error: 'fileId_variant_and_data_required' });
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(dataBase64, 'base64');
+      } catch {
+        return res.status(400).json({ error: 'invalid_base64' });
+      }
+      if (contentLength > 0 && buffer.length !== contentLength) {
+        return res.status(400).json({ error: 'content_length_mismatch' });
+      }
+
+      const sizeCheck = validateFeedPreviewByteSize(variant, buffer.length);
+      if (!sizeCheck.ok) {
+        return res.status(400).json({ error: sizeCheck.error });
+      }
+
+      const plan = await resolvePublishPlan(tokenPayload.pnIdentifier, planId);
+      if (variant === 'hd' && !plan.allowHd) {
+        return res.status(403).json({ error: 'hd_not_allowed_on_plan', plan });
+      }
+      if (plan.uploadBytesUsed + buffer.length > plan.uploadBytesLimit && plan.planId !== 'free') {
+        if (buffer.length > 4_194_304) {
+          return res.status(403).json({ error: 'monthly_upload_gb_exceeded', plan });
+        }
+      }
+
+      const key = r2ObjectKey(fileId, variant, String(Date.now()));
+      await feedR2Put(key, buffer, contentType);
+      return res.json({
+        key,
+        byteSize: buffer.length,
+        expiresInSec: getFeedR2()!.config.signedGetTtlSec,
+        plan,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'owner_upload_failed';
+      safeLogger.warn('[feed-media/owner-upload] failed', { message: msg });
+      return res.status(400).json({ error: msg });
+    }
+  });
+
   app.post('/api/aggregator/feed-media/confirm-upload', async (req: Request, res: Response) => {
     try {
       const { getBearerTokenPayload } = await import('../middleware/authMiddleware');

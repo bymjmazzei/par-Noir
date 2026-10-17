@@ -97,6 +97,12 @@ describe('Pen owner-cloud publish', () => {
     ).toEqual(['notes', 'community-feed-1']);
   });
 
+  it('warms feed previews through the API instead of cross-origin R2 PUT', () => {
+    const src = readFileSync(resolve(here, 'services/penPublicPublish.ts'), 'utf8');
+    expect(src).toContain('/api/aggregator/feed-media/owner-upload');
+    expect(src).not.toContain('presign.url');
+  });
+
   it('the editor does not open Browse to finish publish', () => {
     const editor = readFileSync(resolve(here, 'pages/docEditor/useDocEditorController.ts'), 'utf8');
     const publish = readFileSync(resolve(here, 'services/penPublish.ts'), 'utf8');

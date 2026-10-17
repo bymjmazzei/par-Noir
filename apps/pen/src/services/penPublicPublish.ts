@@ -69,24 +69,20 @@ async function uploadFeedVariant(params: {
   parentFolderId: string;
 }): Promise<FeedPreviewObjectRef> {
   const byteSize = params.blob.size;
-  const presignRes = await params.request('POST', '/api/aggregator/feed-media/presign-upload', {
+  const uploadRes = await params.request('POST', '/api/aggregator/feed-media/owner-upload', {
     fileId: params.fileId,
     variant: params.variant,
     contentType: params.contentType,
     contentLength: byteSize,
-    planId: 'floor'
+    planId: 'floor',
+    dataBase64: await blobToBase64(params.blob)
   });
-  if (!presignRes.ok) {
-    const err = (await presignRes.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error || `presign_failed_${presignRes.status}`);
+  if (!uploadRes.ok) {
+    const err = (await uploadRes.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || `r2_owner_upload_failed_${uploadRes.status}`);
   }
-  const presign = (await presignRes.json()) as { url: string; key: string };
-  const put = await fetch(presign.url, {
-    method: 'PUT',
-    headers: { 'Content-Type': params.contentType },
-    body: params.blob
-  });
-  if (!put.ok) throw new Error(`r2_put_failed_${put.status}`);
+  const uploaded = (await uploadRes.json()) as { key?: string };
+  const r2Key = uploaded.key || r2ObjectKey(params.fileId, params.variant);
 
   const ownerId = await uploadDriveFile(
     params.request,
@@ -112,7 +108,7 @@ async function uploadFeedVariant(params: {
   if (!ensured.publicContentRef?.publicUrl) throw new Error('ensure_public_canonical_missing_ref');
 
   const ref: FeedPreviewObjectRef = {
-    r2Key: presign.key || r2ObjectKey(params.fileId, params.variant),
+    r2Key: r2Key || r2ObjectKey(params.fileId, params.variant),
     ownerObjectId: ensured.publicContentRef.objectId,
     ownerBackend: ensured.publicContentRef.backend,
     ownerPublicUrl: ensured.publicContentRef.publicUrl,

@@ -1765,6 +1765,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     if (raw === 'compose_export_root_missing') {
       return 'Could not prepare the page for export. Switch to the video page and retry.';
     }
+    if (raw.startsWith('r2_owner_upload_failed') || raw.startsWith('r2_put_failed')) {
+      return 'Could not upload preview to the feed CDN. Try again after the API has finished deploying.';
+    }
     return raw;
   }
 
