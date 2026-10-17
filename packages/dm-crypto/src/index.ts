@@ -39,6 +39,14 @@ export {
   type SocialEnvelope
 } from './socialEnvelope.js';
 export { encryptMediaBytes, decryptMediaBytes } from './media.js';
+export {
+  encryptPenMedia,
+  decryptPenMedia,
+  isPenMediaHeader,
+  penMediaEncryptedSize,
+  PEN_MEDIA_CHUNK_BYTES,
+  PEN_MEDIA_HEADER_BYTES
+} from './penMedia.js';
 export { bytesToBase64, base64ToBytes } from './encoding.js';
 export {
   unlockIdentityMlKemSecret,
