@@ -1560,6 +1560,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               addButtonRefs={addButtonRefs}
               menuButtonRefs={menuButtonRefs}
               loadFilesForAccount={loadFilesForAccount}
+              loadFileMetadata={loadFileMetadata}
               handleUploadForAccount={handleUploadForAccount}
               beginMediaUpload={beginMediaUpload}
               handleCreateCollection={handleCreateCollection}

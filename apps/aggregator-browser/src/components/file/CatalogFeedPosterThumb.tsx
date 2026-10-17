@@ -30,7 +30,7 @@ export function CatalogFeedPosterThumb({
       return;
     }
     let cancelled = false;
-    void resolvePublicFeedObjectUrl(metadataIndexFileId, metadata, { variant: 'poster' })
+    void resolvePublicFeedObjectUrl(metadataIndexFileId, metadata)
       .then((url) => {
         if (!cancelled) setSrc(url);
       })

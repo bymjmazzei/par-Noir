@@ -43,6 +43,9 @@ export type OwnerCatalogListEntry = DriveListFile & {
   collection?: unknown;
   /** Indexed feedPoster / feedPreviewSd — Storage grid can show CDN thumb. */
   hasCatalogFeedPoster: boolean;
+  feedPoster?: unknown;
+  feedPreviewSd?: unknown;
+  feedPreviewHd?: unknown;
   indexMissing: false;
 };
 
@@ -141,8 +144,33 @@ export function mapOwnerCatalogEntry(params: {
     penDocId,
     collection: metadata.collection,
     hasCatalogFeedPoster: hasFeedPreviewPlayback(metadata),
+    feedPoster: metadata.feedPoster,
+    feedPreviewSd: metadata.feedPreviewSd,
+    feedPreviewHd: metadata.feedPreviewHd,
     indexMissing: false
   };
+}
+
+/** Playback metadata for catalog CDN thumbs (entry fields + metadata map). */
+export function catalogPlaybackMetadataForFile(
+  file: DriveListFile & { catalogBacked?: boolean; metadataIndexFileId?: string },
+  fileMetadataMap: Map<string, unknown>
+): Record<string, unknown> | null {
+  if (file.catalogBacked !== true) return null;
+  const metadataIndexFileId =
+    typeof file.metadataIndexFileId === 'string' ? file.metadataIndexFileId : file.id;
+  const fromMap = (fileMetadataMap.get(metadataIndexFileId) ||
+    fileMetadataMap.get(file.id)) as Record<string, unknown> | undefined;
+  if (fromMap && hasFeedPreviewPlayback(fromMap)) return fromMap;
+  const inline = {
+    feedPoster: file.feedPoster,
+    feedPreviewSd: file.feedPreviewSd,
+    feedPreviewHd: file.feedPreviewHd,
+    fileType: file.fileType,
+    name: file.name,
+    title: (file as { displayName?: string }).displayName
+  };
+  return hasFeedPreviewPlayback(inline) ? inline : null;
 }
 
 export function mapCollectionEntry(params: {

@@ -9,6 +9,7 @@ import { listStorageFiles } from '../services/storageApiClient';
 import type { DriveAccount, DriveFile } from '../components/storage/storageTypes';
 import { mapCollectionEntry, mapNoteThumbnailEntry, mapOwnerCatalogEntry } from './mapStorageListEntries';
 import { fetchOwnerCatalog } from '../services/ownerCatalogService';
+import { hasFeedPreviewPlayback } from '../services/feedPreviewPlayback';
 import { isNoteCollectionFileName, isNoteFileName, isNoteThumbnailFileName } from '../utils/noteFileName';
 
 export interface UseLoadFilesForAccountParams {
@@ -392,6 +393,15 @@ export function useLoadFilesForAccount({
             }
             mergedMedia.push(entry);
             void loadFileMetadata(entry.metadataIndexFileId).catch(() => undefined);
+            if (metadata.fileType === 'collection' && !hasFeedPreviewPlayback(metadata)) {
+              const childIds = (metadata.collection as { collectionFileIds?: unknown })
+                ?.collectionFileIds;
+              const firstChild =
+                Array.isArray(childIds) && typeof childIds[0] === 'string' ? childIds[0] : undefined;
+              if (firstChild) {
+                void loadFileMetadata(firstChild).catch(() => undefined);
+              }
+            }
           }
         } catch (catalogErr) {
           if (import.meta.env.DEV) {

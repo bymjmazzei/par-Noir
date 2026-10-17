@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  catalogPlaybackMetadataForFile,
   mapCollectionEntry,
   mapNoteThumbnailEntry,
   mapOwnerCatalogEntry,
@@ -77,6 +78,23 @@ describe('mapOwnerCatalogEntry', () => {
       }
     });
     expect(entry.hasCatalogFeedPoster).toBe(true);
+    expect(entry.feedPoster).toBeDefined();
+  });
+});
+
+describe('catalogPlaybackMetadataForFile', () => {
+  it('reads feed preview from catalog entry when map is empty', () => {
+    const entry = mapOwnerCatalogEntry({
+      fileId: 'index-1',
+      metadata: {
+        title: 'Coll',
+        fileType: 'collection',
+        feedPoster: { objectId: 'p1', publicUrl: 'https://cdn.example/p.jpg' },
+        collection: { collectionFileIds: ['child-1'] }
+      }
+    });
+    const meta = catalogPlaybackMetadataForFile(entry, new Map());
+    expect(meta?.feedPoster).toBeDefined();
   });
 });
 

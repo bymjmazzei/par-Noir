@@ -11,23 +11,10 @@ import { cleanTitle } from '../../utils/cleanTitle';
 import { hasNoteExtension, isNoteFileName, isNoteThumbnailFileName } from '../../utils/noteFileName';
 import { ThumbnailImage } from '../file/ThumbnailImage';
 import { CatalogFeedPosterThumb } from '../file/CatalogFeedPosterThumb';
-import { hasFeedPreviewPlayback } from '../../services/feedPreviewPlayback';
+import { CollectionCatalogThumb } from '../file/CollectionCatalogThumb';
+import { catalogPlaybackMetadataForFile } from '../../hooks/mapStorageListEntries';
 import { pickImageFromNative } from '../../hooks/useNativeFilePicker';
 import type { DriveAccount, DriveFile } from './storageTypes';
-
-function catalogFeedPosterForFile(
-  file: DriveFile,
-  fileMetadataMap: Map<string, unknown>
-): { metadataIndexFileId: string; metadata: Record<string, unknown> } | null {
-  if ((file as { catalogBacked?: boolean }).catalogBacked !== true) return null;
-  const indexFromFile = file.metadataIndexFileId;
-  const metadataIndexFileId =
-    typeof indexFromFile === 'string' ? indexFromFile : file.id;
-  const metadata = (fileMetadataMap.get(metadataIndexFileId) ||
-    fileMetadataMap.get(file.id)) as Record<string, unknown> | undefined;
-  if (!metadata || !hasFeedPreviewPlayback(metadata)) return null;
-  return { metadataIndexFileId, metadata };
-}
 
 export interface AccountFilesPanelProps {
   account: DriveAccount;
@@ -62,6 +49,7 @@ export interface AccountFilesPanelProps {
   addButtonRefs: React.MutableRefObject<Map<string, HTMLButtonElement | null>>;
   menuButtonRefs: React.MutableRefObject<Map<string, HTMLButtonElement | null>>;
   loadFilesForAccount: (accountId: string) => Promise<void>;
+  loadFileMetadata?: (fileId: string) => Promise<unknown>;
   handleUploadForAccount: (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   beginMediaUpload: (file: File, accountId: string, encrypt: boolean) => void;
   handleCreateCollection: (accountId: string) => Promise<void>;
@@ -102,6 +90,7 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
   addButtonRefs,
   menuButtonRefs,
   loadFilesForAccount,
+  loadFileMetadata,
   handleUploadForAccount,
   beginMediaUpload,
   handleCreateCollection,
@@ -330,8 +319,11 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
             const isNote = isNoteFileName(nameWithoutEncrypted);
             const isNoteThumbnail = isNoteThumbnailFileName(nameWithoutEncrypted);
             let isMediaFile = isImage || isVideo || isNote || isNoteThumbnail || isCollection;
-            const catalogPoster = catalogFeedPosterForFile(file, fileMetadataMap);
-            if (catalogPoster) isMediaFile = true;
+            const catalogBacked = (file as { catalogBacked?: boolean }).catalogBacked === true;
+            const catalogMetadataIndexFileId =
+              typeof file.metadataIndexFileId === 'string' ? file.metadataIndexFileId : file.id;
+            const catalogPlayback = catalogPlaybackMetadataForFile(file, fileMetadataMap);
+            if (catalogPlayback || catalogBacked) isMediaFile = true;
             if (isEncrypted && !isCollection) {
               const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
               const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
@@ -397,19 +389,17 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                       const firstFileId = collectionData?.collectionFileIds?.[0];
                       const firstFile = firstFileId ? accountFiles.find(f => f.id === firstFileId) : null;
 
-                      if (catalogPoster) {
+                      if (catalogBacked) {
                         return (
-                          <div className="w-full h-full relative">
-                            <CatalogFeedPosterThumb
-                              metadataIndexFileId={catalogPoster.metadataIndexFileId}
-                              metadata={catalogPoster.metadata}
-                              alt={(file as { displayName?: string }).displayName || file.name}
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute top-2 right-2 bg-black/60 rounded-full p-1.5">
-                              <Layers className="h-4 w-4 text-blue-400" />
-                            </div>
-                          </div>
+                          <CollectionCatalogThumb
+                            file={file}
+                            parentMetadataIndexFileId={catalogMetadataIndexFileId}
+                            parentMetadata={catalogPlayback}
+                            fileMetadataMap={fileMetadataMap}
+                            loadFileMetadata={loadFileMetadata}
+                            alt={(file as { displayName?: string }).displayName || file.name}
+                            className="w-full h-full object-cover"
+                          />
                         );
                       }
 
@@ -445,10 +435,10 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                         </div>
                       );
                     })()
-                  ) : catalogPoster ? (
+                  ) : catalogPlayback ? (
                     <CatalogFeedPosterThumb
-                      metadataIndexFileId={catalogPoster.metadataIndexFileId}
-                      metadata={catalogPoster.metadata}
+                      metadataIndexFileId={catalogMetadataIndexFileId}
+                      metadata={catalogPlayback}
                       alt={(file as { displayName?: string }).displayName || file.name}
                       className="w-full h-full object-cover"
                     />
@@ -569,8 +559,11 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
             const isNote = isNoteFileName(nameWithoutEncrypted);
             const isNoteThumbnail = isNoteThumbnailFileName(nameWithoutEncrypted);
             let isMediaFile = isImage || isVideo || isNote || isNoteThumbnail || isCollection;
-            const catalogPoster = catalogFeedPosterForFile(file, fileMetadataMap);
-            if (catalogPoster) isMediaFile = true;
+            const catalogBacked = (file as { catalogBacked?: boolean }).catalogBacked === true;
+            const catalogMetadataIndexFileId =
+              typeof file.metadataIndexFileId === 'string' ? file.metadataIndexFileId : file.id;
+            const catalogPlayback = catalogPlaybackMetadataForFile(file, fileMetadataMap);
+            if (catalogPlayback || catalogBacked) isMediaFile = true;
             if (isEncrypted && !isCollection) {
               const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
               const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
@@ -625,25 +618,28 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                   </div>
                 )}
                 <div className="flex items-center space-x-3 flex-1 min-w-0">
-                  {isCollection && catalogPoster ? (
+                  {isCollection && catalogBacked ? (
                     <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700 relative">
-                      <CatalogFeedPosterThumb
-                        metadataIndexFileId={catalogPoster.metadataIndexFileId}
-                        metadata={catalogPoster.metadata}
+                      <CollectionCatalogThumb
+                        file={file}
+                        parentMetadataIndexFileId={catalogMetadataIndexFileId}
+                        parentMetadata={catalogPlayback}
+                        fileMetadataMap={fileMetadataMap}
+                        loadFileMetadata={loadFileMetadata}
                         alt={(file as { displayName?: string }).displayName || file.name}
                         className="w-full h-full object-cover"
+                        badgeClassName="h-6 w-6 text-blue-400"
                       />
-                      <Layers className="h-3 w-3 text-blue-400 absolute bottom-0.5 right-0.5" />
                     </div>
                   ) : isCollection ? (
                     <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-gradient-to-br from-blue-600/20 to-purple-600/20 flex items-center justify-center">
                       <Layers className="h-6 w-6 text-blue-400" />
                     </div>
-                  ) : catalogPoster ? (
+                  ) : catalogPlayback ? (
                     <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
                       <CatalogFeedPosterThumb
-                        metadataIndexFileId={catalogPoster.metadataIndexFileId}
-                        metadata={catalogPoster.metadata}
+                        metadataIndexFileId={catalogMetadataIndexFileId}
+                        metadata={catalogPlayback}
                         alt={(file as { displayName?: string }).displayName || file.name}
                         className="w-full h-full object-cover"
                       />
