@@ -87,6 +87,8 @@ import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
 import {
   ResolvedPageBackground,
+  PageBackgroundVideoDuration,
+  sectionWithPageBackgroundDuration,
   BodyWrapObject,
   layerToItem,
   bodyMarginStyle,
@@ -806,13 +808,24 @@ export function EditablePagePreview({
           composeExportRoot
         >
           {presentation.backgroundVideo && (
-            <ResolvedPageBackground
-              src={presentation.backgroundVideo}
-              editProxySrc={presentation.editProxySrc}
-              kind="video"
-              docId={manifest.docId}
-              session={session}
-            />
+            <>
+              <ResolvedPageBackground
+                src={presentation.backgroundVideo}
+                editProxySrc={presentation.editProxySrc}
+                kind="video"
+                docId={manifest.docId}
+                session={session}
+              />
+              <PageBackgroundVideoDuration
+                src={presentation.backgroundVideo}
+                editProxySrc={presentation.editProxySrc}
+                docId={manifest.docId}
+                session={session}
+                onDuration={(seconds) =>
+                  onSectionChange(sectionWithPageBackgroundDuration(section, seconds))
+                }
+              />
+            </>
           )}
           {!presentation.backgroundVideo && presentation.backgroundImage && (
             <ResolvedPageBackground

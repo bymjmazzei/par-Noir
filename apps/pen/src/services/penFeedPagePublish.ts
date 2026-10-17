@@ -8,6 +8,7 @@ import {
   normalizeGalleryAspect,
   normalizeSection,
   resolveTimelineDuration,
+  type PenTimelineContext,
   type PenDocManifest,
   type PenFeedPagePayload,
   type PenSectionContent
@@ -16,11 +17,22 @@ import { composePageToVideo, type ComposePageVideoResult } from './composePageVi
 import { actionLayerIds, hideActionLayers } from './penDownload';
 import { emitTimelineSample } from './timelineSample';
 
+export function timelineCtxFromManifest(
+  manifest: Pick<PenDocManifest, 'pagePresentation'>
+): PenTimelineContext {
+  const video = manifest.pagePresentation?.backgroundVideo?.trim();
+  return video ? { pageBackgroundVideo: video } : {};
+}
+
 /** Timeline clock + playhead for feed compose (all layers, not only motion keys). */
-export function composeTimelineEncodeOpts(section: PenSectionContent) {
+export function composeTimelineEncodeOpts(
+  section: PenSectionContent,
+  manifest?: Pick<PenDocManifest, 'pagePresentation'>
+) {
   const sec = normalizeSection(section);
+  const ctx = manifest ? timelineCtxFromManifest(manifest) : undefined;
   return {
-    clockDurationSec: resolveTimelineDuration(sec),
+    clockDurationSec: resolveTimelineDuration(sec, undefined, ctx),
     section: sec,
     onSample: emitTimelineSample,
     allowInertOnly: true as const
@@ -43,12 +55,13 @@ export function penFeedPageForSection(
 ): PenFeedPagePayload {
   const sec = normalizeSection(section);
   const canvas = canvasSizeForAspect(normalizeGalleryAspect(manifest.galleryAspect));
-  const actionSection = exportActionSectionForFeed(sec);
-  const timelineDurationSec = resolveTimelineDuration(sec);
+  const ctx = timelineCtxFromManifest(manifest);
+  const actionSection = exportActionSectionForFeed(sec, ctx);
+  const timelineDurationSec = resolveTimelineDuration(sec, undefined, ctx);
   return {
     slug: sec.slug,
     canvas,
-    timelineDurationSec,
+    ...(timelineDurationSec > 0 ? { timelineDurationSec } : {}),
     actionSection
   };
 }

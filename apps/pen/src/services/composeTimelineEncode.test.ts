@@ -28,4 +28,27 @@ describe('composeTimelineEncodeOpts', () => {
     expect(opts.allowInertOnly).toBe(true);
     expect(typeof opts.onSample).toBe('function');
   });
+
+  it('uses zero clock when the section has no timeline content', () => {
+    const section = {
+      slug: 'page-1',
+      doc: { type: 'doc', content: [] },
+      layers: []
+    };
+    const opts = composeTimelineEncodeOpts(section);
+    expect(opts.clockDurationSec).toBe(0);
+  });
+
+  it('includes page background video in the clock', () => {
+    const section = {
+      slug: 'page-1',
+      doc: { type: 'doc', content: [] },
+      layers: [],
+      timelineDurationSec: 8
+    };
+    const opts = composeTimelineEncodeOpts(section, {
+      pagePresentation: { backgroundVideo: 'penmedia:bg' }
+    });
+    expect(opts.clockDurationSec).toBe(8);
+  });
 });

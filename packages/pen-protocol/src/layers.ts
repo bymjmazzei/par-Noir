@@ -9,7 +9,13 @@ import {
   type LayerRect
 } from './pageGeometry.js';
 import { SEED_TABLE_DOC_PLACEHOLDER } from './seedRefs.js';
-import { offsetLayerMotion } from './layerMotion.js';
+import {
+  DEFAULT_TIMELINE_SEC,
+  isSectionTimelineActive,
+  offsetLayerMotion,
+  resolveTimelineDuration,
+  sectionHasTimelineLayers
+} from './layerMotion.js';
 import type { PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js';
 
 /** Synthetic id for the page frame (flow/letter/a4) — layer 0 in the Layers list. */
@@ -882,16 +888,48 @@ export function layerShadowCss(layer: Pick<
   return layer.textShadow || undefined;
 }
 
+function stampTimelineOnNewLayer(
+  section: PenSectionContent,
+  layer: PenPageLayer
+): PenPageLayer {
+  if (layer.kind === 'guide') return layer;
+  const wasActive = isSectionTimelineActive(section);
+  const clock = wasActive
+    ? resolveTimelineDuration(section)
+    : DEFAULT_TIMELINE_SEC;
+  if (layer.kind === 'video') {
+    return layer;
+  }
+  if (layer.outSec != null) return layer;
+  const inSec = layer.inSec ?? 0;
+  return { ...layer, inSec, outSec: clock };
+}
+
+function clearTimelineClockIfEmpty(section: PenSectionContent): PenSectionContent {
+  if (sectionHasTimelineLayers(section)) return section;
+  const { timelineDurationSec: _t, pageBackgroundDurationSec: _p, ...rest } = section;
+  return rest;
+}
+
 export function upsertLayer(
   section: PenSectionContent,
   layer: PenPageLayer
 ): PenSectionContent {
   const layers = [...(section.layers || [])];
   const idx = layers.findIndex((l) => l.id === layer.id);
-  if (idx >= 0) layers[idx] = layer;
-  else layers.push(layer);
+  const isNew = idx < 0;
+  let nextLayer = layer;
+  if (isNew) {
+    nextLayer = stampTimelineOnNewLayer(section, layer);
+  }
+  if (idx >= 0) layers[idx] = nextLayer;
+  else layers.push(nextLayer);
   assertUniqueLayerIds(layers);
-  return { ...section, layers };
+  let next: PenSectionContent = { ...section, layers };
+  if (isNew && nextLayer.kind !== 'guide' && !isSectionTimelineActive(section)) {
+    next = { ...next, timelineDurationSec: DEFAULT_TIMELINE_SEC };
+  }
+  return next;
 }
 
 export function removeLayer(section: PenSectionContent, layerId: string): PenSectionContent {
@@ -904,6 +942,7 @@ export function removeLayer(section: PenSectionContent, layerId: string): PenSec
     .filter((l) => l.id !== layerId);
   let next: PenSectionContent = { ...section, layers };
   if (parentId) next = recomputeGroupBounds(next, parentId);
+  next = clearTimelineClockIfEmpty(next);
   return next;
 }
 

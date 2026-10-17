@@ -264,7 +264,11 @@ export async function buildAndStoreGalleryPreview(params: {
       encoded = await composePageVideoWithoutActions(
         root,
         params.sections,
-        clockSection ? composeTimelineEncodeOpts(clockSection) : undefined
+        clockSection
+          ? composeTimelineEncodeOpts(clockSection, {
+              pagePresentation: params.pagePresentation || undefined
+            })
+          : undefined
       );
     } finally {
       setPlaybackMode('edit');

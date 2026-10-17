@@ -3,7 +3,11 @@
  */
 
 import { normalizeSection } from './richDoc.js';
-import { sampleSectionLayers, resolveTimelineDuration } from './layerMotion.js';
+import {
+  resolveTimelineDuration,
+  sampleSectionLayers,
+  type PenTimelineContext
+} from './layerMotion.js';
 import { partitionLayersForCompose } from './actionPartition.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
 
@@ -21,7 +25,8 @@ export type PenFeedPagePayload = {
 
 /** Action layers plus parent group stubs required for motion sampling. */
 export function exportActionSectionForFeed(
-  section: PenSectionContent
+  section: PenSectionContent,
+  ctx?: PenTimelineContext
 ): PenFeedActionSection {
   const sec = normalizeSection(section);
   const all = sec.layers || [];
@@ -32,7 +37,7 @@ export function exportActionSectionForFeed(
     if (layer.parentGroupId) want.add(layer.parentGroupId);
   }
   const layers = all.filter((layer) => want.has(layer.id));
-  const timelineDurationSec = resolveTimelineDuration({ ...sec, layers });
+  const timelineDurationSec = resolveTimelineDuration({ ...sec, layers }, undefined, ctx);
   return {
     layers,
     ...(timelineDurationSec > 0 ? { timelineDurationSec } : {})

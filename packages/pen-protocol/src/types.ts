@@ -57,10 +57,12 @@ export interface PenSectionContent {
    */
   layerGeom?: 'px';
   /**
-   * Section playhead length in seconds.
+   * Section playhead length in seconds when the timeline is active.
    * Omit to derive it from the longest video, the last key, or 5s.
    */
   timelineDurationSec?: number;
+  /** Measured length of manifest page background video (no object layer). */
+  pageBackgroundDurationSec?: number;
 }
 
 export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 'interactive' | 'guide';

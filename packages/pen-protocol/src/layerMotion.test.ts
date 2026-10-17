@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { copyWidgetLayersIntoSection } from './layers.js';
+import {
+  copyWidgetLayersIntoSection,
+  createImageLayer,
+  createTextLayer,
+  removeLayer,
+  upsertLayer
+} from './layers.js';
 import {
   applyLayoutAtPlayhead,
   applyTransitionPreset,
+  applyPageBackgroundVideoDuration,
   applyVideoFileDuration,
+  isSectionTimelineActive,
   joinLayerToTrack,
   layerClips,
   layerMediaTime,
@@ -203,6 +211,40 @@ describe('sampleLayerAt', () => {
 });
 
 describe('timeline duration and layout writes', () => {
+  it('is inactive with no object layers', () => {
+    expect(resolveTimelineDuration(emptySection('body'))).toBe(0);
+    expect(isSectionTimelineActive(emptySection('body'))).toBe(false);
+  });
+
+  it('activates with page background video context', () => {
+    const blank = emptySection('body');
+    expect(
+      resolveTimelineDuration(blank, undefined, { pageBackgroundVideo: 'penmedia:bg' })
+    ).toBe(5);
+    const grown = applyPageBackgroundVideoDuration(blank, 12);
+    expect(resolveTimelineDuration(grown, undefined, { pageBackgroundVideo: 'penmedia:bg' })).toBe(
+      12
+    );
+  });
+
+  it('stamps clip span when layers are inserted', () => {
+    let sec = emptySection('body');
+    sec = upsertLayer(sec, createTextLayer());
+    expect(sec.layers![0]!.outSec).toBe(5);
+    sec = { ...sec, timelineDurationSec: 10 };
+    sec = upsertLayer(sec, createImageLayer('https://example.com/x.png'));
+    const image = sec.layers!.find((item) => item.kind === 'image');
+    expect(image?.outSec).toBe(10);
+  });
+
+  it('clears the clock when the last object layer is removed', () => {
+    let sec = upsertLayer(emptySection('body'), createTextLayer());
+    expect(sec.timelineDurationSec).toBe(5);
+    sec = removeLayer(sec, sec.layers![0]!.id);
+    expect(sec.timelineDurationSec).toBeUndefined();
+    expect(resolveTimelineDuration(sec)).toBe(0);
+  });
+
   it('keeps the default clock when the first key is inside it', () => {
     const keyed = section([
       layer({ id: 'mark', motion: { keys: [{ t: 3, x: 1 }] } })

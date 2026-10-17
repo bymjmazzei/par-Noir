@@ -54,6 +54,7 @@ import {
   sanitizeWidgetMarkup,
   updateLayerLayout,
   upsertLayer,
+  applyPageBackgroundVideoDuration,
   voteFaceForLayer,
   wrapSideFromGeom,
   type PageSizeChoice,
@@ -118,6 +119,50 @@ export function ResolvedPageBackground({
       style={{ backgroundImage: `url(${resolved})` }}
     />
   );
+}
+
+/** Probe page background video length for the section clock (not tied to timeline UI). */
+export function PageBackgroundVideoDuration({
+  src,
+  editProxySrc,
+  docId,
+  session,
+  onDuration
+}: {
+  src: string;
+  editProxySrc?: string;
+  docId?: string;
+  session?: PenSession | null;
+  onDuration: (seconds: number) => void;
+}) {
+  const playSrc = editorPlaybackSrc({ editProxySrc, backgroundVideo: src });
+  const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
+  const report = useRef(onDuration);
+  report.current = onDuration;
+  useEffect(() => {
+    if (!resolved) return;
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    const finish = () => {
+      const seconds = video.duration;
+      if (Number.isFinite(seconds) && seconds > 0) report.current(seconds);
+    };
+    video.addEventListener('loadedmetadata', finish);
+    video.src = resolved;
+    return () => {
+      video.removeEventListener('loadedmetadata', finish);
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [resolved]);
+  return null;
+}
+
+export function sectionWithPageBackgroundDuration(
+  section: PenSectionContent,
+  seconds: number
+): PenSectionContent {
+  return applyPageBackgroundVideoDuration(section, seconds);
 }
 export function layerToItem(layer: PenPageLayer): LayoutItem {
   return {

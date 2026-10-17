@@ -69,6 +69,7 @@ import {
   downloadKindForSections,
   partitionSectionsForPublish,
   resolveTimelineDuration,
+  isSectionTimelineActive,
   sectionIsFeedPage,
   isGooglePenFont,
   remapSectionsForAspect,
@@ -479,6 +480,15 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setPlayheadSec(0);
     setTimelinePlaying(true);
   }, [bundle, section, isWidgetDoc, widgetEditorLayer]);
+
+  useEffect(() => {
+    if (!section) return;
+    const ctx = { pageBackgroundVideo: bundle?.manifest.pagePresentation?.backgroundVideo };
+    if (!isSectionTimelineActive(section, ctx)) {
+      setTimelinePlaying(false);
+      setPlayheadSec(0);
+    }
+  }, [section, bundle?.manifest.pagePresentation?.backgroundVideo]);
 
   const socialActionLayer = useMemo(() => {
     if (!section || isPageLayerId(activeLayerId) || widgetEditorLayer) return null;
@@ -1828,7 +1838,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         const encoded = await withActionsHidden(root, () =>
           composePageToVideo(
             root,
-            section ? composeTimelineEncodeOpts(section) : undefined
+            section ? composeTimelineEncodeOpts(section, bundle.manifest) : undefined
           )
         );
         const ext = encoded.videoContentType.includes('mp4') ? 'mp4' : 'webm';

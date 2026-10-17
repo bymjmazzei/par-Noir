@@ -15,7 +15,8 @@ import {
   type PenPagePresentation,
   type PenSectionContent,
   type PenStrokeAlign,
-  type PenStrokeStyle
+  type PenStrokeStyle,
+  activateTimelineForPageBackground
 } from '@par-noir/pen-protocol';
 import { ActionBindStrip } from './ActionBindStrip';
 import { LayerTitleControl } from './LayerTitleControl';
@@ -461,6 +462,7 @@ export function LayerObjectToolbar({
         backgroundGradient: undefined,
         backgroundColor: 'transparent'
       });
+      onSectionChange(activateTimelineForPageBackground(section));
     } else {
       patchLayer({
         backgroundVideo: src,

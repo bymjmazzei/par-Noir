@@ -39,6 +39,7 @@ import {
   reorderTimelineLayer,
   raiseTimelineTo,
   resolveTimelineDuration,
+  isSectionTimelineActive,
   sampleLayerAt,
   sanitizeWidgetMarkup,
   setKeyframeEase,
@@ -54,6 +55,7 @@ import {
   type PenAnimationStyle,
   type PenKeyframeEase,
   type PenPageLayer,
+  type PenPagePresentation,
   type PenSectionContent,
   type PenTransitionPreset
 } from '@par-noir/pen-protocol';
@@ -972,7 +974,8 @@ export function SectionTimeline({
   scopeGroupId = null,
   onEnterGroup,
   showAnimations = true,
-  onJoinSelect
+  onJoinSelect,
+  pagePresentation
 }: {
   section: PenSectionContent;
   activeLayerId: string | null;
@@ -994,9 +997,14 @@ export function SectionTimeline({
   showAnimations?: boolean;
   /** Media editor opens its Transitions tab from the selected join. */
   onJoinSelect?: (point: TrackJoinPoint | null) => void;
+  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo'>;
 }) {
   const widget = mode === 'widget';
-  const duration = resolveTimelineDuration(section);
+  const timelineCtx = {
+    pageBackgroundVideo: pagePresentation?.backgroundVideo
+  };
+  const timelineActive = isSectionTimelineActive(section, timelineCtx);
+  const duration = timelineActive ? resolveTimelineDuration(section, undefined, timelineCtx) : 0;
   const groups = timelineTracks(section, scopeGroupId);
   const mainTrackId = groups[groups.length - 1]?.trackId ?? null;
   const scopeGroup = scopeGroupId
@@ -1196,7 +1204,13 @@ export function SectionTimeline({
   }, []);
 
   useEffect(() => {
-    if (!playing) return;
+    if (!timelineActive && playing) {
+      onPlaying(false);
+    }
+  }, [timelineActive, playing, onPlaying]);
+
+  useEffect(() => {
+    if (!playing || !timelineActive) return;
     let frame = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -1224,9 +1238,10 @@ export function SectionTimeline({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, playSpan, layerLoops, onPlayhead, onPlaying]);
+  }, [playing, playSpan, layerLoops, onPlayhead, onPlaying, timelineActive]);
 
   function seekTo(time: number) {
+    if (!timelineActive) return;
     const next = Math.min(viewSpan, Math.max(0, time));
     playingRef.current = false;
     playheadRef.current = next;
@@ -1244,6 +1259,7 @@ export function SectionTimeline({
   }
 
   function beginScrub(event: ReactPointerEvent<HTMLElement>) {
+    if (!timelineActive) return;
     event.preventDefault();
     event.stopPropagation();
     const scale = event.currentTarget.closest('[data-timeline-scale]');
@@ -1499,6 +1515,7 @@ export function SectionTimeline({
     <div
       ref={rootRef}
       data-media-timeline
+      data-timeline-inactive={timelineActive ? undefined : ''}
       className="relative min-w-0 shrink-0 select-none bg-stone-50"
     >
       <div
@@ -1676,8 +1693,10 @@ export function SectionTimeline({
           type="button"
           aria-label={playing ? 'Pause' : 'Play'}
           title={playing ? 'Pause' : 'Play'}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600"
+          disabled={!timelineActive}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600 disabled:opacity-40"
           onClick={() => {
+            if (!timelineActive) return;
             const next = !playing;
             const at = next && playheadSec >= playSpan - 0.05 ? 0 : playheadSec;
             playheadRef.current = at;

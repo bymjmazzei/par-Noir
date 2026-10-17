@@ -536,10 +536,52 @@ export function sectionHasMotion(section: PenSectionContent | null | undefined):
   return (section?.layers || []).some((layer) => (layer.motion?.keys?.length || 0) > 0);
 }
 
+export type PenTimelineContext = {
+  pageBackgroundVideo?: string;
+};
+
+export function sectionHasTimelineLayers(section: PenSectionContent | null | undefined): boolean {
+  return (section?.layers || []).some((layer) => layer.kind !== 'guide');
+}
+
+/** Timeline runs when there are object layers or page background video. */
+export function isSectionTimelineActive(
+  section: PenSectionContent | null | undefined,
+  ctx?: PenTimelineContext
+): boolean {
+  if (!section) return false;
+  if (sectionHasTimelineLayers(section)) return true;
+  if (ctx?.pageBackgroundVideo?.trim()) return true;
+  if ((section.pageBackgroundDurationSec ?? 0) > 0) return true;
+  if ((section.timelineDurationSec ?? 0) > 0) return true;
+  return false;
+}
+
+/** Set a 5s clock when page background video is attached before metadata arrives. */
+export function activateTimelineForPageBackground(section: PenSectionContent): PenSectionContent {
+  if (sectionHasTimelineLayers(section)) return section;
+  if ((section.timelineDurationSec ?? 0) > 0) return section;
+  if ((section.pageBackgroundDurationSec ?? 0) > 0) return section;
+  return { ...section, timelineDurationSec: DEFAULT_TIMELINE_SEC };
+}
+
+export function applyPageBackgroundVideoDuration(
+  section: PenSectionContent,
+  fileDurationSec: number
+): PenSectionContent {
+  if (!Number.isFinite(fileDurationSec) || !(fileDurationSec > 0)) return section;
+  const withMeta = { ...section, pageBackgroundDurationSec: fileDurationSec };
+  return raiseTimelineTo(withMeta, fileDurationSec);
+}
+
 /** Grow the section clock when a clip ends past it. A shorter clip leaves the clock alone. */
-export function raiseTimelineTo(section: PenSectionContent, sec: number): PenSectionContent {
+export function raiseTimelineTo(
+  section: PenSectionContent,
+  sec: number,
+  ctx?: PenTimelineContext
+): PenSectionContent {
   if (!Number.isFinite(sec) || !(sec > 0)) return section;
-  const current = resolveTimelineDuration(section);
+  const current = resolveTimelineDuration(section, undefined, ctx);
   if (sec <= current + 0.001) return section;
   return { ...section, timelineDurationSec: sec };
 }
@@ -581,13 +623,17 @@ export function applyVideoFileDuration(
 
 export function resolveTimelineDuration(
   section: PenSectionContent,
-  videoDurationByLayerId?: Record<string, number>
+  videoDurationByLayerId?: Record<string, number>,
+  ctx?: PenTimelineContext
 ): number {
+  if (!isSectionTimelineActive(section, ctx)) return 0;
   if (section.timelineDurationSec && section.timelineDurationSec > 0) {
     return section.timelineDurationSec;
   }
   let clip = 0;
   let keyMax = 0;
+  const pageBg = section.pageBackgroundDurationSec;
+  if (pageBg && pageBg > clip) clip = pageBg;
   for (const layer of section.layers || []) {
     if (layer.kind === 'guide') continue;
     const hinted = videoDurationByLayerId?.[layer.id];

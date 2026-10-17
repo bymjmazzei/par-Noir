@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { emptySection, sampleLayerAt, type PenSectionContent } from '@par-noir/pen-protocol';
+import { emptySection, normalizeSection, sampleLayerAt, type PenSectionContent } from '@par-noir/pen-protocol';
 import {
   AnimationPicker,
   animationLengthEditable,
@@ -48,6 +48,39 @@ const section: PenSectionContent = {
 };
 
 describe('section timeline', () => {
+  it('is inactive until object layers or page background video', () => {
+    const blank = normalizeSection(emptySection('body'));
+    const inactive = renderToStaticMarkup(
+      <SectionTimeline
+        section={blank}
+        activeLayerId={null}
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(inactive).toContain('data-timeline-inactive');
+    expect(inactive).toMatch(/aria-label="Play"[^>]*disabled=""/);
+
+    const active = renderToStaticMarkup(
+      <SectionTimeline
+        section={section}
+        activeLayerId="title"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(active).not.toContain('data-timeline-inactive');
+    expect(active).toContain('data-track-row="title"');
+  });
+
   it('lets a forward clip play on its own clock', () => {
     expect(shouldSeekTimelineVideo('tick', false)).toBe(false);
     expect(shouldSeekTimelineVideo('play', false)).toBe(true);

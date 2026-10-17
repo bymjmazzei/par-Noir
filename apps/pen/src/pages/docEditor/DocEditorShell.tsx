@@ -1244,6 +1244,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
               />
               <SectionTimeline
                 section={section}
+                pagePresentation={pagePresentation}
                 activeLayerId={activeLayerId}
                 playheadSec={playheadSec}
                 playing={timelinePlaying}

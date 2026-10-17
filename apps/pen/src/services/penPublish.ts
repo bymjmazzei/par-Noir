@@ -284,7 +284,7 @@ export async function writeComposedVideoPublishHandoff(
     const root = await waitForUntaintedComposeVideos(root0);
     encoded = await composePageVideoWithoutActions(root, bundle.sections, {
       onProgress: opts?.onProgress,
-      ...composeClock(videoSections[0])
+      ...composeClock(videoSections[0], bundle.manifest)
     });
   } finally {
     setPlaybackMode('edit');
@@ -319,9 +319,12 @@ export async function writeComposedVideoPublishHandoff(
   };
 }
 
-function composeClock(section: PenSectionContent | undefined) {
+function composeClock(
+  section: PenSectionContent | undefined,
+  manifest: PenDocManifest
+) {
   if (!section) return {};
-  return composeTimelineEncodeOpts(section);
+  return composeTimelineEncodeOpts(section, manifest);
 }
 
 function waitTwoFrames(): Promise<void> {
@@ -389,7 +392,7 @@ export async function writeMixedPagesPublishHandoff(
       if (!root0) throw new Error('compose_export_root_missing');
       const root = await waitForUntaintedComposeVideos(root0);
       const encoded = await composePageVideoWithoutActions(root, bundle.sections, {
-        ...composeClock(sec),
+        ...composeClock(sec, bundle.manifest),
         onProgress: (p) => {
           const base = (i / videoSections.length) * 80;
           opts.onProgress?.(Math.round(base + (p / 100) * (80 / videoSections.length)));
@@ -512,7 +515,7 @@ export async function writeSocialTocCollectionHandoff(
         ? await waitForUntaintedComposeVideos(root0)
         : root0;
       const encoded = await composePageVideoWithoutActions(root, bundle.sections, {
-        ...composeClock(sec),
+        ...composeClock(sec, bundle.manifest),
         onProgress: (p) => {
           const base = (i / inertEncodeSections.length) * 95;
           opts.onProgress?.(Math.round(base + (p / 100) * (95 / inertEncodeSections.length)));
