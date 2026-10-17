@@ -38,7 +38,7 @@ import { AnimationPicker, SectionTimeline, TransitionSettings } from './SectionT
 import { LayerMediaContent } from './LayerMediaContent';
 import { probeMediaAspect } from '../services/penAttach';
 import lookSwatch from '../assets/look-apple.jpg';
-import { resolvePenMediaSrc, putLocalMedia } from '@par-noir/pen-media';
+import { attachMediaFile, resolvePenMediaSrc } from '@par-noir/pen-media';
 import type { PenSession } from '../services/penSession';
 import { usePlayheadSec } from '../services/playheadStore';
 
@@ -278,6 +278,10 @@ export function MediaEditorPanel({
   );
   const [licensedDraft, setLicensedDraft] = useState('');
   const audioPickRef = useRef<HTMLInputElement>(null);
+  const [audioUpload, setAudioUpload] = useState<{ file: File; pct: number; failed: boolean } | null>(
+    null
+  );
+  const audioAbortRef = useRef<AbortController | null>(null);
   const cropBasis = useRef<PenPageLayer | null>(null);
   const filter = mergeMediaFilter(layer.mediaFilter);
   const crop = clampMediaCrop(layer.mediaCrop);
@@ -329,15 +333,43 @@ export function MediaEditorPanel({
     );
   }
 
+  const latestTracks = useRef({ tracks, setTracks });
+  latestTracks.current = { tracks, setTracks };
+  useEffect(() => () => audioAbortRef.current?.abort(), []);
+
   async function addOwnAudio(file: File) {
-    let src = '';
-    if (docId) {
-      const put = await putLocalMedia({ docId, blob: file });
-      src = put.ref;
-    } else {
-      src = URL.createObjectURL(file);
+    if (!session || !docId) return;
+    audioAbortRef.current?.abort();
+    const controller = new AbortController();
+    audioAbortRef.current = controller;
+    setAudioUpload({ file, pct: 0, failed: false });
+    try {
+      const out = await attachMediaFile({
+        pnIdentifier: session.pnIdentifier,
+        docId,
+        file,
+        signal: controller.signal,
+        onProgress: (sent, total) =>
+          setAudioUpload((u) =>
+            u && u.file === file ? { ...u, pct: total ? Math.round((sent / total) * 100) : 0 } : u
+          )
+      });
+      if (controller.signal.aborted) return;
+      audioAbortRef.current = null;
+      setAudioUpload(null);
+      const cur = latestTracks.current;
+      cur.setTracks([...cur.tracks, { id: newTrackId(), src: out.ref, gain: 100, offsetSec: 0 }]);
+    } catch {
+      if (controller.signal.aborted) return;
+      audioAbortRef.current = null;
+      setAudioUpload({ file, pct: 0, failed: true });
     }
-    setTracks([...tracks, { id: newTrackId(), src, gain: 100, offsetSec: 0 }]);
+  }
+
+  function cancelAudioUpload() {
+    audioAbortRef.current?.abort();
+    audioAbortRef.current = null;
+    setAudioUpload(null);
   }
 
   function addLicensed() {
@@ -658,13 +690,32 @@ export function MediaEditorPanel({
             </button>
           </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                className="px-1 py-1 text-[13px] font-semibold text-stone-700"
-                onClick={() => audioPickRef.current?.click()}
-              >
-                Add audio
-              </button>
+              {audioUpload ? (
+                <span className="flex items-center gap-2 px-1 py-1 text-[13px] text-stone-700" aria-live="polite">
+                  {audioUpload.failed ? 'Upload failed' : `Uploading ${audioUpload.pct}%`}
+                  {audioUpload.failed && (
+                    <button
+                      type="button"
+                      className="font-semibold"
+                      onClick={() => void addOwnAudio(audioUpload.file)}
+                    >
+                      Retry
+                    </button>
+                  )}
+                  <button type="button" className="text-stone-500" onClick={cancelAudioUpload}>
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="px-1 py-1 text-[13px] font-semibold text-stone-700 disabled:opacity-40"
+                  disabled={!session || !docId}
+                  onClick={() => audioPickRef.current?.click()}
+                >
+                  Add audio
+                </button>
+              )}
               <input
                 ref={audioPickRef}
                 type="file"

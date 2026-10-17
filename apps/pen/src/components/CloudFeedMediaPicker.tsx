@@ -1,8 +1,9 @@
 /**
- * Cloud media picker — stores penlocal:/penmedia: refs (never giant data URLs).
+ * Cloud media picker — stores penmedia: refs (never giant data URLs). Device files
+ * upload to Drive here, behind a progress bar, before the layer can be edited.
  */
-import { useEffect, useState } from 'react';
-import { ensurePenMediaUrl, penMediaRef, putLocalMedia } from '@par-noir/pen-media';
+import { useEffect, useRef, useState } from 'react';
+import { attachMediaFile, ensurePenMediaUrl, penMediaRef } from '@par-noir/pen-media';
 import {
   listCloudMedia,
   pickDeviceImageFile,
@@ -11,6 +12,57 @@ import {
 } from '../services/penAttach';
 import { setAttachPoster } from '../services/attachPosterCache';
 import type { PenSession } from '../services/penSession';
+
+type UploadState = { file: File; sent: number; total: number; failed: string | null };
+
+function uploadErrorText(e: unknown): string {
+  const msg = e instanceof Error ? e.message : '';
+  if (msg === 'cloud_on_device') return 'Cloud is not connected on this device.';
+  if (msg === 'doc_key_required') return 'This document has no key on this device.';
+  return 'Upload failed. Check your connection and retry.';
+}
+
+function UploadProgress({
+  upload,
+  onCancel,
+  onRetry
+}: {
+  upload: UploadState;
+  onCancel: () => void;
+  onRetry: () => void;
+}) {
+  const pct = upload.total ? Math.min(100, Math.round((upload.sent / upload.total) * 100)) : 0;
+  return (
+    <div className="flex flex-col gap-1" aria-live="polite">
+      <div className="flex items-center justify-between gap-2 text-[12px]">
+        <span className="truncate text-neutral-700">
+          {upload.failed ? upload.failed : `Uploading ${upload.file.name} — ${pct}%`}
+        </span>
+        <span className="flex shrink-0 gap-3">
+          {upload.failed && (
+            <button type="button" className="font-bold text-black hover:opacity-60" onClick={onRetry}>
+              Retry
+            </button>
+          )}
+          <button type="button" className="text-neutral-500 hover:text-black" onClick={onCancel}>
+            Cancel
+          </button>
+        </span>
+      </div>
+      {!upload.failed && (
+        <div
+          className="h-1.5 w-full overflow-hidden rounded bg-neutral-100"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+        >
+          <div className="h-full bg-black transition-[width]" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function CloudFeedMediaPicker({
   open,
@@ -36,6 +88,10 @@ export function CloudFeedMediaPicker({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [upload, setUpload] = useState<UploadState | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
     if (!open || !session) return;
@@ -59,6 +115,13 @@ export function CloudFeedMediaPicker({
 
   if (!open) return null;
 
+  function close() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setUpload(null);
+    onClose();
+  }
+
   async function pickCloud(item: CloudImageItem) {
     if (!session || !docId) {
       setError('Document required to attach media');
@@ -80,23 +143,48 @@ export function CloudFeedMediaPicker({
     }
   }
 
-  async function uploadDevice() {
-    if (!docId) {
+  async function runUpload(file: File) {
+    if (!session || !docId) {
       setError('Document required to attach media');
       return;
     }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setError(null);
+    setUpload({ file, sent: 0, total: file.size, failed: null });
+    try {
+      const out = await attachMediaFile({
+        pnIdentifier: session.pnIdentifier,
+        docId,
+        file,
+        signal: controller.signal,
+        onProgress: (sent, total) =>
+          setUpload((u) => (u && u.file === file ? { ...u, sent, total } : u))
+      });
+      if (controller.signal.aborted) return;
+      abortRef.current = null;
+      setUpload(null);
+      setAttachPoster(out.ref, out.blobUrl);
+      onPickMediaSrc(out.ref, { blobUrl: out.blobUrl });
+      onClose();
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      abortRef.current = null;
+      setUpload({ file, sent: 0, total: file.size, failed: uploadErrorText(e) });
+    }
+  }
+
+  async function uploadDevice() {
     const file =
       kind === 'image' ? await pickDeviceImageFile() : await pickDeviceVideoFile();
-    if (!file) return;
-    setError(null);
-    try {
-      const put = await putLocalMedia({ docId, blob: file });
-      setAttachPoster(put.ref, put.blobUrl);
-      onPickMediaSrc(put.ref, { blobUrl: put.blobUrl });
-      onClose();
-    } catch {
-      setError('Could not store media locally');
-    }
+    if (file) await runUpload(file);
+  }
+
+  function cancelUpload() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setUpload(null);
   }
 
   return (
@@ -116,7 +204,7 @@ export function CloudFeedMediaPicker({
           <button
             type="button"
             className="text-sm text-neutral-500 hover:text-black"
-            onClick={onClose}
+            onClick={close}
           >
             Close
           </button>
@@ -142,15 +230,26 @@ export function CloudFeedMediaPicker({
           </div>
         )}
         <div className="border-b border-neutral-100 px-4 py-2">
-          <button
-            type="button"
-            className="text-[12px] font-bold text-black hover:opacity-60"
-            onClick={() => void uploadDevice()}
-          >
-            Upload from device…
-          </button>
+          {upload ? (
+            <UploadProgress
+              upload={upload}
+              onCancel={cancelUpload}
+              onRetry={() => void runUpload(upload.file)}
+            />
+          ) : (
+            <button
+              type="button"
+              className="text-[12px] font-bold text-black hover:opacity-60"
+              onClick={() => void uploadDevice()}
+            >
+              Upload from device…
+            </button>
+          )}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto p-3">
+        <div
+          className={`min-h-0 flex-1 overflow-auto p-3 ${upload ? 'pointer-events-none opacity-40' : ''}`}
+          aria-disabled={upload ? true : undefined}
+        >
           {busy && <p className="text-sm text-neutral-500">Loading…</p>}
           {error && <p className="text-sm text-red-600">{error}</p>}
           {!busy && items.length === 0 && (

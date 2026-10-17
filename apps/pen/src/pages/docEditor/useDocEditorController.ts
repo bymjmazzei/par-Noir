@@ -198,8 +198,7 @@ import {
   ensureDocScopedFonts,
   loadDocScopedFontsForEditor
 } from '../../services/penDocFonts';
-import { queueDocMedia, rewriteDocMediaRefs } from '@par-noir/pen-media';
-import { flushDraftForPublish } from '../../services/penDraftFlush';
+import { assertDocMediaOnDrive } from '../../services/penDraftFlush';
 import { ensurePublishPlaybackBytes } from '../../services/penPublishMedia';
 import type { ShareToFeedSubmit } from '../../components/ShareToFeedDialog';
 import { ensureGoogleFontsLoaded } from '../../services/penGoogleFonts';
@@ -1207,25 +1206,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     });
   }, [bundle, isWidgetDoc]);
 
-  /** Uploaded penlocal → penmedia swaps land on the live bundle; the next autosave syncs them. */
-  function applyUploadedMediaRefs(map: Map<string, string>) {
-    const cur = bundleRef.current;
-    if (!cur) return;
-    const out = rewriteDocMediaRefs(cur.sections, cur.manifest.pagePresentation, map);
-    const changed =
-      out.pagePresentation !== cur.manifest.pagePresentation ||
-      out.sections.some((sec, i) => sec !== cur.sections[i]);
-    if (!changed) return;
-    const next: LocalDocBundle = {
-      ...cur,
-      sections: out.sections,
-      manifest: { ...cur.manifest, ...(out.pagePresentation ? { pagePresentation: out.pagePresentation } : {}) }
-    };
-    bundleRef.current = next;
-    setBundle(next);
-    setDirty(true);
-  }
-
   async function persistDraftAsync(opts?: { silent?: boolean }): Promise<LocalDocBundle> {
     const current = bundleRef.current;
     if (!current) throw new Error('no_bundle');
@@ -1259,14 +1239,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       const saved = await saveLocalDocAsync(session.pnIdentifier, next);
       setBundle({ ...saved });
       bundleRef.current = saved;
-
-      queueDocMedia({
-        pnIdentifier: session.pnIdentifier,
-        docId,
-        sections: saved.sections,
-        pagePresentation: saved.manifest.pagePresentation,
-        onRewritten: applyUploadedMediaRefs
-      });
 
       const draftMeta = {
         draftId,
@@ -1814,8 +1786,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       try {
         setError(null);
         let b = await persistDraftAsync({ silent: true });
-        b = await flushDraftForPublish({ session, bundle: b });
-        bundleRef.current = b;
+        assertDocMediaOnDrive(b);
         persist({
           ...b,
           manifest: { ...b.manifest, title: input.metadata.name.trim() }

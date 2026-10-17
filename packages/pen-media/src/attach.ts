@@ -37,7 +37,7 @@ export async function attachMediaFile(params: {
   file: Blob;
   onProgress?: UploadProgress;
   signal?: AbortSignal;
-}): Promise<{ ref: string; blobUrl: string; mime: string }> {
+}): Promise<{ ref: string; mediaId: string; blobUrl: string; mime: string }> {
   const fileId = await uploadToDocFolder({
     pnIdentifier: params.pnIdentifier,
     docId: params.docId,
@@ -48,12 +48,18 @@ export async function attachMediaFile(params: {
   });
   if (params.signal?.aborted) throw new Error('upload_cancelled');
   const put = await putLocalMediaForDriveFile({ docId: params.docId, fileId, blob: params.file });
-  return { ref: put.ref, blobUrl: put.blobUrl, mime: params.file.type || 'application/octet-stream' };
+  return {
+    ref: put.ref,
+    mediaId: put.mediaId,
+    blobUrl: put.blobUrl,
+    mime: params.file.type || 'application/octet-stream'
+  };
 }
 
 /**
  * Offline fallback (gallery previews): a blob stored under `penlocal:` uploads later,
- * moves to its Drive id in IndexedDB, and the local record is dropped. Null when missing.
+ * moves to its Drive id in IndexedDB, and the local record is dropped. Media already on
+ * Drive returns its file id untouched. Null when missing.
  */
 export async function uploadStoredMedia(params: {
   pnIdentifier: string;
@@ -62,14 +68,13 @@ export async function uploadStoredMedia(params: {
 }): Promise<string | null> {
   const hit = await getLocalMedia(params.mediaId);
   if (!hit) return null;
-  const fileId =
-    hit.driveFileId ||
-    (await uploadToDocFolder({
-      pnIdentifier: params.pnIdentifier,
-      docId: params.docId,
-      blob: hit.blob,
-      fileName: `media-${params.mediaId}.pnm`
-    }));
+  if (hit.driveFileId) return hit.driveFileId;
+  const fileId = await uploadToDocFolder({
+    pnIdentifier: params.pnIdentifier,
+    docId: params.docId,
+    blob: hit.blob,
+    fileName: `media-${params.mediaId}.pnm`
+  });
   await putLocalMediaForDriveFile({ docId: params.docId, fileId, blob: hit.blob });
   await deleteLocalMedia(params.mediaId);
   return fileId;

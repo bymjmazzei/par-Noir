@@ -22,7 +22,7 @@ import {
   rasterizeElementToPosterBlob,
   rasterizeElementSafeStill
 } from './rasterizePagePoster';
-import { penMediaRef, putLocalMedia, uploadLocalMedia } from '@par-noir/pen-media';
+import { attachMediaFile, penMediaRef, putLocalMedia, uploadStoredMedia } from '@par-noir/pen-media';
 import type { PenSession } from './penSession';
 
 export type GalleryMedia = { src: string; kind: 'image' | 'video' };
@@ -178,20 +178,23 @@ function findComposeRoot(): HTMLElement | null {
   return findComposeExportRoot();
 }
 
+/** Upload now; offline, keep it device-only and let the sync job upload it later. */
 async function uploadOrLocal(params: {
   blob: Blob;
   docId: string;
   pnIdentifier: string;
 }): Promise<{ ref: string; mediaId: string; uploaded: boolean }> {
-  const put = await putLocalMedia({ docId: params.docId, blob: params.blob });
-  const fileId = await uploadLocalMedia({
-    pnIdentifier: params.pnIdentifier,
-    docId: params.docId,
-    mediaId: put.mediaId
-  });
-  return fileId
-    ? { ref: penMediaRef(fileId), mediaId: put.mediaId, uploaded: true }
-    : { ref: put.ref, mediaId: put.mediaId, uploaded: false };
+  try {
+    const out = await attachMediaFile({
+      pnIdentifier: params.pnIdentifier,
+      docId: params.docId,
+      file: params.blob
+    });
+    return { ref: out.ref, mediaId: out.mediaId, uploaded: true };
+  } catch {
+    const put = await putLocalMedia({ docId: params.docId, blob: params.blob });
+    return { ref: put.ref, mediaId: put.mediaId, uploaded: false };
+  }
 }
 
 const VIDEO_HYDRATE_TIMEOUT_MS = 20_000;
@@ -302,12 +305,16 @@ export async function uploadLocalGalleryBlob(params: {
   docId: string;
   mediaId: string;
 }): Promise<string | null> {
-  const fileId = await uploadLocalMedia({
-    pnIdentifier: params.session.pnIdentifier,
-    docId: params.docId,
-    mediaId: params.mediaId
-  });
-  return fileId ? penMediaRef(fileId) : null;
+  try {
+    const fileId = await uploadStoredMedia({
+      pnIdentifier: params.session.pnIdentifier,
+      docId: params.docId,
+      mediaId: params.mediaId
+    });
+    return fileId ? penMediaRef(fileId) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Apply preview fields onto a manifest. */

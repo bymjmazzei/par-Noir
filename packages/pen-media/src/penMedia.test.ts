@@ -169,6 +169,9 @@ describe('pen-media attach (upload first)', () => {
     expect(fileId).toBe('f1');
     expect(await getLocalMedia(put.mediaId)).toBeNull();
     expect((await getLocalMedia('drive_f1'))?.mime).toBe('video/mp4');
+    expect(await uploadStoredMedia({ pnIdentifier: 'pn', docId: 'a5', mediaId: 'drive_f1' })).toBe('f1');
+    expect(drive.uploads).toBe(1);
+    expect(await getLocalMedia('drive_f1')).not.toBeNull();
   });
 
   it('lists penlocal refs left in a doc', () => {

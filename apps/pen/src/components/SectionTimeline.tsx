@@ -281,20 +281,26 @@ function seekVideo(master: HTMLVideoElement, at: number): Promise<void> {
   });
 }
 
+/** Decoding happens on the main thread; larger files get a flat lane instead of a stall. */
+export const WAVE_MAX_BYTES = 20 * 1024 * 1024;
+const WAVE_SAMPLES_PER_BAR = 2048;
+
 async function readWave(url: string): Promise<number[]> {
   try {
     const response = await fetch(url);
-    const bytes = await response.arrayBuffer();
+    const blob = await response.blob();
+    if (blob.size > WAVE_MAX_BYTES) return [];
     const context = new AudioContext();
-    const audio = await context.decodeAudioData(bytes.slice(0));
+    const audio = await context.decodeAudioData(await blob.arrayBuffer());
     await context.close();
     const channel = audio.getChannelData(0);
     const bars = 48;
     const size = Math.max(1, Math.floor(channel.length / bars));
+    const step = Math.max(1, Math.floor(size / WAVE_SAMPLES_PER_BAR));
     const wave: number[] = [];
     for (let i = 0; i < bars; i += 1) {
       let peak = 0;
-      for (let j = 0; j < size; j += 1) peak = Math.max(peak, Math.abs(channel[i * size + j] || 0));
+      for (let j = 0; j < size; j += step) peak = Math.max(peak, Math.abs(channel[i * size + j] || 0));
       wave.push(peak);
     }
     return wave;
