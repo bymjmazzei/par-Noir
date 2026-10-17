@@ -1,0 +1,52 @@
+/**
+ * Infer aggregator content class from Pen doc sections (feed rails).
+ */
+
+import { compileDocumentToNote } from './compile.js';
+import { defaultPagePresentation } from './presentation.js';
+import {
+  shouldPublishAsMixedPages,
+  shouldPublishAsSingleComposedVideo,
+  shouldPublishSocialAsCollection
+} from './composeVideo.js';
+import { getTemplate } from './templates.js';
+import type { PenSectionContent } from './types.js';
+
+export type FeedContentClass = 'note' | 'media' | 'collection';
+
+export function inferFeedContentClass(input: {
+  sections: PenSectionContent[];
+  classId?: string;
+  templateId?: string;
+  title?: string;
+  pagePresentation?: ReturnType<typeof defaultPagePresentation>;
+}): FeedContentClass {
+  const sections = input.sections || [];
+  if (shouldPublishAsSingleComposedVideo(sections)) return 'media';
+  if (shouldPublishAsMixedPages(sections)) return 'collection';
+  const template = getTemplate(input.templateId || '');
+  if (
+    shouldPublishSocialAsCollection({
+      classId: input.classId,
+      publishContentClass: template?.publishContentClass,
+      templateSectionSlugs: template?.sections.map((s) => s.slug),
+      sections
+    })
+  ) {
+    return 'collection';
+  }
+  try {
+    const compiled = compileDocumentToNote({
+      templateId: input.templateId || template?.id || 'note.basic.portrait.v1',
+      title: input.title || 'Untitled',
+      sections,
+      pagePresentation: input.pagePresentation || defaultPagePresentation(),
+      docId: 'infer'
+    });
+    const cc = compiled.contentClass;
+    if (cc === 'media' || cc === 'collection' || cc === 'note') return cc;
+  } catch {
+    /* fall through */
+  }
+  return 'note';
+}

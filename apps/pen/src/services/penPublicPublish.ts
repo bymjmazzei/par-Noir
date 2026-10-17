@@ -143,6 +143,11 @@ export async function publishPublicCloudFile(params: {
   videoContentType?: string;
   /** par-noir-pen/{docId}/public/ */
   parentFolderId: string;
+  indexingPermissions?: {
+    mode?: 'all' | 'custom' | 'none';
+    allowed?: string[];
+    blocked?: string[];
+  };
 }): Promise<{ fileId: string }> {
   const request = params.request || defaultCloudRequest();
   const generation = await sealPublicShareFromBytes({
@@ -210,6 +215,7 @@ export async function publishPublicCloudFile(params: {
     publicContentRef: materialized.publicContentRef,
     ...(feedPoster ? { feedPoster } : {}),
     ...(feedPreviewSd ? { feedPreviewSd } : {}),
+    ...(params.indexingPermissions ? { indexingPermissions: params.indexingPermissions } : {}),
     uploadDate: new Date().toISOString()
   });
   if (!put.ok) {

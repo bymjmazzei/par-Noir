@@ -3,7 +3,7 @@ import { IconChevron, IconPublish } from './icons/PenIcons';
 import { PublishMenuPanel, type PublishMenuPanelProps } from './PublishMenuPanel';
 
 /**
- * Publish live / share to aggregators / private template / project library paths.
+ * Share to feeds / private template / project library paths. Doc version: Save → Commit.
  * Browse/networks: all unlocked users. Public templates + licensing: verified only.
  */
 export function PublishMenu(props: PublishMenuPanelProps) {

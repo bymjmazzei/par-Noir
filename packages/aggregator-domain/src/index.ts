@@ -1,5 +1,6 @@
 export * from './licenses';
 export * from './feedCategories';
+export * from './publishMetadata.js';
 export * from './subjectExtractor';
 export * from './tokenDecryption';
 export * from './publicContentRef';

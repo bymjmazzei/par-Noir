@@ -59,6 +59,8 @@ import {
   PUBLIC_TEMPLATE_REQUIRES_VERIFICATION
 } from './penPublishGates';
 import { publishPublicCloudFile, renderNotePoster, type CloudRequest } from './penPublicPublish';
+import type { FeedPublishExtras } from './penFeedMetadata';
+import { metadataFieldsFromPublishForm } from './penFeedMetadata';
 import { resolvePenMediaSrc } from './penLocalMedia';
 import { isTemplatesCatalogClass } from './classFeedRailItems';
 
@@ -634,8 +636,17 @@ export async function publishPostToOwnerCloud(params: {
   mixed?: MixedPagesPublish;
   /** Test hook. Production uploads each own lane as its own audio file. */
   uploadCompanionAudio?: (bytes: Uint8Array, index: number, mime: string) => Promise<string>;
+  feedPublish?: FeedPublishExtras;
 }): Promise<{ fileId: string }> {
   if (!params.feedIds.length) throw new Error('feed_required');
+  const publishMeta = params.feedPublish
+    ? metadataFieldsFromPublishForm(params.feedPublish.metadata)
+    : {};
+  const publishTitle =
+    (typeof publishMeta.title === 'string' && publishMeta.title) ||
+    params.bundle.manifest.title ||
+    'Untitled';
+  const indexingPermissions = params.feedPublish?.indexingPermissions;
   const parentFolderId = await publicFolderFor(
     params.pnIdentifier,
     params.bundle.manifest.docId,
@@ -663,6 +674,8 @@ export async function publishPostToOwnerCloud(params: {
     ...(actionOverlays.length ? { actionOverlays } : {}),
     ...(actionStageHtml ? { actionStageHtml } : {})
   };
+  const caption =
+    typeof publishMeta.description === 'string' ? publishMeta.description : undefined;
 
   if (params.video) {
     const bytes = new Uint8Array(await params.video.videoBlob.arrayBuffer());
@@ -671,16 +684,18 @@ export async function publishPostToOwnerCloud(params: {
       parentFolderId,
       bytes,
       fileName: `pen-${params.bundle.manifest.docId}.video`,
-      title: params.video.title,
+      title: publishTitle,
       poster: params.video.posterBlob,
       videoForSd: params.video.videoBlob,
       videoContentType: params.video.videoContentType,
+      indexingPermissions,
       metadata: {
+        ...publishMeta,
         ...base,
         ...overlayMeta,
         fileType: 'video',
         contentClass: 'media',
-        description: params.video.title
+        description: caption || params.video.title
       }
     });
   }
@@ -696,11 +711,13 @@ export async function publishPostToOwnerCloud(params: {
           parentFolderId,
           bytes: new Uint8Array(await video.videoBlob.arrayBuffer()),
           fileName: `pen-${params.bundle.manifest.docId}-${page.slug}.video`,
-          title: `${params.mixed.title} — ${page.slug}`,
+          title: `${publishTitle} — ${page.slug}`,
           poster: video.posterBlob,
           videoForSd: video.videoBlob,
           videoContentType: video.contentType,
+          indexingPermissions,
           metadata: {
+            ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
             fileType: 'video',
             contentClass: 'media',
@@ -715,8 +732,10 @@ export async function publishPostToOwnerCloud(params: {
           parentFolderId,
           bytes: new TextEncoder().encode(JSON.stringify({ textPost, version: '1.0' })),
           fileName: `pen-${params.bundle.manifest.docId}-${page.slug}.json`,
-          title: `${params.mixed.title} — ${page.slug}`,
+          title: `${publishTitle} — ${page.slug}`,
+          indexingPermissions,
           metadata: {
+            ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
             fileType: 'note-collection-page',
             contentClass: 'note',
@@ -732,17 +751,20 @@ export async function publishPostToOwnerCloud(params: {
       request: params.request,
       parentFolderId,
       bytes: new TextEncoder().encode(
-        JSON.stringify({ collectionFileIds: childIds, title: params.mixed.title })
+        JSON.stringify({ collectionFileIds: childIds, title: publishTitle })
       ),
       fileName: `pen-${params.bundle.manifest.docId}.collection.json`,
-      title: params.mixed.title,
+      title: publishTitle,
       poster,
+      indexingPermissions,
       metadata: {
+        ...publishMeta,
         ...base,
         ...overlayMeta,
         fileType: 'collection',
         contentClass: 'collection',
-        collection: { collectionFileIds: childIds, title: params.mixed.title }
+        collection: { collectionFileIds: childIds, title: publishTitle },
+        description: caption
       }
     });
   }
@@ -765,15 +787,17 @@ export async function publishPostToOwnerCloud(params: {
       JSON.stringify({ textPost, pages: compiled.pages, version: '1.0' })
     ),
     fileName: `pen-${params.bundle.manifest.docId}.json`,
-    title: compiled.title,
+    title: publishTitle,
     poster,
+    indexingPermissions,
     metadata: {
+      ...publishMeta,
       ...base,
       ...overlayMeta,
       fileType: compiled.contentClass === 'collection' ? 'collection' : 'note',
       contentClass: compiled.contentClass,
       textPost,
-      description: textPost.content
+      description: caption || textPost.content
     }
   });
 }

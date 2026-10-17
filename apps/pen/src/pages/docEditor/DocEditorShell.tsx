@@ -306,7 +306,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     publishAsLibraryTemplate,
     publishAsTemplate,
     publishFinishedWork,
-    publishLive,
     publishSocial,
     publishTemplate,
     pushWidgetSheet,
@@ -782,8 +781,10 @@ export function DocEditorShell(state: DocEditorReadyState) {
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 text-[13px]">
         <button
           type="button"
-          className={`inline-flex shrink-0 items-center px-2 py-0.5 ${
-            isSocialActive ? 'text-black' : 'text-neutral-600 hover:text-black'
+          className={`inline-flex shrink-0 items-center px-2 py-0.5 transition-opacity ${
+            isSocialActive
+              ? 'text-black opacity-100'
+              : 'text-neutral-500 opacity-45 hover:text-neutral-600 hover:opacity-70'
           }`}
           title={
             isSocialActive
@@ -794,7 +795,9 @@ export function DocEditorShell(state: DocEditorReadyState) {
           aria-pressed={isSocialActive}
           onClick={() => toggleSocial()}
         >
-          <IconSocial />
+          <IconSocial
+            className={isSocialActive ? 'stroke-current text-black' : 'stroke-current text-neutral-500'}
+          />
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <input
@@ -859,8 +862,9 @@ export function DocEditorShell(state: DocEditorReadyState) {
             hasPublishedPost={Boolean(bundle?.manifest.publishedFileId)}
             widgetTemplatesOnly={isWidgetDoc}
             pnIdentifier={session.pnIdentifier}
-            onPublishLive={() => void publishLive()}
-            onShareToAggregators={(feedIds) => publishSocial(feedIds)}
+            manifest={bundle?.manifest}
+            sections={bundle?.sections}
+            onShareToAggregators={(payload) => publishSocial(payload)}
             isSocial={isSocialActive}
             onToggleSocial={toggleSocial}
             onPublishTemplate={(licensing) => publishTemplate(licensing)}

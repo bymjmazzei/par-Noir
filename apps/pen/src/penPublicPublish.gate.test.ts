@@ -10,7 +10,12 @@ import { defaultLicensingRoot } from '@par-noir/pen-protocol';
 import { publishPublicCloudFile } from './services/penPublicPublish';
 import { publishTemplateToOwnerCloud } from './services/penPublish';
 import { PUBLIC_TEMPLATE_REQUIRES_VERIFICATION } from './services/penPublishGates';
-import { resolvePublishFeedIds, FIRST_PARTY_CONTENT_FEEDS } from './services/penFeedTargets';
+import {
+  resolvePublishFeedIds,
+  FIRST_PARTY_CONTENT_FEEDS,
+  resolveShareFeedIds,
+  contentClassToRailId
+} from './services/penFeedTargets';
 import type { LocalDocBundle } from './services/penLocalStore';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -77,6 +82,21 @@ describe('Pen owner-cloud publish', () => {
     expect(resolvePublishFeedIds('selected', ['notes', 'pen-templates'], active)).toEqual(['notes']);
   });
 
+  it('resolveShareFeedIds picks one content rail from inferred class', () => {
+    expect(contentClassToRailId('note')).toBe('notes');
+    expect(contentClassToRailId('media')).toBe('media');
+    expect(contentClassToRailId('collection')).toBe('collections');
+    expect(resolveShareFeedIds({ contentClass: 'media', selectedHostedFeedIds: [] })).toEqual([
+      'media'
+    ]);
+    expect(
+      resolveShareFeedIds({
+        contentClass: 'note',
+        selectedHostedFeedIds: ['community-feed-1']
+      })
+    ).toEqual(['notes', 'community-feed-1']);
+  });
+
   it('the editor does not open Browse to finish publish', () => {
     const editor = readFileSync(resolve(here, 'pages/docEditor/useDocEditorController.ts'), 'utf8');
     const publish = readFileSync(resolve(here, 'services/penPublish.ts'), 'utf8');
@@ -88,8 +108,9 @@ describe('Pen owner-cloud publish', () => {
     expect(editor).toContain('publishPostToOwnerCloud');
     expect(editor).toContain('publishTemplateToOwnerCloud');
     expect(editor).toContain('toggleSocial');
-    expect(menu).toContain('Make public');
-    expect(menu).toContain('Social post');
+    expect(menu).toContain('Share to feed');
+    expect(menu).not.toContain('Publish live');
+    expect(menu).toContain('ShareToFeedDialog');
     expect(menu).not.toContain('Send preview to a pN');
     expect(menu).not.toContain('previewPn');
     expect(menu).not.toContain('onSendPreview');

@@ -193,6 +193,9 @@ import {
   loadDocScopedFontsForEditor
 } from '../../services/penDocFonts';
 import { ensureDocScopedMedia } from '../../services/penDocMedia';
+import { flushDraftForPublish } from '../../services/penDraftFlush';
+import { ensurePublishPlaybackBytes } from '../../services/penPublishMedia';
+import type { ShareToFeedSubmit } from '../../components/ShareToFeedDialog';
 import { ensureGoogleFontsLoaded } from '../../services/penGoogleFonts';
 import {
   appendLocalComment,
@@ -1267,9 +1270,10 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     });
   }, [bundle, isWidgetDoc]);
 
-  function saveDraft(opts?: { silent?: boolean }) {
+  async function persistDraftAsync(opts?: { silent?: boolean }): Promise<LocalDocBundle> {
     const current = bundleRef.current;
-    if (!current || !dirtyRef.current) return;
+    if (!current) throw new Error('no_bundle');
+    if (!dirtyRef.current) return current;
     const now = new Date().toISOString();
     const draftId =
       current.manifest.activeDraftId ||
@@ -1295,96 +1299,99 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setDirty(false);
     setLastDraftAt(now);
 
-    void (async () => {
-      try {
-        const saved = await saveLocalDocAsync(session.pnIdentifier, next);
-        setBundle({ ...saved });
-        bundleRef.current = saved;
+    try {
+      const saved = await saveLocalDocAsync(session.pnIdentifier, next);
+      setBundle({ ...saved });
+      bundleRef.current = saved;
 
-        const draftMeta = {
-          draftId,
+      const draftMeta = {
+        draftId,
+        docId,
+        authorPnHash: hashPnIdentifier(session.pnIdentifier),
+        createdAt: now,
+        updatedAt: now,
+        status: 'unfinished' as const,
+        toc: saved.manifest.toc
+      };
+      sessionStorage.setItem(
+        `pen_draft_meta:${docId}:${draftId}`,
+        JSON.stringify(draftMeta)
+      );
+
+      await upsertDraftCloud({
+        userPnIdentifier: session.pnIdentifier,
+        manifest: saved.manifest,
+        draft: draftMeta,
+        sections: saved.sections
+      }).catch((e) => {
+        enqueueSyncJob(session.pnIdentifier, {
+          kind: 'draft_upsert',
           docId,
-          authorPnHash: hashPnIdentifier(session.pnIdentifier),
-          createdAt: now,
-          updatedAt: now,
-          status: 'unfinished' as const,
-          toc: saved.manifest.toc
-        };
-        sessionStorage.setItem(
-          `pen_draft_meta:${docId}:${draftId}`,
-          JSON.stringify(draftMeta)
-        );
-
-        void upsertDraftCloud({
-          userPnIdentifier: session.pnIdentifier,
-          manifest: saved.manifest,
-          draft: draftMeta,
-          sections: saved.sections
-        }).catch((e) => {
-          enqueueSyncJob(session.pnIdentifier, {
-            kind: 'draft_upsert',
-            docId,
-            payload: {
-              manifest: saved.manifest,
-              draft: draftMeta,
-              sections: saved.sections
-            }
-          });
-          void e;
+          payload: {
+            manifest: saved.manifest,
+            draft: draftMeta,
+            sections: saved.sections
+          }
         });
+        throw e;
+      });
 
-        if (used.length && session.mlKemSecretKey) {
-          void ensureDocScopedFonts({
-            session,
-            docId,
-            groupId: saved.manifest.groupId,
-            used
-          }).catch(() => {
-            /* offline */
-          });
-        }
-
-        void ensureDocScopedMedia({
+      if (used.length && session.mlKemSecretKey) {
+        void ensureDocScopedFonts({
           session,
           docId,
-          sections: saved.sections,
-          pagePresentation: saved.manifest.pagePresentation,
-          onSectionsRewritten: (sections, pagePresentation) => {
-            const cur = bundleRef.current;
-            if (!cur) return;
-            const rewritten = {
-              ...cur,
-              sections,
-              manifest: {
-                ...cur.manifest,
-                ...(pagePresentation ? { pagePresentation } : {})
-              }
-            };
-            bundleRef.current = rewritten;
-            setBundle({ ...rewritten });
-            void saveLocalDocAsync(session.pnIdentifier, rewritten).catch(() => {
-              /* offline / quota */
-            });
-          }
+          groupId: saved.manifest.groupId,
+          used
         }).catch(() => {
           /* offline */
         });
-
-        if (!opts?.silent) {
-          setStatus('Draft saved');
-          window.setTimeout(() => setStatus(null), 1500);
-        }
-      } catch (e) {
-        setDirty(true);
-        setError(
-          e instanceof PenLocalStoreQuotaError
-            ? e.message
-            : e instanceof Error
-              ? e.message
-              : 'draft_save_failed'
-        );
       }
-    })();
+
+      const media = await ensureDocScopedMedia({
+        session,
+        docId,
+        sections: saved.sections,
+        pagePresentation: saved.manifest.pagePresentation
+      });
+      let out = saved;
+      if (media.rewritten) {
+        out = {
+          ...saved,
+          sections: media.sections,
+          manifest: {
+            ...saved.manifest,
+            ...(media.pagePresentation ? { pagePresentation: media.pagePresentation } : {})
+          }
+        };
+        bundleRef.current = out;
+        setBundle({ ...out });
+        await saveLocalDocAsync(session.pnIdentifier, out);
+      }
+
+      if (!opts?.silent) {
+        setStatus('Draft saved');
+        window.setTimeout(() => setStatus(null), 1500);
+      }
+      return out;
+    } catch (e) {
+      setDirty(true);
+      setError(
+        e instanceof PenLocalStoreQuotaError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'draft_save_failed'
+      );
+      throw e;
+    }
+  }
+
+  function saveDraft(opts?: { silent?: boolean }) {
+    const current = bundleRef.current;
+    if (!current || !dirtyRef.current) return;
+    void persistDraftAsync(opts).catch(() => {
+      /* error surfaced via setError */
+    });
   }
 
   // Idle draft autosave (~2s after last edit).
@@ -1809,7 +1816,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     }
   }
 
-  function publishSocial(feedIds: string[]) {
+  function publishSocial(input: ShareToFeedSubmit) {
     const m = bundleRef.current?.manifest || bundle?.manifest;
     const classId = m?.classId || '';
     if (!socialFeedPublishAllowed(classId) && !m?.isSocial) {
@@ -1818,17 +1825,38 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     }
     void (async () => {
       try {
-        saveDraft({ silent: true });
+        setError(null);
+        let b = await persistDraftAsync({ silent: true });
+        b = await flushDraftForPublish({ session, bundle: b });
+        bundleRef.current = b;
+        persist({
+          ...b,
+          manifest: { ...b.manifest, title: input.metadata.name.trim() }
+        });
+        b = bundleRef.current || b;
+        await ensurePublishPlaybackBytes({
+          session,
+          docId: b.manifest.docId,
+          sections: b.sections,
+          pagePresentation: b.manifest.pagePresentation
+        });
         const ready = await ensureBundleTrackingSheets({
           session,
-          bundle: bundleRef.current || bundle!
+          bundle: b
         });
         bundleRef.current = ready;
-        persist(ready);
-        const b = ready;
+        persist({
+          ...ready,
+          manifest: { ...ready.manifest, title: input.metadata.name.trim() }
+        });
+        b = bundleRef.current || ready;
         const publishOpts = {
           canPublishPublicTemplate: verifiedAuthor,
           connectReady
+        };
+        const feedPublish = {
+          metadata: input.metadata,
+          indexingPermissions: input.indexingPermissions
         };
         setStatus('Publishing to your cloud…');
         let fileId: string;
@@ -1849,11 +1877,12 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           fileId = (
             await publishPostToOwnerCloud({
               bundle: b,
-              feedIds,
+              feedIds: input.feedIds,
               pnIdentifier: session.pnIdentifier,
               membership: verifiedAuthor,
               connectReady,
-              video
+              video,
+              feedPublish
             })
           ).fileId;
         } else if (shouldPublishAsMixedPages(b.sections)) {
@@ -1873,11 +1902,12 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           fileId = (
             await publishPostToOwnerCloud({
               bundle: b,
-              feedIds,
+              feedIds: input.feedIds,
               pnIdentifier: session.pnIdentifier,
               membership: verifiedAuthor,
               connectReady,
-              mixed
+              mixed,
+              feedPublish
             })
           ).fileId;
         } else {
@@ -1891,10 +1921,11 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           fileId = (
             await publishPostToOwnerCloud({
               bundle: b,
-              feedIds,
+              feedIds: input.feedIds,
               pnIdentifier: session.pnIdentifier,
               membership: verifiedAuthor,
               connectReady,
+              feedPublish,
               ...(asCollection
                 ? { mixed: writeTextCollectionHandoff(b, publishOpts) }
                 : {})
@@ -1979,10 +2010,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     persist({ ...b, manifest: nextManifest });
     setStatus(nextIsSocial ? 'Social publishing enabled' : 'Social publishing disabled');
     window.setTimeout(() => setStatus(null), 2500);
-  }
-
-  async function publishLive() {
-    await promote();
   }
 
   function publishAsTemplate() {
@@ -2245,7 +2272,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     publishAsLibraryTemplate,
     publishAsTemplate,
     publishFinishedWork,
-    publishLive,
     publishSocial,
     publishTemplate,
     pushWidgetSheet,
