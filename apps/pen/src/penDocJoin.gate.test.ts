@@ -16,7 +16,7 @@ describe('pen doc join route', () => {
   });
 
   it('ShareMenu supports connections and join link', () => {
-    const share = readFileSync(join(root, 'components/ShareMenu.tsx'), 'utf8');
+    const share = readFileSync(join(root, 'components/ShareMenuPanel.tsx'), 'utf8');
     expect(share).toContain('onInviteConnections');
     expect(share).toContain('onCreateJoinLink');
   });

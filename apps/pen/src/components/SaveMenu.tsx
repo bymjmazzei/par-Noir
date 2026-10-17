@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { IconChevron, IconSave } from './icons/PenIcons';
+import { IconSave } from './icons/PenIcons';
 
-/** Save draft (default) with dropdown: Commit version or Suggest. */
+/** Save actions menu with draft status and transient status overlay. */
 export function SaveMenu({
   canCommit,
   dirty,
   lastDraftAt,
   busy,
+  statusMessage,
+  errorMessage,
   onSaveDraft,
   onCommit,
   onSuggest
@@ -15,12 +17,15 @@ export function SaveMenu({
   dirty: boolean;
   lastDraftAt: string | null;
   busy?: boolean;
+  statusMessage?: string | null;
+  errorMessage?: string | null;
   onSaveDraft: () => void;
   onCommit: () => void;
   onSuggest: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const toast = errorMessage || statusMessage;
 
   useEffect(() => {
     if (!open) return;
@@ -33,36 +38,50 @@ export function SaveMenu({
 
   return (
     <div className="relative flex items-center gap-2" ref={rootRef}>
-      {lastDraftAt && (
-        <span className="hidden text-[11px] text-neutral-600 sm:inline" title={lastDraftAt}>
-          Draft {formatRelative(lastDraftAt)}
-          {dirty ? ' · unsaved' : ''}
-        </span>
-      )}
-      <div className="inline-flex items-stretch">
-        <button
-          type="button"
-          disabled={busy}
-          className="inline-flex items-center gap-1 px-2 py-0.5 text-[13px] font-bold text-black hover:opacity-60 disabled:opacity-40"
-          onClick={onSaveDraft}
-          title="Save draft"
-          aria-label="Save draft"
-        >
-          <IconSave />
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          className="px-1 py-0.5 text-neutral-600 hover:text-black disabled:opacity-40"
-          aria-expanded={open}
-          aria-label="More save options"
-          onClick={() => setOpen((v) => !v)}
-        >
-          <IconChevron />
-        </button>
+      <div className="relative hidden min-w-[5.5rem] sm:block">
+        {lastDraftAt && (
+          <span
+            className={`text-[11px] text-neutral-600 transition-opacity ${toast ? 'opacity-0' : ''}`}
+            title={lastDraftAt}
+          >
+            Draft {formatRelative(lastDraftAt)}
+            {dirty ? ' · unsaved' : ''}
+          </span>
+        )}
+        {toast && (
+          <span
+            className={`absolute inset-0 truncate text-[11px] ${
+              errorMessage ? 'text-red-600' : 'text-teal-800'
+            }`}
+            role="status"
+          >
+            {toast}
+          </span>
+        )}
       </div>
+      <button
+        type="button"
+        disabled={busy}
+        className="inline-flex items-center px-2 py-0.5 text-neutral-600 hover:text-black disabled:opacity-40"
+        aria-expanded={open}
+        aria-label="Save"
+        title="Save"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <IconSave />
+      </button>
       {open && (
         <div className="absolute right-0 top-full z-40 mt-1 min-w-[12rem] overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg">
+          <button
+            type="button"
+            className="block w-full px-3 py-1.5 text-left text-[12px] font-bold text-black hover:bg-neutral-50"
+            onClick={() => {
+              onSaveDraft();
+              setOpen(false);
+            }}
+          >
+            Save draft
+          </button>
           {canCommit ? (
             <button
               type="button"

@@ -142,16 +142,6 @@ import {
 import { ensureEditProxy, layerOriginalForProxy } from '../../services/editProxy';
 import { WidgetEditorPanel } from '../../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../../components/LayerPartsMenu';
-import { PublishMenu } from '../../components/PublishMenu';
-import { SaveMenu } from '../../components/SaveMenu';
-import { ShareMenu } from '../../components/ShareMenu';
-import {
-  IconComments,
-  IconHistory,
-  IconPreview,
-  IconRedo,
-  IconUndo
-} from '../../components/icons/PenIcons';
 import { useVerifiedAuthor } from '../../hooks/useVerifiedAuthor';
 import { starTemplateToCloud } from '../../services/penCloudTemplates';
 import {

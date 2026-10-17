@@ -141,12 +141,10 @@ import {
 import { ensureEditProxy, layerOriginalForProxy } from '../../services/editProxy';
 import { WidgetEditorPanel } from '../../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../../components/LayerPartsMenu';
-import { PublishMenu } from '../../components/PublishMenu';
+import { DocShareHubMenu } from '../../components/DocShareHubMenu';
 import { SaveMenu } from '../../components/SaveMenu';
-import { ShareMenu } from '../../components/ShareMenu';
 import {
   IconComments,
-  IconHistory,
   IconPreview,
   IconRedo,
   IconSocial,
@@ -228,7 +226,6 @@ import { isDocBootstrapPending } from '../../services/penSyncQueue';
 import { ensureOwnerDocGroup } from '../../services/penCollab';
 import { loadDocKey } from '../../services/penDocCrypto';
 
-import { Link } from 'react-router-dom';
 import type { DocEditorReadyState } from './useDocEditorController';
 
 export function DocEditorShell(state: DocEditorReadyState) {
@@ -783,101 +780,9 @@ export function DocEditorShell(state: DocEditorReadyState) {
   return (
     <div className="flex h-[calc(100vh-2.5rem)] flex-col bg-white">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 text-[13px]">
-        <Link to="/" className="px-1 text-neutral-400 hover:text-black">
-          ←
-        </Link>
-        <input
-          className="min-w-0 flex-1 truncate bg-transparent font-bold text-black outline-none"
-          value={bundle.manifest.title}
-          onChange={(e) =>
-            persist({
-              ...bundle,
-              manifest: {
-                ...bundle.manifest,
-                title: e.target.value,
-                updatedAt: new Date().toISOString()
-              }
-            })
-          }
-        />
-        <span className="hidden max-w-[40%] truncate text-[11px] text-neutral-400 sm:inline">
-          {classTrail}
-        </span>
         <button
           type="button"
-          className={`inline-flex items-center px-2 py-0.5 ${showPreview ? 'text-black' : 'text-neutral-600 hover:text-black'}`}
-          title="Preview"
-          aria-label="Preview"
-          aria-pressed={showPreview}
-          onClick={() => setShowPreview((v) => !v)}
-        >
-          <IconPreview />
-        </button>
-        <button
-          type="button"
-          className={`inline-flex items-center px-2 py-0.5 ${showComments ? 'text-black' : 'text-neutral-600 hover:text-black'}`}
-          title="Comments"
-          aria-label="Comments"
-          aria-pressed={showComments}
-          onClick={() => {
-            setShowComments((v) => !v);
-            setShowHistory(false);
-          }}
-        >
-          <IconComments />
-        </button>
-        <button
-          type="button"
-          className={`inline-flex items-center px-2 py-0.5 ${showHistory ? 'text-black' : 'text-neutral-600 hover:text-black'}`}
-          title="History"
-          aria-label="History"
-          aria-pressed={showHistory}
-          onClick={() => {
-            setShowHistory((v) => !v);
-            setShowComments(false);
-          }}
-        >
-          <IconHistory />
-        </button>
-        <ShareMenu
-          docId={docId}
-          invitePn={invitePn}
-          onInvitePnChange={setInvitePn}
-          onInvite={() => {
-            void inviteCollaborator();
-          }}
-          inviteRole={inviteRole}
-          onInviteRoleChange={setInviteRole}
-          canInvite={canInvite}
-          connections={shareConnections}
-          connectionsLoading={shareConnectionsLoading}
-          selectedConnectionPns={selectedConnectionPns}
-          onToggleConnection={(peerPn) => {
-            setSelectedConnectionPns((prev) =>
-              prev.includes(peerPn) ? prev.filter((p) => p !== peerPn) : [...prev, peerPn]
-            );
-          }}
-          onInviteConnections={() => {
-            void inviteSelectedConnections();
-          }}
-          joinLink={joinLink}
-          joinLinkLoading={joinLinkLoading}
-          onCreateJoinLink={() => {
-            void createDocJoinLink();
-          }}
-          onCopyJoinLink={copyDocJoinLink}
-        />
-        <SaveMenu
-          canCommit={canCommit}
-          dirty={dirty}
-          lastDraftAt={lastDraftAt}
-          onSaveDraft={() => saveDraft()}
-          onCommit={() => void promote()}
-          onSuggest={() => void proposeSuggestion()}
-        />
-        <button
-          type="button"
-          className={`inline-flex items-center px-2 py-0.5 ${
+          className={`inline-flex shrink-0 items-center px-2 py-0.5 ${
             isSocialActive ? 'text-black' : 'text-neutral-600 hover:text-black'
           }`}
           title={
@@ -891,46 +796,115 @@ export function DocEditorShell(state: DocEditorReadyState) {
         >
           <IconSocial />
         </button>
-        <PublishMenu
-          projectEnabled={projectEnabled}
-          correspondenceEnabled={correspondenceEnabled}
-          canPublishPublicTemplate={verifiedAuthor}
-          hasPublishedPost={Boolean(bundle?.manifest.publishedFileId)}
-          widgetTemplatesOnly={isWidgetDoc}
-          pnIdentifier={session.pnIdentifier}
-          onPublishLive={() => void publishLive()}
-          onShareToAggregators={(feedIds) => publishSocial(feedIds)}
-          isSocial={isSocialActive}
-          onToggleSocial={toggleSocial}
-          onPublishTemplate={(licensing) => publishTemplate(licensing)}
-          onSendCorrespondence={sendCorrespondence}
-          onTemplatePrivate={publishAsTemplate}
-          onLibraryTemplate={publishAsLibraryTemplate}
-          onFinishedWork={() => void publishFinishedWork()}
-          onDownload={() => void downloadFlattened()}
-          licensing={
-            bundle?.manifest.licensing ||
-            defaultLicensingRoot(bundle?.manifest.ownerPnHash, {
-              membership: verifiedAuthor
-            })
-          }
-          ownerPnHash={bundle?.manifest.ownerPnHash}
-          membership={verifiedAuthor}
-          connectReady={connectReady}
-          musicAsset={bundle?.manifest.classId === 'library.music'}
-          onLicensingChange={(next) => {
-            if (!bundle) return;
-            persist({
-              ...bundle,
-              manifest: { ...bundle.manifest, licensing: next }
-            });
-          }}
-        />
-        {(status || error) && (
-          <span className={`ml-1 text-[12px] ${error ? 'text-red-600' : 'text-teal-800'}`}>
-            {error || status}
-          </span>
-        )}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <input
+            className="min-w-[3rem] max-w-[45%] shrink-0 truncate bg-transparent font-bold text-black outline-none sm:max-w-[55%] [field-sizing:content]"
+            value={bundle.manifest.title}
+            onChange={(e) =>
+              persist({
+                ...bundle,
+                manifest: {
+                  ...bundle.manifest,
+                  title: e.target.value,
+                  updatedAt: new Date().toISOString()
+                }
+              })
+            }
+          />
+          {classTrail ? (
+            <span className="min-w-0 truncate text-[11px] text-neutral-400">{classTrail}</span>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <SaveMenu
+            canCommit={canCommit}
+            dirty={dirty}
+            lastDraftAt={lastDraftAt}
+            statusMessage={status}
+            errorMessage={error}
+            onSaveDraft={() => saveDraft()}
+            onCommit={() => void promote()}
+            onSuggest={() => void proposeSuggestion()}
+          />
+          <DocShareHubMenu
+            docId={docId}
+            invitePn={invitePn}
+            onInvitePnChange={setInvitePn}
+            onInvite={() => {
+              void inviteCollaborator();
+            }}
+            inviteRole={inviteRole}
+            onInviteRoleChange={setInviteRole}
+            canInvite={canInvite}
+            connections={shareConnections}
+            connectionsLoading={shareConnectionsLoading}
+            selectedConnectionPns={selectedConnectionPns}
+            onToggleConnection={(peerPn) => {
+              setSelectedConnectionPns((prev) =>
+                prev.includes(peerPn) ? prev.filter((p) => p !== peerPn) : [...prev, peerPn]
+              );
+            }}
+            onInviteConnections={() => {
+              void inviteSelectedConnections();
+            }}
+            joinLink={joinLink}
+            joinLinkLoading={joinLinkLoading}
+            onCreateJoinLink={() => {
+              void createDocJoinLink();
+            }}
+            onCopyJoinLink={copyDocJoinLink}
+            projectEnabled={projectEnabled}
+            correspondenceEnabled={correspondenceEnabled}
+            canPublishPublicTemplate={verifiedAuthor}
+            hasPublishedPost={Boolean(bundle?.manifest.publishedFileId)}
+            widgetTemplatesOnly={isWidgetDoc}
+            pnIdentifier={session.pnIdentifier}
+            onPublishLive={() => void publishLive()}
+            onShareToAggregators={(feedIds) => publishSocial(feedIds)}
+            isSocial={isSocialActive}
+            onToggleSocial={toggleSocial}
+            onPublishTemplate={(licensing) => publishTemplate(licensing)}
+            onSendCorrespondence={sendCorrespondence}
+            onTemplatePrivate={publishAsTemplate}
+            onLibraryTemplate={publishAsLibraryTemplate}
+            onFinishedWork={() => void publishFinishedWork()}
+            onDownload={() => void downloadFlattened()}
+            licensing={
+              bundle?.manifest.licensing ||
+              defaultLicensingRoot(bundle?.manifest.ownerPnHash, {
+                membership: verifiedAuthor
+              })
+            }
+            ownerPnHash={bundle?.manifest.ownerPnHash}
+            membership={verifiedAuthor}
+            connectReady={connectReady}
+            musicAsset={bundle?.manifest.classId === 'library.music'}
+            onLicensingChange={(next) => {
+              if (!bundle) return;
+              persist({
+                ...bundle,
+                manifest: { ...bundle.manifest, licensing: next }
+              });
+            }}
+            onOpenHistory={() => {
+              setShowHistory(true);
+              setShowComments(false);
+            }}
+          />
+          <button
+            type="button"
+            className={`inline-flex items-center px-2 py-0.5 ${showComments ? 'text-black' : 'text-neutral-600 hover:text-black'}`}
+            title="Comments"
+            aria-label="Comments"
+            aria-pressed={showComments}
+            onClick={() => {
+              setShowComments((v) => !v);
+              setShowHistory(false);
+            }}
+          >
+            <IconComments />
+          </button>
+        </div>
       </div>
 
       <div ref={setEditorSplitEl} className="flex min-h-0 flex-1">
@@ -1059,6 +1033,18 @@ export function DocEditorShell(state: DocEditorReadyState) {
                   >
                     <IconRedo />
                   </button>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center px-2 py-0.5 ${
+                      showPreview ? 'text-black' : 'text-neutral-600 hover:text-black'
+                    }`}
+                    title="Preview"
+                    aria-label="Preview"
+                    aria-pressed={showPreview}
+                    onClick={() => setShowPreview((v) => !v)}
+                  >
+                    <IconPreview />
+                  </button>
                 </div>
               </div>
               {writingEnabled && !activeMediaLayer && !isWidgetDoc && !widgetEditorLayer ? (
@@ -1074,6 +1060,13 @@ export function DocEditorShell(state: DocEditorReadyState) {
 
           {showHistory ? (
             <div className="h-full overflow-auto bg-white p-6 text-sm">
+              <button
+                type="button"
+                className="mb-4 text-[12px] font-bold text-neutral-600 hover:text-black"
+                onClick={() => setShowHistory(false)}
+              >
+                Back to editor
+              </button>
               <p className="mb-4">
                 Chain:{' '}
                 <span className={chainStatus.ok ? 'text-teal-700' : 'text-red-600'}>
