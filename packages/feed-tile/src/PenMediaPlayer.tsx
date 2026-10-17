@@ -114,6 +114,7 @@ export function PenMediaPlayer({
   const [muted, setMuted] = useState(true);
   const [hover, setHover] = useState(false);
   const [progress, setProgress] = useState(0);
+  const progressRef = useRef(0);
   const [seeking, setSeeking] = useState(false);
 
   const synced = Boolean(syncKey);
@@ -131,10 +132,23 @@ export function PenMediaPlayer({
     if (syncKey) {
       const ctrl = acquirePenMediaController(syncKey, src, { autoPlay });
       ctrlRef.current = ctrl;
+      const lastPaused = { current: ctrl.paused };
+      const lastMuted = { current: ctrl.muted };
       const syncUi = () => {
-        setPaused(ctrl.paused);
-        setMuted(ctrl.muted);
-        if (!scrubbing.current) setProgress(ctrl.progress);
+        if (lastPaused.current !== ctrl.paused) {
+          lastPaused.current = ctrl.paused;
+          setPaused(ctrl.paused);
+        }
+        if (lastMuted.current !== ctrl.muted) {
+          lastMuted.current = ctrl.muted;
+          setMuted(ctrl.muted);
+        }
+        if (scrubbing.current) return;
+        const next = ctrl.progress;
+        if (ctrl.paused || Math.abs(progressRef.current - next) >= 0.01) {
+          progressRef.current = next;
+          setProgress(next);
+        }
       };
       syncUi();
       const unsub = ctrl.subscribe(syncUi);

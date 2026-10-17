@@ -15,6 +15,7 @@ import {
   peekPenMediaController,
   type PenMediaController
 } from '@par-noir/feed-tile';
+import { waitForVideoLayerDurationSec } from '../services/videoLayerDuration';
 import {
   MOTION_PRESET_SEC,
   readLayerAnimation,
@@ -624,59 +625,15 @@ function VideoFileDuration({
   useEffect(() => {
     if (!resolved) return;
     if (reportedForSrc.current === resolved) return;
-
-    const reportSeconds = (seconds: number) => {
-      if (!Number.isFinite(seconds) || !(seconds > 0)) return;
+    let cancel = false;
+    void waitForVideoLayerDurationSec(layerId, resolved).then((seconds) => {
+      if (cancel || !seconds) return;
       if (reportedForSrc.current === resolved) return;
       reportedForSrc.current = resolved;
       report.current(layerId, seconds);
-    };
-
-    const mediaKey = `pen-layer:${layerId}`;
-    const fromSharedMaster = () => {
-      const seconds = peekPenMediaController(mediaKey)?.master.duration;
-      if (!Number.isFinite(seconds) || !(seconds > 0)) return false;
-      reportSeconds(seconds);
-      return true;
-    };
-
-    if (fromSharedMaster()) return;
-
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      const seconds = video.duration;
-      if (!Number.isFinite(seconds) || !(seconds > 0)) return;
-      done = true;
-      reportSeconds(seconds);
-    };
-    video.addEventListener('loadedmetadata', finish);
-    video.addEventListener('durationchange', finish);
-    video.src = resolved;
-
-    const poll = window.setInterval(() => {
-      if (fromSharedMaster()) {
-        window.clearInterval(poll);
-        if (!done) {
-          done = true;
-          video.removeEventListener('loadedmetadata', finish);
-          video.removeEventListener('durationchange', finish);
-          video.removeAttribute('src');
-          video.load();
-        }
-      }
-    }, 200);
-    const pollCap = window.setTimeout(() => window.clearInterval(poll), 8000);
-
+    });
     return () => {
-      window.clearInterval(poll);
-      window.clearTimeout(pollCap);
-      video.removeEventListener('loadedmetadata', finish);
-      video.removeEventListener('durationchange', finish);
-      video.removeAttribute('src');
-      video.load();
+      cancel = true;
     };
   }, [resolved, layerId]);
   return null;

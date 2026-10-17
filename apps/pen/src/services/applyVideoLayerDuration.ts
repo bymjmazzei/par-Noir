@@ -4,7 +4,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { resolvePenMediaSrc } from './penLocalMedia';
-import { probeVideoFileDurationSec } from './probeVideoDuration';
+import { waitForVideoLayerDurationSec } from './videoLayerDuration';
 
 /** Probe a layer video ref and grow the section clock when metadata is available. */
 export async function sectionWithProbedVideoLayerDuration(
@@ -17,7 +17,7 @@ export async function sectionWithProbedVideoLayerDuration(
   if (!layer || layer.kind !== 'video') return section;
   const playSrc = editorPreviewPlaybackSrc({ ...layer, videoSrc });
   const resolved = (await resolvePenMediaSrc(playSrc, docId)) || playSrc;
-  const seconds = await probeVideoFileDurationSec(resolved);
+  const seconds = await waitForVideoLayerDurationSec(layerId, resolved);
   if (!seconds) return section;
   const next = applyVideoFileDuration(section, layerId, seconds);
   return next === section ? section : next;

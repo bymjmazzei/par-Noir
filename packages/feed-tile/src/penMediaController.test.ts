@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { acquirePenMediaController, peekPenMediaController } from './penMediaController.js';
+import {
+  acquirePenMediaController,
+  peekPenMediaController,
+  readMasterDurationSec
+} from './penMediaController.js';
 
 function releaseKey(key: string) {
   const ctrl = peekPenMediaController(key);
@@ -36,5 +40,28 @@ describe('PenMediaController transport', () => {
     const ctrl = acquirePenMediaController('test-replay', 'blob:test', { autoPlay: false });
     expect(ctrl.master.loop).toBe(false);
     ctrl.release();
+  });
+
+  it('editor transport guard pauses before ended', () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause');
+    const ctrl = acquirePenMediaController('test-guard', 'blob:test', { autoPlay: false });
+    const v = ctrl.master;
+    expect(v.preload).toBe('metadata');
+    Object.defineProperty(v, 'duration', { value: 5, configurable: true, writable: true });
+    Object.defineProperty(v, 'paused', { value: false, configurable: true, writable: true });
+    v.currentTime = 4.95;
+    v.dispatchEvent(new Event('timeupdate'));
+    expect(pause).toHaveBeenCalled();
+    expect(ctrl.paused).toBe(true);
+    ctrl.release();
+    releaseKey('test-guard');
+  });
+
+  it('readMasterDurationSec returns duration when ready', () => {
+    const ctrl = acquirePenMediaController('test-dur', 'blob:test', { autoPlay: false });
+    Object.defineProperty(ctrl.master, 'duration', { value: 12.5, configurable: true });
+    expect(readMasterDurationSec('test-dur')).toBe(12.5);
+    ctrl.release();
+    releaseKey('test-dur');
   });
 });

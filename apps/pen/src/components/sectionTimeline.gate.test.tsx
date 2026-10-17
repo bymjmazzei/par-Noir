@@ -687,6 +687,17 @@ describe('section timeline', () => {
     expect(timeline).not.toMatch(/mode === 'pause'[\s\S]{0,120}master\.loop = true/);
   });
 
+  it('reads layer duration via waitForVideoLayerDurationSec', () => {
+    const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
+    expect(timeline).toContain('waitForVideoLayerDurationSec');
+    const attach = readFileSync(
+      resolve(__dirname, '../services/applyVideoLayerDuration.ts'),
+      'utf8'
+    );
+    expect(attach).toContain('waitForVideoLayerDurationSec');
+    expect(attach).not.toContain('probeVideoFileDurationSec');
+  });
+
   it('mounts the timeline under the text editor', () => {
     const page = readFileSync(resolve(__dirname, '../pages/docEditor/DocEditorShell.tsx'), 'utf8');
     const writing = page.indexOf('writingEnabled && canvasSection && section');

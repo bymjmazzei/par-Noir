@@ -25,6 +25,8 @@ export {
 export { GRADE_UNPACK_FLIP_Y, paintGradedFrame, type TonalGrade } from './gradeFrame.js';
 export {
   acquirePenMediaController,
+  EDITOR_TRANSPORT_END_EPSILON_SEC,
   peekPenMediaController,
-  PenMediaController
+  PenMediaController,
+  readMasterDurationSec
 } from './penMediaController.js';

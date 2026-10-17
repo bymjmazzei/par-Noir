@@ -79,6 +79,7 @@ import { usePlaybackMode } from '../../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../../hooks/useResolvedMediaSrc';
 import { getAttachPoster } from '../../services/attachPosterCache';
 import type { PenSession } from '../../services/penSession';
+import { waitForPageBackgroundVideoDurationSec } from '../../services/videoLayerDuration';
 export function ResolvedPageBackground({
   src,
   kind,
@@ -151,25 +152,15 @@ export function PageBackgroundVideoDuration({
   useEffect(() => {
     if (!resolved) return;
     if (reportedForSrc.current === resolved) return;
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      const seconds = video.duration;
-      if (!Number.isFinite(seconds) || !(seconds > 0)) return;
-      done = true;
+    let cancel = false;
+    void waitForPageBackgroundVideoDurationSec(resolved).then((seconds) => {
+      if (cancel || !seconds) return;
+      if (reportedForSrc.current === resolved) return;
       reportedForSrc.current = resolved;
       report.current(seconds);
-    };
-    video.addEventListener('loadedmetadata', finish);
-    video.addEventListener('durationchange', finish);
-    video.src = resolved;
+    });
     return () => {
-      video.removeEventListener('loadedmetadata', finish);
-      video.removeEventListener('durationchange', finish);
-      video.removeAttribute('src');
-      video.load();
+      cancel = true;
     };
   }, [resolved]);
   return null;

@@ -11,6 +11,9 @@ type FrameVideo = HTMLVideoElement & {
 
 const registry = new Map<string, PenMediaController>();
 
+/** Editor masters pause before natural ended (avoids EOF main-thread stalls on huge files). */
+export const EDITOR_TRANSPORT_END_EPSILON_SEC = 0.08;
+
 export class PenMediaController {
   readonly key: string;
   readonly src: string;
@@ -42,7 +45,7 @@ export class PenMediaController {
     v.defaultMuted = true;
     v.loop = autoPlay;
     v.playsInline = true;
-    v.preload = 'auto';
+    v.preload = autoPlay ? 'auto' : 'metadata';
     v.setAttribute('playsinline', '');
     v.setAttribute('webkit-playsinline', '');
     v.dataset.penMediaDrawable = '1';
@@ -54,6 +57,7 @@ export class PenMediaController {
     this.master = v;
 
     const onTime = () => {
+      this.guardEditorTransportEnd();
       if (!v.duration) return;
       this.progress = v.currentTime / v.duration;
       this.scheduleEmit();
@@ -69,6 +73,18 @@ export class PenMediaController {
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
+    if (!autoPlay) {
+      v.addEventListener('ended', () => {
+        if (this.removed || this.autoPlay) return;
+        try {
+          v.pause();
+        } catch {
+          /* ignore */
+        }
+        this.paused = true;
+        this.emit();
+      });
+    }
     v.addEventListener('loadeddata', () => {
       if (this.autoPlay) void this.ensurePlaying();
       else void this.holdFirstFrame();
@@ -96,6 +112,26 @@ export class PenMediaController {
 
   private emit(): void {
     for (const fn of this.listeners) fn();
+  }
+
+  /** Pause editor masters slightly before EOF so ended does not block the main thread. */
+  private guardEditorTransportEnd(): void {
+    if (this.autoPlay || this.removed) return;
+    const v = this.master;
+    const dur = v.duration;
+    if (!Number.isFinite(dur) || dur <= EDITOR_TRANSPORT_END_EPSILON_SEC) return;
+    if (v.currentTime < dur - EDITOR_TRANSPORT_END_EPSILON_SEC) return;
+    if (v.paused) return;
+    try {
+      v.pause();
+    } catch {
+      /* ignore */
+    }
+    this.paused = true;
+    if (Number.isFinite(dur) && dur > 0) {
+      this.progress = Math.min(1, v.currentTime / dur);
+    }
+    this.emit();
   }
 
   /** Coalesce timeupdate-driven UI sync to one frame. */
@@ -284,6 +320,14 @@ export class PenMediaController {
 /** The live controller for this key, if a viewer already started it. Does not create one. */
 export function peekPenMediaController(key: string): PenMediaController | null {
   return registry.get(key) ?? null;
+}
+
+/** Finite duration from the shared master, if a controller exists and metadata is ready. */
+export function readMasterDurationSec(key: string): number | null {
+  const ctrl = peekPenMediaController(key);
+  if (!ctrl) return null;
+  const seconds = ctrl.master.duration;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 
 /** Ref-counted controller keyed for multi-viewer sync (e.g. layer id). */
