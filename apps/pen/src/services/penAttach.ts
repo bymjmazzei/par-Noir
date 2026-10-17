@@ -31,13 +31,7 @@ export function pickDeviceVideoFile(): Promise<File | null> {
   });
 }
 
-export {
-  probeMediaAspect,
-  probeVideoDisplayAspect,
-  readOrientedAspect,
-  readMp4RotationDegrees,
-  cachedMediaAspect
-} from './penMediaAspect';
+export { probeMediaAspect, probeVideoDisplayAspect, cachedMediaAspect } from './penMediaAspect';
 
 export interface CloudImageItem {
   id: string;

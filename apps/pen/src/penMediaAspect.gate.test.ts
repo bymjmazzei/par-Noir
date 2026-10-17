@@ -1,59 +1,33 @@
 /**
- * Gate: MP4 track rotation must flip coded landscape into display portrait aspect.
+ * Gate: video aspect comes from videoWidth/videoHeight, which browsers already report
+ * after the file's rotation. Rotating again turns phone portrait video into 16:9 boxes.
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { readMp4RotationDegrees } from './services/penMediaAspect';
+import { videoDisplayAspect } from './services/penMediaAspect';
 
-/** Build a minimal buffer containing a version-0 tkhd with a 90° CW matrix. */
-function tkhdWithRotation(rot: 0 | 90 | 180 | 270): Uint8Array {
-  const buf = new Uint8Array(128);
-  // Place 'tkhd' at offset 8
-  buf[8] = 0x74;
-  buf[9] = 0x6b;
-  buf[10] = 0x68;
-  buf[11] = 0x64;
-  buf[12] = 0; // version 0
-  // After version+flags (4) at 12: skip 4+4+4+4+4+8 + 2+2+2+2 = 36 → matrix at 12+4+36 = 52
-  const matrixAt = 12 + 4 + 4 + 4 + 4 + 4 + 4 + 8 + 2 + 2 + 2 + 2;
-  const view = new DataView(buf.buffer);
-  const ONE = 0x00010000;
-  let a = ONE;
-  let b = 0;
-  let c = 0;
-  let d = ONE;
-  if (rot === 90) {
-    a = 0;
-    b = ONE;
-    c = -ONE;
-    d = 0;
-  } else if (rot === 270) {
-    a = 0;
-    b = -ONE;
-    c = ONE;
-    d = 0;
-  } else if (rot === 180) {
-    a = -ONE;
-    d = -ONE;
-  }
-  view.setInt32(matrixAt, a);
-  view.setInt32(matrixAt + 4, b);
-  view.setInt32(matrixAt + 8, c);
-  view.setInt32(matrixAt + 12, d);
-  return buf;
-}
+const here = dirname(fileURLToPath(import.meta.url));
 
-describe('readMp4RotationDegrees', () => {
-  it('detects 90° CW track matrix (phone portrait)', () => {
-    expect(readMp4RotationDegrees(tkhdWithRotation(90))).toBe(90);
+describe('video display aspect', () => {
+  it('keeps a phone portrait video portrait', () => {
+    expect(videoDisplayAspect({ videoWidth: 1080, videoHeight: 1920 })).toBeCloseTo(9 / 16);
   });
 
-  it('detects 270° and 180°', () => {
-    expect(readMp4RotationDegrees(tkhdWithRotation(270))).toBe(270);
-    expect(readMp4RotationDegrees(tkhdWithRotation(180))).toBe(180);
+  it('keeps landscape landscape', () => {
+    expect(videoDisplayAspect({ videoWidth: 1920, videoHeight: 1080 })).toBeCloseTo(16 / 9);
   });
 
-  it('returns 0 for identity matrix', () => {
-    expect(readMp4RotationDegrees(tkhdWithRotation(0))).toBe(0);
+  it('reports unknown before metadata loads', () => {
+    expect(videoDisplayAspect({ videoWidth: 0, videoHeight: 0 })).toBeNull();
+  });
+
+  it('never re-applies the MP4 rotation matrix or caches the fallback', () => {
+    const src = readFileSync(resolve(here, 'services/penMediaAspect.ts'), 'utf8');
+    expect(src).not.toContain('tkhd');
+    expect(src).not.toContain('rotationDegrees');
+    expect(src).toContain('if (aspect == null) return VIDEO_FALLBACK_ASPECT;');
   });
 });

@@ -3,7 +3,6 @@
  */
 
 const aspectCache = new Map<string, number>();
-const rotationCache = new Map<string, number>();
 
 /** Natural width/height ratio for a playable media src (blob:/http:/data:). */
 export function probeMediaAspect(
@@ -32,8 +31,13 @@ export function probeMediaAspect(
   return probeVideoDisplayAspect(src);
 }
 
+const VIDEO_METADATA_TIMEOUT_MS = 10_000;
+const VIDEO_FALLBACK_ASPECT = 16 / 9;
+
 /**
- * Display aspect after orientation. Cached per src — never re-fetches/decodes.
+ * Display aspect. Browsers already apply the file's rotation to videoWidth/videoHeight
+ * (a phone's 1920x1080 + 90° track reports 1080x1920), so no second rotation here.
+ * Only measured values are cached; the fallback is not, so a slow load can re-probe.
  */
 export async function probeVideoDisplayAspect(src: string): Promise<number> {
   const hit = aspectCache.get(`vid:${src}`);
@@ -54,7 +58,7 @@ export async function probeVideoDisplayAspect(src: string): Promise<number> {
     };
     video.addEventListener('loadedmetadata', finish, { once: true });
     video.addEventListener('error', finish, { once: true });
-    window.setTimeout(finish, 600);
+    window.setTimeout(finish, VIDEO_METADATA_TIMEOUT_MS);
     video.src = src;
     try {
       void video.load();
@@ -63,119 +67,22 @@ export async function probeVideoDisplayAspect(src: string): Promise<number> {
     }
   });
 
-  const oriented = await readOrientedAspect(video, src);
+  const aspect = videoDisplayAspect(video);
   try {
     video.removeAttribute('src');
     video.load();
   } catch {
     /* ignore */
   }
-  const aspect = oriented ?? 16 / 9;
+  if (aspect == null) return VIDEO_FALLBACK_ASPECT;
   aspectCache.set(`vid:${src}`, aspect);
   return aspect;
 }
 
-/**
- * Prefer oriented size. Never createImageBitmap / VideoFrame on the hot path —
- * those decode full frames and can lock the GPU when looped.
- */
-export async function readOrientedAspect(
-  video: HTMLVideoElement,
-  cacheKey?: string
-): Promise<number | null> {
-  const key = cacheKey || video.currentSrc || video.src || '';
-  if (key) {
-    const hit = aspectCache.get(`vid:${key}`);
-    if (hit) return hit;
-  }
-
-  const codedW = video.videoWidth || 0;
-  const codedH = video.videoHeight || 0;
-  if (!(codedW > 0 && codedH > 0)) return null;
-
-  // Cheap: MP4 tkhd matrix from the first 512KB only (not the whole file).
-  const rot = key ? await rotationDegreesFromSrc(key) : 0;
-  const aspect =
-    rot === 90 || rot === 270 ? codedH / codedW : codedW / codedH;
-
-  if (key) aspectCache.set(`vid:${key}`, aspect);
-  return aspect;
-}
-
-async function rotationDegreesFromSrc(src: string): Promise<number> {
-  const cached = rotationCache.get(src);
-  if (cached != null) return cached;
-
-  try {
-    const head = await fetchMediaHead(src, 512 * 1024);
-    if (!head) {
-      rotationCache.set(src, 0);
-      return 0;
-    }
-    const rot = readMp4RotationDegrees(head);
-    rotationCache.set(src, rot);
-    return rot;
-  } catch {
-    rotationCache.set(src, 0);
-    return 0;
-  }
-}
-
-/** Read at most `maxBytes` from a media URL (Range or blob.slice). */
-async function fetchMediaHead(
-  src: string,
-  maxBytes: number
-): Promise<Uint8Array | null> {
-  if (src.startsWith('blob:')) {
-    const blob = await fetch(src).then((r) => r.blob());
-    const slice = blob.slice(0, maxBytes);
-    return new Uint8Array(await slice.arrayBuffer());
-  }
-  try {
-    const res = await fetch(src, {
-      headers: { Range: `bytes=0-${maxBytes - 1}` }
-    });
-    if (!res.ok && res.status !== 206) return null;
-    const buf = new Uint8Array(await res.arrayBuffer());
-    return buf.byteLength > maxBytes ? buf.subarray(0, maxBytes) : buf;
-  } catch {
-    return null;
-  }
-}
-
-/** Read QuickTime/MPEG-4 tkhd matrix rotation (0 / 90 / 180 / 270). */
-export function readMp4RotationDegrees(bytes: Uint8Array): number {
-  const n = bytes.byteLength;
-  for (let i = 0; i + 8 < n; i++) {
-    if (
-      bytes[i] === 0x74 &&
-      bytes[i + 1] === 0x6b &&
-      bytes[i + 2] === 0x68 &&
-      bytes[i + 3] === 0x64
-    ) {
-      const version = bytes[i + 4] ?? 0;
-      let o = i + 4 + 4; // skip version+flags
-      if (version === 1) {
-        o += 8 + 8 + 4 + 4 + 8 + 8;
-      } else {
-        o += 4 + 4 + 4 + 4 + 4 + 8;
-      }
-      o += 2 + 2 + 2 + 2; // layer, alternate_group, volume, reserved
-      if (o + 16 > n) continue;
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      const a = view.getInt32(o);
-      const b = view.getInt32(o + 4);
-      const c = view.getInt32(o + 8);
-      const d = view.getInt32(o + 12);
-      if (a === 0 && d === 0) {
-        if (b > 0 && c < 0) return 90;
-        if (b < 0 && c > 0) return 270;
-      }
-      if (b === 0 && c === 0 && a < 0 && d < 0) return 180;
-      return 0;
-    }
-  }
-  return 0;
+export function videoDisplayAspect(video: Pick<HTMLVideoElement, 'videoWidth' | 'videoHeight'>): number | null {
+  const w = video.videoWidth || 0;
+  const h = video.videoHeight || 0;
+  return w > 0 && h > 0 ? w / h : null;
 }
 
 export function cachedMediaAspect(src: string): number | null {
