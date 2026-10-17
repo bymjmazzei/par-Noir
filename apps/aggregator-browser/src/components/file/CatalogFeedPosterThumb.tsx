@@ -2,7 +2,7 @@
  * Thumbnail for owner-catalog (Pen publish) rows using indexed feedPoster CDN refs.
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Lock } from 'lucide-react';
 import {
   hasFeedPreviewPlayback,

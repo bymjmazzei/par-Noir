@@ -20,10 +20,9 @@ function catalogFeedPosterForFile(
   fileMetadataMap: Map<string, unknown>
 ): { metadataIndexFileId: string; metadata: Record<string, unknown> } | null {
   if ((file as { catalogBacked?: boolean }).catalogBacked !== true) return null;
+  const indexFromFile = file.metadataIndexFileId;
   const metadataIndexFileId =
-    typeof (file as { metadataIndexFileId?: string }).metadataIndexFileId === 'string'
-      ? (file as { metadataIndexFileId: string }).metadataIndexFileId
-      : file.id;
+    typeof indexFromFile === 'string' ? indexFromFile : file.id;
   const metadata = (fileMetadataMap.get(metadataIndexFileId) ||
     fileMetadataMap.get(file.id)) as Record<string, unknown> | undefined;
   if (!metadata || !hasFeedPreviewPlayback(metadata)) return null;
