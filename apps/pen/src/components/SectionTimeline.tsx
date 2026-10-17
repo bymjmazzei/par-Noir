@@ -26,7 +26,7 @@ import {
   applyVideoFileDuration,
   defaultLayerName,
   docToPlainText,
-  editorPlaybackSrc,
+  editorPreviewPlaybackSrc,
   getTextLayerDoc,
   KEYFRAME_EPSILON_SEC,
   layerClockSpan,
@@ -63,10 +63,6 @@ import {
 } from '@par-noir/pen-protocol';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
-import {
-  editorVideoNeedsProxyForLayer,
-  sectionEncodingBlocksPlayback
-} from '../services/editorVideoReady';
 import type { PenSession } from '../services/penSession';
 import lookSwatch from '../assets/look-apple.jpg';
 
@@ -1176,13 +1172,8 @@ export function SectionTimeline({
   playingRef.current = playing;
   if (!playing) playheadRef.current = playheadSec;
 
-  const encodingBlocksPlayback = sectionEncodingBlocksPlayback(section, pagePresentation);
-
   function videoController(layer: PenPageLayer, create: boolean): PenMediaController | null {
     if (layer.kind !== 'video') return null;
-    if (playback === 'edit' && editorVideoNeedsProxyForLayer(layer) && !layer.editProxySrc?.trim()) {
-      return null;
-    }
     const raw = layer.videoSrc || layer.backgroundVideo;
     if (!raw) return null;
     const key = `pen-layer:${layer.id}`;
@@ -1793,13 +1784,11 @@ export function SectionTimeline({
         <button
           type="button"
           aria-label={playing ? 'Pause' : 'Play'}
-          title={
-            encodingBlocksPlayback ? 'Preparing preview…' : playing ? 'Pause' : 'Play'
-          }
-          disabled={!timelineActive || encodingBlocksPlayback}
+          title={playing ? 'Pause' : 'Play'}
+          disabled={!timelineActive}
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600 disabled:opacity-40"
           onClick={() => {
-            if (!timelineActive || encodingBlocksPlayback) return;
+            if (!timelineActive) return;
             const next = !playing;
             const at = next && playheadSec >= playSpan - 0.05 ? 0 : playheadSec;
             playheadRef.current = at;
@@ -2054,7 +2043,7 @@ export function SectionTimeline({
                     owner.kind === 'video'
                       ? playback === 'publish'
                         ? publishPlaybackSrc(owner)
-                        : editorPlaybackSrc(owner)
+                        : editorPreviewPlaybackSrc(owner)
                       : owner.kind === 'image'
                         ? owner.imageSrc
                         : undefined;
@@ -2229,15 +2218,9 @@ export function SectionTimeline({
                 </label>
               ) : null}
               {trackLayers.map((item) => {
-                const playbackSrc = playback === 'publish' ? publishPlaybackSrc(item) : editorPlaybackSrc(item);
+                const playbackSrc =
+                  playback === 'publish' ? publishPlaybackSrc(item) : editorPreviewPlaybackSrc(item);
                 if (item.kind !== 'video' || !playbackSrc) return null;
-                if (
-                  playback === 'edit' &&
-                  editorVideoNeedsProxyForLayer(item) &&
-                  !item.editProxySrc?.trim()
-                ) {
-                  return null;
-                }
                 return (
                   <RememberVideoSrc
                     key={item.id}
@@ -2252,7 +2235,7 @@ export function SectionTimeline({
               })}
               {trackLayers.map((item) => {
                 const probeSrc =
-                  playback === 'publish' ? publishPlaybackSrc(item) : editorPlaybackSrc(item);
+                  playback === 'publish' ? publishPlaybackSrc(item) : editorPreviewPlaybackSrc(item);
                 if (item.kind !== 'video' || !probeSrc || item.sourceDurationSec) return null;
                 return (
                   <VideoFileDuration

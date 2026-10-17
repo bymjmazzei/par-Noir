@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import {
-  editorPlaybackSrc,
+  editorPreviewPlaybackSrc,
   mediaCropFrameStyle,
   mediaFilterCss,
   mediaMaskStyle,
@@ -20,11 +20,6 @@ import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { cachedMediaAspect, probeMediaAspect } from '../services/penMediaAspect';
 import { getAttachPoster } from '../services/attachPosterCache';
-import {
-  editorVideoNeedsProxy,
-  editorVideoPlayable,
-  layerPosterRef
-} from '../services/editorVideoReady';
 import type { PenSession } from '../services/penSession';
 
 const ASPECT_SLACK = 0.03;
@@ -124,34 +119,21 @@ export function LayerMediaContent({
   const playSrc = isVideo
     ? playback === 'publish'
       ? publishPlaybackSrc(layer)
-      : editorPlaybackSrc(layer)
+      : editorPreviewPlaybackSrc(layer)
     : layer.kind === 'image'
       ? layer.imageSrc || layer.backgroundImage
       : layer.backgroundImage;
 
-  const needsProxy = playback === 'edit' && isVideo && editorVideoNeedsProxy(layer);
-  const resolvePlayer =
-    Boolean(playSrc) &&
-    (playback === 'publish' || !isVideo || !needsProxy || Boolean(layer.editProxySrc?.trim()));
-
-  const { resolved } = useResolvedMediaSrc(resolvePlayer ? playSrc : null, { docId, session });
+  const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
   const { resolved: overlayResolved } = useResolvedMediaSrc(layer.paintOverlaySrc, {
     docId,
     session
   });
 
-  const playable =
-    !isVideo ||
-    playback === 'publish' ||
-    editorVideoPlayable(layer, { resolvedPlayUrl: resolved });
-  const awaitingProxyResolve =
-    playback === 'edit' && isVideo && Boolean(layer.editProxySrc?.trim()) && !resolved;
   const posterUrl =
-    playback === 'edit' && isVideo && needsProxy && !playable
-      ? getAttachPoster(layerPosterRef(layer))
-      : playback === 'edit' && isVideo && (playable && !resolved || awaitingProxyResolve)
-        ? getAttachPoster(layerPosterRef(layer))
-        : null;
+    isVideo && playback === 'edit' && playSrc && !resolved
+      ? getAttachPoster(publishPlaybackSrc(layer))
+      : null;
 
   /** One report per media src — reshape must not re-trigger probing. */
   const reportedSrc = useRef<string | null>(null);
@@ -186,15 +168,16 @@ export function LayerMediaContent({
   }, [aspectSrc, isVideo]);
 
   useEffect(() => {
-    if (!isVideo || !resolved || !playable) return;
+    if (!isVideo || !resolved) return;
     const ctrl = peekPenMediaController(`pen-layer:${layer.id}`);
     if (!ctrl) return;
     ctrl.setPlaybackRate(layer.playbackRate ?? 1);
     ctrl.setClipAudio((layer.mediaGain ?? 100) / 100, layer.mediaMuted === false);
-  }, [isVideo, resolved, playable, layer.id, layer.playbackRate, layer.mediaGain, layer.mediaMuted]);
+  }, [isVideo, resolved, layer.id, layer.playbackRate, layer.mediaGain, layer.mediaMuted]);
 
   if (!playSrc && !isVideo) return null;
   if (isVideo && !playSrc && !posterUrl) return null;
+  if (!isVideo && !resolved) return null;
 
   const grade = mergeMediaFilter(layer.mediaFilter);
   const filter = mediaFilterCss(layer);
@@ -229,10 +212,8 @@ export function LayerMediaContent({
     objectFit: 'contain'
   };
 
-  const showPosterOnly = isVideo && playback === 'edit' && needsProxy && !playable;
-  const showPlayer = isVideo && playable && resolved;
-  const showPosterUnderPlayer =
-    isVideo && playback === 'edit' && ((playable && !resolved) || awaitingProxyResolve);
+  const showPlayer = isVideo && Boolean(resolved);
+  const showLoadingPoster = isVideo && !resolved && posterUrl;
 
   return (
     <div
@@ -244,11 +225,10 @@ export function LayerMediaContent({
       <div className="absolute inset-0" style={transform ? { transform } : undefined}>
         {isVideo ? (
           <>
-            {showPosterOnly || showPosterUnderPlayer ? (
+            {showLoadingPoster ? (
               <LayoutPoster posterUrl={posterUrl} innerStyle={innerStyle} />
-            ) : null}
-            {awaitingProxyResolve ? (
-              <span className="sr-only">Loading preview…</span>
+            ) : !resolved ? (
+              <LayoutPoster posterUrl={null} innerStyle={innerStyle} />
             ) : null}
             {showPlayer ? (
               <PenMediaPlayer

@@ -161,7 +161,6 @@ export function PreviewLayerFace({
         <div className="absolute inset-0">
           <ResolvedPageBackground
             src={layer.backgroundVideo}
-            editProxySrc={layer.editProxySrc}
             videoSrc={layer.videoSrc}
             kind="video"
             docId={docId}

@@ -670,13 +670,14 @@ describe('section timeline', () => {
     expect(css).toContain('@keyframes pen-motion-unfold');
   });
 
-  it('uses editorVideoReady for playback gating, not a parallel still player', () => {
+  it('resolves clip URLs for playback without edit-proxy gating', () => {
     const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
-    expect(timeline).toContain('sectionEncodingBlocksPlayback');
+    expect(timeline).toContain('editorPreviewPlaybackSrc');
     expect(timeline).toContain('onResolved');
     expect(timeline).toContain('setResolvedClipUrls');
     expect(timeline).not.toContain('VideoLayoutStill');
-    expect(timeline).not.toContain('sectionAwaitingEditProxy');
+    expect(timeline).not.toContain('sectionEncodingBlocksPlayback');
+    expect(timeline).not.toContain('editorVideoReady');
   });
 
   it('mounts the timeline under the text editor', () => {

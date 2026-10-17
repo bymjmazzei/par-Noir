@@ -144,7 +144,6 @@ import {
   pngBlobsToPdf,
   saveDownload
 } from '../../services/penDownload';
-import { ensureEditProxy, layerOriginalForProxy } from '../../services/editProxy';
 import { WidgetEditorPanel } from '../../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../../components/LayerPartsMenu';
 import { useVerifiedAuthor } from '../../hooks/useVerifiedAuthor';
@@ -515,114 +514,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     saveLocalDoc(session.pnIdentifier, nextBundle);
     setBundle(nextBundle);
   }, [docId, session.pnIdentifier]); // eslint-disable-line react-hooks/exhaustive-deps -- once per doc open
-
-  useEffect(() => {
-    const current = bundleRef.current;
-    if (!current) return;
-    const docId = current.manifest.docId;
-    type Bundle = NonNullable<typeof bundle>;
-    const durationCapByOriginal = new Map<string, number>();
-    for (const sec of current.sections) {
-      for (const layer of sec.layers || []) {
-        const original = layerOriginalForProxy(layer);
-        if (!original) continue;
-        const probed = layer.sourceDurationSec;
-        if (typeof probed === 'number' && Number.isFinite(probed) && probed > 0) {
-          const prev = durationCapByOriginal.get(original);
-          if (prev === undefined || probed < prev) durationCapByOriginal.set(original, probed);
-        }
-      }
-    }
-    const jobs: Array<{ original: string; apply: (ref: string, b: Bundle) => Bundle }> = [];
-    for (const sec of current.sections) {
-      for (const layer of sec.layers || []) {
-        const original = layerOriginalForProxy(layer);
-        if (!original) continue;
-        jobs.push({
-          original,
-          apply: (ref, b) => {
-            let changed = false;
-            const sections = b.sections.map((s) => {
-              if (s.slug !== sec.slug) return s;
-              const layers = (s.layers || []).map((item) => {
-                if (item.id !== layer.id || item.editProxySrc) return item;
-                if (publishPlaybackSrc(item) !== original) return item;
-                changed = true;
-                return { ...item, editProxySrc: ref };
-              });
-              return changed ? { ...s, layers } : s;
-            });
-            return changed ? { ...b, sections } : b;
-          }
-        });
-      }
-    }
-    const pageVideo = current.manifest.pagePresentation?.backgroundVideo?.trim();
-    if (pageVideo && !current.manifest.pagePresentation?.editProxySrc) {
-      jobs.push({
-        original: pageVideo,
-        apply: (ref, b) => {
-          const pres = b.manifest.pagePresentation;
-          if (!pres?.backgroundVideo || pres.backgroundVideo.trim() !== pageVideo || pres.editProxySrc) {
-            return b;
-          }
-          return {
-            ...b,
-            manifest: {
-              ...b.manifest,
-              pagePresentation: { ...pres, editProxySrc: ref }
-            }
-          };
-        }
-      });
-    }
-    if (!jobs.length) return;
-    let cancelled = false;
-    void (async () => {
-      const jobCount = jobs.length;
-      for (let i = 0; i < jobs.length; i++) {
-        const job = jobs[i]!;
-        const jobIndex = i + 1;
-        const ref = await ensureEditProxy({
-          docId,
-          originalRef: job.original,
-          session,
-          durationCapSec: durationCapByOriginal.get(job.original) ?? null,
-          jobIndex,
-          jobCount,
-          onProgress: (pct) => {
-            if (cancelled) return;
-            const prefix =
-              jobCount > 1
-                ? `Preparing preview (${jobIndex}/${jobCount})… `
-                : 'Preparing preview… ';
-            setStatus(`${prefix}${Math.round(pct)}%`);
-          },
-          onSaving: () => {
-            if (!cancelled) setStatus('Saving preview…');
-          }
-        });
-        if (ref) {
-          const latest = bundleRef.current;
-          if (latest) {
-            const next = job.apply(ref, latest);
-            if (next !== latest) persist(next);
-          }
-        } else if (!cancelled) {
-          setError('preview_prepare_failed');
-          setStatus(null);
-        }
-      }
-      if (!cancelled) {
-        setStatus((s) =>
-          s?.startsWith('Preparing preview') || s === 'Saving preview…' ? null : s
-        );
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bundle, session]);
 
   const flowsBody = layer0Flows(bundle?.manifest.classId, bundle?.manifest.pageLayout);
 

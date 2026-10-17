@@ -23,7 +23,7 @@ import {
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
   docToPlainText,
-  editorPlaybackSrc,
+  editorPreviewPlaybackSrc,
   fitAspectInBox,
   sizeMediaLayerForAttach,
   getTextLayerDoc,
@@ -78,65 +78,45 @@ import { PenMediaPlayer, PublishedEngagementBar } from '@par-noir/feed-tile';
 import { usePlaybackMode } from '../../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../../hooks/useResolvedMediaSrc';
 import { getAttachPoster } from '../../services/attachPosterCache';
-import {
-  editorPageBackgroundPlayable,
-  editorVideoNeedsProxyForPresentation
-} from '../../services/editorVideoReady';
 import type { PenSession } from '../../services/penSession';
 export function ResolvedPageBackground({
   src,
   kind,
   docId,
   session,
-  editProxySrc,
   videoSrc
 }: {
   src: string;
   kind: 'image' | 'video';
   docId?: string;
   session?: PenSession | null;
-  editProxySrc?: string;
   videoSrc?: string;
 }) {
   const playback = usePlaybackMode();
-  const pres = { backgroundVideo: src, editProxySrc };
-  const needsProxy =
-    playback === 'edit' && kind === 'video' && editorVideoNeedsProxyForPresentation(pres);
   const playSrc =
     kind === 'video'
       ? playback === 'publish'
         ? publishPlaybackSrc({ videoSrc, backgroundVideo: src })
-        : editorPlaybackSrc({ editProxySrc, videoSrc, backgroundVideo: src })
+        : editorPreviewPlaybackSrc({ videoSrc, backgroundVideo: src })
       : src;
-  const resolvePlayer =
-    kind !== 'video' ||
-    playback === 'publish' ||
-    !needsProxy ||
-    Boolean(editProxySrc?.trim());
-  const { resolved } = useResolvedMediaSrc(resolvePlayer ? playSrc : null, { docId, session });
-  const playable =
-    kind !== 'video' ||
-    playback === 'publish' ||
-    editorPageBackgroundPlayable(pres, { resolvedPlayUrl: resolved });
+  const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
   const posterUrl =
-    needsProxy && !playable
+    kind === 'video' && playSrc && !resolved
       ? getAttachPoster(publishPlaybackSrc({ videoSrc, backgroundVideo: src }))
-      : playable && !resolved
-        ? getAttachPoster(publishPlaybackSrc({ videoSrc, backgroundVideo: src }))
-        : null;
+      : null;
   if (!playSrc && kind === 'video') return null;
   if (kind === 'video') {
     const videoStyle = { objectFit: 'cover' as const };
     return (
       <div data-pen-playback={playback} className="pointer-events-none absolute inset-0 z-0">
-        {(needsProxy && !playable) || (playable && !resolved) ? (
+        {!resolved ? (
           posterUrl ? (
             <img src={posterUrl} alt="" className="h-full w-full object-cover" draggable={false} />
           ) : (
             <div className="h-full w-full bg-neutral-200/80" aria-hidden />
           )
         ) : null}
-        {playable && resolved ? (
+        {resolved ? (
           <PenMediaPlayer src={resolved} className="h-full w-full" videoStyle={videoStyle} />
         ) : null}
       </div>
@@ -154,18 +134,16 @@ export function ResolvedPageBackground({
 /** Probe page background video length for the section clock (not tied to timeline UI). */
 export function PageBackgroundVideoDuration({
   src,
-  editProxySrc,
   docId,
   session,
   onDuration
 }: {
   src: string;
-  editProxySrc?: string;
   docId?: string;
   session?: PenSession | null;
   onDuration: (seconds: number) => void;
 }) {
-  const playSrc = editorPlaybackSrc({ editProxySrc, backgroundVideo: src });
+  const playSrc = editorPreviewPlaybackSrc({ backgroundVideo: src });
   const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
   const report = useRef(onDuration);
   report.current = onDuration;

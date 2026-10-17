@@ -1,8 +1,16 @@
 /**
  * Which file a video layer plays.
- * The editor prefers the proxy and plays the original until that proxy exists.
- * Publish uses the original.
+ * Editor live preview uses masters only ({@link editorPreviewPlaybackSrc}).
+ * {@link editorPlaybackSrc} may prefer a stored proxy (e.g. publish hydrate fallback).
+ * Publish always uses masters ({@link publishPlaybackSrc}).
  */
+
+/** Editor preview/timeline — master refs only; ignores editProxySrc. */
+export function editorPreviewPlaybackSrc(
+  source: { videoSrc?: string; backgroundVideo?: string } | null | undefined
+): string | undefined {
+  return publishPlaybackSrc(source);
+}
 
 export function editorPlaybackSrc(
   source:

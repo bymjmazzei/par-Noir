@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { editorPlaybackSrc, publishPlaybackSrc } from './editProxyRef.js';
+import {
+  editorPlaybackSrc,
+  editorPreviewPlaybackSrc,
+  publishPlaybackSrc
+} from './editProxyRef.js';
 
 describe('edit proxy refs', () => {
+  it('preview always uses the master even when a proxy is stored', () => {
+    const layer = {
+      videoSrc: 'penmedia:original',
+      editProxySrc: 'penmedia:proxy'
+    };
+    expect(editorPreviewPlaybackSrc(layer)).toBe('penmedia:original');
+    expect(publishPlaybackSrc(layer)).toBe('penmedia:original');
+  });
+
   it('plays the proxy in the editor and the original on publish', () => {
     const layer = {
       videoSrc: 'penmedia:original',

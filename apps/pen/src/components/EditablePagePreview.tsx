@@ -23,7 +23,6 @@ import {
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
   docToPlainText,
-  editorPlaybackSrc,
   fitAspectInBox,
   sizeMediaLayerForAttach,
   getTextLayerDoc,
@@ -811,7 +810,6 @@ export function EditablePagePreview({
             <>
               <ResolvedPageBackground
                 src={presentation.backgroundVideo}
-                editProxySrc={presentation.editProxySrc}
                 kind="video"
                 docId={manifest.docId}
                 session={session}
@@ -819,7 +817,6 @@ export function EditablePagePreview({
               {!(section.pageBackgroundDurationSec && section.pageBackgroundDurationSec > 0) ? (
                 <PageBackgroundVideoDuration
                   src={presentation.backgroundVideo}
-                  editProxySrc={presentation.editProxySrc}
                   docId={manifest.docId}
                   session={session}
                   onDuration={(seconds) => {
@@ -1070,7 +1067,6 @@ export function EditablePagePreview({
                       <div className="absolute inset-0">
                         <ResolvedPageBackground
                           src={layer.backgroundVideo}
-                          editProxySrc={layer.editProxySrc}
                           videoSrc={layer.videoSrc}
                           kind="video"
                           docId={manifest.docId}
