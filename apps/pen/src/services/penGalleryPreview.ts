@@ -161,6 +161,16 @@ export function resolveGalleryMedia(
  * Prefer page-layer compose root (flattened layers) over feed tile; among
  * those, prefer a root that already has untainted playable video.
  */
+/** Compose capture root for a specific doc section (feed publish / download). */
+export function composeExportRootForSlug(slug: string): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  const scoped = document.querySelector(
+    `[data-preview-page="${CSS.escape(slug)}"] [data-pen-compose-export-root]`
+  );
+  if (scoped instanceof HTMLElement) return scoped;
+  return findComposeExportRoot();
+}
+
 export function findComposeExportRoot(): HTMLElement | null {
   if (typeof document === 'undefined') return null;
   const roots = Array.from(

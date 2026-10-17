@@ -465,6 +465,7 @@ export async function writeSocialTocCollectionHandoff(
   bundle: LocalDocBundle,
   opts: {
     activateSection: (slug: string) => void | Promise<void>;
+    resolveExportRoot: (slug: string) => Promise<HTMLElement>;
     rasterizeSection: (slug: string) => Promise<Blob>;
     onProgress?: (pct: number) => void;
     canPublishPublicTemplate?: boolean;
@@ -500,7 +501,7 @@ export async function writeSocialTocCollectionHandoff(
       await opts.activateSection(sec.slug);
       await waitTwoFrames();
       await new Promise((r) => setTimeout(r, 200));
-      const root0 = findComposeExportRoot();
+      const root0 = await opts.resolveExportRoot(sec.slug);
       if (!root0) throw new Error('compose_export_root_missing');
       const root = await waitForUntaintedComposeVideos(root0);
       const encoded = await composePageToVideo(root, {

@@ -89,6 +89,7 @@ describe('social TOC collection publish', () => {
     const raster = new Blob([7, 8], { type: 'image/png' });
     const handoffPromise = writeSocialTocCollectionHandoff(doc, {
       activateSection: vi.fn(),
+      resolveExportRoot: vi.fn(async () => ({}) as HTMLElement),
       rasterizeSection: vi.fn(async () => raster),
       canPublishPublicTemplate: false
     });

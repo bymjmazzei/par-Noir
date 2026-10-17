@@ -132,7 +132,10 @@ import { bindTimelineSample, emitTimelineSample } from '../../services/timelineS
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
 import { composePageToVideo } from '../../services/composePageVideoEncode';
 import { setPlaybackMode } from '../../services/playbackMode';
-import { rasterizeElementToPosterBlob } from '../../services/rasterizePagePoster';
+import {
+  rasterizeElementSafeStill,
+  rasterizeElementToPosterBlob
+} from '../../services/rasterizePagePoster';
 import {
   actionLayerIds,
   downloadBasename,
@@ -1768,6 +1771,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     if (raw === 'compose_export_root_missing') {
       return 'Could not prepare the page for export. Switch to the video page and retry.';
     }
+    if (/toBlob|tainted|rasterize_/i.test(raw)) {
+      return 'Could not capture a page for the feed. Wait for media to load, then try Share again.';
+    }
     if (raw.startsWith('r2_owner_upload_failed') || raw.startsWith('r2_put_failed')) {
       return 'Could not upload preview to the feed CDN. Try again after the API has finished deploying.';
     }
@@ -1915,10 +1921,25 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               activateSection: async (slug) => {
                 await mountComposeCaptureForEncode(slug);
               },
+              resolveExportRoot: (slug) => rootForSlug(slug),
               rasterizeSection: async (slug) => {
                 await mountComposeCaptureForEncode(slug);
+                const view = resolvePageView(b.manifest.pageView, b.manifest.pageLayout);
+                if (view === 'screen') {
+                  flushSync(() => setCaptureLayers(true));
+                  await waitTwoFrames();
+                }
                 const root = await rootForSlug(slug);
-                return rasterizeElementToPosterBlob(root, { mime: 'image/png' });
+                try {
+                  return await rasterizeElementToPosterBlob(root, {
+                    mime: 'image/jpeg',
+                    punchVideos: false
+                  });
+                } catch {
+                  return await rasterizeElementSafeStill(root);
+                } finally {
+                  setCaptureLayers(false);
+                }
               },
               onProgress: (pct) => {
                 setStatus(`Encoding feed pages… ${Math.round(pct)}%`);
