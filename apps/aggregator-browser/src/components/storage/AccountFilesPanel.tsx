@@ -628,7 +628,6 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                         loadFileMetadata={loadFileMetadata}
                         alt={(file as { displayName?: string }).displayName || file.name}
                         className="w-full h-full object-cover"
-                        compactBadge
                       />
                     </div>
                   ) : isCollection ? (

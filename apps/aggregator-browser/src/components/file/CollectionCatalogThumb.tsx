@@ -27,8 +27,7 @@ export function CollectionCatalogThumb({
   loadFileMetadata,
   alt,
   className,
-  badgeClassName,
-  compactBadge = false
+  badgeClassName
 }: {
   file: DriveFile;
   parentMetadataIndexFileId: string;
@@ -38,8 +37,6 @@ export function CollectionCatalogThumb({
   alt: string;
   className?: string;
   badgeClassName?: string;
-  /** List-row thumbs (48px) — smaller corner badge */
-  compactBadge?: boolean;
 }) {
   const firstChildId = collectionFileIds(file)[0];
   const [childMeta, setChildMeta] = useState<FeedPlaybackMetadata | null>(null);
@@ -86,15 +83,15 @@ export function CollectionCatalogThumb({
         alt={alt}
         className={className || 'w-full h-full object-cover'}
       />
-      <Layers
-        className={
-          compactBadge
-            ? `absolute bottom-0 right-0 h-2.5 w-2.5 text-blue-400 pointer-events-none drop-shadow-[0_0_1px_rgba(0,0,0,0.9)] ${badgeClassName || ''}`
-            : `absolute bottom-1 right-1 h-3.5 w-3.5 text-blue-400 pointer-events-none drop-shadow-[0_0_2px_rgba(0,0,0,0.85)] ${badgeClassName || ''}`
-        }
-        strokeWidth={2.25}
+      <div
+        className="absolute bottom-0 right-0 w-1/3 h-1/3 flex items-center justify-center pointer-events-none"
         aria-hidden
-      />
+      >
+        <Layers
+          className={`w-[82%] h-[82%] text-blue-400 drop-shadow-[0_0_2px_rgba(0,0,0,0.85)] ${badgeClassName || ''}`}
+          strokeWidth={2}
+        />
+      </div>
     </div>
   );
 }
