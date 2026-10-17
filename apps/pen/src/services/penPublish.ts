@@ -16,8 +16,10 @@ import {
   normalizeLicensingRoot,
   shouldPublishAsSingleComposedVideo,
   shouldPublishAsMixedPages,
+  shouldPublishAsSocialTocCollection,
   shouldPublishSocialAsCollection,
   sectionIsFeedPage,
+  sectionNeedsRasterSnapshot,
   sectionHasVisibleVideoLayer,
   feedPagePlainText,
   primaryVisibleImageSrc,
@@ -330,7 +332,8 @@ function waitTwoFrames(): Promise<void> {
 export type MixedPublishPage =
   | { kind: 'note'; slug: string; content: string; style?: unknown; doc?: unknown }
   | { kind: 'video'; slug: string; videoIndex: number }
-  | { kind: 'still'; slug: string; imageSrc: string };
+  | { kind: 'still'; slug: string; imageSrc: string }
+  | { kind: 'raster'; slug: string; posterBlob: Blob };
 
 export type MixedPagesPublish = {
   contentClass: 'collection';
@@ -455,6 +458,132 @@ export async function writeMixedPagesPublishHandoff(
   };
 }
 
+/**
+ * Social toggle + 2+ TOC pages: one collection child per TOC section (incl. raster action pages).
+ */
+export async function writeSocialTocCollectionHandoff(
+  bundle: LocalDocBundle,
+  opts: {
+    activateSection: (slug: string) => void | Promise<void>;
+    rasterizeSection: (slug: string) => Promise<Blob>;
+    onProgress?: (pct: number) => void;
+    canPublishPublicTemplate?: boolean;
+    connectReady?: boolean;
+  }
+): Promise<MixedPagesPublish> {
+  const manifest = bundle.manifest;
+  if (
+    !shouldPublishAsSocialTocCollection({
+      classId: manifest.classId,
+      isSocial: manifest.isSocial,
+      toc: manifest.toc,
+      sections: bundle.sections
+    })
+  ) {
+    throw new Error('not_social_toc_collection');
+  }
+  const ordered = sectionsInTocOrder(bundle);
+  const videoSections = ordered.filter((section) => sectionHasVisibleVideoLayer(section));
+  const presentation = manifest.pagePresentation || defaultPagePresentation();
+  const videos: Array<{
+    slug: string;
+    videoBlob: Blob;
+    posterBlob: Blob;
+    contentType: string;
+  }> = [];
+
+  setPlaybackMode('publish');
+  try {
+    for (let i = 0; i < videoSections.length; i++) {
+      const sec = videoSections[i]!;
+      opts.onProgress?.(Math.round((i / Math.max(videoSections.length, 1)) * 70));
+      await opts.activateSection(sec.slug);
+      await waitTwoFrames();
+      await new Promise((r) => setTimeout(r, 200));
+      const root0 = findComposeExportRoot();
+      if (!root0) throw new Error('compose_export_root_missing');
+      const root = await waitForUntaintedComposeVideos(root0);
+      const encoded = await composePageToVideo(root, {
+        ...composeClock(sec),
+        onProgress: (p) => {
+          const base = (i / videoSections.length) * 70;
+          opts.onProgress?.(Math.round(base + (p / 100) * (70 / videoSections.length)));
+        }
+      });
+      videos.push({
+        slug: sec.slug,
+        videoBlob: encoded.videoBlob,
+        posterBlob: encoded.posterBlob,
+        contentType: encoded.videoContentType
+      });
+    }
+  } finally {
+    setPlaybackMode('edit');
+  }
+
+  const videoIndexBySlug = new Map(videos.map((v, i) => [v.slug, i]));
+  const pages: MixedPublishPage[] = [];
+  const rasterWeight = Math.max(ordered.length - videoSections.length, 1);
+  let rasterDone = 0;
+
+  for (const raw of ordered) {
+    const slug = raw.slug;
+    if (videoIndexBySlug.has(slug)) {
+      pages.push({ kind: 'video', slug, videoIndex: videoIndexBySlug.get(slug)! });
+      continue;
+    }
+    if (sectionIsFeedPage(raw)) {
+      const sec = normalizeSection(raw);
+      const imageSrc = primaryVisibleImageSrc(sec);
+      if (imageSrc && !sectionHasVisibleVideoLayer(sec)) {
+        pages.push({ kind: 'still', slug, imageSrc });
+        continue;
+      }
+      const base = mergePagePresentation(presentation);
+      pages.push({
+        kind: 'note',
+        slug,
+        content: feedPagePlainText(sec),
+        style: { ...base, textStyle: inferPageTextStyle(sec.doc) },
+        doc: raw.doc
+      });
+      continue;
+    }
+    if (sectionNeedsRasterSnapshot(raw)) {
+      opts.onProgress?.(
+        Math.round(70 + (++rasterDone / rasterWeight) * 25)
+      );
+      const posterBlob = await opts.rasterizeSection(slug);
+      pages.push({ kind: 'raster', slug, posterBlob });
+    }
+  }
+
+  if (pages.length < 2) throw new Error('not_social_toc_collection');
+
+  const form = getClass(manifest.classId);
+  const licensing = licensingForPublish(manifest.licensing, manifest.ownerPnHash, {
+    membership: opts.canPublishPublicTemplate === true,
+    connectReady: opts.connectReady,
+    musicAsset: manifest.classId === 'library.music'
+  });
+
+  opts.onProgress?.(100);
+  return {
+    contentClass: 'collection',
+    title: manifest.title || 'Untitled',
+    docId: manifest.docId,
+    templateId: manifest.templateId,
+    headProof: bundle.chain.links[bundle.chain.links.length - 1] || bundle.chain.genesis,
+    penClassId: manifest.classId,
+    penCategoryId: form?.parentId,
+    penDocId: manifest.docId,
+    penIrRef: { objectId: manifest.docId },
+    licensing,
+    pages,
+    videos
+  };
+}
+
 function sectionsInTocOrder(bundle: LocalDocBundle): PenSectionContent[] {
   const bySlug = new Map(bundle.sections.map((section) => [section.slug, section]));
   const toc = bundle.manifest.toc || [];
@@ -484,8 +613,16 @@ export function writeTextCollectionHandoff(
   if (
     !shouldPublishSocialAsCollection({
       classId: bundle.manifest.classId,
+      isSocial: bundle.manifest.isSocial,
+      toc: bundle.manifest.toc,
       publishContentClass: template?.publishContentClass,
       templateSectionSlugs: template?.sections.map((section) => section.slug),
+      sections: bundle.sections
+    }) ||
+    shouldPublishAsSocialTocCollection({
+      classId: bundle.manifest.classId,
+      isSocial: bundle.manifest.isSocial,
+      toc: bundle.manifest.toc,
       sections: bundle.sections
     }) ||
     shouldPublishAsMixedPages(bundle.sections)
@@ -805,6 +942,26 @@ export async function publishPostToOwnerCloud(params: {
           }
         });
         if (!parentPoster) parentPoster = still.blob;
+        childIds.push(uploaded.fileId);
+      } else if (page.kind === 'raster') {
+        const uploaded = await publishPublicCloudFile({
+          request: params.request,
+          parentFolderId,
+          bytes: new Uint8Array(await page.posterBlob.arrayBuffer()),
+          fileName: `pen-${docId}-${page.slug}.png`,
+          title: `${publishTitle} — ${page.slug}`,
+          poster: page.posterBlob,
+          posterContentType: 'image/png',
+          indexingPermissions,
+          metadata: {
+            ...publishMeta,
+            ...provenanceFor(params.bundle, licensing, ['collection-part']),
+            fileType: 'image',
+            contentClass: 'media',
+            isPartOfCollection: true
+          }
+        });
+        if (!parentPoster) parentPoster = page.posterBlob;
         childIds.push(uploaded.fileId);
       } else {
         const textPost = { content: page.content, style: page.style || {} };

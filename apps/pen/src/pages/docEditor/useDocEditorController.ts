@@ -62,7 +62,9 @@ import {
   collectFontFamiliesFromDoc,
   templateAuthorLabel,
   shouldPublishAsSingleComposedVideo,
+  shouldPublishAsSingleComposedVideoForFeed,
   shouldPublishAsMixedPages,
+  shouldPublishAsSocialTocCollection,
   shouldPublishSocialAsCollection,
   downloadKindForSections,
   partitionSectionsForPublish,
@@ -157,6 +159,7 @@ import {
   publishTemplateToOwnerCloud,
   writeComposedVideoPublishHandoff,
   writeMixedPagesPublishHandoff,
+  writeSocialTocCollectionHandoff,
   writeTextCollectionHandoff
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
@@ -1894,8 +1897,48 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         setStatus('Publishing to your cloud…');
         let fileId: string;
         const prevSlug = activeSlugRef.current;
+        const feedManifest = {
+          classId: b.manifest.classId,
+          isSocial: b.manifest.isSocial,
+          toc: b.manifest.toc
+        };
         try {
-          if (shouldPublishAsSingleComposedVideo(b.sections)) {
+          if (
+            shouldPublishAsSocialTocCollection({
+              ...feedManifest,
+              sections: b.sections
+            })
+          ) {
+            setStatus('Encoding feed pages…');
+            const mixed = await writeSocialTocCollectionHandoff(b, {
+              ...publishOpts,
+              activateSection: async (slug) => {
+                await mountComposeCaptureForEncode(slug);
+              },
+              rasterizeSection: async (slug) => {
+                await mountComposeCaptureForEncode(slug);
+                const root = await rootForSlug(slug);
+                return rasterizeElementToPosterBlob(root, { mime: 'image/png' });
+              },
+              onProgress: (pct) => {
+                setStatus(`Encoding feed pages… ${Math.round(pct)}%`);
+              }
+            });
+            setStatus('Publishing to your cloud…');
+            fileId = (
+              await publishPostToOwnerCloud({
+                bundle: b,
+                feedIds: input.feedIds,
+                pnIdentifier: session.pnIdentifier,
+                membership: verifiedAuthor,
+                connectReady,
+                mixed,
+                feedPublish
+              })
+            ).fileId;
+          } else if (
+            shouldPublishAsSingleComposedVideoForFeed(b.sections, feedManifest)
+          ) {
           const { videoSections } = partitionSectionsForPublish(b.sections);
           const videoSlug = videoSections[0]?.slug;
           if (videoSlug) await mountComposeCaptureForEncode(videoSlug);
@@ -1950,6 +1993,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           const template = getTemplate(b.manifest.templateId);
           const asCollection = shouldPublishSocialAsCollection({
             classId: b.manifest.classId,
+            isSocial: b.manifest.isSocial,
+            toc: b.manifest.toc,
             publishContentClass: template?.publishContentClass,
             templateSectionSlugs: template?.sections.map((section) => section.slug),
             sections: b.sections

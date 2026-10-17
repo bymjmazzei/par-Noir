@@ -64,6 +64,19 @@ describe('mapOwnerCatalogEntry', () => {
     expect(entry.id).toBe('drive-env-1');
     expect(entry.displayName).toBe('My post');
     expect(entry.penDocId).toBe('doc-1');
+    expect(entry.hasCatalogFeedPoster).toBe(false);
+  });
+
+  it('flags feedPoster on catalog rows for Storage thumbs', () => {
+    const entry = mapOwnerCatalogEntry({
+      fileId: 'index-xyz',
+      metadata: {
+        title: 'Post',
+        fileType: 'video',
+        feedPoster: { objectId: 'poster-1', publicUrl: 'https://cdn.example/p.jpg' }
+      }
+    });
+    expect(entry.hasCatalogFeedPoster).toBe(true);
   });
 });
 

@@ -4,6 +4,7 @@
  */
 
 import { ownerCatalogDriveId } from '@par-noir/aggregator-domain';
+import { hasFeedPreviewPlayback } from '../services/feedPreviewPlayback';
 
 export type DriveListFile = {
   id: string;
@@ -40,6 +41,8 @@ export type OwnerCatalogListEntry = DriveListFile & {
   displayName: string;
   penDocId?: string;
   collection?: unknown;
+  /** Indexed feedPoster / feedPreviewSd — Storage grid can show CDN thumb. */
+  hasCatalogFeedPoster: boolean;
   indexMissing: false;
 };
 
@@ -137,6 +140,7 @@ export function mapOwnerCatalogEntry(params: {
     displayName: title.replace(/\.encrypted$/i, ''),
     penDocId,
     collection: metadata.collection,
+    hasCatalogFeedPoster: hasFeedPreviewPlayback(metadata),
     indexMissing: false
   };
 }

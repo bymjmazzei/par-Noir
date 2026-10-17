@@ -9,6 +9,87 @@ import type { PenPageLayer, PenSectionContent } from './types.js';
 import { sectionWithoutActionLayers } from './actionPartition.js';
 import { getClass } from './classes.js';
 
+/** Social-class doc or blank/custom with Social toggle on. */
+export function isSocialFeedPost(input: {
+  classId?: string;
+  isSocial?: boolean;
+}): boolean {
+  if (input.isSocial === true) return true;
+  return getClass(input.classId || '')?.parentId === 'social';
+}
+
+/** Sections in manifest TOC order (unknown slugs appended). */
+export function sectionsInManifestTocOrder(
+  manifest: { toc?: string[] },
+  sections: PenSectionContent[] | null | undefined
+): PenSectionContent[] {
+  const bySlug = new Map((sections || []).map((section) => [section.slug, section]));
+  const toc = manifest.toc || [];
+  const ordered: PenSectionContent[] = [];
+  for (const slug of toc) {
+    const section = bySlug.get(slug);
+    if (section) ordered.push(section);
+  }
+  for (const section of sections || []) {
+    if (!toc.includes(section.slug)) ordered.push(section);
+  }
+  return ordered;
+}
+
+/**
+ * Social toggle on + 2+ pages in the doc TOC → collection (one child per TOC section).
+ * Native social-class templates keep template-slug rules unless the author toggled Social on.
+ */
+export function shouldPublishAsSocialTocCollection(input: {
+  classId?: string;
+  isSocial?: boolean;
+  toc?: string[];
+  sections: PenSectionContent[] | null | undefined;
+}): boolean {
+  if (input.isSocial !== true) return false;
+  if (!isSocialFeedPost({ classId: input.classId, isSocial: input.isSocial })) return false;
+  const ordered = sectionsInManifestTocOrder({ toc: input.toc }, input.sections);
+  return ordered.length >= 2;
+}
+
+/**
+ * TOC section that is not a video or note/still feed page — encode as a raster slide
+ * (e.g. action-only button page).
+ */
+export function sectionNeedsRasterSnapshot(
+  section: PenSectionContent | null | undefined
+): boolean {
+  if (!section) return false;
+  if (sectionHasVisibleVideoLayer(section)) return false;
+  if (sectionIsFeedPage(section)) return false;
+  return true;
+}
+
+export type FeedPublishManifestContext = {
+  classId?: string;
+  isSocial?: boolean;
+  toc?: string[];
+};
+
+/** Feed Connect path: do not collapse to one video when publishing a social TOC collection. */
+export function shouldPublishAsSingleComposedVideoForFeed(
+  sections: PenSectionContent[] | null | undefined,
+  manifest?: FeedPublishManifestContext
+): boolean {
+  if (
+    manifest &&
+    shouldPublishAsSocialTocCollection({
+      classId: manifest.classId,
+      isSocial: manifest.isSocial,
+      toc: manifest.toc,
+      sections
+    })
+  ) {
+    return false;
+  }
+  return shouldPublishAsSingleComposedVideo(sections);
+}
+
 /** Overlay video layer that participates in compose-video export. */
 export function isVisibleVideoLayer(layer: PenPageLayer | null | undefined): boolean {
   if (!layer) return false;
@@ -135,12 +216,25 @@ export function feedPagePlainText(section: PenSectionContent): string {
  */
 export function shouldPublishSocialAsCollection(input: {
   classId?: string;
+  isSocial?: boolean;
+  toc?: string[];
   publishContentClass?: 'note' | 'media' | 'collection';
   templateSectionSlugs?: string[];
   sections: PenSectionContent[] | null | undefined;
 }): boolean {
-  if (getClass(input.classId || '')?.parentId !== 'social') return false;
+  if (!isSocialFeedPost({ classId: input.classId, isSocial: input.isSocial })) return false;
   const sections = input.sections || [];
+  if (
+    input.isSocial === true &&
+    shouldPublishAsSocialTocCollection({
+      classId: input.classId,
+      isSocial: input.isSocial,
+      toc: input.toc,
+      sections
+    })
+  ) {
+    return true;
+  }
   if (shouldPublishAsSingleComposedVideo(sections)) return false;
   const pages = sections.filter(sectionIsFeedPage);
   if (pages.length < 2) return false;

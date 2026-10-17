@@ -10,8 +10,25 @@ import { Capacitor } from '@capacitor/core';
 import { cleanTitle } from '../../utils/cleanTitle';
 import { hasNoteExtension, isNoteFileName, isNoteThumbnailFileName } from '../../utils/noteFileName';
 import { ThumbnailImage } from '../file/ThumbnailImage';
+import { CatalogFeedPosterThumb } from '../file/CatalogFeedPosterThumb';
+import { hasFeedPreviewPlayback } from '../../services/feedPreviewPlayback';
 import { pickImageFromNative } from '../../hooks/useNativeFilePicker';
 import type { DriveAccount, DriveFile } from './storageTypes';
+
+function catalogFeedPosterForFile(
+  file: DriveFile,
+  fileMetadataMap: Map<string, unknown>
+): { metadataIndexFileId: string; metadata: Record<string, unknown> } | null {
+  if ((file as { catalogBacked?: boolean }).catalogBacked !== true) return null;
+  const metadataIndexFileId =
+    typeof (file as { metadataIndexFileId?: string }).metadataIndexFileId === 'string'
+      ? (file as { metadataIndexFileId: string }).metadataIndexFileId
+      : file.id;
+  const metadata = (fileMetadataMap.get(metadataIndexFileId) ||
+    fileMetadataMap.get(file.id)) as Record<string, unknown> | undefined;
+  if (!metadata || !hasFeedPreviewPlayback(metadata)) return null;
+  return { metadataIndexFileId, metadata };
+}
 
 export interface AccountFilesPanelProps {
   account: DriveAccount;
@@ -314,6 +331,8 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
             const isNote = isNoteFileName(nameWithoutEncrypted);
             const isNoteThumbnail = isNoteThumbnailFileName(nameWithoutEncrypted);
             let isMediaFile = isImage || isVideo || isNote || isNoteThumbnail || isCollection;
+            const catalogPoster = catalogFeedPosterForFile(file, fileMetadataMap);
+            if (catalogPoster) isMediaFile = true;
             if (isEncrypted && !isCollection) {
               const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
               const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
@@ -379,6 +398,22 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                       const firstFileId = collectionData?.collectionFileIds?.[0];
                       const firstFile = firstFileId ? accountFiles.find(f => f.id === firstFileId) : null;
 
+                      if (catalogPoster) {
+                        return (
+                          <div className="w-full h-full relative">
+                            <CatalogFeedPosterThumb
+                              metadataIndexFileId={catalogPoster.metadataIndexFileId}
+                              metadata={catalogPoster.metadata}
+                              alt={(file as { displayName?: string }).displayName || file.name}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute top-2 right-2 bg-black/60 rounded-full p-1.5">
+                              <Layers className="h-4 w-4 text-blue-400" />
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div className="w-full h-full relative">
                           {firstFile && (firstFile.mimeType?.startsWith('image/') || firstFile.mimeType?.startsWith('video/')) ? (
@@ -411,6 +446,13 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                         </div>
                       );
                     })()
+                  ) : catalogPoster ? (
+                    <CatalogFeedPosterThumb
+                      metadataIndexFileId={catalogPoster.metadataIndexFileId}
+                      metadata={catalogPoster.metadata}
+                      alt={(file as { displayName?: string }).displayName || file.name}
+                      className="w-full h-full object-cover"
+                    />
                   ) : isMediaFile ? (
                     <ThumbnailImage
                       fileId={file.id}
@@ -528,6 +570,8 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
             const isNote = isNoteFileName(nameWithoutEncrypted);
             const isNoteThumbnail = isNoteThumbnailFileName(nameWithoutEncrypted);
             let isMediaFile = isImage || isVideo || isNote || isNoteThumbnail || isCollection;
+            const catalogPoster = catalogFeedPosterForFile(file, fileMetadataMap);
+            if (catalogPoster) isMediaFile = true;
             if (isEncrypted && !isCollection) {
               const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
               const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
@@ -582,9 +626,28 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                   </div>
                 )}
                 <div className="flex items-center space-x-3 flex-1 min-w-0">
-                  {isCollection ? (
+                  {isCollection && catalogPoster ? (
+                    <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700 relative">
+                      <CatalogFeedPosterThumb
+                        metadataIndexFileId={catalogPoster.metadataIndexFileId}
+                        metadata={catalogPoster.metadata}
+                        alt={(file as { displayName?: string }).displayName || file.name}
+                        className="w-full h-full object-cover"
+                      />
+                      <Layers className="h-3 w-3 text-blue-400 absolute bottom-0.5 right-0.5" />
+                    </div>
+                  ) : isCollection ? (
                     <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-gradient-to-br from-blue-600/20 to-purple-600/20 flex items-center justify-center">
                       <Layers className="h-6 w-6 text-blue-400" />
+                    </div>
+                  ) : catalogPoster ? (
+                    <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
+                      <CatalogFeedPosterThumb
+                        metadataIndexFileId={catalogPoster.metadataIndexFileId}
+                        metadata={catalogPoster.metadata}
+                        alt={(file as { displayName?: string }).displayName || file.name}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   ) : isMediaFile ? (
                     <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">

@@ -6,7 +6,8 @@ import { compileDocumentToNote } from './compile.js';
 import { defaultPagePresentation } from './presentation.js';
 import {
   shouldPublishAsMixedPages,
-  shouldPublishAsSingleComposedVideo,
+  shouldPublishAsSingleComposedVideoForFeed,
+  shouldPublishAsSocialTocCollection,
   shouldPublishSocialAsCollection
 } from './composeVideo.js';
 import { getTemplate } from './templates.js';
@@ -17,17 +18,27 @@ export type FeedContentClass = 'note' | 'media' | 'collection';
 export function inferFeedContentClass(input: {
   sections: PenSectionContent[];
   classId?: string;
+  isSocial?: boolean;
+  toc?: string[];
   templateId?: string;
   title?: string;
   pagePresentation?: ReturnType<typeof defaultPagePresentation>;
 }): FeedContentClass {
   const sections = input.sections || [];
-  if (shouldPublishAsSingleComposedVideo(sections)) return 'media';
+  const manifest = {
+    classId: input.classId,
+    isSocial: input.isSocial,
+    toc: input.toc
+  };
+  if (shouldPublishAsSocialTocCollection({ ...manifest, sections })) return 'collection';
+  if (shouldPublishAsSingleComposedVideoForFeed(sections, manifest)) return 'media';
   if (shouldPublishAsMixedPages(sections)) return 'collection';
   const template = getTemplate(input.templateId || '');
   if (
     shouldPublishSocialAsCollection({
       classId: input.classId,
+      isSocial: input.isSocial,
+      toc: input.toc,
       publishContentClass: template?.publishContentClass,
       templateSectionSlugs: template?.sections.map((s) => s.slug),
       sections

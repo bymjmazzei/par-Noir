@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { inferFeedContentClass } from './feedPublish.js';
 import {
   downloadKindForSections,
   feedPagePlainText,
   partitionSectionsForPublish,
   sectionHasVisibleVideoLayer,
   sectionIsFeedPage,
+  sectionNeedsRasterSnapshot,
   shouldPublishAsMixedPages,
   shouldPublishAsSingleComposedVideo,
+  shouldPublishAsSingleComposedVideoForFeed,
+  shouldPublishAsSocialTocCollection,
   shouldPublishSocialAsCollection
 } from './composeVideo.js';
 import { emptyTipTapDoc } from './richDoc.js';
@@ -221,5 +225,70 @@ describe('composeVideo per-page', () => {
         sections: [body, added]
       })
     ).toBe(false);
+  });
+
+  it('custom.doc with isSocial and 2 TOC pages → social TOC collection (not single video)', () => {
+    const videoPage: PenSectionContent = {
+      slug: 'page-1',
+      doc: emptyTipTapDoc(),
+      layers: [videoLayer()]
+    };
+    const buttonPage: PenSectionContent = {
+      slug: 'page-2',
+      doc: emptyTipTapDoc(),
+      layers: [
+        {
+          id: 'btn',
+          kind: 'interactive',
+          x: 10,
+          y: 10,
+          w: 120,
+          h: 40,
+          zIndex: 1,
+          behavior: 'poll.vote',
+          bindDocId: 'doc-1',
+          label: 'Vote'
+        }
+      ]
+    };
+    const sections = [videoPage, buttonPage];
+    const toc = ['page-1', 'page-2'];
+    expect(sectionIsFeedPage(buttonPage)).toBe(false);
+    expect(sectionNeedsRasterSnapshot(buttonPage)).toBe(true);
+    expect(shouldPublishAsSingleComposedVideo(sections)).toBe(true);
+    expect(
+      shouldPublishAsSingleComposedVideoForFeed(sections, {
+        classId: 'custom.doc',
+        isSocial: true,
+        toc
+      })
+    ).toBe(false);
+    expect(
+      shouldPublishAsSocialTocCollection({
+        classId: 'custom.doc',
+        isSocial: true,
+        toc,
+        sections
+      })
+    ).toBe(true);
+    expect(
+      shouldPublishSocialAsCollection({
+        classId: 'custom.doc',
+        isSocial: true,
+        toc,
+        publishContentClass: 'note',
+        templateSectionSlugs: ['page-1'],
+        sections
+      })
+    ).toBe(true);
+    expect(
+      inferFeedContentClass({
+        classId: 'custom.doc',
+        isSocial: true,
+        toc,
+        templateId: 'blank.custom',
+        sections
+      })
+    ).toBe('collection');
   });
 });

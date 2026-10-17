@@ -44,11 +44,21 @@ export function ShareToFeedDialog({
       inferFeedContentClass({
         sections,
         classId: manifest.classId,
+        isSocial: manifest.isSocial,
+        toc: manifest.toc,
         templateId: manifest.templateId,
         title: manifest.title,
         pagePresentation: manifest.pagePresentation
       }),
-    [sections, manifest.classId, manifest.templateId, manifest.title, manifest.pagePresentation]
+    [
+      sections,
+      manifest.classId,
+      manifest.isSocial,
+      manifest.toc,
+      manifest.templateId,
+      manifest.title,
+      manifest.pagePresentation
+    ]
   );
 
   const [form, setForm] = useState<PublishMetadataForm>({
