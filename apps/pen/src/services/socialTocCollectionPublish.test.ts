@@ -10,12 +10,21 @@ vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
 
 vi.mock('./penFeedPagePublish', () => ({
   composePageVideoWithoutActions: vi.fn(async () => ({
-    videoBlob: new Blob([1, 2, 3], { type: 'video/mp4' }),
-    posterBlob: new Blob([9], { type: 'image/jpeg' }),
-    videoContentType: 'video/mp4',
-    width: 360,
-    height: 640,
-    durationMs: 5000
+    poster: { blob: new Blob([9], { type: 'image/jpeg' }), contentType: 'image/jpeg' },
+    sd: {
+      blob: new Blob([1, 2], { type: 'video/mp4' }),
+      contentType: 'video/mp4',
+      width: 406,
+      height: 720,
+      durationMs: 5000
+    },
+    hd: {
+      blob: new Blob([1, 2, 3], { type: 'video/mp4' }),
+      contentType: 'video/mp4',
+      width: 608,
+      height: 1080,
+      durationMs: 5000
+    }
   })),
   composeTimelineEncodeOpts: vi.fn(() => ({
     clockDurationSec: 5,

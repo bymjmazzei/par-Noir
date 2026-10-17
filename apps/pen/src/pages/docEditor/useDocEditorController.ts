@@ -130,7 +130,7 @@ import { MediaEditorPanel } from '../../components/MediaEditorPanel';
 import { SectionTimeline } from '../../components/SectionTimeline';
 import { setPlayheadSec } from '../../services/playheadStore';
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
-import { composePageToVideo } from '../../services/composePageVideoEncode';
+import { composedMaster, composePageToVideo } from '../../services/composePageVideoEncode';
 import { composeTimelineEncodeOpts } from '../../services/penFeedPagePublish';
 import { setPlaybackMode } from '../../services/playbackMode';
 import {
@@ -1740,8 +1740,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             section ? composeTimelineEncodeOpts(section, bundle.manifest) : undefined
           )
         );
-        const ext = encoded.videoContentType.includes('mp4') ? 'mp4' : 'webm';
-        saveDownload(encoded.videoBlob, `${name}.${ext}`);
+        const master = composedMaster(encoded);
+        const ext = master.contentType.includes('mp4') ? 'mp4' : 'webm';
+        saveDownload(master.blob, `${name}.${ext}`);
       } else if (kind === 'image') {
         const slug =
           bundle.sections.find((item) => sectionIsFeedPage(item))?.slug || bundle.sections[0]?.slug;

@@ -39,7 +39,11 @@ import {
   type PenSectionContent,
   type ResolvePenEmbed
 } from '@par-noir/pen-protocol';
-import { composePageToVideo } from './composePageVideoEncode';
+import {
+  composedMaster,
+  composePageToVideo,
+  type ComposePageVideoResult
+} from './composePageVideoEncode';
 import { findComposeExportRoot, waitForUntaintedComposeVideos } from './penGalleryPreview';
 import { setPlaybackMode } from './playbackMode';
 import type { PenSession } from '../App';
@@ -62,6 +66,7 @@ import {
 } from './penPublishGates';
 import {
   defaultCloudRequest,
+  posterPreview,
   publishPublicCloudFile,
   renderNotePoster,
   type CloudRequest
@@ -243,9 +248,8 @@ export type ComposedVideoPublish = {
   penDocId: string;
   penIrRef: { objectId: string };
   licensing: PenLicensingRoot;
-  videoContentType: string;
-  videoBlob: Blob;
-  posterBlob: Blob;
+  /** CDN variants at tier sizes; `composedMaster` is the canonical file. */
+  previews: ComposePageVideoResult;
 };
 
 /**
@@ -313,9 +317,7 @@ export async function writeComposedVideoPublishHandoff(
     penDocId: bundle.manifest.docId,
     penIrRef: { objectId: bundle.manifest.docId },
     licensing,
-    videoContentType: encoded.videoContentType,
-    videoBlob: encoded.videoBlob,
-    posterBlob: encoded.posterBlob
+    previews: encoded
   };
 }
 
@@ -352,7 +354,7 @@ export type MixedPagesPublish = {
   penIrRef: { objectId: string };
   licensing: PenLicensingRoot;
   pages: MixedPublishPage[];
-  videos: Array<{ slug: string; videoBlob: Blob; posterBlob: Blob; contentType: string }>;
+  videos: Array<{ slug: string; previews: ComposePageVideoResult }>;
 };
 
 /**
@@ -372,12 +374,7 @@ export async function writeMixedPagesPublishHandoff(
   }
   const { videoSections } = partitionSectionsForPublish(bundle.sections);
   const presentation = bundle.manifest.pagePresentation || defaultPagePresentation();
-  const videos: Array<{
-    slug: string;
-    videoBlob: Blob;
-    posterBlob: Blob;
-    contentType: string;
-  }> = [];
+  const videos: MixedPagesPublish['videos'] = [];
 
   setPlaybackMode('publish');
   try {
@@ -398,12 +395,7 @@ export async function writeMixedPagesPublishHandoff(
           opts.onProgress?.(Math.round(base + (p / 100) * (80 / videoSections.length)));
         }
       });
-      videos.push({
-        slug: sec.slug,
-        videoBlob: encoded.videoBlob,
-        posterBlob: encoded.posterBlob,
-        contentType: encoded.videoContentType
-      });
+      videos.push({ slug: sec.slug, previews: encoded });
     }
   } finally {
     setPlaybackMode('edit');
@@ -494,12 +486,7 @@ export async function writeSocialTocCollectionHandoff(
     (section) => sectionHasVisibleVideoLayer(section) || sectionNeedsRasterSnapshot(section)
   );
   const presentation = manifest.pagePresentation || defaultPagePresentation();
-  const videos: Array<{
-    slug: string;
-    videoBlob: Blob;
-    posterBlob: Blob;
-    contentType: string;
-  }> = [];
+  const videos: MixedPagesPublish['videos'] = [];
 
   setPlaybackMode('publish');
   try {
@@ -521,12 +508,7 @@ export async function writeSocialTocCollectionHandoff(
           opts.onProgress?.(Math.round(base + (p / 100) * (95 / inertEncodeSections.length)));
         }
       });
-      videos.push({
-        slug: sec.slug,
-        videoBlob: encoded.videoBlob,
-        posterBlob: encoded.posterBlob,
-        contentType: encoded.videoContentType
-      });
+      videos.push({ slug: sec.slug, previews: encoded });
     }
   } finally {
     setPlaybackMode('edit');
@@ -757,8 +739,7 @@ export async function uploadCompanionAudioFiles(params: {
             bytes,
             fileName: `pen-${docId}-audio-${i}.mp3`,
             title: `${title} audio ${i + 1}`,
-            videoForSd: new Blob([bytes], { type: mime }),
-            videoContentType: mime,
+            previews: { sd: { blob: new Blob([bytes], { type: mime }), contentType: mime } },
             metadata: {
               fileType: 'audio',
               contentClass: 'media',
@@ -884,7 +865,7 @@ export async function publishPostToOwnerCloud(params: {
     typeof publishMeta.description === 'string' ? publishMeta.description : undefined;
 
   if (params.video) {
-    const bytes = new Uint8Array(await params.video.videoBlob.arrayBuffer());
+    const bytes = new Uint8Array(await composedMaster(params.video.previews).blob.arrayBuffer());
     const videoSlug = partitionSectionsForPublish(params.bundle.sections).videoSections[0]?.slug;
     const videoPageMeta =
       videoSlug && sectionBySlug(params.bundle, videoSlug)
@@ -901,9 +882,7 @@ export async function publishPostToOwnerCloud(params: {
       bytes,
       fileName: `pen-${params.bundle.manifest.docId}.video`,
       title: publishTitle,
-      poster: params.video.posterBlob,
-      videoForSd: params.video.videoBlob,
-      videoContentType: params.video.videoContentType,
+      previews: params.video.previews,
       indexingPermissions,
       metadata: {
         ...publishMeta,
@@ -936,12 +915,10 @@ export async function publishPostToOwnerCloud(params: {
         const uploaded = await publishPublicCloudFile({
           request: params.request,
           parentFolderId,
-          bytes: new Uint8Array(await video.videoBlob.arrayBuffer()),
+          bytes: new Uint8Array(await composedMaster(video.previews).blob.arrayBuffer()),
           fileName: `pen-${docId}-${page.slug}.video`,
           title: `${publishTitle} — ${page.slug}`,
-          poster: video.posterBlob,
-          videoForSd: video.videoBlob,
-          videoContentType: video.contentType,
+          previews: video.previews,
           indexingPermissions,
           metadata: {
             ...publishMeta,
@@ -959,7 +936,7 @@ export async function publishPostToOwnerCloud(params: {
             isPartOfCollection: true
           }
         });
-        if (!parentPoster) parentPoster = video.posterBlob;
+        if (!parentPoster) parentPoster = video.previews.poster.blob;
         childIds.push(uploaded.fileId);
         penFeedMediaBySlug[page.slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'video' };
       } else if (page.kind === 'still') {
@@ -970,8 +947,7 @@ export async function publishPostToOwnerCloud(params: {
           bytes: still.bytes,
           fileName: `pen-${docId}-${page.slug}.jpg`,
           title: `${publishTitle} — ${page.slug}`,
-          poster: still.blob,
-          posterContentType: still.mime,
+          previews: posterPreview(still.blob, still.mime),
           indexingPermissions,
           metadata: {
             ...publishMeta,
@@ -999,8 +975,10 @@ export async function publishPostToOwnerCloud(params: {
           bytes: new Uint8Array(await page.posterBlob.arrayBuffer()),
           fileName: `pen-${docId}-${page.slug}.jpg`,
           title: `${publishTitle} — ${page.slug}`,
-          poster: page.posterBlob,
-          posterContentType: page.kind === 'raster' ? 'image/png' : 'image/jpeg',
+          previews: posterPreview(
+            page.posterBlob,
+            page.kind === 'raster' ? 'image/png' : 'image/jpeg'
+          ),
           indexingPermissions,
           metadata: {
             ...publishMeta,
@@ -1030,7 +1008,7 @@ export async function publishPostToOwnerCloud(params: {
           bytes: new TextEncoder().encode(JSON.stringify({ textPost, version: '1.0' })),
           fileName: `pen-${docId}-${page.slug}.json`,
           title: `${publishTitle} — ${page.slug}`,
-          poster: notePoster,
+          previews: posterPreview(notePoster),
           indexingPermissions,
           metadata: {
             ...publishMeta,
@@ -1053,7 +1031,7 @@ export async function publishPostToOwnerCloud(params: {
         childIds.push(uploaded.fileId);
       }
     }
-    const poster = parentPoster ?? params.mixed.videos[0]?.posterBlob;
+    const poster = parentPoster ?? params.mixed.videos[0]?.previews.poster.blob;
     const uploaded = await publishPublicCloudFile({
       request: params.request,
       parentFolderId,
@@ -1062,7 +1040,7 @@ export async function publishPostToOwnerCloud(params: {
       ),
       fileName: `pen-${params.bundle.manifest.docId}.collection.json`,
       title: publishTitle,
-      poster,
+      previews: posterPreview(poster),
       indexingPermissions,
       metadata: {
         ...publishMeta,
@@ -1100,7 +1078,7 @@ export async function publishPostToOwnerCloud(params: {
     ),
     fileName: `pen-${params.bundle.manifest.docId}.json`,
     title: publishTitle,
-    poster,
+    previews: posterPreview(poster),
     indexingPermissions,
     metadata: {
       ...publishMeta,
@@ -1164,7 +1142,7 @@ export async function publishTemplateToOwnerCloud(params: {
     bytes: new TextEncoder().encode(JSON.stringify(ir)),
     fileName: `pen-template-${params.bundle.manifest.docId}.json`,
     title: compiled.title,
-    poster,
+    previews: posterPreview(poster),
     metadata: {
       ...provenanceFor(params.bundle, licensing, ['pen-templates']),
       fileType: 'note',

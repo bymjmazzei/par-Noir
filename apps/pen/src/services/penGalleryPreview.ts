@@ -258,12 +258,12 @@ export async function buildAndStoreGalleryPreview(params: {
       setPlaybackMode('edit');
     }
     const video = await uploadOrLocal({
-      blob: encoded.videoBlob,
+      blob: encoded.sd.blob,
       docId,
       pnIdentifier: pn
     });
     const poster = await uploadOrLocal({
-      blob: encoded.posterBlob,
+      blob: encoded.poster.blob,
       docId,
       pnIdentifier: pn
     });

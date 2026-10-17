@@ -2,7 +2,6 @@
  * Monthly preview ingest metering + free daily view caps (Redis).
  */
 import {
-  FEED_FREE_DAILY_MB,
   FEED_FREE_DAILY_VIEW_STARTS,
   getPublishTier,
   type PublishTierId,
@@ -27,10 +26,6 @@ export function uploadMeterKey(pnIdentifier: string): string {
 
 export function freeViewStartsKey(viewerKey: string): string {
   return `feed-free-views:v1:${viewerKey}:${dayKey()}`;
-}
-
-export function freeViewMbKey(viewerKey: string): string {
-  return `feed-free-mb:v1:${viewerKey}:${dayKey()}`;
 }
 
 export function viewerKeyFromRequest(pnIdentifier?: string | null, anonId?: string | null): string {
@@ -94,35 +89,18 @@ function freeViewStartsLimit(): number {
   return Number.isFinite(n) && n > 0 ? n : FEED_FREE_DAILY_VIEW_STARTS;
 }
 
-function freeViewMbLimit(): number {
-  const n = Number(process.env.FEED_FREE_DAILY_MB);
-  return Number.isFinite(n) && n > 0 ? n : FEED_FREE_DAILY_MB;
-}
-
 export type FreeViewGate =
-  | { ok: true; startsUsed: number; mbUsed: number }
-  | { ok: false; reason: 'daily_view_cap' | 'daily_mb_cap'; startsUsed: number; mbUsed: number };
+  | { ok: true; startsUsed: number }
+  | { ok: false; reason: 'daily_view_cap'; startsUsed: number };
 
-export async function checkAndConsumeFreeView(
-  viewerKey: string,
-  approxBytes: number
-): Promise<FreeViewGate> {
+/** Unverified viewers: daily view-start cap only (R2 egress is not billed, so no byte cap). */
+export async function checkAndConsumeFreeView(viewerKey: string): Promise<FreeViewGate> {
   const { getCache, setCache } = await import('../utils/cache');
   const sk = freeViewStartsKey(viewerKey);
-  const mk = freeViewMbKey(viewerKey);
   const starts = (await getCache<{ n?: number }>(sk))?.n ?? 0;
-  const mb = (await getCache<{ n?: number }>(mk))?.n ?? 0;
-  const startLimit = freeViewStartsLimit();
-  const mbLimit = freeViewMbLimit();
-  if (starts >= startLimit) {
-    return { ok: false, reason: 'daily_view_cap', startsUsed: starts, mbUsed: mb };
+  if (starts >= freeViewStartsLimit()) {
+    return { ok: false, reason: 'daily_view_cap', startsUsed: starts };
   }
-  const addMb = approxBytes / (1024 * 1024);
-  if (mb + addMb > mbLimit) {
-    return { ok: false, reason: 'daily_mb_cap', startsUsed: starts, mbUsed: mb };
-  }
-  const ttl = 36 * 3600;
-  await setCache(sk, { n: starts + 1 }, ttl);
-  await setCache(mk, { n: mb + addMb }, ttl);
-  return { ok: true, startsUsed: starts + 1, mbUsed: mb + addMb };
+  await setCache(sk, { n: starts + 1 }, 36 * 3600);
+  return { ok: true, startsUsed: starts + 1 };
 }

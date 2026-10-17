@@ -1,16 +1,18 @@
 /**
  * On-device adaptive feed preview encode (poster + SD + HD) under byte/duration ceilings.
- * Uses canvas / MediaRecorder — no server ffmpeg.
+ * Uses canvas / MediaRecorder — no server ffmpeg. Browser-only: call sites must have a DOM.
  */
 import {
-  FEED_PREVIEW_HD_MAX_HEIGHT_DEFAULT,
   FEED_PREVIEW_POSTER_MAX_BYTES,
-  FEED_PREVIEW_SD_MAX_HEIGHT,
-  softBytesForVariant,
+  FEED_PREVIEW_POSTER_MAX_DIM,
+  feedPreviewBitrate,
+  feedPreviewTargetSize,
   maxBytesForVariant,
+  maxHeightForVariant,
+  softBytesForVariant,
   type FeedPreviewVariant,
   type PublishTierNotch,
-} from '@par-noir/aggregator-domain';
+} from './feedPreview';
 
 export type EncodedPreview = {
   variant: FeedPreviewVariant;
@@ -21,6 +23,28 @@ export type EncodedPreview = {
   height?: number;
   durationMs?: number;
 };
+
+/** Bitrate backoff when a recording overshoots the variant hard cap. */
+export const FEED_PREVIEW_BITRATE_BACKOFF = 0.65;
+export const FEED_PREVIEW_ENCODE_ATTEMPTS = 3;
+
+/** Prefer H.264 MP4 (better quality per byte, plays everywhere); WebM fallback. */
+export function pickFeedRecorderMime(): { mimeType: string; contentType: string } {
+  const candidates = [
+    'video/mp4;codecs=avc1',
+    'video/mp4',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  for (const mimeType of candidates) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) {
+      const contentType = mimeType.startsWith('video/mp4') ? 'video/mp4' : 'video/webm';
+      return { mimeType, contentType };
+    }
+  }
+  return { mimeType: '', contentType: 'video/webm' };
+}
 
 function loadImage(file: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -54,7 +78,7 @@ function loadVideo(file: Blob): Promise<HTMLVideoElement> {
   });
 }
 
-async function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error('jpeg_encode_failed'))),
@@ -64,19 +88,25 @@ async function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Pro
   });
 }
 
-/** Encode poster under hard max bytes with quality backoff. */
-export async function encodePosterFromImage(file: Blob): Promise<EncodedPreview> {
-  const img = await loadImage(file);
-  const maxDim = 720;
-  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
-  const w = Math.max(1, Math.round(img.naturalWidth * scale));
-  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+/**
+ * Poster JPEG from any drawable, capped at FEED_PREVIEW_POSTER_MAX_DIM and
+ * FEED_PREVIEW_POSTER_MAX_BYTES with quality backoff.
+ */
+export async function encodePosterFromCanvas(
+  source: CanvasImageSource,
+  sourceW: number,
+  sourceH: number,
+  durationMs?: number
+): Promise<EncodedPreview> {
+  const scale = Math.min(1, FEED_PREVIEW_POSTER_MAX_DIM / Math.max(sourceW || 1, sourceH || 1));
+  const w = Math.max(1, Math.round((sourceW || 1) * scale));
+  const h = Math.max(1, Math.round((sourceH || 1) * scale));
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas_unavailable');
-  ctx.drawImage(img, 0, 0, w, h);
+  ctx.drawImage(source, 0, 0, w, h);
   let quality = 0.85;
   let blob = await canvasToJpegBlob(canvas, quality);
   while (blob.size > FEED_PREVIEW_POSTER_MAX_BYTES && quality > 0.4) {
@@ -93,7 +123,14 @@ export async function encodePosterFromImage(file: Blob): Promise<EncodedPreview>
     byteSize: blob.size,
     width: w,
     height: h,
+    ...(durationMs !== undefined ? { durationMs } : {}),
   };
+}
+
+/** Encode poster under hard max bytes with quality backoff. */
+export async function encodePosterFromImage(file: Blob): Promise<EncodedPreview> {
+  const img = await loadImage(file);
+  return encodePosterFromCanvas(img, img.naturalWidth, img.naturalHeight);
 }
 
 export async function encodePosterFromVideo(file: Blob): Promise<EncodedPreview> {
@@ -106,35 +143,16 @@ export async function encodePosterFromVideo(file: Blob): Promise<EncodedPreview>
   await new Promise<void>((r) => {
     video.onseeked = () => r();
   });
-  const maxDim = 720;
-  const scale = Math.min(1, maxDim / Math.max(video.videoWidth || 1, video.videoHeight || 1));
-  const w = Math.max(1, Math.round((video.videoWidth || 1) * scale));
-  const h = Math.max(1, Math.round((video.videoHeight || 1) * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('canvas_unavailable');
-  ctx.drawImage(video, 0, 0, w, h);
-  URL.revokeObjectURL(video.src);
-  let quality = 0.85;
-  let blob = await canvasToJpegBlob(canvas, quality);
-  while (blob.size > FEED_PREVIEW_POSTER_MAX_BYTES && quality > 0.4) {
-    quality -= 0.1;
-    blob = await canvasToJpegBlob(canvas, quality);
+  try {
+    return await encodePosterFromCanvas(
+      video,
+      video.videoWidth || 1,
+      video.videoHeight || 1,
+      Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : undefined
+    );
+  } finally {
+    URL.revokeObjectURL(video.src);
   }
-  if (blob.size > FEED_PREVIEW_POSTER_MAX_BYTES) {
-    throw new Error('poster_exceeds_max_bytes');
-  }
-  return {
-    variant: 'poster',
-    blob,
-    contentType: 'image/jpeg',
-    byteSize: blob.size,
-    width: w,
-    height: h,
-    durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : undefined,
-  };
 }
 
 /**
@@ -147,8 +165,7 @@ export async function encodeVideoVariant(
 ): Promise<EncodedPreview> {
   const maxBytes = maxBytesForVariant(variant);
   const soft = softBytesForVariant(variant);
-  const maxHeight =
-    variant === 'hd' ? Math.min(tier.maxHeight, 1080) : Math.min(tier.maxHeight, FEED_PREVIEW_SD_MAX_HEIGHT);
+  const maxHeight = maxHeightForVariant(variant, tier);
   const video = await loadVideo(file);
   await new Promise<void>((r) => {
     if (video.readyState >= 1) r();
@@ -195,32 +212,35 @@ export async function encodeVideoVariant(
     throw new Error('mediarecorder_unavailable_and_source_too_large');
   }
 
-  const scale = Math.min(1, maxHeight / Math.max(video.videoHeight || maxHeight, 1));
-  const w = Math.max(2, Math.round((video.videoWidth || 640) * scale) & ~1);
-  const h = Math.max(2, Math.round((video.videoHeight || 360) * scale) & ~1);
+  const srcH = video.videoHeight || maxHeight;
+  const target =
+    srcH <= maxHeight
+      ? {
+          w: Math.max(2, (video.videoWidth || 640) & ~1),
+          h: Math.max(2, srcH & ~1),
+        }
+      : feedPreviewTargetSize(variant, tier, video.videoWidth || 16, video.videoHeight || 9);
+  const { w, h } = target;
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas_unavailable');
 
-  const targetBits = Math.floor((soft * 8) / Math.max(durationSec, 0.5));
-  let videoBitsPerSecond = Math.min(Math.max(targetBits, 250_000), variant === 'hd' ? 2_500_000 : 1_200_000);
+  const { mimeType, contentType } = pickFeedRecorderMime();
+  let videoBitsPerSecond = feedPreviewBitrate(variant, durationSec);
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < FEED_PREVIEW_ENCODE_ATTEMPTS; attempt++) {
     const stream = canvas.captureStream(30);
-    const recorder = new MediaRecorder(stream, {
-      mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-        ? 'video/webm;codecs=vp9'
-        : 'video/webm',
-      videoBitsPerSecond,
-    });
+    const recorder = mimeType
+      ? new MediaRecorder(stream, { mimeType, videoBitsPerSecond })
+      : new MediaRecorder(stream, { videoBitsPerSecond });
     const chunks: BlobPart[] = [];
     recorder.ondataavailable = (e) => {
       if (e.data.size) chunks.push(e.data);
     };
     const done = new Promise<Blob>((resolve, reject) => {
-      recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType }));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || contentType }));
       recorder.onerror = () => reject(new Error('mediarecorder_failed'));
     });
     recorder.start(200);
@@ -244,14 +264,14 @@ export async function encodeVideoVariant(
       return {
         variant,
         blob,
-        contentType: blob.type || 'video/webm',
+        contentType: blob.type || contentType,
         byteSize: blob.size,
         width: w,
         height: h,
         durationMs,
       };
     }
-    videoBitsPerSecond = Math.floor(videoBitsPerSecond * 0.65);
+    videoBitsPerSecond = Math.floor(videoBitsPerSecond * FEED_PREVIEW_BITRATE_BACKOFF);
     video.currentTime = 0;
   }
 
@@ -276,17 +296,13 @@ export async function encodeFeedPreviewsForPublish(
     let hd: EncodedPreview | undefined;
     if (tier.allowHd) {
       try {
-        hd = await encodeVideoVariant(file, 'hd', {
-          ...tier,
-          maxHeight: Math.max(tier.maxHeight, FEED_PREVIEW_HD_MAX_HEIGHT_DEFAULT),
-        });
+        hd = await encodeVideoVariant(file, 'hd', tier);
       } catch {
         hd = undefined;
       }
     }
     return { poster, sd, hd };
   }
-  // Non-AV: poster from empty — reject for public video path
   throw new Error('unsupported_media_for_feed_preview');
 }
 

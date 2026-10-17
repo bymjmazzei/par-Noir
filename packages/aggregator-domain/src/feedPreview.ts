@@ -50,14 +50,13 @@ export interface FeedPreviewRefs {
 export const FEED_PREVIEW_POSTER_MAX_BYTES = 204_800;
 export const FEED_PREVIEW_SD_SOFT_BYTES = 2_621_440; // 2.5 MiB
 export const FEED_PREVIEW_SD_MAX_BYTES = 4_194_304; // 4 MiB
-export const FEED_PREVIEW_HD_SOFT_BYTES = 6_291_456; // 6 MiB
-export const FEED_PREVIEW_HD_MAX_BYTES = 10_485_760; // 10 MiB
+export const FEED_PREVIEW_HD_SOFT_BYTES = 33_554_432; // 32 MiB
+export const FEED_PREVIEW_HD_MAX_BYTES = 41_943_040; // 40 MiB (~60s at ~5 Mbps)
+export const FEED_PREVIEW_POSTER_MAX_DIM = 720;
 export const FEED_PREVIEW_SD_MAX_HEIGHT = 720;
-export const FEED_PREVIEW_HD_MAX_HEIGHT_DEFAULT = 720;
-export const FEED_PREVIEW_HD_MAX_HEIGHT_INDIE = 1080;
+export const FEED_PREVIEW_HD_MAX_HEIGHT = 1080;
 
 export const FEED_FREE_DAILY_VIEW_STARTS = 80;
-export const FEED_FREE_DAILY_MB = 250;
 export const FEED_R2_SD_HD_IDLE_EVICT_DAYS = 30;
 
 export type PublishTierId =
@@ -89,15 +88,15 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     id: 'free',
     retailUsd: 0,
     maxDurationSec: 60,
-    maxHeight: 720,
+    maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
     uploadBytesPerMonth: Math.floor(0.5 * 1024 * 1024 * 1024),
-    allowHd: false,
+    allowHd: true,
   },
   {
     id: 'floor',
     retailUsd: 9,
     maxDurationSec: 60,
-    maxHeight: 720,
+    maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
     uploadBytesPerMonth: 1 * 1024 * 1024 * 1024,
     allowHd: true,
   },
@@ -105,7 +104,7 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     id: 'average_creator',
     retailUsd: 20,
     maxDurationSec: 3 * 60,
-    maxHeight: 720,
+    maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
     uploadBytesPerMonth: 5 * 1024 * 1024 * 1024,
     allowHd: true,
   },
@@ -113,7 +112,7 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     id: 'creator_plus',
     retailUsd: 39,
     maxDurationSec: 10 * 60,
-    maxHeight: 720,
+    maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
     uploadBytesPerMonth: 50 * 1024 * 1024 * 1024,
     allowHd: true,
   },
@@ -121,7 +120,7 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     id: 'heavy',
     retailUsd: 55,
     maxDurationSec: 10 * 60,
-    maxHeight: 720,
+    maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
     uploadBytesPerMonth: 100 * 1024 * 1024 * 1024,
     allowHd: true,
   },
@@ -129,7 +128,7 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     id: 'indie',
     retailUsd: 149,
     maxDurationSec: 30 * 60,
-    maxHeight: 1080,
+    maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
     uploadBytesPerMonth: 200 * 1024 * 1024 * 1024,
     allowHd: true,
   },
@@ -137,7 +136,7 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     id: 'indie_plus',
     retailUsd: 219,
     maxDurationSec: 30 * 60,
-    maxHeight: 1080,
+    maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
     uploadBytesPerMonth: 500 * 1024 * 1024 * 1024,
     allowHd: true,
   },
@@ -145,7 +144,7 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     id: 'scale',
     retailUsd: 599,
     maxDurationSec: 30 * 60,
-    maxHeight: 1080,
+    maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
     uploadBytesPerMonth: 2000 * 1024 * 1024 * 1024,
     allowHd: true,
   },
@@ -168,6 +167,39 @@ export function softBytesForVariant(variant: FeedPreviewVariant): number {
   if (variant === 'poster') return FEED_PREVIEW_POSTER_MAX_BYTES;
   if (variant === 'hd') return FEED_PREVIEW_HD_SOFT_BYTES;
   return FEED_PREVIEW_SD_SOFT_BYTES;
+}
+
+/** Max encoded height for a video variant on a tier. */
+export function maxHeightForVariant(variant: 'sd' | 'hd', tier: PublishTierNotch): number {
+  if (variant === 'sd') return Math.min(tier.maxHeight, FEED_PREVIEW_SD_MAX_HEIGHT);
+  return Math.min(tier.maxHeight, FEED_PREVIEW_HD_MAX_HEIGHT);
+}
+
+/**
+ * Even pixel size for a video variant at the given aspect, height capped per variant/tier.
+ * Never upscales past the cap; source aspect is preserved.
+ */
+export function feedPreviewTargetSize(
+  variant: 'sd' | 'hd',
+  tier: PublishTierNotch,
+  aspectW: number,
+  aspectH: number
+): { w: number; h: number } {
+  const aw = aspectW > 0 ? aspectW : 9;
+  const ah = aspectH > 0 ? aspectH : 16;
+  const h = maxHeightForVariant(variant, tier) & ~1;
+  const w = Math.max(2, Math.round((h * aw) / ah / 2) * 2);
+  return { w, h: Math.max(2, h) };
+}
+
+const BITRATE_FLOOR: Record<'sd' | 'hd', number> = { sd: 250_000, hd: 1_000_000 };
+const BITRATE_CEIL: Record<'sd' | 'hd', number> = { sd: 1_200_000, hd: 6_000_000 };
+
+/** Target video bits/s so a clip of `durationSec` lands under ~90% of the variant hard cap. */
+export function feedPreviewBitrate(variant: 'sd' | 'hd', durationSec: number): number {
+  const budgetBits = maxBytesForVariant(variant) * 8 * 0.9;
+  const target = Math.floor(budgetBits / Math.max(durationSec, 0.5));
+  return Math.min(Math.max(target, BITRATE_FLOOR[variant]), BITRATE_CEIL[variant]);
 }
 
 export function isFeedPreviewPlaceholder(value: unknown): value is FeedPreviewPlaceholder {

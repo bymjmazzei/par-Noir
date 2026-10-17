@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   FeedMediaNetworkError,
+  feedPlaybackVariant,
   isAllowedFeedMediaSignedUrl,
   isNetworkFeedMediaError,
 } from './feedPreviewPlayback';
+
+describe('feedPlaybackVariant', () => {
+  const sd = { contentType: 'video/mp4' };
+  const hd = { contentType: 'video/mp4' };
+
+  it('prefers hd when the post has an hd ref', () => {
+    expect(feedPlaybackVariant({ feedPreviewSd: sd, feedPreviewHd: hd }, 'hd')).toBe('hd');
+  });
+
+  it('falls back to sd, then poster, when hd is missing', () => {
+    expect(feedPlaybackVariant({ feedPreviewSd: sd }, 'hd')).toBe('sd');
+    expect(feedPlaybackVariant({ feedPoster: {} }, 'hd')).toBe('poster');
+  });
+});
 
 describe('isAllowedFeedMediaSignedUrl', () => {
   it('allows R2 and feed-media hosts', () => {

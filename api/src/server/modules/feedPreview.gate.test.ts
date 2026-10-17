@@ -37,7 +37,7 @@ describe('feed preview publish requirements', () => {
       gbUsedBytes: plan.uploadBytesPerMonth,
     });
     expect(d.maxDurationSec).toBe(60);
-    expect(d.allowHd).toBe(false);
+    expect(d.allowHd).toBe(true);
   });
 });
 

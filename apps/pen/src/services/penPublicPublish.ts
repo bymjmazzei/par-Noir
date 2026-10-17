@@ -5,16 +5,18 @@
 
 import {
   FEED_PREVIEW_POSTER_MAX_BYTES,
-  FEED_PREVIEW_SD_MAX_BYTES,
   materializePublicShare,
   r2ObjectKey,
   sealPublicShareFromBytes,
-  type FeedPreviewObjectRef
+  validateFeedPreviewByteSize,
+  type FeedPreviewObjectRef,
+  type FeedPreviewVariant
 } from '@par-noir/aggregator-domain';
 import { getCloudAccessTokenFromSession, shareDeviceDriveFile } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { ownerFetch } from './penOwnerFetch';
 import { loadPenSession } from './penSession';
+import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
 
 export type CloudRequest = (
   method: string,
@@ -60,23 +62,49 @@ async function uploadDriveFile(
   return id;
 }
 
+/** One CDN preview variant ready to upload (poster / sd / hd). */
+export type FeedPreviewUpload = {
+  blob: Blob;
+  contentType: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+};
+
+export type FeedPreviewUploads = {
+  poster?: FeedPreviewUpload;
+  sd?: FeedPreviewUpload;
+  hd?: FeedPreviewUpload;
+};
+
+/** Poster-only previews for still / note rows. */
+export function posterPreview(
+  blob: Blob | undefined,
+  contentType = 'image/jpeg'
+): FeedPreviewUploads | undefined {
+  return blob && blob.size > 0 ? { poster: { blob, contentType } } : undefined;
+}
+
 async function uploadFeedVariant(params: {
   request: CloudRequest;
   fileId: string;
-  variant: 'poster' | 'sd';
-  blob: Blob;
-  contentType: string;
+  variant: FeedPreviewVariant;
+  preview: FeedPreviewUpload;
   parentFolderId: string;
 }): Promise<FeedPreviewObjectRef> {
-  const byteSize = params.blob.size;
-  const uploadRes = await params.request('POST', '/api/aggregator/feed-media/owner-upload', {
+  const { blob, contentType } = params.preview;
+  const byteSize = blob.size;
+  const query = new URLSearchParams({
     fileId: params.fileId,
     variant: params.variant,
-    contentType: params.contentType,
-    contentLength: byteSize,
-    planId: 'floor',
-    dataBase64: await blobToBase64(params.blob)
+    contentType,
+    planId: PEN_PUBLISH_PLAN_ID
   });
+  const uploadRes = await params.request(
+    'POST',
+    `/api/aggregator/feed-media/owner-upload?${query.toString()}`,
+    blob.slice(0, byteSize, 'application/octet-stream')
+  );
   if (!uploadRes.ok) {
     const err = (await uploadRes.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || `r2_owner_upload_failed_${uploadRes.status}`);
@@ -87,8 +115,8 @@ async function uploadFeedVariant(params: {
   const ownerId = await uploadDriveFile(
     params.request,
     `feed-preview-${params.fileId}-${params.variant}`,
-    params.contentType,
-    await blobToBase64(params.blob),
+    contentType,
+    await blobToBase64(blob),
     params.parentFolderId
   );
   const pn = loadPenSession()?.pnIdentifier;
@@ -112,8 +140,11 @@ async function uploadFeedVariant(params: {
     ownerObjectId: ensured.publicContentRef.objectId,
     ownerBackend: ensured.publicContentRef.backend,
     ownerPublicUrl: ensured.publicContentRef.publicUrl,
-    contentType: params.contentType,
+    contentType,
     byteSize,
+    ...(params.preview.width ? { width: params.preview.width } : {}),
+    ...(params.preview.height ? { height: params.preview.height } : {}),
+    ...(params.preview.durationMs ? { durationMs: params.preview.durationMs } : {}),
     r2Warm: true,
     lastPlayedAt: new Date().toISOString()
   };
@@ -132,11 +163,8 @@ export async function publishPublicCloudFile(params: {
   fileName: string;
   title: string;
   metadata: Record<string, unknown>;
-  poster?: Blob;
-  posterContentType?: string;
-  /** When set, a public video row also gets an SD preview (API requires it). */
-  videoForSd?: Blob;
-  videoContentType?: string;
+  /** CDN preview variants. Public video rows need poster + sd (API requires it); hd when available. */
+  previews?: FeedPreviewUploads;
   /** par-noir-pen/{docId}/public/ */
   parentFolderId: string;
   indexingPermissions?: {
@@ -172,34 +200,25 @@ export async function publishPublicCloudFile(params: {
   });
   const fileId = materialized.envelopeObjectId;
 
+  const previews = params.previews || {};
+  const upload = (variant: FeedPreviewVariant, preview: FeedPreviewUpload) =>
+    uploadFeedVariant({ request, fileId, variant, preview, parentFolderId: params.parentFolderId });
+
   let feedPoster: FeedPreviewObjectRef | undefined;
-  const posterType = params.posterContentType || 'image/jpeg';
-  if (params.poster && params.poster.size > 0 && params.poster.size <= FEED_PREVIEW_POSTER_MAX_BYTES) {
-    feedPoster = await uploadFeedVariant({
-      request,
-      fileId,
-      variant: 'poster',
-      blob: params.poster,
-      contentType: posterType,
-      parentFolderId: params.parentFolderId
-    });
+  const poster = previews.poster;
+  if (poster && poster.blob.size > 0 && poster.blob.size <= FEED_PREVIEW_POSTER_MAX_BYTES) {
+    feedPoster = await upload('poster', poster);
   }
 
-  let feedPreviewSd: FeedPreviewObjectRef | undefined;
-  if (params.videoForSd && params.videoForSd.size > 0) {
-    const videoFits = params.videoForSd.size <= FEED_PREVIEW_SD_MAX_BYTES;
-    const sdBlob = videoFits ? params.videoForSd : params.poster;
-    const sdType = videoFits ? params.videoContentType || 'video/webm' : posterType;
-    if (sdBlob && sdBlob.size > 0 && sdBlob.size <= FEED_PREVIEW_SD_MAX_BYTES) {
-      feedPreviewSd = await uploadFeedVariant({
-        request,
-        fileId,
-        variant: 'sd',
-        blob: sdBlob,
-        contentType: sdType,
-        parentFolderId: params.parentFolderId
-      });
-    }
+  const videoRefs: { feedPreviewSd?: FeedPreviewObjectRef; feedPreviewHd?: FeedPreviewObjectRef } = {};
+  for (const variant of ['sd', 'hd'] as const) {
+    const preview = previews[variant];
+    if (!preview || preview.blob.size === 0) continue;
+    const sizeCheck = validateFeedPreviewByteSize(variant, preview.blob.size);
+    if (!sizeCheck.ok) throw new Error(sizeCheck.error);
+    const ref = await upload(variant, preview);
+    if (variant === 'sd') videoRefs.feedPreviewSd = ref;
+    else videoRefs.feedPreviewHd = ref;
   }
 
   const put = await request('PUT', `/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`, {
@@ -210,7 +229,7 @@ export async function publishPublicCloudFile(params: {
     publicToken: materialized.publicToken,
     publicContentRef: materialized.publicContentRef,
     ...(feedPoster ? { feedPoster } : {}),
-    ...(feedPreviewSd ? { feedPreviewSd } : {}),
+    ...videoRefs,
     ...(params.indexingPermissions ? { indexingPermissions: params.indexingPermissions } : {}),
     uploadDate: new Date().toISOString()
   });

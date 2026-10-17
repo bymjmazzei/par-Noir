@@ -240,22 +240,51 @@ function measureEl(el: HTMLElement): { w: number; h: number } {
   };
 }
 
+export type RasterSizeOpts = {
+  maxEdge?: number;
+  /** Exact output pixels; may upscale past the on-screen size (export at CDN resolution). */
+  targetWidth?: number;
+  targetHeight?: number;
+};
+
+/** Output canvas size and per-axis scale from on-screen CSS px. */
+export function rasterOutputSize(
+  w: number,
+  h: number,
+  opts?: RasterSizeOpts
+): { cw: number; ch: number; sx: number; sy: number } {
+  if (opts?.targetWidth && opts?.targetHeight) {
+    const cw = Math.max(1, Math.round(opts.targetWidth));
+    const ch = Math.max(1, Math.round(opts.targetHeight));
+    return { cw, ch, sx: cw / w, sy: ch / h };
+  }
+  const maxEdge = opts?.maxEdge ?? DEFAULT_MAX_EDGE;
+  const scale = Math.min(1, maxEdge / Math.max(w, h));
+  return {
+    cw: Math.max(1, Math.round(w * scale)),
+    ch: Math.max(1, Math.round(h * scale)),
+    sx: scale,
+    sy: scale
+  };
+}
+
 /**
  * Capture an HTMLElement (page preview) to a JPEG blob, including text.
  * Inlines live computed styles so TipTap prose survives without page CSS.
  */
 export async function rasterizeElementToPosterBlob(
   el: HTMLElement,
-  opts?: { maxEdge?: number; quality?: number; punchVideos?: boolean; mime?: 'image/jpeg' | 'image/png' }
+  opts?: RasterSizeOpts & {
+    quality?: number;
+    punchVideos?: boolean;
+    mime?: 'image/jpeg' | 'image/png';
+  }
 ): Promise<Blob> {
-  const maxEdge = opts?.maxEdge ?? DEFAULT_MAX_EDGE;
   const quality = opts?.quality ?? JPEG_QUALITY;
   const mime = opts?.mime ?? 'image/jpeg';
   const punchVideos = opts?.punchVideos !== false;
   const { w, h } = measureEl(el);
-  const scale = Math.min(1, maxEdge / Math.max(w, h));
-  const cw = Math.max(1, Math.round(w * scale));
-  const ch = Math.max(1, Math.round(h * scale));
+  const { cw, ch, sx, sy } = rasterOutputSize(w, h, opts);
 
   const canvas = document.createElement('canvas');
   canvas.width = cw;
@@ -280,7 +309,7 @@ export async function rasterizeElementToPosterBlob(
     const serialized = new XMLSerializer().serializeToString(clone);
     svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}">
       <foreignObject width="100%" height="100%" x="0" y="0">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;transform:scale(${scale});transform-origin:0 0;background:#ffffff;font-family:system-ui,-apple-system,sans-serif;color:#111111;">
+        <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;transform:scale(${sx},${sy});transform-origin:0 0;background:#ffffff;font-family:system-ui,-apple-system,sans-serif;color:#111111;">
           ${serialized}
         </div>
       </foreignObject>
@@ -323,14 +352,12 @@ export async function rasterizeElementToPosterBlob(
  */
 export async function rasterizeElementSafeStill(
   el: HTMLElement,
-  opts?: { maxEdge?: number; quality?: number }
+  opts?: RasterSizeOpts & { quality?: number }
 ): Promise<Blob> {
-  const maxEdge = opts?.maxEdge ?? DEFAULT_MAX_EDGE;
   const quality = opts?.quality ?? JPEG_QUALITY;
   const { w, h } = measureEl(el);
-  const scale = Math.min(1, maxEdge / Math.max(w, h));
-  const cw = Math.max(1, Math.round(w * scale));
-  const ch = Math.max(1, Math.round(h * scale));
+  const { cw, ch, sx, sy } = rasterOutputSize(w, h, opts);
+  const scale = Math.min(sx, sy);
 
   const canvas = document.createElement('canvas');
   canvas.width = cw;
@@ -355,10 +382,10 @@ export async function rasterizeElementSafeStill(
       const bmp = await createImageBitmap(img);
       ctx.drawImage(
         bmp,
-        (r.left - rootRect.left) * scale,
-        (r.top - rootRect.top) * scale,
-        r.width * scale,
-        r.height * scale
+        (r.left - rootRect.left) * sx,
+        (r.top - rootRect.top) * sy,
+        r.width * sx,
+        r.height * sy
       );
       bmp.close?.();
     } catch {
@@ -390,9 +417,9 @@ export async function rasterizeElementSafeStill(
             const r = rects[0];
             ctx.fillText(
               text.trim(),
-              (r.left - rootRect.left) * scale,
-              (r.top - rootRect.top) * scale,
-              Math.max(4, r.width * scale)
+              (r.left - rootRect.left) * sx,
+              (r.top - rootRect.top) * sy,
+              Math.max(4, r.width * sx)
             );
           } else {
             const words = text.trim().split(' ');
@@ -402,16 +429,16 @@ export async function rasterizeElementSafeStill(
               let line = '';
               while (wi < words.length) {
                 const trial = line ? `${line} ${words[wi]}` : words[wi]!;
-                if (ctx.measureText(trial).width > r.width * scale && line) break;
+                if (ctx.measureText(trial).width > r.width * sx && line) break;
                 line = trial;
                 wi += 1;
               }
               if (line) {
                 ctx.fillText(
                   line,
-                  (r.left - rootRect.left) * scale,
-                  (r.top - rootRect.top) * scale,
-                  Math.max(4, r.width * scale)
+                  (r.left - rootRect.left) * sx,
+                  (r.top - rootRect.top) * sy,
+                  Math.max(4, r.width * sx)
                 );
               }
             }

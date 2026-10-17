@@ -1009,20 +1009,21 @@ export function FullScreenFeed({
       const work = (async () => {
         try {
           if (isVideo) {
-            const cachedSd = feedMediaSessionCache.getObjectUrl(fileId, 'sd');
-            if (!videoBlobs.has(fileId) && !cachedSd) {
-              const url = await resolvePublicMediaObjectUrl(fileId, 'sd');
+            const videoVariant = feedPlaybackVariant(file as FeedPlaybackMetadata, 'hd');
+            const cachedVideo = feedMediaSessionCache.getObjectUrl(fileId, videoVariant);
+            if (!videoBlobs.has(fileId) && !cachedVideo) {
+              const url = await resolvePublicMediaObjectUrl(fileId, videoVariant);
               setVideoBlobs((prev) => {
                 if (prev.has(fileId)) return prev;
                 const newMap = new Map(prev);
                 newMap.set(fileId, url);
                 return newMap;
               });
-            } else if (cachedSd && !videoBlobs.has(fileId)) {
+            } else if (cachedVideo && !videoBlobs.has(fileId)) {
               setVideoBlobs((prev) => {
                 if (prev.has(fileId)) return prev;
                 const newMap = new Map(prev);
-                newMap.set(fileId, cachedSd);
+                newMap.set(fileId, cachedVideo);
                 return newMap;
               });
             }
@@ -1166,11 +1167,11 @@ export function FullScreenFeed({
             return newMap;
           });
           if (feedMetadataIsVideo(playbackMeta)) {
-            const sdUrl = await resolvePublicFeedObjectUrl(cfId, playbackMeta, { variant: 'sd' });
+            const videoUrl = await resolvePublicFeedObjectUrl(cfId, playbackMeta, { variant: 'hd' });
             setVideoBlobs((prev) => {
               if (prev.has(cfId)) return prev;
               const newMap = new Map(prev);
-              newMap.set(cfId, sdUrl);
+              newMap.set(cfId, videoUrl);
               return newMap;
             });
           }

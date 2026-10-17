@@ -1,8 +1,10 @@
 /**
  * Feed preview media: presign upload, signed GET / pull-through, plan + verification status.
  */
-import { Application, Request, Response } from 'express';
+import express, { Application, Request, Response } from 'express';
 import {
+  FEED_PREVIEW_HD_MAX_BYTES,
+  FEED_PREVIEW_SD_MAX_BYTES,
   isFeedPreviewObjectRef,
   r2ObjectKey,
   type FeedPreviewObjectRef,
@@ -29,6 +31,9 @@ import { fetchPublicBytesTimed, PublicBlobAccessError } from './publicBlobAccess
 import { redactFeedPreviewForClient } from './feedPreviewClientRedact';
 
 export { redactFeedPreviewForClient };
+
+/** Largest preview variant plus headroom; JSON routes stay at the global 10mb limit. */
+const OWNER_UPLOAD_BODY_LIMIT = FEED_PREVIEW_HD_MAX_BYTES + 4 * 1024 * 1024;
 
 function variantFromParam(raw: string): FeedPreviewVariant | null {
   if (raw === 'poster' || raw === 'sd' || raw === 'hd') return raw;
@@ -110,7 +115,6 @@ type SignPublicMediaErr = {
   status: number;
   error: string;
   startsUsed?: number;
-  mbUsed?: number;
 };
 
 /**
@@ -132,9 +136,11 @@ async function signPublicMediaForFile(
     return { ok: false, fileId, status: 404, error: 'not_public' };
   }
 
+  let effectiveVariant = variant;
   let ref = refForVariant(meta, variant);
   if (!ref && variant === 'hd') {
     ref = refForVariant(meta, 'sd');
+    effectiveVariant = 'sd';
   }
   if (!ref) {
     return { ok: false, fileId, status: 404, error: 'preview_missing' };
@@ -154,24 +160,10 @@ async function signPublicMediaForFile(
     viewerVerified = await EngagementService.isIdentityVerifiedForMonetization(viewerPn);
   }
 
-  let effectiveVariant = variant;
-  if (variant === 'hd' && !viewerVerified) {
-    const sd = refForVariant(meta, 'sd');
-    if (sd) {
-      ref = sd;
-      effectiveVariant = 'sd';
-    } else {
-      return { ok: false, fileId, status: 403, error: 'hd_requires_verification' };
-    }
-  }
-
   if (!viewerVerified) {
     const anon =
       typeof req.headers['x-pn-anon-id'] === 'string' ? req.headers['x-pn-anon-id'] : null;
-    const gate = await checkAndConsumeFreeView(
-      viewerKeyFromRequest(viewerPn, anon),
-      ref.byteSize
-    );
+    const gate = await checkAndConsumeFreeView(viewerKeyFromRequest(viewerPn, anon));
     if (!gate.ok) {
       return {
         ok: false,
@@ -179,7 +171,6 @@ async function signPublicMediaForFile(
         status: 429,
         error: gate.reason,
         startsUsed: gate.startsUsed,
-        mbUsed: gate.mbUsed,
       };
     }
   }
@@ -193,11 +184,7 @@ async function signPublicMediaForFile(
       return { ok: false, fileId, status: 404, error: 'poster_cold_unexpected' };
     }
     try {
-      ref = await pullThroughToR2(
-        fileId,
-        effectiveVariant === 'hd' && ref === refForVariant(meta, 'hd') ? 'hd' : 'sd',
-        ref
-      );
+      ref = await pullThroughToR2(fileId, effectiveVariant, ref);
     } catch (err: unknown) {
       if (err instanceof PublicBlobAccessError) {
         if (err.code === 'NOT_FOUND') {
@@ -325,7 +312,7 @@ export function registerFeedMediaRoutes(app: Application): void {
       }
       if (plan.uploadBytesUsed + contentLength > plan.uploadBytesLimit && plan.planId !== 'free') {
         // Soft degrade already reflected in allowHd/duration; still allow free-sized uploads
-        if (contentLength > 4_194_304) {
+        if (contentLength > FEED_PREVIEW_SD_MAX_BYTES) {
           return res.status(403).json({ error: 'monthly_upload_gb_exceeded', plan });
         }
       }
@@ -346,8 +333,14 @@ export function registerFeedMediaRoutes(app: Application): void {
     }
   });
 
-  /** Browser-safe R2 warm upload (avoids cross-origin PUT to *.r2.cloudflarestorage.com). */
-  app.post('/api/aggregator/feed-media/owner-upload', async (req: Request, res: Response) => {
+  /**
+   * Browser-safe R2 warm upload (avoids cross-origin PUT to *.r2.cloudflarestorage.com).
+   * Raw bytes in the body; fileId / variant / contentType / planId in the query string.
+   */
+  app.post(
+    '/api/aggregator/feed-media/owner-upload',
+    express.raw({ type: 'application/octet-stream', limit: OWNER_UPLOAD_BODY_LIMIT }),
+    async (req: Request, res: Response) => {
     try {
       if (!getFeedR2()) {
         return res.status(503).json({ error: 'feed_r2_not_configured' });
@@ -358,25 +351,14 @@ export function registerFeedMediaRoutes(app: Application): void {
         return res.status(401).json({ error: 'unauthorized' });
       }
 
-      const fileId = String(req.body?.fileId || '');
-      const variant = variantFromParam(String(req.body?.variant || ''));
-      const contentType = String(req.body?.contentType || 'application/octet-stream');
-      const contentLength = Number(req.body?.contentLength || 0);
-      const planId = typeof req.body?.planId === 'string' ? req.body.planId : 'floor';
-      const dataBase64 = req.body?.dataBase64;
+      const fileId = String(req.query.fileId || '');
+      const variant = variantFromParam(String(req.query.variant || ''));
+      const contentType = String(req.query.contentType || 'application/octet-stream');
+      const planId = typeof req.query.planId === 'string' ? req.query.planId : 'floor';
+      const buffer = Buffer.isBuffer(req.body) ? req.body : null;
 
-      if (!fileId || !variant || typeof dataBase64 !== 'string' || !dataBase64.length) {
+      if (!fileId || !variant || !buffer || !buffer.length) {
         return res.status(400).json({ error: 'fileId_variant_and_data_required' });
-      }
-
-      let buffer: Buffer;
-      try {
-        buffer = Buffer.from(dataBase64, 'base64');
-      } catch {
-        return res.status(400).json({ error: 'invalid_base64' });
-      }
-      if (contentLength > 0 && buffer.length !== contentLength) {
-        return res.status(400).json({ error: 'content_length_mismatch' });
       }
 
       const sizeCheck = validateFeedPreviewByteSize(variant, buffer.length);
@@ -389,7 +371,7 @@ export function registerFeedMediaRoutes(app: Application): void {
         return res.status(403).json({ error: 'hd_not_allowed_on_plan', plan });
       }
       if (plan.uploadBytesUsed + buffer.length > plan.uploadBytesLimit && plan.planId !== 'free') {
-        if (buffer.length > 4_194_304) {
+        if (buffer.length > FEED_PREVIEW_SD_MAX_BYTES) {
           return res.status(403).json({ error: 'monthly_upload_gb_exceeded', plan });
         }
       }
@@ -407,7 +389,8 @@ export function registerFeedMediaRoutes(app: Application): void {
       safeLogger.warn('[feed-media/owner-upload] failed', { message: msg });
       return res.status(400).json({ error: msg });
     }
-  });
+    }
+  );
 
   app.post('/api/aggregator/feed-media/confirm-upload', async (req: Request, res: Response) => {
     try {
@@ -481,7 +464,6 @@ export function registerFeedMediaRoutes(app: Application): void {
       if (!signed.ok) {
         const body: Record<string, unknown> = { error: signed.error };
         if (signed.startsUsed !== undefined) body.startsUsed = signed.startsUsed;
-        if (signed.mbUsed !== undefined) body.mbUsed = signed.mbUsed;
         return res.status(signed.status).json(body);
       }
 

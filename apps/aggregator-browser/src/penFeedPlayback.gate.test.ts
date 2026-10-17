@@ -19,6 +19,13 @@ describe('pen feed playback gate', () => {
     expect(src).toMatch(/handleFeedPenAction/);
   });
 
+  it('FullScreenFeed requests the hd variant first for video', () => {
+    const src = readFileSync(resolve(root, 'components/FullScreenFeed.tsx'), 'utf8');
+    expect(src).toMatch(/feedPlaybackVariant\(file as FeedPlaybackMetadata, 'hd'\)/);
+    expect(src).toMatch(/resolvePublicFeedObjectUrl\(cfId, playbackMeta, \{ variant: 'hd' \}\)/);
+    expect(src).not.toMatch(/resolvePublicMediaObjectUrl\(fileId, 'sd'\)/);
+  });
+
   it('PenFeedTilePlayer centers a feed-layout tile in a size container', () => {
     const src = readFileSync(resolve(root, 'components/PenFeedTilePlayer.tsx'), 'utf8');
     expect(src).toMatch(/flex h-full w-full items-center justify-center/);

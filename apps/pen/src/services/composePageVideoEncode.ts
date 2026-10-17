@@ -1,46 +1,43 @@
 /**
  * On-device compose encode: record the Pen page surface (static backdrop +
- * live video layers) to a video blob + JPEG poster. No server ffmpeg.
+ * live video layers) into the CDN feed preview variants (HD + SD + poster).
+ * Output size comes from the publish tier, never from the on-screen preview size.
+ * No server ffmpeg.
  *
  * Only blob:/data: video masters are drawn — MediaStream mirrors and
  * cross-origin http frames taint canvas.toBlob / captureStream exports.
  */
 
+import {
+  FEED_PREVIEW_BITRATE_BACKOFF,
+  FEED_PREVIEW_ENCODE_ATTEMPTS,
+  encodePosterFromCanvas,
+  feedPreviewBitrate,
+  feedPreviewTargetSize,
+  getPublishTier,
+  maxBytesForVariant,
+  pickFeedRecorderMime,
+  type EncodedPreview,
+  type PublishTierNotch
+} from '@par-noir/aggregator-domain';
 import type { PenSectionContent } from '@par-noir/pen-protocol';
 import { rasterizeElementToPosterBlob, rasterizeElementSafeStill } from './rasterizePagePoster';
 import { playbackMode } from './playbackMode';
-
-export const COMPOSE_VIDEO_MAX_DURATION_SEC = 60;
-export const COMPOSE_VIDEO_MAX_EDGE = 1080;
+import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
 
 export type ComposePageVideoResult = {
-  videoBlob: Blob;
-  videoContentType: string;
-  posterBlob: Blob;
-  width: number;
-  height: number;
-  durationMs: number;
+  poster: EncodedPreview;
+  sd: EncodedPreview;
+  hd?: EncodedPreview;
 };
+
+/** Largest composed variant — the canonical file (Drive envelope, download, gallery). */
+export function composedMaster(result: ComposePageVideoResult): EncodedPreview {
+  return result.hd ?? result.sd;
+}
 
 export function isUntaintedMediaUrl(src: string): boolean {
   return src.startsWith('blob:') || src.startsWith('data:');
-}
-
-function pickRecorderMime(): { mimeType: string; contentType: string } {
-  const candidates = [
-    'video/mp4;codecs=avc1',
-    'video/mp4',
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm'
-  ];
-  for (const mimeType of candidates) {
-    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) {
-      const contentType = mimeType.startsWith('video/mp4') ? 'video/mp4' : 'video/webm';
-      return { mimeType, contentType };
-    }
-  }
-  return { mimeType: '', contentType: 'video/webm' };
 }
 
 function waitVideoReady(video: HTMLVideoElement, timeoutMs = 15_000): Promise<void> {
@@ -137,9 +134,24 @@ export function rootHasUntaintedPlayableVideo(root: HTMLElement): boolean {
 }
 
 /**
- * Flatten page chrome + TipTap text with transparent video holes, then encode
- * live video frames on top. Must include prose — safe-still-images-only left
- * gallery tiles white beside the video.
+ * Output pixel sizes for a compose of `root`: master (HD when the tier allows it,
+ * else SD) and SD, both at the root's aspect. On-screen size only sets the aspect.
+ */
+export function composeOutputSizes(
+  rootW: number,
+  rootH: number,
+  tier: PublishTierNotch
+): { master: { w: number; h: number }; sd: { w: number; h: number }; hdOn: boolean } {
+  const hdOn = tier.allowHd;
+  const sd = feedPreviewTargetSize('sd', tier, rootW, rootH);
+  const master = hdOn ? feedPreviewTargetSize('hd', tier, rootW, rootH) : sd;
+  return { master, sd, hdOn };
+}
+
+/**
+ * Flatten page chrome + TipTap text with transparent video holes at the output
+ * size, then encode live video frames on top. Must include prose — safe-still-images-only
+ * left gallery tiles white beside the video.
  */
 async function buildStaticBackdrop(
   root: HTMLElement,
@@ -152,8 +164,8 @@ async function buildStaticBackdrop(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas_unavailable');
 
-  const paintJpeg = async (jpeg: Blob) => {
-    const url = URL.createObjectURL(jpeg);
+  const paintImage = async (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const i = new Image();
@@ -168,15 +180,20 @@ async function buildStaticBackdrop(
   };
 
   try {
-    const jpeg = await rasterizeElementToPosterBlob(root, {
-      maxEdge: COMPOSE_VIDEO_MAX_EDGE,
-      punchVideos: true
+    const png = await rasterizeElementToPosterBlob(root, {
+      targetWidth: width,
+      targetHeight: height,
+      punchVideos: true,
+      mime: 'image/png'
     });
-    await paintJpeg(jpeg);
+    await paintImage(png);
   } catch {
     try {
-      const jpeg = await rasterizeElementSafeStill(root, { maxEdge: COMPOSE_VIDEO_MAX_EDGE });
-      await paintJpeg(jpeg);
+      const jpeg = await rasterizeElementSafeStill(root, {
+        targetWidth: width,
+        targetHeight: height
+      });
+      await paintImage(jpeg);
     } catch {
       const fill = getComputedStyle(root).backgroundColor;
       ctx.fillStyle =
@@ -185,20 +202,6 @@ async function buildStaticBackdrop(
     }
   }
   return canvas;
-}
-
-function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.85): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    try {
-      canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error('poster_encode_failed'))),
-        'image/jpeg',
-        quality
-      );
-    } catch (e) {
-      reject(e instanceof Error ? e : new Error('poster_canvas_tainted'));
-    }
-  });
 }
 
 /** Drive editor playhead for layer poses during encode. Do not seek shared pen-layer masters here. */
@@ -212,13 +215,35 @@ function sampleTimeline(
   opts.onSample?.(timeSec);
 }
 
+async function seekSlots(slots: VideoSlot[], timeSec: number): Promise<void> {
+  for (const slot of slots) {
+    try {
+      slot.el.currentTime = timeSec;
+      await new Promise<void>((r) => {
+        const done = () => {
+          slot.el.removeEventListener('seeked', done);
+          r();
+        };
+        slot.el.addEventListener('seeked', done);
+        setTimeout(r, 400);
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+type VideoVariant = 'sd' | 'hd';
+
 /**
- * Encode the live Pen preview root into a composed video + JPEG poster.
+ * Encode the live Pen preview root into poster + SD + HD at the tier's CDN sizes.
  * `root` should be the page sheet / content box that contains Body + layers.
  */
 export async function composePageToVideo(
   root: HTMLElement,
   opts?: {
+    /** Publish tier; sizes, duration cap and HD allowance. Defaults to Pen's publish plan. */
+    tier?: PublishTierNotch;
     maxDurationSec?: number;
     onProgress?: (pct: number) => void;
     clockDurationSec?: number;
@@ -232,13 +257,12 @@ export async function composePageToVideo(
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('mediarecorder_unavailable');
   }
-  const maxDurationSec = opts?.maxDurationSec ?? COMPOSE_VIDEO_MAX_DURATION_SEC;
+  const tier = opts?.tier ?? getPublishTier(PEN_PUBLISH_PLAN_ID);
   const rect = root.getBoundingClientRect();
-  const srcW = Math.max(2, Math.round(rect.width || root.clientWidth || 640));
-  const srcH = Math.max(2, Math.round(rect.height || root.clientHeight || 360));
-  const scale = Math.min(1, COMPOSE_VIDEO_MAX_EDGE / Math.max(srcW, srcH));
-  const w = Math.max(2, Math.round(srcW * scale) & ~1);
-  const h = Math.max(2, Math.round(srcH * scale) & ~1);
+  const srcW = Math.max(2, Math.round(rect.width || root.clientWidth || 360));
+  const srcH = Math.max(2, Math.round(rect.height || root.clientHeight || 640));
+  const sizes = composeOutputSizes(srcW, srcH, tier);
+  const { w, h } = sizes.master;
   const sx = w / srcW;
   const sy = h / srcH;
 
@@ -277,7 +301,8 @@ export async function composePageToVideo(
   } else {
     durationSec = 5;
   }
-  durationSec = Math.min(durationSec, maxDurationSec);
+  durationSec = Math.min(durationSec, tier.maxDurationSec, opts?.maxDurationSec ?? Infinity);
+  const durationMs = Math.round(durationSec * 1000);
 
   sampleTimeline(opts || {}, root, 0);
   let backdrop = await buildStaticBackdrop(root, w, h);
@@ -307,121 +332,139 @@ export async function composePageToVideo(
   if (!ctx) {
     throw new Error('canvas_unavailable');
   }
-
-  const seekPoster = Math.min(0.5, durationSec * 0.1);
-  if (!inertOnly && !timelineLocked) {
-    for (const slot of slots) {
-      try {
-        slot.el.currentTime = seekPoster;
-        await new Promise<void>((r) => {
-          const done = () => {
-            slot.el.removeEventListener('seeked', done);
-            r();
-          };
-          slot.el.addEventListener('seeked', done);
-          setTimeout(r, 400);
-        });
-      } catch {
-        /* ignore */
-      }
-    }
-  } else if (!inertOnly) {
-    sampleTimeline(opts || {}, root, seekPoster);
-    slots = collectUntaintedVideoSlots(root);
+  const sdCanvas = sizes.hdOn ? document.createElement('canvas') : canvas;
+  if (sizes.hdOn) {
+    sdCanvas.width = sizes.sd.w;
+    sdCanvas.height = sizes.sd.h;
+  }
+  const sdCtx = sizes.hdOn ? sdCanvas.getContext('2d') : null;
+  if (sizes.hdOn && !sdCtx) {
+    throw new Error('canvas_unavailable');
   }
 
-  ctx.drawImage(backdrop, 0, 0);
-  if (!inertOnly) {
-    for (const slot of slots) {
-      if (slot.el.readyState >= 2) {
-        ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
-      }
-    }
-  }
-  const posterBlob = await canvasToJpegBlob(canvas);
-
-  if (!inertOnly && !timelineLocked) {
-    for (const slot of slots) {
-      try {
-        slot.el.currentTime = 0;
-      } catch {
-        /* ignore */
-      }
-    }
-  } else if (!inertOnly) {
-    sampleTimeline(opts || {}, root, 0);
-    slots = collectUntaintedVideoSlots(root);
-  }
-
-  const { mimeType, contentType } = pickRecorderMime();
-  const stream = canvas.captureStream(30);
-  const recorder = mimeType
-    ? new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_000_000 })
-    : new MediaRecorder(stream, { videoBitsPerSecond: 2_000_000 });
-  const chunks: BlobPart[] = [];
-  recorder.ondataavailable = (e) => {
-    if (e.data.size) chunks.push(e.data);
-  };
-  const stopped = new Promise<Blob>((resolve, reject) => {
-    recorder.onstop = () =>
-      resolve(new Blob(chunks, { type: recorder.mimeType || contentType }));
-    recorder.onerror = () => reject(new Error('mediarecorder_failed'));
-  });
-
-  opts?.onProgress?.(5);
-  recorder.start(200);
-
-  if (!inertOnly) {
-    await Promise.all(slots.map((s) => s.el.play().catch(() => undefined)));
-  }
-
-  const started = performance.now();
-  let raf = 0;
-  let framesDrawn = 0;
-  const draw = () => {
-    const elapsed = (performance.now() - started) / 1000;
-    const t = Math.min(durationSec, elapsed);
-    sampleTimeline(opts || {}, root, t);
-    scheduleBackdropRefresh();
+  const paintFrame = (drawSlots: VideoSlot[]) => {
     ctx.drawImage(backdrop, 0, 0);
     if (!inertOnly) {
-      const live = timelineLocked || opts?.onSample ? collectUntaintedVideoSlots(root) : slots;
-      const drawSlots = live.length ? live : slots;
       for (const slot of drawSlots) {
         if (slot.el.readyState >= 2) {
           ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
         }
       }
     }
-    framesDrawn += 1;
-    opts?.onProgress?.(Math.min(95, 5 + (elapsed / durationSec) * 90));
-    raf = requestAnimationFrame(draw);
+    if (sdCtx) sdCtx.drawImage(canvas, 0, 0, sdCanvas.width, sdCanvas.height);
   };
-  raf = requestAnimationFrame(draw);
 
-  await new Promise<void>((resolve) => {
-    window.setTimeout(() => resolve(), (durationSec + 0.35) * 1000);
-  });
-
-  cancelAnimationFrame(raf);
-  if (!inertOnly) {
-    for (const s of slots) {
-      s.el.pause();
-    }
+  const seekPoster = Math.min(0.5, durationSec * 0.1);
+  if (!inertOnly && !timelineLocked) {
+    await seekSlots(slots, seekPoster);
+  } else if (!inertOnly) {
+    sampleTimeline(opts || {}, root, seekPoster);
+    slots = collectUntaintedVideoSlots(root);
   }
-  recorder.stop();
-  stream.getTracks().forEach((t) => t.stop());
-  const videoBlob = await stopped;
-  if (!videoBlob.size) throw new Error('compose_empty_video');
-  if (framesDrawn < 1) throw new Error('compose_no_video_frames');
-  opts?.onProgress?.(100);
+  paintFrame(slots);
+  const poster = await encodePosterFromCanvas(canvas, w, h, durationMs);
 
-  return {
-    videoBlob,
-    videoContentType: videoBlob.type || contentType,
-    posterBlob,
-    width: w,
-    height: h,
-    durationMs: Math.round(durationSec * 1000)
+  const { mimeType, contentType } = pickFeedRecorderMime();
+  const bitrate: Record<VideoVariant, number> = {
+    hd: feedPreviewBitrate('hd', durationSec),
+    sd: feedPreviewBitrate('sd', durationSec)
   };
+  const variantSize: Record<VideoVariant, { w: number; h: number }> = {
+    hd: sizes.master,
+    sd: sizes.sd
+  };
+  const done: Partial<Record<VideoVariant, EncodedPreview>> = {};
+  let pending: VideoVariant[] = sizes.hdOn ? ['hd', 'sd'] : ['sd'];
+
+  for (let attempt = 0; attempt < FEED_PREVIEW_ENCODE_ATTEMPTS && pending.length; attempt++) {
+    if (!inertOnly && !timelineLocked) {
+      await seekSlots(slots, 0);
+    } else if (!inertOnly) {
+      sampleTimeline(opts || {}, root, 0);
+      slots = collectUntaintedVideoSlots(root);
+    }
+
+    const recordings = pending.map((variant) => {
+      const source = variant === 'hd' || !sizes.hdOn ? canvas : sdCanvas;
+      const stream = source.captureStream(30);
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate[variant] })
+        : new MediaRecorder(stream, { videoBitsPerSecond: bitrate[variant] });
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size) chunks.push(e.data);
+      };
+      const stopped = new Promise<Blob>((resolve, reject) => {
+        recorder.onstop = () =>
+          resolve(new Blob(chunks, { type: recorder.mimeType || contentType }));
+        recorder.onerror = () => reject(new Error('mediarecorder_failed'));
+      });
+      return { variant, stream, recorder, stopped };
+    });
+
+    opts?.onProgress?.(5);
+    for (const r of recordings) r.recorder.start(200);
+
+    if (!inertOnly) {
+      await Promise.all(slots.map((s) => s.el.play().catch(() => undefined)));
+    }
+
+    const started = performance.now();
+    let raf = 0;
+    let framesDrawn = 0;
+    const draw = () => {
+      const elapsed = (performance.now() - started) / 1000;
+      const t = Math.min(durationSec, elapsed);
+      sampleTimeline(opts || {}, root, t);
+      scheduleBackdropRefresh();
+      const live =
+        !inertOnly && (timelineLocked || opts?.onSample) ? collectUntaintedVideoSlots(root) : slots;
+      paintFrame(live.length ? live : slots);
+      framesDrawn += 1;
+      opts?.onProgress?.(Math.min(95, 5 + (elapsed / durationSec) * 90));
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+
+    await new Promise<void>((resolve) => {
+      window.setTimeout(() => resolve(), (durationSec + 0.35) * 1000);
+    });
+
+    cancelAnimationFrame(raf);
+    if (!inertOnly) {
+      for (const s of slots) s.el.pause();
+    }
+    for (const r of recordings) {
+      r.recorder.stop();
+      r.stream.getTracks().forEach((t) => t.stop());
+    }
+    if (framesDrawn < 1) throw new Error('compose_no_video_frames');
+
+    const nextPending: VideoVariant[] = [];
+    for (const r of recordings) {
+      const blob = await r.stopped;
+      if (!blob.size) throw new Error('compose_empty_video');
+      if (blob.size <= maxBytesForVariant(r.variant)) {
+        done[r.variant] = {
+          variant: r.variant,
+          blob,
+          contentType: blob.type || contentType,
+          byteSize: blob.size,
+          width: variantSize[r.variant].w,
+          height: variantSize[r.variant].h,
+          durationMs
+        };
+      } else {
+        bitrate[r.variant] = Math.floor(bitrate[r.variant] * FEED_PREVIEW_BITRATE_BACKOFF);
+        nextPending.push(r.variant);
+      }
+    }
+    pending = nextPending;
+  }
+
+  if (pending.length || !done.sd) {
+    throw new Error('could_not_fit_preview_under_size_limit');
+  }
+  opts?.onProgress?.(100);
+  return { poster, sd: done.sd, ...(done.hd ? { hd: done.hd } : {}) };
 }
