@@ -1,15 +1,13 @@
 /**
- * Device ↔ Drive media transfer. Uploads are PNM1-encrypted with the doc key and
- * sent as raw resumable pieces; downloads decrypt PNM1 or pass raw media through.
+ * Drive → device media. Downloads decrypt PNM1 with the doc key or pass raw media
+ * through; uploads happen on attach (see attach.ts).
  */
 
-import {
-  deviceDriveDownloadBlobForSession,
-  deviceDriveUploadBlobForSession
-} from '@par-noir/device-cloud-credentials';
+import { deviceDriveDownloadBlobForSession } from '@par-noir/device-cloud-credentials';
 import { isPenMediaHeader, PEN_MEDIA_HEADER_BYTES } from '@par-noir/dm-crypto';
+import { trackActivity } from './activity';
 import { penMediaConfig } from './config';
-import { openMedia, sealMedia } from './crypto';
+import { openMedia } from './crypto';
 import { isPenMediaRef, parsePenMediaFileId } from './refs';
 import { putLocalMediaForDriveFile, resolvePenMediaSrc } from './store';
 
@@ -45,25 +43,6 @@ function withType(blob: Blob, mime: string): Blob {
   return mime && blob.type !== mime ? new Blob([blob], { type: mime }) : blob;
 }
 
-/** Encrypt with the doc key and upload into the doc's Drive media folder. Returns the file id. */
-export async function uploadPenMedia(params: {
-  pnIdentifier: string;
-  docId: string;
-  blob: Blob;
-  fileName?: string;
-}): Promise<string> {
-  const cfg = penMediaConfig();
-  const sealed = await sealMedia(params.blob, cfg.mintDocKey(params.docId));
-  const folderId = await cfg.resolveUploadFolder(params.pnIdentifier, params.docId);
-  const uploaded = await deviceDriveUploadBlobForSession({
-    pnIdentifier: params.pnIdentifier,
-    blob: sealed,
-    fileName: params.fileName || `media-${Date.now()}.pnm`,
-    parents: [folderId]
-  });
-  return uploaded.id;
-}
-
 /** Download a Drive file; PNM1 → decrypted with the doc key, otherwise the raw media. */
 export async function downloadPenMedia(params: {
   pnIdentifier: string;
@@ -71,10 +50,12 @@ export async function downloadPenMedia(params: {
   docId?: string;
   fileId: string;
 }): Promise<Blob> {
-  const raw = await deviceDriveDownloadBlobForSession({
-    pnIdentifier: params.pnIdentifier,
-    fileId: params.fileId
-  });
+  const raw = await trackActivity('download', () =>
+    deviceDriveDownloadBlobForSession({
+      pnIdentifier: params.pnIdentifier,
+      fileId: params.fileId
+    })
+  );
   const head = await headBytes(raw, PEN_MEDIA_HEADER_BYTES);
   if (!isPenMediaHeader(head)) {
     const type = raw.type && raw.type !== 'application/octet-stream' ? raw.type : '';

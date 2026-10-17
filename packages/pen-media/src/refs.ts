@@ -52,3 +52,31 @@ export function parsePenMediaFileId(src: string): string | null {
   if (!isPenMediaRef(src)) return null;
   return src.slice(DRIVE_PREFIX.length).trim() || null;
 }
+
+type MediaTrack = { src?: string };
+type MediaLayer = { audioTracks?: MediaTrack[] };
+type MediaSection = { layers?: MediaLayer[] };
+type MediaPresentation = { backgroundImage?: string; backgroundVideo?: string };
+
+/** Device-only (`penlocal:`) refs left in a doc — media that has not reached Drive. */
+export function collectLocalMediaRefs(
+  sections: MediaSection[],
+  pagePresentation?: MediaPresentation
+): string[] {
+  const out = new Set<string>();
+  for (const s of sections) {
+    for (const layer of s.layers || []) {
+      const rec = layer as Record<string, unknown>;
+      for (const field of MEDIA_SRC_FIELDS) {
+        const v = rec[field];
+        if (typeof v === 'string' && isPenLocalMediaRef(v)) out.add(v);
+      }
+      for (const t of layer.audioTracks || []) if (isPenLocalMediaRef(t.src)) out.add(t.src as string);
+    }
+  }
+  for (const field of PRESENTATION_MEDIA_FIELDS) {
+    const v = pagePresentation?.[field];
+    if (isPenLocalMediaRef(v)) out.add(v as string);
+  }
+  return [...out];
+}

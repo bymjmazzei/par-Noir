@@ -3,6 +3,7 @@
  * Layer fields hold refs; this module turns refs into blob: URLs for playback.
  */
 
+import { trackActivity } from './activity';
 import {
   isInlineMediaSrc,
   isPenMediaSrcRef,
@@ -22,7 +23,7 @@ export type PenMediaRecord = {
   mime: string;
   blob: Blob;
   updatedAt: string;
-  /** Drive file this blob mirrors (set after upload or when cached from Drive). */
+  /** Drive file this blob mirrors (uploaded on attach or cached from Drive). */
   driveFileId?: string;
 };
 
@@ -84,12 +85,16 @@ async function readRecordByDriveFileId(fileId: string): Promise<PenMediaRecord |
 
 async function writeRecord(record: PenMediaRecord): Promise<void> {
   const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(record);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error('idb_put_failed'));
-  });
+  await trackActivity(
+    'idb-write',
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(record);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('idb_put_failed'));
+      })
+  );
 }
 
 function newMediaId(): string {
@@ -158,15 +163,6 @@ export async function getLocalMedia(
   } catch {
     return null;
   }
-}
-
-/** Record that a local blob now lives on Drive so it is never uploaded twice. */
-export async function setLocalMediaDriveFileId(mediaId: string, fileId: string): Promise<void> {
-  const rec = await readRecord(mediaId);
-  if (!rec) return;
-  await writeRecord({ ...rec, driveFileId: fileId });
-  const url = urlCache.get(mediaId);
-  if (url) linkFileUrl(fileId, url);
 }
 
 export async function resolveLocalMediaUrl(mediaId: string): Promise<string | null> {

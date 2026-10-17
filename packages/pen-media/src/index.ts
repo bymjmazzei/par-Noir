@@ -1,6 +1,7 @@
 export {
   MEDIA_SRC_FIELDS,
   PRESENTATION_MEDIA_FIELDS,
+  collectLocalMediaRefs,
   isInlineMediaSrc,
   isPenLocalMediaRef,
   isPenMediaRef,
@@ -18,19 +19,12 @@ export {
   putLocalMedia,
   putLocalMediaForDriveFile,
   resolveLocalMediaUrl,
-  resolvePenMediaSrc,
-  setLocalMediaDriveFileId
+  resolvePenMediaSrc
 } from './store';
 export { configurePenMedia } from './config';
 export type { PenMediaConfig } from './config';
-export { downloadPenMedia, ensurePenMediaUrl, sniffMediaMime, uploadPenMedia } from './drive';
-export {
-  UPLOAD_BACKOFF_MS,
-  awaitDocMedia,
-  collectLocalMediaRefs,
-  queueDocMedia,
-  resetPenMediaQueueForTests,
-  rewriteDocMediaRefs,
-  uploadLocalMedia
-} from './queue';
-export type { DocMediaJob } from './queue';
+export { downloadPenMedia, ensurePenMediaUrl, sniffMediaMime } from './drive';
+export { uploadInWorker } from './crypto';
+export type { UploadJob, UploadProgress } from './uploadJob';
+export { attachMediaFile, uploadStoredMedia } from './attach';
+export { penMediaActivity } from './activity';

@@ -5,20 +5,13 @@ import { generateChatKey, isPenMediaHeader } from '@par-noir/dm-crypto';
 const drive = vi.hoisted(() => ({
   files: new Map<string, Blob>(),
   uploads: 0,
-  failNext: 0
+  failNext: 0,
+  noToken: false,
+  gate: null as Promise<void> | null
 }));
 
 vi.mock('@par-noir/device-cloud-credentials', () => ({
-  deviceDriveUploadBlobForSession: vi.fn(async (p: { blob: Blob }) => {
-    if (drive.failNext > 0) {
-      drive.failNext -= 1;
-      throw new Error('drive_upload_piece_503');
-    }
-    drive.uploads += 1;
-    const id = `f${drive.uploads}`;
-    drive.files.set(id, p.blob);
-    return { id };
-  }),
+  getCloudAccessTokenFromSession: vi.fn(() => (drive.noToken ? null : 'google-at')),
   deviceDriveDownloadBlobForSession: vi.fn(async (p: { fileId: string }) => {
     const hit = drive.files.get(p.fileId);
     if (!hit) throw new Error('drive_download_404');
@@ -26,17 +19,49 @@ vi.mock('@par-noir/device-cloud-credentials', () => ({
   })
 }));
 
+vi.mock('@par-noir/device-cloud-credentials/drive-upload-stream', () => ({
+  deviceDriveUploadStream: vi.fn(
+    async (p: {
+      accessToken: string;
+      totalBytes: number;
+      segments: AsyncIterable<Uint8Array>;
+      signal?: AbortSignal;
+      onProgress?: (sent: number, total: number) => void;
+    }) => {
+      expect(p.accessToken).toBe('google-at');
+      if (drive.failNext > 0) {
+        drive.failNext -= 1;
+        throw new Error('drive_upload_piece_503');
+      }
+      const parts: Uint8Array[] = [];
+      let sent = 0;
+      for await (const seg of p.segments) {
+        if (drive.gate) await drive.gate;
+        p.signal?.throwIfAborted();
+        parts.push(seg);
+        sent += seg.length;
+        p.onProgress?.(sent, p.totalBytes);
+      }
+      expect(sent).toBe(p.totalBytes);
+      drive.uploads += 1;
+      const id = `f${drive.uploads}`;
+      drive.files.set(id, new Blob(parts));
+      return { id };
+    }
+  )
+}));
+
 import {
-  awaitDocMedia,
+  attachMediaFile,
+  collectLocalMediaRefs,
   configurePenMedia,
+  deleteLocalMedia,
   ensurePenMediaUrl,
   getLocalMedia,
+  penMediaActivity,
   putLocalMedia,
-  queueDocMedia,
-  resetPenMediaQueueForTests,
   resolvePenMediaSrc,
-  rewriteDocMediaRefs,
-  UPLOAD_BACKOFF_MS
+  uploadStoredMedia
 } from './index';
 
 const MP4_HEAD = new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
@@ -53,14 +78,14 @@ async function bytesOf(b: Blob): Promise<number[]> {
   return [...new Uint8Array(await b.arrayBuffer())];
 }
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
-
-beforeEach(() => {
+beforeEach(async () => {
+  for (let i = 1; i <= 3; i++) await deleteLocalMedia(`drive_f${i}`);
   drive.files.clear();
   drive.uploads = 0;
   drive.failNext = 0;
+  drive.noToken = false;
+  drive.gate = null;
   keys.clear();
-  resetPenMediaQueueForTests();
   configurePenMedia({
     loadDocKey: (docId) => keys.get(docId) ?? null,
     mintDocKey: (docId) => {
@@ -83,65 +108,83 @@ describe('pen-media store', () => {
   });
 });
 
-describe('pen-media queue', () => {
-  it('uploads each blob once even when autosave queues it repeatedly', async () => {
-    const put = await putLocalMedia({ docId: 'd2', blob: videoBlob() });
-    const sections = [{ layers: [{ videoSrc: put.ref }] }];
-    const rewrites: Map<string, string>[] = [];
-    const job = { pnIdentifier: 'pn', docId: 'd2', sections, onRewritten: (m: Map<string, string>) => rewrites.push(m) };
-    queueDocMedia(job);
-    queueDocMedia(job);
-    const done = await awaitDocMedia(job);
+describe('pen-media attach (upload first)', () => {
+  it('uploads PNM1 to Drive before returning, then caches the file once', async () => {
+    const file = videoBlob(3000);
+    const progress: number[] = [];
+    const out = await attachMediaFile({
+      pnIdentifier: 'pn',
+      docId: 'a1',
+      file,
+      onProgress: (sent) => progress.push(sent)
+    });
+    expect(out.ref).toBe('penmedia:f1');
+    expect(out.mime).toBe('video/mp4');
     expect(drive.uploads).toBe(1);
-    expect(done.pending).toBe(0);
-    expect((done.sections[0].layers[0] as { videoSrc: string }).videoSrc).toBe('penmedia:f1');
-    expect(rewrites[0].get(put.ref)).toBe('penmedia:f1');
-
+    expect(progress.length).toBeGreaterThan(0);
     const sealed = drive.files.get('f1')!;
     expect(isPenMediaHeader(new Uint8Array(await sealed.slice(0, 16).arrayBuffer()))).toBe(true);
-    expect(await resolvePenMediaSrc('penmedia:f1')).toBe(put.blobUrl);
+    const cached = await getLocalMedia('drive_f1');
+    expect(cached?.driveFileId).toBe('f1');
+    expect(await bytesOf(cached!.blob)).toEqual(await bytesOf(file));
+    expect(await resolvePenMediaSrc(out.ref)).toBe(out.blobUrl);
+    expect(penMediaActivity()).toEqual({});
   });
 
-  it('backs off after a failed upload instead of retrying on every save', async () => {
-    const put = await putLocalMedia({ docId: 'd3', blob: videoBlob() });
-    const job = { pnIdentifier: 'pn', docId: 'd3', sections: [{ layers: [{ imageSrc: put.ref }] }] };
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('stores nothing when the upload fails, and a retry succeeds', async () => {
     drive.failNext = 1;
-    queueDocMedia(job);
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
-    queueDocMedia(job);
-    queueDocMedia(job);
-    await flush();
-    expect(drive.uploads).toBe(0);
-    const t0 = Date.now();
-    const now = vi.spyOn(Date, 'now').mockReturnValue(t0 + UPLOAD_BACKOFF_MS[0] + 10);
-    queueDocMedia(job);
-    await vi.waitFor(() => expect(drive.uploads).toBe(1));
-    now.mockRestore();
-    warn.mockRestore();
+    await expect(attachMediaFile({ pnIdentifier: 'pn', docId: 'a2', file: videoBlob() })).rejects.toThrow(
+      'drive_upload_piece_503'
+    );
+    expect(await getLocalMedia('drive_f1')).toBeNull();
+    const out = await attachMediaFile({ pnIdentifier: 'pn', docId: 'a2', file: videoBlob() });
+    expect(out.ref).toBe('penmedia:f1');
   });
 
-  it('rewrites only matching refs and keeps untouched objects', () => {
-    const keep = { layers: [{ imageSrc: 'https://x/y.png' }] };
-    const out = rewriteDocMediaRefs(
-      [keep, { layers: [{ videoSrc: 'penlocal:a', audioTracks: [{ src: 'penlocal:b' }] }] }],
-      { backgroundVideo: 'penlocal:a' },
-      new Map([
-        ['penlocal:a', 'penmedia:A'],
-        ['penlocal:b', 'penmedia:B']
-      ])
+  it('refuses without a device cloud token', async () => {
+    drive.noToken = true;
+    await expect(attachMediaFile({ pnIdentifier: 'pn', docId: 'a3', file: videoBlob() })).rejects.toThrow(
+      'cloud_on_device'
     );
-    expect(out.sections[0]).toBe(keep);
-    expect(out.sections[1].layers[0]).toEqual({ videoSrc: 'penmedia:A', audioTracks: [{ src: 'penmedia:B' }] });
-    expect(out.pagePresentation?.backgroundVideo).toBe('penmedia:A');
+    expect(drive.uploads).toBe(0);
+  });
+
+  it('cancels mid-upload and stores nothing; activity shows the upload while it runs', async () => {
+    let release!: () => void;
+    drive.gate = new Promise<void>((r) => (release = r));
+    const controller = new AbortController();
+    const job = attachMediaFile({ pnIdentifier: 'pn', docId: 'a4', file: videoBlob(), signal: controller.signal });
+    await vi.waitFor(() => expect(penMediaActivity().upload).toBe(1));
+    controller.abort();
+    release();
+    await expect(job).rejects.toThrow('upload_cancelled');
+    expect(drive.uploads).toBe(0);
+    expect(await getLocalMedia('drive_f1')).toBeNull();
+    expect(penMediaActivity()).toEqual({});
+  });
+
+  it('uploads a stored offline blob later and moves it to its Drive id', async () => {
+    const put = await putLocalMedia({ docId: 'a5', blob: videoBlob() });
+    const fileId = await uploadStoredMedia({ pnIdentifier: 'pn', docId: 'a5', mediaId: put.mediaId });
+    expect(fileId).toBe('f1');
+    expect(await getLocalMedia(put.mediaId)).toBeNull();
+    expect((await getLocalMedia('drive_f1'))?.mime).toBe('video/mp4');
+  });
+
+  it('lists penlocal refs left in a doc', () => {
+    expect(
+      collectLocalMediaRefs(
+        [{ layers: [{ videoSrc: 'penlocal:a', audioTracks: [{ src: 'penlocal:b' }, { src: 'penmedia:c' }] }] }],
+        { backgroundImage: 'penlocal:a', backgroundVideo: 'penmedia:d' }
+      )
+    ).toEqual(['penlocal:a', 'penlocal:b']);
   });
 });
 
 describe('pen-media download', () => {
   it('decrypts a PNM1 Drive file on a fresh device and caches it', async () => {
     const original = videoBlob(5000);
-    const put = await putLocalMedia({ docId: 'd4', blob: original });
-    await awaitDocMedia({ pnIdentifier: 'pn', docId: 'd4', sections: [{ layers: [{ videoSrc: put.ref }] }] });
+    await attachMediaFile({ pnIdentifier: 'pn', docId: 'd4', file: original });
     drive.files.set('f9', drive.files.get('f1')!);
 
     const url = await ensurePenMediaUrl({ src: 'penmedia:f9', docId: 'd4', pnIdentifier: 'pn' });
@@ -160,8 +203,7 @@ describe('pen-media download', () => {
   });
 
   it('refuses PNM1 without the doc key', async () => {
-    const put = await putLocalMedia({ docId: 'd6', blob: videoBlob() });
-    await awaitDocMedia({ pnIdentifier: 'pn', docId: 'd6', sections: [{ layers: [{ videoSrc: put.ref }] }] });
+    await attachMediaFile({ pnIdentifier: 'pn', docId: 'd6', file: videoBlob() });
     drive.files.set('f7', drive.files.get('f1')!);
     await expect(
       ensurePenMediaUrl({ src: 'penmedia:f7', docId: 'other-doc', pnIdentifier: 'pn' })
