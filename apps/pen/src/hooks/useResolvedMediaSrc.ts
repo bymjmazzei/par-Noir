@@ -1,16 +1,9 @@
 /**
- * Resolve penlocal:/penmedia:/legacy src to a playable blob or pass-through URL.
+ * Resolve penlocal:/penmedia: src to a playable blob or pass-through URL.
  */
 
 import { useEffect, useState } from 'react';
-import {
-  isPenMediaRef,
-  isPenMediaSrcRef,
-  parsePenMediaFileId,
-  putLocalMediaForDriveFile,
-  resolvePenMediaSrc
-} from '../services/penLocalMedia';
-import { downloadCloudMediaBlob } from '../services/penAttach';
+import { ensurePenMediaUrl, isPenMediaSrcRef } from '@par-noir/pen-media';
 import type { PenSession } from '../services/penSession';
 
 export function useResolvedMediaSrc(
@@ -44,23 +37,11 @@ export function useResolvedMediaSrc(
     setLoading(true);
     const load = async () => {
       try {
-        let url = await resolvePenMediaSrc(src, opts?.docId);
-        if (!url && isPenMediaRef(src) && opts?.docId && opts.session) {
-          const fileId = parsePenMediaFileId(src);
-          if (fileId) {
-            const { blob } = await downloadCloudMediaBlob(
-              fileId,
-              opts.session.pnIdentifier,
-              opts.docId
-            );
-            const put = await putLocalMediaForDriveFile({
-              docId: opts.docId,
-              fileId,
-              blob
-            });
-            url = put.blobUrl;
-          }
-        }
+        const url = await ensurePenMediaUrl({
+          src,
+          docId: opts?.docId,
+          pnIdentifier: opts?.session?.pnIdentifier
+        });
         if (cancelled) return;
         setResolved(url);
         setLoading(false);

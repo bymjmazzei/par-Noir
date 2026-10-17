@@ -53,13 +53,9 @@ export function loadLocalDoc(pn: string, docId: string): LocalDocBundle | null {
   }
 }
 
-import {
-  sanitizeBundleMedia,
-  stripInlineMediaFromBundle,
-  throwIfQuota
-} from './penLocalStoreSanitize';
+import { stripInlineMediaFromBundle, throwIfQuota } from './penLocalStoreSanitize';
 
-function writeLocalDoc(pn: string, bundle: LocalDocBundle): void {
+function writeLocalDoc(pn: string, bundle: LocalDocBundle): LocalDocBundle {
   const normalized: LocalDocBundle = {
     ...bundle,
     sections: normalizeSections(bundle.sections)
@@ -98,23 +94,20 @@ function writeLocalDoc(pn: string, bundle: LocalDocBundle): void {
   } catch {
     /* non-browser */
   }
+  return safe;
 }
 
-/**
- * Sync save — strips inline media. Prefer {@link saveLocalDocAsync} so data: migrates to IDB.
- */
+/** Sync save — strips any inline data:/blob: media from layer fields. */
 export function saveLocalDoc(pn: string, bundle: LocalDocBundle): void {
   writeLocalDoc(pn, bundle);
 }
 
-/** Migrate data:/blob: → penlocal: then write. Returns the sanitized bundle. */
+/** Write and return what was stored (normalized, inline media stripped). */
 export async function saveLocalDocAsync(
   pn: string,
   bundle: LocalDocBundle
 ): Promise<LocalDocBundle> {
-  const sanitized = await sanitizeBundleMedia(bundle);
-  writeLocalDoc(pn, sanitized);
-  return sanitized;
+  return writeLocalDoc(pn, bundle);
 }
 
 export { PenLocalStoreQuotaError } from './penLocalStoreSanitize';

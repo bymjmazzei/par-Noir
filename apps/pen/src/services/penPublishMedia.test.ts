@@ -1,53 +1,45 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+
+const ensurePenMediaUrl = vi.hoisted(() => vi.fn());
+vi.mock('@par-noir/pen-media', async (orig) => ({
+  ...(await orig<typeof import('@par-noir/pen-media')>()),
+  ensurePenMediaUrl
+}));
+
 import { ensurePublishPlaybackBytes } from './penPublishMedia';
-import * as penAttach from './penAttach';
-import * as penLocalMedia from './penLocalMedia';
+
+const session = { pnIdentifier: 'pn', accessToken: 't' } as never;
+const sections = [
+  {
+    slug: 'body',
+    doc: { type: 'doc' as const, content: [] },
+    layers: [
+      { id: 'v1', kind: 'video' as const, x: 0, y: 0, w: 100, h: 100, videoSrc: 'penmedia:clip' },
+      { id: 'i1', kind: 'image' as const, x: 0, y: 0, w: 100, h: 100, imageSrc: 'https://x/y.png' }
+    ]
+  }
+];
 
 describe('ensurePublishPlaybackBytes', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    ensurePenMediaUrl.mockReset();
   });
 
-  it('falls back to editor proxy bytes when master penmedia is missing on Drive', async () => {
-    vi.spyOn(penLocalMedia, 'resolvePenMediaSrc').mockImplementation(async (src) => {
-      if (src === 'penlocal:proxy') return 'blob:proxy';
-      return null;
-    });
-    vi.spyOn(penAttach, 'downloadCloudMediaBlob').mockRejectedValue(new Error('404'));
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(new Blob([new Uint8Array([1, 2, 3])]), { status: 200 })
-    );
-    const putSpy = vi.spyOn(penLocalMedia, 'putLocalMediaForDriveFile').mockResolvedValue({
-      mediaId: 'm1',
-      ref: 'penlocal:m1',
-      blobUrl: 'blob:cached',
-      mime: 'video/mp4'
-    });
-
+  it('hydrates each Pen media ref and skips plain URLs', async () => {
+    ensurePenMediaUrl.mockResolvedValue('blob:clip');
     await ensurePublishPlaybackBytes({
-      session: { pnIdentifier: 'pn', accessToken: 't' } as never,
+      session,
       docId: 'doc-1',
-      sections: [
-        {
-          slug: 'body',
-          doc: { type: 'doc', content: [] },
-          layers: [
-            {
-              id: 'v1',
-              kind: 'video',
-              x: 0,
-              y: 0,
-              w: 100,
-              h: 100,
-              videoSrc: 'penmedia:dead',
-              editProxySrc: 'penlocal:proxy'
-            }
-          ]
-        }
-      ]
+      sections,
+      pagePresentation: { backgroundVideo: 'penlocal:bg' } as never
     });
+    expect(ensurePenMediaUrl.mock.calls.map((c) => c[0].src)).toEqual(['penmedia:clip', 'penlocal:bg']);
+  });
 
-    expect(fetchSpy).toHaveBeenCalledWith('blob:proxy');
-    expect(putSpy).toHaveBeenCalled();
+  it('fails publish when a ref cannot be made playable', async () => {
+    ensurePenMediaUrl.mockResolvedValue(null);
+    await expect(
+      ensurePublishPlaybackBytes({ session, docId: 'doc-1', sections })
+    ).rejects.toThrow('publish_media_missing');
   });
 });

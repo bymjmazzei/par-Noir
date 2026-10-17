@@ -7,14 +7,7 @@ import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
 import type { PenActionMessage } from '@par-noir/pen-protocol';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
-import { downloadCloudMediaBlob } from '../services/penAttach';
-import {
-  isPenMediaRef,
-  isPenMediaSrcRef,
-  parsePenMediaFileId,
-  putLocalMediaForDriveFile,
-  resolvePenMediaSrc
-} from '../services/penLocalMedia';
+import { ensurePenMediaUrl, isPenMediaSrcRef } from '@par-noir/pen-media';
 import type { PenSession } from '../services/penSession';
 
 /** Strip custom-scheme mediaSrc so first paint never hits ERR_UNKNOWN_URL_SCHEME. */
@@ -30,21 +23,12 @@ function scrubUnresolvedMedia(model: FeedTileViewModel): FeedTileViewModel {
   };
 }
 
-async function resolveOneMediaSrc(
+function resolveOneMediaSrc(
   src: string,
   docId: string | undefined,
   session: PenSession | null | undefined
 ): Promise<string | null> {
-  let url = await resolvePenMediaSrc(src, docId);
-  if (!url && isPenMediaRef(src) && docId && session) {
-    const fileId = parsePenMediaFileId(src);
-    if (fileId) {
-      const { blob } = await downloadCloudMediaBlob(fileId, session.pnIdentifier, docId);
-      const put = await putLocalMediaForDriveFile({ docId, fileId, blob });
-      url = put.blobUrl;
-    }
-  }
-  return url;
+  return ensurePenMediaUrl({ src, docId, pnIdentifier: session?.pnIdentifier });
 }
 
 async function resolveTileMedia(

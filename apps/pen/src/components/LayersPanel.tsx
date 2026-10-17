@@ -284,7 +284,7 @@ export function LayersPopover({
         : attached;
     commit(named);
     if (mediaKind === 'video') {
-      void sectionWithProbedVideoLayerDuration(named, placed.layerId, src, docId).then((probed) => {
+      void sectionWithProbedVideoLayerDuration(named, placed.layerId, src).then((probed) => {
         if (probed !== named) commit(probed);
       });
     }

@@ -672,7 +672,7 @@ describe('section timeline', () => {
 
   it('resolves clip URLs for playback without edit-proxy gating', () => {
     const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
-    expect(timeline).toContain('editorPreviewPlaybackSrc');
+    expect(timeline).toContain('publishPlaybackSrc');
     expect(timeline).toContain('onResolved');
     expect(timeline).toContain('setResolvedClipUrls');
     expect(timeline).not.toContain('VideoLayoutStill');

@@ -120,8 +120,7 @@ async function applySyncJob(session: PenSession, job: PenSyncJob): Promise<void>
     const previewRef = await uploadLocalGalleryBlob({
       session,
       docId: job.docId,
-      mediaId: localMediaId,
-      fileName: 'gallery-preview.penmedia'
+      mediaId: localMediaId
     });
     if (!previewRef) throw new Error('gallery_preview_upload_failed');
     let posterRef: string | undefined;
@@ -130,8 +129,7 @@ async function applySyncJob(session: PenSession, job: PenSyncJob): Promise<void>
         (await uploadLocalGalleryBlob({
           session,
           docId: job.docId,
-          mediaId: posterLocalMediaId,
-          fileName: 'gallery-preview-poster.penmedia'
+          mediaId: posterLocalMediaId
         })) || undefined;
     }
     const bundle = loadLocalDoc(pn, job.docId);

@@ -68,7 +68,7 @@ import {
 } from './penPublicPublish';
 import type { FeedPublishExtras } from './penFeedMetadata';
 import { metadataFieldsFromPublishForm } from './penFeedMetadata';
-import { resolvePenMediaSrc } from './penLocalMedia';
+import { resolvePenMediaSrc } from '@par-noir/pen-media';
 import { isTemplatesCatalogClass } from './classFeedRailItems';
 import { ensureShareFeedIds } from './penFeedTargets';
 import {
@@ -705,9 +705,9 @@ function provenanceFor(
   };
 }
 
-async function readOwnAudioBytes(src: string, docId: string): Promise<Uint8Array | null> {
+async function readOwnAudioBytes(src: string): Promise<Uint8Array | null> {
   try {
-    const url = (await resolvePenMediaSrc(src, docId)) || src;
+    const url = (await resolvePenMediaSrc(src)) || src;
     const res = await fetch(url);
     if (!res.ok) return null;
     return new Uint8Array(await res.arrayBuffer());
@@ -742,7 +742,7 @@ export async function uploadCompanionAudioFiles(params: {
   const title = params.bundle.manifest.title || 'Untitled';
   for (let i = 0; i < plan.own.length; i++) {
     const lane = plan.own[i];
-    const bytes = await readOwnAudioBytes(lane.src, docId);
+    const bytes = await readOwnAudioBytes(lane.src);
     if (!bytes?.byteLength) continue;
     const mime = 'audio/mpeg';
     if (!params.uploadCompanionAudio && !params.parentFolderId) {
@@ -804,10 +804,9 @@ async function supersedePriorPublishedPost(
 }
 
 async function loadStillBytesForPublish(
-  imageSrc: string,
-  docId: string
+  imageSrc: string
 ): Promise<{ bytes: Uint8Array; mime: string; blob: Blob }> {
-  const url = (await resolvePenMediaSrc(imageSrc, docId)) || imageSrc;
+  const url = (await resolvePenMediaSrc(imageSrc)) || imageSrc;
   const res = await fetch(url);
   if (!res.ok) throw new Error('publish_still_fetch_failed');
   const blob = await res.blob();
@@ -964,7 +963,7 @@ export async function publishPostToOwnerCloud(params: {
         childIds.push(uploaded.fileId);
         penFeedMediaBySlug[page.slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'video' };
       } else if (page.kind === 'still') {
-        const still = await loadStillBytesForPublish(page.imageSrc, docId);
+        const still = await loadStillBytesForPublish(page.imageSrc);
         const uploaded = await publishPublicCloudFile({
           request: params.request,
           parentFolderId,

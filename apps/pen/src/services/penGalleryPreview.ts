@@ -22,14 +22,7 @@ import {
   rasterizeElementToPosterBlob,
   rasterizeElementSafeStill
 } from './rasterizePagePoster';
-import { uploadBytesAsPenMedia } from './penAttach';
-import {
-  getLocalMedia,
-  putLocalMedia,
-  putLocalMediaForDriveFile,
-  penMediaRef,
-  resolveLocalMediaUrl
-} from './penLocalMedia';
+import { penMediaRef, putLocalMedia, uploadLocalMedia } from '@par-noir/pen-media';
 import type { PenSession } from './penSession';
 
 export type GalleryMedia = { src: string; kind: 'image' | 'video' };
@@ -187,30 +180,18 @@ function findComposeRoot(): HTMLElement | null {
 
 async function uploadOrLocal(params: {
   blob: Blob;
-  fileName: string;
   docId: string;
   pnIdentifier: string;
 }): Promise<{ ref: string; mediaId: string; uploaded: boolean }> {
   const put = await putLocalMedia({ docId: params.docId, blob: params.blob });
-  try {
-    const fileId = await uploadBytesAsPenMedia({
-      blob: params.blob,
-      fileName: params.fileName,
-      pnIdentifier: params.pnIdentifier,
-      docId: params.docId
-    });
-    if (fileId) {
-      await putLocalMediaForDriveFile({
-        docId: params.docId,
-        fileId,
-        blob: params.blob
-      });
-      return { ref: penMediaRef(fileId), mediaId: put.mediaId, uploaded: true };
-    }
-  } catch {
-    /* offline / token — keep penlocal */
-  }
-  return { ref: put.ref, mediaId: put.mediaId, uploaded: false };
+  const fileId = await uploadLocalMedia({
+    pnIdentifier: params.pnIdentifier,
+    docId: params.docId,
+    mediaId: put.mediaId
+  });
+  return fileId
+    ? { ref: penMediaRef(fileId), mediaId: put.mediaId, uploaded: true }
+    : { ref: put.ref, mediaId: put.mediaId, uploaded: false };
 }
 
 const VIDEO_HYDRATE_TIMEOUT_MS = 20_000;
@@ -275,13 +256,11 @@ export async function buildAndStoreGalleryPreview(params: {
     }
     const video = await uploadOrLocal({
       blob: encoded.videoBlob,
-      fileName: 'gallery-preview.penmedia',
       docId,
       pnIdentifier: pn
     });
     const poster = await uploadOrLocal({
       blob: encoded.posterBlob,
-      fileName: 'gallery-preview-poster.penmedia',
       docId,
       pnIdentifier: pn
     });
@@ -305,7 +284,6 @@ export async function buildAndStoreGalleryPreview(params: {
   }
   const image = await uploadOrLocal({
     blob: posterBlob,
-    fileName: 'gallery-preview.penmedia',
     docId,
     pnIdentifier: pn
   });
@@ -323,28 +301,13 @@ export async function uploadLocalGalleryBlob(params: {
   session: PenSession;
   docId: string;
   mediaId: string;
-  fileName: string;
 }): Promise<string | null> {
-  const hit = await getLocalMedia(params.mediaId);
-  if (!hit) return null;
-  const blob = new Blob([hit.bytes], { type: hit.mime });
-  const fileId = await uploadBytesAsPenMedia({
-    blob,
-    fileName: params.fileName,
+  const fileId = await uploadLocalMedia({
     pnIdentifier: params.session.pnIdentifier,
-    docId: params.docId
-  });
-  if (!fileId) return null;
-  await putLocalMediaForDriveFile({
     docId: params.docId,
-    fileId,
-    blob
+    mediaId: params.mediaId
   });
-  return penMediaRef(fileId);
-}
-
-export async function ensureLocalGalleryBlobUrl(mediaId: string): Promise<string | null> {
-  return resolveLocalMediaUrl(mediaId);
+  return fileId ? penMediaRef(fileId) : null;
 }
 
 /** Apply preview fields onto a manifest. */

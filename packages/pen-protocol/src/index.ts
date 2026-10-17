@@ -20,7 +20,7 @@ export * from './composeVideo.js';
 export * from './feedPublish.js';
 export * from './audioTracks.js';
 export * from './mediaStyle.js';
-export * from './editProxyRef.js';
+export * from './playbackSrc.js';
 export * from './layerParts.js';
 export * from './agent.js';
 export * from './licensing.js';

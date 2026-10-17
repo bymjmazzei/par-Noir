@@ -12,7 +12,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
-import { isPenMediaSrcRef } from '../services/penLocalMedia';
+import { isPenMediaSrcRef } from '@par-noir/pen-media';
 import { resolveGalleryMedia } from '../services/penGalleryPreview';
 import type { PenSession } from '../services/penSession';
 

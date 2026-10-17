@@ -119,11 +119,6 @@ export interface PenPageLayer {
   /** video layers */
   videoSrc?: string;
   /**
-   * Smaller file the editor decodes. The original stays on videoSrc / backgroundVideo.
-   * Until the proxy exists, the editor plays the original.
-   */
-  editProxySrc?: string;
-  /**
    * embed layers — frame hosting a cloud primitive / Pen doc by ref.
    * Live by-ref in editor; publish may snapshot display (tallies live later).
    */
@@ -231,10 +226,8 @@ export interface PenPageLayer {
   mediaGain?: number;
   /** When false, the clip soundtrack is audible. Omit to keep the master muted. */
   mediaMuted?: boolean;
-  /** Play the reversed proxy instead of the forward edit proxy. */
+  /** Map the clip clock backwards (last frame first). */
   mediaReversed?: boolean;
-  /** Short-clip reverse file. Absent when the clip is longer than the reverse cap. */
-  reverseProxySrc?: string;
   /** Raster brush overlay (data URL) composited above the media. */
   paintOverlaySrc?: string;
   /**
@@ -404,8 +397,6 @@ export interface PenPagePresentation {
   backgroundImage?: string;
   backgroundGradient?: string;
   backgroundVideo?: string;
-  /** Editor decode of backgroundVideo. Absent until that proxy exists. */
-  editProxySrc?: string;
   textAlign: 'left' | 'center' | 'right' | 'justify';
   padding: number;
 }

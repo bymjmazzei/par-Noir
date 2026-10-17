@@ -199,6 +199,15 @@ export function awaitDocMedia<S extends MediaSection, P extends MediaPresentatio
   return runDoc(job, true);
 }
 
+/** Upload one stored blob now (shares any in-flight upload). Null when offline or failed. */
+export function uploadLocalMedia(params: {
+  pnIdentifier: string;
+  docId: string;
+  mediaId: string;
+}): Promise<string | null> {
+  return uploadOnce(params.pnIdentifier, params.docId, params.mediaId, true);
+}
+
 export function resetPenMediaQueueForTests(): void {
   for (const t of retryTimers.values()) clearTimeout(t);
   retryTimers.clear();

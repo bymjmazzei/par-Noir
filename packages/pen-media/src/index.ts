@@ -30,6 +30,7 @@ export {
   collectLocalMediaRefs,
   queueDocMedia,
   resetPenMediaQueueForTests,
-  rewriteDocMediaRefs
+  rewriteDocMediaRefs,
+  uploadLocalMedia
 } from './queue';
 export type { DocMediaJob } from './queue';

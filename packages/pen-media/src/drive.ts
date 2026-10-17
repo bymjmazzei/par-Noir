@@ -67,7 +67,8 @@ export async function uploadPenMedia(params: {
 /** Download a Drive file; PNM1 → decrypted with the doc key, otherwise the raw media. */
 export async function downloadPenMedia(params: {
   pnIdentifier: string;
-  docId: string;
+  /** Needed only when the file is PNM1 (encrypted under that doc's key). */
+  docId?: string;
   fileId: string;
 }): Promise<Blob> {
   const raw = await deviceDriveDownloadBlobForSession({
@@ -79,7 +80,7 @@ export async function downloadPenMedia(params: {
     const type = raw.type && raw.type !== 'application/octet-stream' ? raw.type : '';
     return withType(raw, type || sniffMediaMime(await headBytes(raw, SNIFF_BYTES)));
   }
-  const key = penMediaConfig().loadDocKey(params.docId);
+  const key = params.docId ? penMediaConfig().loadDocKey(params.docId) : null;
   if (!key) throw new Error('doc_key_required');
   const plain = await openMedia(raw, key, '');
   return withType(plain, sniffMediaMime(await headBytes(plain, SNIFF_BYTES)));

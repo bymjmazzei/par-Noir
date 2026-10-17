@@ -23,7 +23,6 @@ import {
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
   docToPlainText,
-  editorPreviewPlaybackSrc,
   fitAspectInBox,
   sizeMediaLayerForAttach,
   getTextLayerDoc,
@@ -96,9 +95,7 @@ export function ResolvedPageBackground({
   const playback = usePlaybackMode();
   const playSrc =
     kind === 'video'
-      ? playback === 'publish'
-        ? publishPlaybackSrc({ videoSrc, backgroundVideo: src })
-        : editorPreviewPlaybackSrc({ videoSrc, backgroundVideo: src })
+      ? publishPlaybackSrc({ videoSrc, backgroundVideo: src })
       : src;
   const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
   const posterUrl =
@@ -144,7 +141,7 @@ export function PageBackgroundVideoDuration({
   session?: PenSession | null;
   onDuration: (seconds: number) => void;
 }) {
-  const playSrc = editorPreviewPlaybackSrc({ backgroundVideo: src });
+  const playSrc = publishPlaybackSrc({ backgroundVideo: src });
   const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
   const report = useRef(onDuration);
   report.current = onDuration;

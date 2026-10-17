@@ -2,19 +2,14 @@
  * Cloud media picker — stores penlocal:/penmedia: refs (never giant data URLs).
  */
 import { useEffect, useState } from 'react';
+import { ensurePenMediaUrl, penMediaRef, putLocalMedia } from '@par-noir/pen-media';
 import {
-  downloadCloudMediaBlob,
   listCloudMedia,
   pickDeviceImageFile,
   pickDeviceVideoFile,
   type CloudImageItem
 } from '../services/penAttach';
 import { setAttachPoster } from '../services/attachPosterCache';
-import {
-  penMediaRef,
-  putLocalMedia,
-  putLocalMediaForDriveFile
-} from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
 
 export function CloudFeedMediaPicker({
@@ -72,15 +67,11 @@ export function CloudFeedMediaPicker({
     setLoadingId(item.id);
     setError(null);
     try {
-      const { blob } = await downloadCloudMediaBlob(
-        item.id,
-        session.pnIdentifier,
-        docId
-      );
-      const put = await putLocalMediaForDriveFile({ docId, fileId: item.id, blob });
       const ref = penMediaRef(item.id);
-      setAttachPoster(ref, put.blobUrl);
-      onPickMediaSrc(ref, { blobUrl: put.blobUrl });
+      const blobUrl = await ensurePenMediaUrl({ src: ref, docId, pnIdentifier: session.pnIdentifier });
+      if (!blobUrl) throw new Error('cloud_media_unavailable');
+      setAttachPoster(ref, blobUrl);
+      onPickMediaSrc(ref, { blobUrl });
       onClose();
     } catch {
       setError('Could not open that file');

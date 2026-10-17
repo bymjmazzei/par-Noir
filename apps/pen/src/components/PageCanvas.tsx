@@ -31,14 +31,8 @@ import { PenVideo } from '../services/penVideoExtension';
 import { PenEmbed } from '../services/penEmbedExtension';
 import { sectionToTipTapDoc, tipTapDocToSection } from '../services/penBlocks';
 import { PEN_STICKERS } from '../services/stickerPack';
-import {
-  downloadCloudImageAsDataUrl,
-  fileToDataUrl,
-  listCloudImages,
-  pickDeviceImageFile,
-  uploadDeviceImageToDrive,
-  type CloudImageItem
-} from '../services/penAttach';
+import { downloadPenMedia } from '@par-noir/pen-media';
+import { listCloudMedia, pickDeviceImageFile, type CloudImageItem } from '../services/penAttach';
 import { listLocalDocs, loadLocalDoc, type LocalDocSummary } from '../services/penLocalStore';
 import { createTablePrimitiveDoc } from '../services/createDocFromTemplate';
 import { loadPenSession } from '../services/penSession';
@@ -84,6 +78,15 @@ function headingLabel(editor: Editor): string {
   if (editor.isActive('heading', { level: 2 })) return 'H2';
   if (editor.isActive('heading', { level: 3 })) return 'H3';
   return 'H';
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('read_failed'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function insertImage(
@@ -245,7 +248,7 @@ export function FormatRibbon({
     setCloudLoading(true);
     setCloudError(null);
     try {
-      setCloudFiles(await listCloudImages(accessToken));
+      setCloudFiles(await listCloudMedia(accessToken, pnIdentifier, 'image'));
     } catch {
       setCloudError('Could not list Drive images');
       setCloudFiles([]);
@@ -257,15 +260,14 @@ export function FormatRibbon({
   async function attachDevice() {
     const file = await pickDeviceImageFile();
     if (!file) return;
-    const src = await fileToDataUrl(file);
+    const src = await blobToDataUrl(file);
     if (!src) return;
     insertImage(ed, src, file.name || 'image', onImageInserted);
-    if (accessToken) void uploadDeviceImageToDrive(accessToken, file);
   }
 
   async function attachCloud(fileId: string, name: string) {
-    if (!accessToken) return;
-    const src = await downloadCloudImageAsDataUrl(accessToken, fileId);
+    if (!pnIdentifier) return;
+    const src = await blobToDataUrl(await downloadPenMedia({ pnIdentifier, fileId }));
     insertImage(ed, src, name, onImageInserted);
   }
 
@@ -300,7 +302,7 @@ export function FormatRibbon({
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
-      const src = await fileToDataUrl(file);
+      const src = await blobToDataUrl(file);
       if (!src) return;
       ed.chain()
         .focus()

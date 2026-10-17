@@ -27,7 +27,6 @@ import {
   applyVideoFileDuration,
   defaultLayerName,
   docToPlainText,
-  editorPreviewPlaybackSrc,
   getTextLayerDoc,
   KEYFRAME_EPSILON_SEC,
   layerClockSpan,
@@ -63,7 +62,6 @@ import {
   type PenTransitionPreset
 } from '@par-noir/pen-protocol';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
-import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import type { PenSession } from '../services/penSession';
 import lookSwatch from '../assets/look-apple.jpg';
 
@@ -1002,7 +1000,7 @@ export function SectionTimeline({
   showAnimations?: boolean;
   /** Media editor opens its Transitions tab from the selected join. */
   onJoinSelect?: (point: TrackJoinPoint | null) => void;
-  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo' | 'editProxySrc'>;
+  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo'>;
 }) {
   const widget = mode === 'widget';
   const timelineCtx = {
@@ -1026,7 +1024,6 @@ export function SectionTimeline({
   const scopeGroup = scopeGroupId
     ? (section.layers || []).find((layer) => layer.id === scopeGroupId && layer.kind === 'group')
     : null;
-  const playback = usePlaybackMode();
   const active =
     (section.layers || []).find((layer) => layer.id === activeLayerId && layer.kind !== 'guide') ??
     null;
@@ -2054,9 +2051,7 @@ export function SectionTimeline({
                   if (pendingFile) return null;
                   const playbackSrc =
                     owner.kind === 'video'
-                      ? playback === 'publish'
-                        ? publishPlaybackSrc(owner)
-                        : editorPreviewPlaybackSrc(owner)
+                      ? publishPlaybackSrc(owner)
                       : owner.kind === 'image'
                         ? owner.imageSrc
                         : undefined;
@@ -2232,8 +2227,7 @@ export function SectionTimeline({
                 </label>
               ) : null}
               {trackLayers.map((item) => {
-                const playbackSrc =
-                  playback === 'publish' ? publishPlaybackSrc(item) : editorPreviewPlaybackSrc(item);
+                const playbackSrc = publishPlaybackSrc(item);
                 if (item.kind !== 'video' || !playbackSrc) return null;
                 return (
                   <RememberVideoSrc
@@ -2248,8 +2242,7 @@ export function SectionTimeline({
                 );
               })}
               {trackLayers.map((item) => {
-                const probeSrc =
-                  playback === 'publish' ? publishPlaybackSrc(item) : editorPreviewPlaybackSrc(item);
+                const probeSrc = publishPlaybackSrc(item);
                 if (item.kind !== 'video' || !probeSrc || item.sourceDurationSec) return null;
                 return (
                   <VideoFileDuration

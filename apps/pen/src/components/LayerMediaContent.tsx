@@ -5,7 +5,6 @@
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import {
-  editorPreviewPlaybackSrc,
   mediaCropFrameStyle,
   mediaFilterCss,
   mediaMaskStyle,
@@ -117,9 +116,7 @@ export function LayerMediaContent({
     Boolean(layer.videoSrc) ||
     (Boolean(layer.backgroundVideo) && layer.kind !== 'image');
   const playSrc = isVideo
-    ? playback === 'publish'
-      ? publishPlaybackSrc(layer)
-      : editorPreviewPlaybackSrc(layer)
+    ? publishPlaybackSrc(layer)
     : layer.kind === 'image'
       ? layer.imageSrc || layer.backgroundImage
       : layer.backgroundImage;

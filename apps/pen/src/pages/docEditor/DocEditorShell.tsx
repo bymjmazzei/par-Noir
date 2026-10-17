@@ -200,7 +200,6 @@ import {
   ensureDocScopedFonts,
   loadDocScopedFontsForEditor
 } from '../../services/penDocFonts';
-import { ensureDocScopedMedia } from '../../services/penDocMedia';
 import { ensureGoogleFontsLoaded } from '../../services/penGoogleFonts';
 import {
   appendLocalComment,

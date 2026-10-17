@@ -25,7 +25,7 @@ import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
 import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
 import { setAttachPoster } from '../services/attachPosterCache';
-import { isPenMediaSrcRef, resolvePenMediaSrc } from '../services/penLocalMedia';
+import { isPenMediaSrcRef, resolvePenMediaSrc } from '@par-noir/pen-media';
 import type { PenSession } from '../services/penSession';
 
 export type ObjectToolTarget =
@@ -401,30 +401,18 @@ export function LayerObjectToolbar({
 
   function patchLayer(patch: Parameters<typeof patchLayerStyle>[2]) {
     if (!layer) return;
-    const replacesMedia =
-      'backgroundVideo' in patch ||
-      'backgroundImage' in patch ||
-      'videoSrc' in patch ||
-      'imageSrc' in patch;
-    onSectionChange(
-      patchLayerStyle(
-        section,
-        layer.id,
-        replacesMedia ? { editProxySrc: undefined, ...patch } : patch
-      )
-    );
+    onSectionChange(patchLayerStyle(section, layer.id, patch));
   }
 
   function patchPage(partial: Partial<PenPagePresentation>) {
-    const replacesMedia = 'backgroundVideo' in partial || 'backgroundImage' in partial;
-    onPresentationChange?.(replacesMedia ? { editProxySrc: undefined, ...partial } : partial);
+    onPresentationChange?.(partial);
   }
 
   async function applyMediaSrc(src: string, meta?: { blobUrl?: string }) {
     if (meta?.blobUrl) setAttachPoster(src, meta.blobUrl);
     // Probe aspect against a playable URL (blob:), store the tiny ref on the layer.
     const playable =
-      meta?.blobUrl || (await resolvePenMediaSrc(src, docId)) || src;
+      meta?.blobUrl || (await resolvePenMediaSrc(src)) || src;
     if (!isPage && layer && !isGroup) {
       // Object layers: convert to image/video and fit aspect into the frame / page.
       const aspect = await probeMediaAspect(playable, fileKind);
@@ -440,7 +428,7 @@ export function LayerObjectToolbar({
       );
       onSectionChange(next);
       if (fileKind === 'video') {
-        void sectionWithProbedVideoLayerDuration(next, layer.id, src, docId).then((probed) => {
+        void sectionWithProbedVideoLayerDuration(next, layer.id, src).then((probed) => {
           if (probed !== next) onSectionChange(probed);
         });
       }

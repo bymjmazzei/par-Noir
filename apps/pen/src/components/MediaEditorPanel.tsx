@@ -38,7 +38,7 @@ import { AnimationPicker, SectionTimeline, TransitionSettings } from './SectionT
 import { LayerMediaContent } from './LayerMediaContent';
 import { probeMediaAspect } from '../services/penAttach';
 import lookSwatch from '../assets/look-apple.jpg';
-import { resolvePenMediaSrc, putLocalMedia } from '../services/penLocalMedia';
+import { resolvePenMediaSrc, putLocalMedia } from '@par-noir/pen-media';
 import type { PenSession } from '../services/penSession';
 
 type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'speed' | 'tracks' | 'animations' | 'transitions';
@@ -310,7 +310,7 @@ export function MediaEditorPanel({
   async function onReplace(src: string, meta?: { blobUrl?: string }) {
     const kind = fileKind;
     const playable =
-      meta?.blobUrl || (await resolvePenMediaSrc(src, docId)) || src;
+      meta?.blobUrl || (await resolvePenMediaSrc(src)) || src;
     const aspect = await probeMediaAspect(playable, kind);
     onSectionChange(
       attachMediaToLayer(

@@ -1,31 +1,34 @@
-import type { PenPagePresentation, PenSectionContent } from '@par-noir/pen-protocol';
+import { awaitDocMedia } from '@par-noir/pen-media';
 import type { LocalDocBundle } from './penLocalStore';
 import { saveLocalDocAsync } from './penLocalStore';
-import { ensureDocScopedMedia } from './penDocMedia';
 import type { PenSession } from './penSession';
 
-/** Await draft cloud + doc-scoped media upload before feed publish. */
+/** Publish waits for doc media to reach Drive so feed refs are penmedia:, not device-only. */
 export async function flushDraftForPublish(params: {
   session: PenSession;
   bundle: LocalDocBundle;
 }): Promise<LocalDocBundle> {
-  let bundle = params.bundle;
-  const media = await ensureDocScopedMedia({
-    session: params.session,
+  const bundle = params.bundle;
+  const media = await awaitDocMedia({
+    pnIdentifier: params.session.pnIdentifier,
     docId: bundle.manifest.docId,
     sections: bundle.sections,
     pagePresentation: bundle.manifest.pagePresentation
   });
-  if (media.rewritten) {
-    bundle = {
-      ...bundle,
-      sections: media.sections,
-      manifest: {
-        ...bundle.manifest,
-        ...(media.pagePresentation ? { pagePresentation: media.pagePresentation } : {})
-      }
-    };
-    await saveLocalDocAsync(params.session.pnIdentifier, bundle);
+  if (
+    media.sections === bundle.sections &&
+    media.pagePresentation === bundle.manifest.pagePresentation
+  ) {
+    return bundle;
   }
-  return bundle;
+  const next: LocalDocBundle = {
+    ...bundle,
+    sections: media.sections,
+    manifest: {
+      ...bundle.manifest,
+      ...(media.pagePresentation ? { pagePresentation: media.pagePresentation } : {})
+    }
+  };
+  await saveLocalDocAsync(params.session.pnIdentifier, next);
+  return next;
 }
