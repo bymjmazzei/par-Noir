@@ -41,6 +41,7 @@ export {
 export { encryptMediaBytes, decryptMediaBytes } from './media.js';
 export {
   encryptPenMedia,
+  encryptPenMediaStream,
   decryptPenMedia,
   isPenMediaHeader,
   penMediaEncryptedSize,

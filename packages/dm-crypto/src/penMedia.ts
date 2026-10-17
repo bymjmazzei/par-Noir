@@ -71,29 +71,47 @@ export function penMediaEncryptedSize(length: number, chunkSize = PEN_MEDIA_CHUN
   return PEN_MEDIA_HEADER_BYTES + length + chunkCount(length, chunkSize) * (IV_BYTES + TAG_BYTES);
 }
 
-/** Encrypt a file chunk by chunk. Only one chunk of plaintext is in memory at a time. */
-export async function encryptPenMedia(
+/**
+ * Encrypt a file as a stream: yields the header, then one `iv | ciphertext | tag`
+ * segment per chunk. Callers hold at most one chunk at a time.
+ */
+export async function* encryptPenMediaStream(
   source: Blob,
   keyB64: string,
   opts?: { chunkSize?: number }
-): Promise<Blob> {
+): AsyncGenerator<Uint8Array> {
   const chunkSize = opts?.chunkSize ?? PEN_MEDIA_CHUNK_BYTES;
   const key = await importKey(keyB64);
   const header = writeHeader(chunkSize, source.size);
   const count = chunkCount(source.size, chunkSize);
-  const parts: BlobPart[] = [header];
+  yield header;
   for (let i = 0; i < count; i += 1) {
     const plain = new Uint8Array(
       await source.slice(i * chunkSize, Math.min(source.size, (i + 1) * chunkSize)).arrayBuffer()
     );
     const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_BYTES));
-    const sealed = await subtle().encrypt(
-      { name: 'AES-GCM', iv, additionalData: chunkAad(header, i, i === count - 1) },
-      key,
-      plain
+    const sealed = new Uint8Array(
+      await subtle().encrypt(
+        { name: 'AES-GCM', iv, additionalData: chunkAad(header, i, i === count - 1) },
+        key,
+        plain
+      )
     );
-    parts.push(iv, new Uint8Array(sealed));
+    const segment = new Uint8Array(IV_BYTES + sealed.length);
+    segment.set(iv, 0);
+    segment.set(sealed, IV_BYTES);
+    yield segment;
   }
+}
+
+/** Whole encrypted file as one Blob — small files and tests; large uploads use the stream. */
+export async function encryptPenMedia(
+  source: Blob,
+  keyB64: string,
+  opts?: { chunkSize?: number }
+): Promise<Blob> {
+  const parts: BlobPart[] = [];
+  for await (const segment of encryptPenMediaStream(source, keyB64, opts)) parts.push(segment);
   return new Blob(parts, { type: 'application/octet-stream' });
 }
 

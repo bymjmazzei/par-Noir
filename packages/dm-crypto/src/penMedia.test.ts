@@ -3,6 +3,7 @@ import { bytesToBase64 } from './encoding.js';
 import {
   decryptPenMedia,
   encryptPenMedia,
+  encryptPenMediaStream,
   isPenMediaHeader,
   penMediaEncryptedSize
 } from './penMedia.js';
@@ -80,5 +81,20 @@ describe('pen media PNM1 format', () => {
     await expect(decryptPenMedia(new Blob([randomBytes(64)]), key)).rejects.toThrow(
       'pen_media_not_pnm1'
     );
+  });
+
+  it('streams one chunk at a time and matches the file format', async () => {
+    const plain = randomBytes(CHUNK * 3 + 5);
+    const sizes: number[] = [];
+    const parts: Uint8Array[] = [];
+    for await (const seg of encryptPenMediaStream(new Blob([plain]), key, { chunkSize: CHUNK })) {
+      sizes.push(seg.length);
+      parts.push(seg);
+    }
+    expect(sizes[0]).toBe(16);
+    expect(Math.max(...sizes.slice(1))).toBeLessThanOrEqual(CHUNK + 28);
+    expect(sizes.reduce((a, b) => a + b, 0)).toBe(penMediaEncryptedSize(plain.length, CHUNK));
+    const opened = await decryptPenMedia(new Blob(parts), key);
+    expect(await bytesOf(opened)).toEqual(plain);
   });
 });
