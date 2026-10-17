@@ -19,6 +19,7 @@ import { layerChromeStyle } from './LayerObjectToolbar';
 import { PageGuides } from './PageGuides';
 import { PreviewLayerFace } from './PreviewLayerFace';
 import type { PenSession } from '../services/penSession';
+import { usePlayheadSec } from '../services/playheadStore';
 
 export function ScreenLayerStage({
   sections,
@@ -38,7 +39,7 @@ export function ScreenLayerStage({
   onPollVote,
   onWidgetAction,
   snapToPageCenter = false,
-  playheadSec = 0,
+  playheadSec: playheadProp,
   freePlacement = false,
   guideSpan,
   drawGuides = true
@@ -69,6 +70,8 @@ export function ScreenLayerStage({
   /** The preview draws guides on the workspace instead. */
   drawGuides?: boolean;
 }) {
+  const livePlayheadSec = usePlayheadSec(playheadProp === undefined);
+  const playheadSec = playheadProp ?? livePlayheadSec;
   const owner = new Map<string, { index: number; slug: string }>();
   const sampledById = new Map<string, PenPageLayer>();
   const items: LayoutItem[] = [];

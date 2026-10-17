@@ -14,6 +14,7 @@ import {
 } from 'react';
 import { paintGradedFrame, type TonalGrade } from './gradeFrame.js';
 import { acquirePenMediaController, type PenMediaController } from './penMediaController.js';
+import { startFramePump } from './framePump.js';
 
 const TAP_SLOP_PX = 8;
 
@@ -154,7 +155,6 @@ export function PenMediaPlayer({
       const unsub = ctrl.subscribe(syncUi);
       const canvas = canvasRef.current;
       let stopped = false;
-      let raf = 0;
       const paint = (): boolean => {
         if (stopped || !canvas) return false;
         const video = ctrl.master;
@@ -184,34 +184,8 @@ export function PenMediaPlayer({
       paintRef.current = () => {
         paint();
       };
-      let waiting = 0;
-      const follow = () => {
-        if (stopped) return;
-        const drew = paint();
-        const video = ctrl.master as HTMLVideoElement & {
-          requestVideoFrameCallback?: (cb: () => void) => number;
-        };
-        if (video.paused && drew) {
-          waiting = 0;
-          return;
-        }
-        if (video.paused) {
-          waiting += 1;
-          if (waiting > 90) return;
-        } else {
-          waiting = 0;
-        }
-        if (!video.paused && typeof video.requestVideoFrameCallback === 'function') {
-          video.requestVideoFrameCallback(() => follow());
-          return;
-        }
-        raf = requestAnimationFrame(follow);
-      };
-      const kick = () => {
-        waiting = 0;
-        cancelAnimationFrame(raf);
-        follow();
-      };
+      const pump = startFramePump(ctrl.master, paint);
+      const kick = pump.kick;
       const observer = new ResizeObserver(() => {
         if (!stopped) kick();
       });
@@ -224,7 +198,7 @@ export function PenMediaPlayer({
       return () => {
         stopped = true;
         observer.disconnect();
-        cancelAnimationFrame(raf);
+        pump.stop();
         ctrl.master.removeEventListener('loadeddata', kick);
         ctrl.master.removeEventListener('seeked', kick);
         ctrl.master.removeEventListener('play', kick);

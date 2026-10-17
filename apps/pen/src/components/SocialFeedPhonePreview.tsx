@@ -22,6 +22,7 @@ import {
   resolvePhoneFrameAspect
 } from './DocGalleryPreview';
 import type { PenSession } from '../services/penSession';
+import { usePlayheadSec } from '../services/playheadStore';
 
 /** Feed-size reference width (px). Height follows phone aspect. */
 const THUMB_REF_W = 288;
@@ -98,7 +99,8 @@ export function SocialFeedPhonePreview({
   density = 'feed',
   actionOverlay,
   onAction,
-  playheadSec
+  playheadSec,
+  followPlayhead = false
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -113,7 +115,10 @@ export function SocialFeedPhonePreview({
   actionOverlay?: ReactNode;
   onAction?: (message: PenActionMessage) => void;
   playheadSec?: number;
+  /** Editor preview: follow the live editor playhead instead of the tile's own clock. */
+  followPlayhead?: boolean;
 }) {
+  const livePlayheadSec = usePlayheadSec(followPlayhead);
   const phoneAspectCss = resolvePhoneFrameAspect(manifest);
   const feedAspect = resolveFeedTileAspect(manifest);
   const unlocked = Boolean(session?.pnIdentifier);
@@ -133,7 +138,7 @@ export function SocialFeedPhonePreview({
       aspectRatio={feedAspect}
       showWidgets={!actionOverlay}
       onAction={onAction}
-      playheadSec={playheadSec}
+      playheadSec={followPlayhead ? livePlayheadSec : playheadSec}
     />
   );
   const showActions = Boolean(actionOverlay) && density !== 'thumb';

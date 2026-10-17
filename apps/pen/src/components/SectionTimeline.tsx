@@ -64,6 +64,7 @@ import {
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import type { PenSession } from '../services/penSession';
 import lookSwatch from '../assets/look-apple.jpg';
+import { usePlayheadSec } from '../services/playheadStore';
 
 const GRAPH_CURVES: Array<{ id: PenKeyframeEase; label: string; d: string }> = [
   { id: 'hold', label: 'Original', d: 'M2 14 H10 V2 H14' },
@@ -964,7 +965,7 @@ export function TransitionSettings({
 export function SectionTimeline({
   section,
   activeLayerId,
-  playheadSec,
+  playheadSec: playheadProp,
   playing,
   docId,
   session,
@@ -982,7 +983,7 @@ export function SectionTimeline({
 }: {
   section: PenSectionContent;
   activeLayerId: string | null;
-  playheadSec: number;
+  playheadSec?: number;
   playing: boolean;
   docId?: string;
   session?: PenSession | null;
@@ -1002,6 +1003,8 @@ export function SectionTimeline({
   onJoinSelect?: (point: TrackJoinPoint | null) => void;
   pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo'>;
 }) {
+  const livePlayheadSec = usePlayheadSec(playheadProp === undefined);
+  const playheadSec = playheadProp ?? livePlayheadSec;
   const widget = mode === 'widget';
   const timelineCtx = {
     pageBackgroundVideo: pagePresentation?.backgroundVideo

@@ -128,7 +128,7 @@ import { ActionBindStrip } from '../../components/ActionBindStrip';
 import { IconLayers } from '../../components/icons/PenIcons';
 import { MediaEditorPanel } from '../../components/MediaEditorPanel';
 import { SectionTimeline } from '../../components/SectionTimeline';
-import { bindTimelineSample, emitTimelineSample } from '../../services/timelineSample';
+import { setPlayheadSec } from '../../services/playheadStore';
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
 import { composePageToVideo } from '../../services/composePageVideoEncode';
 import { composeTimelineEncodeOpts } from '../../services/penFeedPagePublish';
@@ -321,7 +321,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   const widgetSheetTimer = useRef<number | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
-  const [playheadSec, setPlayheadSec] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineGroupId, setTimelineGroupId] = useState<string | null>(null);
   const [socialLayersOpen, setSocialLayersOpen] = useState(false);
@@ -348,11 +347,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       cancel = true;
     };
   }, [session.pnIdentifier]);
-
-  useEffect(() => {
-    bindTimelineSample(setPlayheadSec);
-    return () => bindTimelineSample(null);
-  }, []);
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 640px)');
@@ -2315,7 +2309,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     persist,
     persistSection,
     persistWritingDoc,
-    playheadSec,
     previewLayoutRef,
     previewPaneEl,
     previewPaneSize,
@@ -2355,7 +2348,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setInputValue,
     setInvitePn,
     setInviteRole,
-    setPlayheadSec,
     setPreviewPaneEl,
     setPreviewScroll,
     setPreviewToolbarHost,

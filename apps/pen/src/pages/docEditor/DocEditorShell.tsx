@@ -126,7 +126,6 @@ import { ActionBindStrip } from '../../components/ActionBindStrip';
 import { IconLayers } from '../../components/icons/PenIcons';
 import { MediaEditorPanel } from '../../components/MediaEditorPanel';
 import { SectionTimeline } from '../../components/SectionTimeline';
-import { bindTimelineSample, emitTimelineSample } from '../../services/timelineSample';
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
 import { composePageToVideo } from '../../services/composePageVideoEncode';
 import { setPlaybackMode } from '../../services/playbackMode';
@@ -225,6 +224,7 @@ import { ensureOwnerDocGroup } from '../../services/penCollab';
 import { loadDocKey } from '../../services/penDocCrypto';
 
 import type { DocEditorReadyState } from './useDocEditorController';
+import { setPlayheadSec } from '../../services/playheadStore';
 
 export function DocEditorShell(state: DocEditorReadyState) {
   const {
@@ -292,7 +292,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     persist,
     persistSection,
     persistWritingDoc,
-    playheadSec,
     previewLayoutRef,
     previewPaneEl,
     previewPaneSize,
@@ -332,7 +331,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     setInputValue,
     setInvitePn,
     setInviteRole,
-    setPlayheadSec,
     setPreviewPaneEl,
     setPreviewScroll,
     setPreviewToolbarHost,
@@ -404,7 +402,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     defaultEditorPagePresentation(),
     bundle.manifest.pagePresentation
   );
-  const previewPlayheadSec = playheadSec;
   const previewGutter = previewPageUsesGutter(
     bundle.manifest.pageLayout,
     bundle.manifest.flowWorkspaceWidthPx
@@ -1153,7 +1150,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
                 section={section}
                 session={session}
                 docId={bundle.manifest.docId}
-                playheadSec={playheadSec}
                 playing={timelinePlaying}
                 onPlayhead={setPlayheadSec}
                 onPlaying={setTimelinePlaying}
@@ -1183,7 +1179,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
               docId={bundle.manifest.docId}
               session={session}
               pageLayout={pageLayout}
-              playheadSec={playheadSec}
               playing={timelinePlaying}
               onPlayhead={setPlayheadSec}
               onPlaying={setTimelinePlaying}
@@ -1245,7 +1240,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
                 section={section}
                 pagePresentation={pagePresentation}
                 activeLayerId={activeLayerId}
-                playheadSec={playheadSec}
                 playing={timelinePlaying}
                 docId={bundle.manifest.docId}
                 session={session}
@@ -1552,7 +1546,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
                             inputValues={inputValues}
                             onInputValue={setInputValue}
                             votedOptionByGroup={votedOptionByGroup}
-                            playheadSec={active ? previewPlayheadSec : 0}
+                            playheadSec={active ? undefined : 0}
                             guideSpan={pageGuideSpan}
                             onSectionChange={(next) => {
                               if (sectionHasVoteButton(next)) {
@@ -1616,7 +1610,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
                     onPollVote={(layer) => void voteOnPoll(layer)}
                     onWidgetAction={(layer) => void runWidgetAction(layer)}
                     snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
-                    playheadSec={previewPlayheadSec}
                     freePlacement={artboard}
                     drawGuides={false}
                     guideSpan={guideSpanFor(
@@ -1679,7 +1672,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
               session={session}
               onSelectLayer={() => undefined}
               onSectionChange={() => undefined}
-              playheadSec={previewPlayheadSec}
             />
           </div>
         ) : null}

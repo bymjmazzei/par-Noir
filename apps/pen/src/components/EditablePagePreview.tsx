@@ -82,6 +82,7 @@ import { LayerMediaContent } from './LayerMediaContent';
 import { PenMediaPlayer, PublishedEngagementBar } from '@par-noir/feed-tile';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
+import { usePlayheadSec } from '../services/playheadStore';
 import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
 import {
@@ -129,7 +130,7 @@ export function EditablePagePreview({
   onPageView,
   onToggleViewLock,
   onToggleEngagementGuide,
-  playheadSec = 0,
+  playheadSec: playheadProp,
   onEnterGroup,
   guideSpan
 }: {
@@ -178,6 +179,8 @@ export function EditablePagePreview({
   onSnapChange?: (enabled: boolean) => void;
   session?: PenSession | null;
 }) {
+  const livePlayheadSec = usePlayheadSec(playheadProp === undefined);
+  const playheadSec = playheadProp ?? livePlayheadSec;
   const layersBtnRef = useRef<HTMLButtonElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);

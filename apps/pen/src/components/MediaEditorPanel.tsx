@@ -40,6 +40,7 @@ import { probeMediaAspect } from '../services/penAttach';
 import lookSwatch from '../assets/look-apple.jpg';
 import { resolvePenMediaSrc, putLocalMedia } from '@par-noir/pen-media';
 import type { PenSession } from '../services/penSession';
+import { usePlayheadSec } from '../services/playheadStore';
 
 type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'speed' | 'tracks' | 'animations' | 'transitions';
 
@@ -224,7 +225,7 @@ export function MediaEditorPanel({
   docId,
   contentWidthPx = 736,
   contentHeightPx = 976,
-  playheadSec = 0,
+  playheadSec: playheadProp,
   playing = false,
   onPlayhead,
   onPlaying,
@@ -249,6 +250,8 @@ export function MediaEditorPanel({
   scopeGroupId?: string | null;
   onEnterGroup?: (id: string | null) => void;
 }) {
+  const livePlayheadSec = usePlayheadSec(playheadProp === undefined);
+  const playheadSec = playheadProp ?? livePlayheadSec;
   const [tab, setTab] = useState<ToolTab>('color');
   const [join, setJoin] = useState<TrackJoinPoint | null>(null);
   const selectJoin = useCallback((point: TrackJoinPoint | null) => {

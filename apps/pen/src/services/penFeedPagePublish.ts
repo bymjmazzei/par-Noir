@@ -15,7 +15,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { composePageToVideo, type ComposePageVideoResult } from './composePageVideoEncode';
 import { actionLayerIds, hideActionLayers } from './penDownload';
-import { emitTimelineSample } from './timelineSample';
+import { setPlayheadSec } from './playheadStore';
 
 export function timelineCtxFromManifest(
   manifest: Pick<PenDocManifest, 'pagePresentation'>
@@ -34,7 +34,7 @@ export function composeTimelineEncodeOpts(
   return {
     clockDurationSec: resolveTimelineDuration(sec, undefined, ctx),
     section: sec,
-    onSample: emitTimelineSample,
+    onSample: setPlayheadSec,
     allowInertOnly: true as const
   };
 }

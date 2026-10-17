@@ -127,7 +127,6 @@ import { ActionBindStrip } from '../../components/ActionBindStrip';
 import { IconLayers } from '../../components/icons/PenIcons';
 import { MediaEditorPanel } from '../../components/MediaEditorPanel';
 import { SectionTimeline } from '../../components/SectionTimeline';
-import { bindTimelineSample, emitTimelineSample } from '../../services/timelineSample';
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
 import { composePageToVideo } from '../../services/composePageVideoEncode';
 import { setPlaybackMode } from '../../services/playbackMode';
@@ -251,8 +250,7 @@ export function DocEditorSocialPreview(state: DocEditorReadyState) {
     setActiveLayerId,
     socialSelectedIds,
     setSocialSelectedIds,
-    setTimelineGroupId,
-    playheadSec
+    setTimelineGroupId
   } = state;
   if (!bundle || !section) return null;
   return (
@@ -420,7 +418,7 @@ export function DocEditorSocialPreview(state: DocEditorReadyState) {
                         return t ? templateAuthorLabel(t) : 'You';
                       })()}
                       phoneActiveFeedId="public"
-                      playheadSec={playheadSec}
+                      followPlayhead
                       onAction={onStageAction}
                       actionOverlay={
                         bundle.sections.some(

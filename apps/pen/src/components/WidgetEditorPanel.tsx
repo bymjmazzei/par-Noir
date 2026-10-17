@@ -114,7 +114,7 @@ export function WidgetEditorPanel({
   section,
   onSectionChange,
   onPlaced,
-  playheadSec = 0,
+  playheadSec,
   playing = false,
   onPlayhead,
   onPlaying,
