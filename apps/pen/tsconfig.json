@@ -15,7 +15,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"], "@par-noir/feed-tile": ["../../packages/feed-tile/src/index.ts"] }
+    "paths": { "@/*": ["src/*"], "@par-noir/feed-tile": ["../../packages/feed-tile/src/index.ts"], "@par-noir/pen-media": ["../../packages/pen-media/src/index.ts"] }
   },
   "include": ["src"]
 }

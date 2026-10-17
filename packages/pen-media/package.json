@@ -1,0 +1,20 @@
+{
+  "name": "@par-noir/pen-media",
+  "version": "0.1.0",
+  "description": "Pen media: IndexedDB blob store, PNM1 worker crypto, device Drive upload queue",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "private": true,
+  "dependencies": {
+    "@par-noir/device-cloud-credentials": "file:../device-cloud-credentials",
+    "@par-noir/dm-crypto": "file:../dm-crypto"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.0.0",
+    "vitest": "^3.2.7"
+  }
+}

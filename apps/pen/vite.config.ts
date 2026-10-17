@@ -28,6 +28,7 @@ export default defineConfig(({ command, mode }) => {
       '@par-noir/recovery-crypto': path.resolve(__dirname, '../../packages/recovery-crypto/src/index.ts'),
       '@par-noir/pen-protocol': path.resolve(penSrc, 'index.ts'),
       '@par-noir/feed-tile': path.resolve(__dirname, '../../packages/feed-tile/src/index.ts'),
+      '@par-noir/pen-media': path.resolve(__dirname, '../../packages/pen-media/src/index.ts'),
       '@par-noir/aggregator-domain': path.resolve(aggregatorDomainSrc, 'index.ts'),
     },
   },
