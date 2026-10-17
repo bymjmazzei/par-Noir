@@ -10,14 +10,14 @@ You prompt and decide product behavior. The agent writes code. Precedence: chat 
 ## 1. Boundaries & Fixtures
 - **Test pN:** Agent **never** opens, unlocks, or uploads `.local/test-pn/`. Never commit `.local/`, log passcodes/pn names, or paste secrets. No third fixture.
 - **Tools off by default:** No browser MCP (`cursor-ide-browser`), Playwright, `ux-*.mjs`, `test:e2e*`, WebSearch, Task, or subagents unless explicitly requested in this chat.
-- **Search scope:** Start from named path + direct imports (`packages/*`, `api/`). Repo-wide grep only when stuck or tracing auth/Drive/OAuth. No stale-doc reads (`docs/archive/**`, plans, logs).
+- **Search scope:** Confine all searches (grep, file find) strictly to the `apps/<name>/` or `packages/<name>/` mentioned in the prompt. No monorepo-wide searches unless user explicitly says "search repo-wide" or "search entire repo". Stop reading once target component is found; do not explore sibling pages (Inbox, Settings, Search, etc.) unless asked. No stale-doc reads (`docs/archive/**`, plans, logs).
 
 ## 2. Root Cause Before Edits
 - Name the user-visible symptom, trace to the external system (Drive, API, Redis, Postgres, device), and find the exact failing function.
 - Fix on the path in `packages/` (apps stay thin). Delete the broken dual/shim; do not patch symptoms or leave dead paths.
 
-## 3. Targeted Hermetic Tests
-- Run **only** the test script for the touched area before ship (never full suite / deploy preflights):
+## 3. Targeted Verification
+- Run the touched area's unit test ONCE (never full suite / deploy preflights). Do NOT run full builds (`npm run build`, `vite build`), git status/log checks, or global typechecks (`tsc --noEmit`) unless explicitly instructed:
   - `apps/aggregator-browser/`: `npm run test:browser:unit`
   - `apps/id-dashboard/`: `npm run test:dashboard:unit`
   - `apps/pen/`: `npm run test:pen`
@@ -26,6 +26,7 @@ You prompt and decide product behavior. The agent writes code. Precedence: chat 
   - `packages/<name>/`: `cd packages/<name> && npm test`
 - Workflow tests land next to new workflows. User confirms visible UI on their own pN.
 
-## 4. Ship
-- After targeted test passes: `git add` (no `.env`, secrets, `.local/`, `.firebase` cache) → `git commit` with why → `git push`.
+## 4. Done & Ship
+- Once the single targeted test passes: `git add` the changed files for this task (no `.env`, secrets, `.local/`, `.firebase` cache) → `git commit` with why → `git push`, unless this chat explicitly says not to commit or push.
+- Then output a short summary of changes and stop. Do NOT run follow-up git diffs, redundant verification loops, or full-suite tests.
 - Do **not** run `./deploy.sh`, `firebase deploy`, or API deploy unless explicitly asked. Remind user once: live hosting updates when they run `./deploy.sh` from repo root.

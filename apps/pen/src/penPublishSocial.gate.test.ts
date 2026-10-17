@@ -13,5 +13,6 @@ describe('publishSocial pipeline', () => {
     expect(block).toContain('flushDraftForPublish');
     expect(block).toContain('ensurePublishPlaybackBytes');
     expect(block).toContain('feedPublish');
+    expect(block).toContain('mountComposeCaptureForEncode');
   });
 });

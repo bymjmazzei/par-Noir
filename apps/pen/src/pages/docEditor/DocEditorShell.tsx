@@ -801,7 +801,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <input
-            className="min-w-[3rem] max-w-[45%] shrink-0 truncate bg-transparent font-bold text-black outline-none sm:max-w-[55%] [field-sizing:content]"
+            className="min-w-[3rem] max-w-[38%] shrink-0 truncate bg-transparent font-bold text-black outline-none sm:max-w-[42%] [field-sizing:content]"
             value={bundle.manifest.title}
             onChange={(e) =>
               persist({
@@ -815,7 +815,20 @@ export function DocEditorShell(state: DocEditorReadyState) {
             }
           />
           {classTrail ? (
-            <span className="min-w-0 truncate text-[11px] text-neutral-400">{classTrail}</span>
+            <span className="hidden min-w-0 truncate text-[11px] text-neutral-400 md:inline">
+              {classTrail}
+            </span>
+          ) : null}
+          {error || status ? (
+            <span
+              className={`min-w-0 flex-1 truncate text-[11px] leading-snug sm:hidden ${
+                error ? 'text-red-600' : 'text-teal-800'
+              }`}
+              role="status"
+              title={error || status || undefined}
+            >
+              {error || status}
+            </span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">

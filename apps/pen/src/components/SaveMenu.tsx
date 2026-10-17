@@ -38,7 +38,7 @@ export function SaveMenu({
 
   return (
     <div className="relative flex items-center gap-2" ref={rootRef}>
-      <div className="relative hidden min-w-[5.5rem] sm:block">
+      <div className="relative hidden min-w-[6rem] max-w-[min(22rem,38vw)] sm:block">
         {lastDraftAt && (
           <span
             className={`text-[11px] text-neutral-600 transition-opacity ${toast ? 'opacity-0' : ''}`}
@@ -50,10 +50,11 @@ export function SaveMenu({
         )}
         {toast && (
           <span
-            className={`absolute inset-0 truncate text-[11px] ${
+            className={`absolute inset-0 overflow-hidden text-[11px] leading-snug line-clamp-2 whitespace-normal break-words ${
               errorMessage ? 'text-red-600' : 'text-teal-800'
             }`}
             role="status"
+            title={toast}
           >
             {toast}
           </span>

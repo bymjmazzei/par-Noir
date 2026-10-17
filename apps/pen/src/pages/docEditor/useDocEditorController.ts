@@ -1741,6 +1741,33 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     return root;
   }
 
+  /** Same offscreen page surface Commit uses — social/screen preview hides layer video otherwise. */
+  async function mountComposeCaptureForEncode(slug: string): Promise<void> {
+    flushSync(() => {
+      setActiveSlug(slug);
+      setGalleryComposeCapture(true);
+    });
+    await waitTwoFrames();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+  }
+
+  function teardownComposeCaptureForEncode(prevSlug: string): void {
+    setGalleryComposeCapture(false);
+    setCaptureLayers(false);
+    setActiveSlug(prevSlug);
+  }
+
+  function sharePublishErrorMessage(e: unknown): string {
+    const raw = e instanceof Error ? e.message : 'feed_connect_failed';
+    if (raw === 'gallery_video_not_ready') {
+      return 'Video is still loading. Wait a moment, then try Share again.';
+    }
+    if (raw === 'compose_export_root_missing') {
+      return 'Could not prepare the page for export. Switch to the video page and retry.';
+    }
+    return raw;
+  }
+
   async function withActionsHidden<T>(root: HTMLElement, run: () => Promise<T>): Promise<T> {
     const current = bundleRef.current || bundle;
     const restore = hideActionLayers(root, actionLayerIds(current?.sections || []));
@@ -1860,11 +1887,17 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         };
         setStatus('Publishing to your cloud…');
         let fileId: string;
-        if (shouldPublishAsSingleComposedVideo(b.sections)) {
+        const prevSlug = activeSlugRef.current;
+        try {
+          if (shouldPublishAsSingleComposedVideo(b.sections)) {
+          const { videoSections } = partitionSectionsForPublish(b.sections);
+          const videoSlug = videoSections[0]?.slug;
+          if (videoSlug) await mountComposeCaptureForEncode(videoSlug);
           setStatus('Encoding composed video…');
-          const prevSlug = activeSlugRef.current;
+          const exportRoot = videoSlug ? await rootForSlug(videoSlug) : undefined;
           const video = await writeComposedVideoPublishHandoff(b, {
             ...publishOpts,
+            exportRoot,
             activateSection: (slug) => {
               setActiveSlug(slug);
             },
@@ -1872,7 +1905,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               setStatus(`Encoding composed video… ${Math.round(pct)}%`);
             }
           });
-          setActiveSlug(prevSlug);
           setStatus('Publishing to your cloud…');
           fileId = (
             await publishPostToOwnerCloud({
@@ -1885,19 +1917,17 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               feedPublish
             })
           ).fileId;
-        } else if (shouldPublishAsMixedPages(b.sections)) {
+          } else if (shouldPublishAsMixedPages(b.sections)) {
           setStatus('Encoding video pages…');
-          const prevSlug = activeSlugRef.current;
           const mixed = await writeMixedPagesPublishHandoff(b, {
             ...publishOpts,
-            activateSection: (slug) => {
-              setActiveSlug(slug);
+            activateSection: async (slug) => {
+              await mountComposeCaptureForEncode(slug);
             },
             onProgress: (pct) => {
               setStatus(`Encoding video pages… ${Math.round(pct)}%`);
             }
           });
-          setActiveSlug(prevSlug);
           setStatus('Publishing to your cloud…');
           fileId = (
             await publishPostToOwnerCloud({
@@ -1910,7 +1940,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               feedPublish
             })
           ).fileId;
-        } else {
+          } else {
           const template = getTemplate(b.manifest.templateId);
           const asCollection = shouldPublishSocialAsCollection({
             classId: b.manifest.classId,
@@ -1931,12 +1961,15 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
                 : {})
             })
           ).fileId;
+          }
+          rememberPostFileId(bundleRef.current || b, fileId);
+          setStatus('Published to your cloud');
+          window.setTimeout(() => setStatus(null), 4000);
+        } finally {
+          teardownComposeCaptureForEncode(prevSlug);
         }
-        rememberPostFileId(bundleRef.current || b, fileId);
-        setStatus('Published to your cloud');
-        window.setTimeout(() => setStatus(null), 4000);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'feed_connect_failed');
+        setError(sharePublishErrorMessage(e));
         setStatus(null);
       }
     })();
