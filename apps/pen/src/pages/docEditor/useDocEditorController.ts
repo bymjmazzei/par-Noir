@@ -1768,6 +1768,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     if (raw.startsWith('r2_owner_upload_failed') || raw.startsWith('r2_put_failed')) {
       return 'Could not upload preview to the feed CDN. Try again after the API has finished deploying.';
     }
+    if (raw.startsWith('metadata_index_500') || raw.includes('companion metadata')) {
+      return 'Could not index this post on the network. Deploy the latest API and try Share again.';
+    }
     return raw;
   }
 

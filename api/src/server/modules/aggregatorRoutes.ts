@@ -2142,7 +2142,15 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                     ...(thumbnailFileId && { thumbnailFileId }),
                     ...(mainFileId && { mainFileId })
                   });
+                  companionCreatedThisRequest = true;
                 }
+                return;
+              }
+
+              if (!storageCtx) {
+                console.log(
+                  `[MetadataIndex PUT] Device-cloud Google owner — companion create skipped for ${fileId} (Postgres feed cache)`
+                );
                 return;
               }
 
@@ -2416,139 +2424,54 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       // Skip when companion create already ran or was deferred to background (fields included there).
       if (!companionCreatedThisRequest && (name || description || keywords || tags || genre || category || locationCreated || license)) {
         try {
-          {
-            const tokenPayload = getBearerTokenPayload(req);
-            if (tokenPayload) {
-              const pnIdentifier = tokenPayload.pnIdentifier;
-              if (pnIdentifier) {
-                const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-                const identifierCandidates: string[] = [];
-                if (tokenPayload.pnIdentifier) {
-                  identifierCandidates.push(tokenPayload.pnIdentifier);
-                }
-                if (tokenPayload.did) {
-                  identifierCandidates.push(tokenPayload.did);
-                  if (tokenPayload.did.startsWith('did:key:')) {
-                    const keyPart = tokenPayload.did.substring(8);
-                    if (keyPart) {
-                      identifierCandidates.push(keyPart);
-                    }
-                  }
-                }
-                
-                const { googleDriveProxyService } = await import('./googleDriveProxy');
-                const { storageCredentialsService } = await import('./storageCredentialsService');
-                const accountId = accountIdParam;
-                const credentialsRecord =
-                  storageCtx?.credentialsRecord ??
-                  (await storageCredentialsService.getCredentials(userIdentifier));
-                
-                if (credentialsRecord?.credentials) {
-                  const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-                    (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-                  if (googleDriveAccounts.length > 0) {
-                    const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-                    const accountIdForToken = accountId || deps.extractAccountId(account);
-                    let token;
-                    if (storageCtx) {
-                      token = getDriveTokenFromContext(storageCtx);
-                    } else {
-                      try {
-                        const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
+          const pnIdentifier = tokenPayload?.pnIdentifier;
+          if (pnIdentifier) {
+            const { isPortableSocialCloud } = await import('./storage/storageProviderUtils');
+            const { CompanionMetadataService } = await import('./companionMetadataService');
+            const portable = await isPortableSocialCloud(pnIdentifier);
+            const cloudAccessToken =
+              !portable && storageCtx
+                ? getDriveTokenFromContext(storageCtx).access_token
+                : undefined;
+            if (!portable && !cloudAccessToken) {
+              console.log(
+                `[MetadataIndex PUT] Skipping companion field sync for ${actualFileId} (device-cloud; Postgres cache updated)`
+              );
+            } else {
+              const companionMetadataUpdate: Record<string, unknown> = {};
+              if (description !== undefined) companionMetadataUpdate.description = description;
+              if (tags || keywords) companionMetadataUpdate.tags = tags || keywords || [];
+              if (name !== undefined) {
+                companionMetadataUpdate.fileName = name;
+                companionMetadataUpdate.originalName = String(name).replace(/\.encrypted$/i, '');
+              }
+              const exists = await CompanionMetadataService.exists(
+                pnIdentifier,
+                actualFileId,
+                cloudAccessToken
+              );
+              if (exists) {
+                await CompanionMetadataService.update(
+                  pnIdentifier,
+                  actualFileId,
+                  companionMetadataUpdate as any,
+                  cloudAccessToken
                 );
-                return { token: { access_token: '' } };
-              })());
-                        token = resolved.token;
-                      } catch (error) {
-                                                throw error;
-                      }
-                    }
-                    const accessToken = token.access_token;
-                    
-                    // Get pN folder and metadata folder
-                    const { pnFolderDisplayName } = await import('./integratorStoragePaths');
-                    const pnFolderName = pnFolderDisplayName(pnIdentifier);
-                    const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                    const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                    
-                    const folderResponse = await fetch(folderSearchUrl, {
-                      headers: { 'Authorization': `Bearer ${accessToken}` }
-                    });
-                    
-                    let pnFolderId: string | null = null;
-                    if (folderResponse.ok) {
-                      const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                      if (folderData.files && folderData.files.length > 0) {
-                        pnFolderId = folderData.files[0].id;
-                      }
-                    }
-                    
-                    if (pnFolderId) {
-                      const metadataFolderName = '_metadata';
-                      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                      
-                      const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                        headers: { 'Authorization': `Bearer ${accessToken}` }
-                      });
-                      
-                      let metadataFolderId: string | null = null;
-                      if (metadataFolderResponse.ok) {
-                        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                        if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                          metadataFolderId = metadataFolderData.files[0].id;
-                        }
-                      }
-                      
-                      if (metadataFolderId) {
-                        const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-                        const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
-                          token,
-                          metadataFolderId,
-                          actualFileId,
-                          pnIdentifier,
-                          accountIdForToken
-                        );
-                        
-                        if (spreadsheetId) {
-                          // Build partial update for companion metadata
-                          const companionMetadataUpdate: Partial<any> = {};
-                          if (description !== undefined) companionMetadataUpdate.description = description;
-                          if (tags || keywords) companionMetadataUpdate.tags = tags || keywords || [];
-                          // Note: category, genre, location, license may need to be stored in metadata field
-                          // or added to CompanionMetadataSheets.updateMetadata() method
-                          // For now, we update what we can (description and tags)
-                          
-                          await CompanionMetadataSheets.updateMetadata(
-                            token,
-                            spreadsheetId,
-                            companionMetadataUpdate,
-                            pnIdentifier,
-                            accountIdForToken
-                          );
-                          console.log(`[MetadataIndex PUT] Updated companion metadata FIRST (source of truth) for ${actualFileId} with metadata fields`);
-                        } else {
-                          console.log(`[MetadataIndex PUT] Companion metadata spreadsheet not found for ${actualFileId} - metadata fields will be saved to database only`);
-                        }
-                      }
-                    }
-                  }
-                }
+                console.log(
+                  `[MetadataIndex PUT] Updated companion metadata fields for ${actualFileId}`
+                );
+              } else {
+                console.log(
+                  `[MetadataIndex PUT] No companion record for ${actualFileId}; Postgres fields only`
+                );
               }
             }
           }
         } catch (companionMetadataError: any) {
-          console.error(`[MetadataIndex PUT] CRITICAL: Failed to update companion metadata (source of truth) for ${fileId}:`, companionMetadataError?.message || companionMetadataError);
-          // Since companion metadata is the source of truth, we should fail the request if it can't be updated
-          // This prevents database and companion metadata from being out of sync
-          return res.status(500).json({ 
-            error: 'Failed to update companion metadata',
-            message: 'Companion metadata update failed. This is the source of truth, so the update cannot proceed.'
-          });
+          console.warn(
+            `[MetadataIndex PUT] Companion field sync failed (non-blocking) for ${fileId}:`,
+            companionMetadataError?.message || companionMetadataError
+          );
         }
       }
 
@@ -2726,169 +2649,71 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       // Refetch current after updateMetadata() to get latest state (or null if deleted)
       current = await service.getFileMetadata(actualFileId);
 
-      // SIMPLIFIED: Update companion metadata if isPublic is being changed
-      // For private files, current might be null if we just deleted it, so use updated metadata from updateMetadata()
+      // Update companion visibility when server can reach owner storage (portable JSON or API Drive token).
       if ((isPublic === false || isPublic === true) && !companionCreatedThisRequest) {
-        // Use current metadata if available, otherwise use updated metadata from updateMetadata() call
         const metadataForCompanion = current?.metadata || updated;
         try {
-          {
-            const tokenPayload = getBearerTokenPayload(req);
-            if (tokenPayload) {
-              const pnIdentifier = tokenPayload.pnIdentifier;
-              if (!pnIdentifier) {
-                console.error(`[MetadataIndex PUT] Missing pnIdentifier in token payload`);
-                throw new Error('Missing pnIdentifier in token');
-              }
-              const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-              const identifierCandidates: string[] = [];
-              if (tokenPayload.pnIdentifier) {
-                identifierCandidates.push(tokenPayload.pnIdentifier);
-              }
-              if (tokenPayload.did) {
-                identifierCandidates.push(tokenPayload.did);
-                if (tokenPayload.did.startsWith('did:key:')) {
-                  const keyPart = tokenPayload.did.substring(8);
-                  if (keyPart) {
-                    identifierCandidates.push(keyPart);
-                  }
-                }
-              }
-              
-              const { googleDriveProxyService } = await import('./googleDriveProxy');
-              const { storageCredentialsService } = await import('./storageCredentialsService');
-              const accountId = accountIdParam;
-              const credentialsRecord =
-                storageCtx?.credentialsRecord ??
-                (await storageCredentialsService.getCredentials(userIdentifier));
-              
-              if (credentialsRecord?.credentials) {
-                const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-                  (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-                if (googleDriveAccounts.length > 0) {
-                  const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-                  const accountIdForToken = accountId || deps.extractAccountId(account);
-                  let token;
-                  if (storageCtx) {
-                    token = getDriveTokenFromContext(storageCtx);
-                  } else {
-                    try {
-                      const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
+          const pnIdentifier = tokenPayload?.pnIdentifier;
+          if (pnIdentifier) {
+            const { isPortableSocialCloud } = await import('./storage/storageProviderUtils');
+            const { CompanionMetadataService } = await import('./companionMetadataService');
+            const portable = await isPortableSocialCloud(pnIdentifier);
+            const cloudAccessToken =
+              !portable && storageCtx
+                ? getDriveTokenFromContext(storageCtx).access_token
+                : undefined;
+            if (!portable && !cloudAccessToken) {
+              console.log(
+                `[MetadataIndex PUT] Skipping companion visibility sync for ${actualFileId} (device-cloud)`
+              );
+            } else {
+              const metadataForType = (metadataForCompanion || {}) as Record<string, unknown>;
+              const determinedFileType = determineFileType({
+                fileType: metadataForType.fileType as string | undefined,
+                collection: metadataForType.collection,
+                textPost: metadataForType.textPost,
+                thought: metadataForType.thought,
+                mimeType: metadataForType.mimeType as string | undefined,
+                isNoteThumbnail: metadataForType.isNoteThumbnail as boolean | undefined,
+                isPartOfCollection: metadataForType.isPartOfCollection as boolean | undefined
+              });
+              const determinedContentClass = determineContentClass({
+                fileType: determinedFileType,
+                collection: metadataForType.collection,
+                textPost: metadataForType.textPost,
+                thought: metadataForType.thought,
+                isNoteThumbnail: metadataForType.isNoteThumbnail as boolean | undefined,
+                isPartOfCollection: metadataForType.isPartOfCollection as boolean | undefined
+              });
+              const visibility = isPublic === true ? 'public' : 'private';
+              const exists = await CompanionMetadataService.exists(
+                pnIdentifier,
+                actualFileId,
+                cloudAccessToken
+              );
+              if (exists) {
+                await CompanionMetadataService.update(
+                  pnIdentifier,
+                  actualFileId,
+                  {
+                    visibility,
+                    fileType: determinedFileType,
+                    contentClass: determinedContentClass,
+                    thumbnailFileId: metadataForType.thumbnailFileId as string | undefined
+                  },
+                  cloudAccessToken
                 );
-                return { token: { access_token: '' } };
-              })());
-                      token = resolved.token;
-                    } catch (error) {
-                                            throw error;
-                    }
-                  }
-                  const accessToken = token.access_token;
-                  
-                  // Get pN folder and metadata folder
-                  const { pnFolderDisplayName } = await import('./integratorStoragePaths');
-                  const pnFolderName = pnFolderDisplayName(pnIdentifier);
-                  const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                  const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                  
-                  const folderResponse = await fetch(folderSearchUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                  });
-                  
-                  let pnFolderId: string | null = null;
-                  if (folderResponse.ok) {
-                    const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                    if (folderData.files && folderData.files.length > 0) {
-                      pnFolderId = folderData.files[0].id;
-                    }
-                  }
-                  
-                  if (pnFolderId) {
-                    const metadataFolderName = '_metadata';
-                    const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                    const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                    
-                    const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                      headers: { 'Authorization': `Bearer ${accessToken}` }
-                    });
-                    
-                    let metadataFolderId: string | null = null;
-                    if (metadataFolderResponse.ok) {
-                      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                      if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                        metadataFolderId = metadataFolderData.files[0].id;
-                      }
-                    }
-                    
-                    if (metadataFolderId) {
-                      const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-                      const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
-                        token,
-                        metadataFolderId,
-                        actualFileId,
-                        pnIdentifier,
-                        accountIdForToken
-                      );
-                      
-                      if (spreadsheetId) {
-                        const visibility = isPublic === true ? 'public' : 'private';
-                        
-                        // Get metadata to determine contentClass and thumbnailFileId
-                        // For private files, current might be null if already deleted, so use metadataForCompanion
-                        const metadataForType = (metadataForCompanion || {}) as any;
-                        
-                        // Determine fileType and contentClass
-                        const determinedFileType = determineFileType({
-                          fileType: metadataForType.fileType,
-                          collection: metadataForType.collection,
-                          textPost: metadataForType.textPost,
-                          thought: metadataForType.thought,
-                          mimeType: metadataForType.mimeType,
-                          isNoteThumbnail: metadataForType.isNoteThumbnail,
-                          isPartOfCollection: metadataForType.isPartOfCollection
-                        });
-                        const determinedContentClass = determineContentClass({
-                          fileType: determinedFileType,
-                          collection: metadataForType.collection,
-                          textPost: metadataForType.textPost,
-                          thought: metadataForType.thought,
-                          isNoteThumbnail: metadataForType.isNoteThumbnail,
-                          isPartOfCollection: metadataForType.isPartOfCollection
-                        });
-                        
-                        await CompanionMetadataSheets.updateMetadata(
-                          token,
-                          spreadsheetId,
-                          { 
-                            visibility: visibility as 'public' | 'private',
-                            fileType: determinedFileType,
-                            contentClass: determinedContentClass,
-                            thumbnailFileId: metadataForType.thumbnailFileId
-                          },
-                          pnIdentifier,
-                          accountIdForToken
-                        );
-                        console.log(`[MetadataIndex PUT] Updated companion metadata (source of truth) for ${actualFileId} to ${visibility} (contentClass: ${determinedContentClass})`);
-                      } else {
-                        console.log(`[MetadataIndex PUT] Companion metadata spreadsheet not found for ${fileId} - will be created in companion metadata creation block`);
-                      }
-                    }
-                  }
-                }
+                console.log(
+                  `[MetadataIndex PUT] Updated companion visibility for ${actualFileId} to ${visibility}`
+                );
               }
             }
           }
         } catch (companionMetadataError: any) {
-          console.error(`[MetadataIndex PUT] CRITICAL: Failed to update companion metadata (source of truth) for ${fileId}:`, companionMetadataError?.message || companionMetadataError);
-          // Since companion metadata is the source of truth, we should fail the request if it can't be updated
-          // This prevents database and companion metadata from being out of sync
-          return res.status(500).json({ 
-            error: 'Failed to update companion metadata',
-            message: 'Companion metadata update failed. This is the source of truth, so the update cannot proceed.'
-          });
+          console.warn(
+            `[MetadataIndex PUT] Companion visibility sync failed (non-blocking) for ${fileId}:`,
+            companionMetadataError?.message || companionMetadataError
+          );
         }
       }
       
