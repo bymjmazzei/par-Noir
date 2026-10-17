@@ -7,12 +7,12 @@ import {
   emptySection,
   mergePagePresentation,
   normalizeSection,
-  buildActionStageHtml,
   type PenDocManifest,
   type PenPageLayer,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import type { FeedTilePage, FeedTileViewModel } from '@par-noir/feed-tile';
+import { penFeedPageForSection } from './penFeedPagePublish';
 
 function primaryMediaLayer(layers: PenPageLayer[] | undefined): PenPageLayer | null {
   const visible = (layers || []).filter((l) => l.visible !== false);
@@ -25,9 +25,20 @@ function primaryMediaLayer(layers: PenPageLayer[] | undefined): PenPageLayer | n
 export function sectionsToFeedPages(
   sections: PenSectionContent[],
   titleFallback: string,
-  pagePresentation?: PenDocManifest['pagePresentation']
+  manifest?: Pick<PenDocManifest, 'pagePresentation' | 'galleryAspect' | 'docId'>
 ): FeedTilePage[] {
-  const pres = mergePagePresentation(defaultPagePresentation(), pagePresentation || undefined);
+  const pres = mergePagePresentation(
+    defaultPagePresentation(),
+    manifest?.pagePresentation || undefined
+  );
+  const manifestForPage: PenDocManifest = {
+    docId: manifest?.docId || 'preview',
+    title: titleFallback,
+    classId: 'custom.doc',
+    templateId: 'blank.custom',
+    galleryAspect: manifest?.galleryAspect,
+    pagePresentation: manifest?.pagePresentation
+  };
   return sections.map((raw) => {
     const s = normalizeSection(raw);
     const plain = docToPlainText(s.doc).trim();
@@ -52,8 +63,7 @@ export function sectionsToFeedPages(
       page.mediaSrc = pres.backgroundImage;
       page.mediaKind = 'image';
     }
-    const stage = buildActionStageHtml([s]);
-    if (stage) page.actionStageHtml = stage;
+    page.penFeedPage = penFeedPageForSection(s, manifestForPage);
     return page;
   });
 }
@@ -72,8 +82,13 @@ export function bundleToFeedTileModel(input: {
   galleryPreviewRef?: string;
   galleryPreviewKind?: 'image' | 'video';
   galleryPreviewPosterRef?: string;
+  galleryAspect?: PenDocManifest['galleryAspect'];
 }): FeedTileViewModel {
-  const pages = sectionsToFeedPages(input.sections, input.title, input.pagePresentation);
+  const pages = sectionsToFeedPages(input.sections, input.title, {
+    pagePresentation: input.pagePresentation,
+    galleryAspect: input.galleryAspect,
+    docId: input.fileId
+  });
   if (input.galleryPreviewRef && pages[0]) {
     pages[0] = {
       ...pages[0],

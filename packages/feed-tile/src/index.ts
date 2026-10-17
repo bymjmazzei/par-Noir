@@ -4,6 +4,13 @@ export {
   type FeedTileViewModel,
   type FeedTilePage
 } from './FeedTileSurface.js';
+export { PenFeedPageStage } from './PenFeedPageStage.js';
+export {
+  compilePenFeedTileModel,
+  isPenFeedPlaybackMetadata,
+  type PenFeedCompileInput,
+  type PenFeedCompilePageInput
+} from './penFeedCompile.js';
 export { PenMediaPlayer } from './PenMediaPlayer.js';
 export { PublishedEngagementBar } from './PublishedEngagementBar.js';
 export {

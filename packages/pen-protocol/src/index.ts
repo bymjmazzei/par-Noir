@@ -32,6 +32,7 @@ export * from './widgetElements.js';
 export * from './seedRefs.js';
 export * from './actionPartition.js';
 export * from './actionStage.js';
+export * from './feedActionSection.js';
 export * from './agentLibrary.js';
 export * from './aspectRemap.js';
 export * from './knowledge.js';

@@ -73,6 +73,12 @@ import { metadataFieldsFromPublishForm } from './penFeedMetadata';
 import { resolvePenMediaSrc } from './penLocalMedia';
 import { isTemplatesCatalogClass } from './classFeedRailItems';
 import { ensureShareFeedIds } from './penFeedTargets';
+import {
+  composePageVideoWithoutActions,
+  minimalOverlayStillBlob,
+  penFeedPageForSection,
+  penPresentationFields
+} from './penFeedPagePublish';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
 /** Legacy browse handoff key — still written alongside for one release. */
@@ -278,7 +284,7 @@ export async function writeComposedVideoPublishHandoff(
       throw new Error('compose_export_root_missing');
     }
     const root = await waitForUntaintedComposeVideos(root0);
-    encoded = await composePageToVideo(root, {
+    encoded = await composePageVideoWithoutActions(root, bundle.sections, {
       onProgress: opts?.onProgress,
       ...composeClock(videoSections[0])
     });
@@ -333,7 +339,8 @@ export type MixedPublishPage =
   | { kind: 'note'; slug: string; content: string; style?: unknown; doc?: unknown }
   | { kind: 'video'; slug: string; videoIndex: number }
   | { kind: 'still'; slug: string; imageSrc: string }
-  | { kind: 'raster'; slug: string; posterBlob: Blob };
+  | { kind: 'raster'; slug: string; posterBlob: Blob }
+  | { kind: 'overlay'; slug: string; posterBlob: Blob };
 
 export type MixedPagesPublish = {
   contentClass: 'collection';
@@ -386,7 +393,7 @@ export async function writeMixedPagesPublishHandoff(
       const root0 = findComposeExportRoot();
       if (!root0) throw new Error('compose_export_root_missing');
       const root = await waitForUntaintedComposeVideos(root0);
-      const encoded = await composePageToVideo(root, {
+      const encoded = await composePageVideoWithoutActions(root, bundle.sections, {
         ...composeClock(sec),
         onProgress: (p) => {
           const base = (i / videoSections.length) * 80;
@@ -466,7 +473,8 @@ export async function writeSocialTocCollectionHandoff(
   opts: {
     activateSection: (slug: string) => void | Promise<void>;
     resolveExportRoot: (slug: string) => Promise<HTMLElement>;
-    rasterizeSection: (slug: string) => Promise<Blob>;
+    /** @deprecated Action-only pages use overlay still + penFeedPage. */
+    rasterizeSection?: (slug: string) => Promise<Blob>;
     onProgress?: (pct: number) => void;
     canPublishPublicTemplate?: boolean;
     connectReady?: boolean;
@@ -504,7 +512,7 @@ export async function writeSocialTocCollectionHandoff(
       const root0 = await opts.resolveExportRoot(sec.slug);
       if (!root0) throw new Error('compose_export_root_missing');
       const root = await waitForUntaintedComposeVideos(root0);
-      const encoded = await composePageToVideo(root, {
+      const encoded = await composePageVideoWithoutActions(root, bundle.sections, {
         ...composeClock(sec),
         onProgress: (p) => {
           const base = (i / videoSections.length) * 70;
@@ -522,10 +530,11 @@ export async function writeSocialTocCollectionHandoff(
     setPlaybackMode('edit');
   }
 
+  const overlayStill = await minimalOverlayStillBlob(manifest);
   const videoIndexBySlug = new Map(videos.map((v, i) => [v.slug, i]));
   const pages: MixedPublishPage[] = [];
-  const rasterWeight = Math.max(ordered.length - videoSections.length, 1);
-  let rasterDone = 0;
+  const overlayWeight = Math.max(ordered.length - videoSections.length, 1);
+  let overlayDone = 0;
 
   for (const raw of ordered) {
     const slug = raw.slug;
@@ -552,10 +561,9 @@ export async function writeSocialTocCollectionHandoff(
     }
     if (sectionNeedsRasterSnapshot(raw)) {
       opts.onProgress?.(
-        Math.round(70 + (++rasterDone / rasterWeight) * 25)
+        Math.round(70 + (++overlayDone / overlayWeight) * 25)
       );
-      const posterBlob = await opts.rasterizeSection(slug);
-      pages.push({ kind: 'raster', slug, posterBlob });
+      pages.push({ kind: 'overlay', slug, posterBlob: overlayStill });
     }
   }
 
@@ -583,6 +591,13 @@ export async function writeSocialTocCollectionHandoff(
     pages,
     videos
   };
+}
+
+function sectionBySlug(
+  bundle: LocalDocBundle,
+  slug: string
+): PenSectionContent | undefined {
+  return bundle.sections.find((section) => section.slug === slug);
 }
 
 function sectionsInTocOrder(bundle: LocalDocBundle): PenSectionContent[] {
@@ -874,6 +889,16 @@ export async function publishPostToOwnerCloud(params: {
 
   if (params.video) {
     const bytes = new Uint8Array(await params.video.videoBlob.arrayBuffer());
+    const videoSlug = partitionSectionsForPublish(params.bundle.sections).videoSections[0]?.slug;
+    const videoPageMeta =
+      videoSlug && sectionBySlug(params.bundle, videoSlug)
+        ? {
+            penFeedPage: penFeedPageForSection(
+              sectionBySlug(params.bundle, videoSlug)!,
+              params.bundle.manifest
+            )
+          }
+        : {};
     return publishPublicCloudFile({
       request: params.request,
       parentFolderId,
@@ -888,6 +913,8 @@ export async function publishPostToOwnerCloud(params: {
         ...publishMeta,
         ...base,
         ...overlayMeta,
+        ...penPresentationFields(params.bundle.manifest),
+        ...videoPageMeta,
         fileType: 'video',
         contentClass: 'media',
         description: caption || params.video.title
@@ -916,6 +943,14 @@ export async function publishPostToOwnerCloud(params: {
           metadata: {
             ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
+            ...(sectionBySlug(params.bundle, page.slug)
+              ? {
+                  penFeedPage: penFeedPageForSection(
+                    sectionBySlug(params.bundle, page.slug)!,
+                    params.bundle.manifest
+                  )
+                }
+              : {}),
             fileType: 'video',
             contentClass: 'media',
             isPartOfCollection: true
@@ -937,6 +972,14 @@ export async function publishPostToOwnerCloud(params: {
           metadata: {
             ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
+            ...(sectionBySlug(params.bundle, page.slug)
+              ? {
+                  penFeedPage: penFeedPageForSection(
+                    sectionBySlug(params.bundle, page.slug)!,
+                    params.bundle.manifest
+                  )
+                }
+              : {}),
             fileType: 'image',
             contentClass: 'media',
             isPartOfCollection: true
@@ -944,19 +987,27 @@ export async function publishPostToOwnerCloud(params: {
         });
         if (!parentPoster) parentPoster = still.blob;
         childIds.push(uploaded.fileId);
-      } else if (page.kind === 'raster') {
+      } else if (page.kind === 'raster' || page.kind === 'overlay') {
         const uploaded = await publishPublicCloudFile({
           request: params.request,
           parentFolderId,
           bytes: new Uint8Array(await page.posterBlob.arrayBuffer()),
-          fileName: `pen-${docId}-${page.slug}.png`,
+          fileName: `pen-${docId}-${page.slug}.jpg`,
           title: `${publishTitle} — ${page.slug}`,
           poster: page.posterBlob,
-          posterContentType: 'image/png',
+          posterContentType: page.kind === 'raster' ? 'image/png' : 'image/jpeg',
           indexingPermissions,
           metadata: {
             ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
+            ...(sectionBySlug(params.bundle, page.slug)
+              ? {
+                  penFeedPage: penFeedPageForSection(
+                    sectionBySlug(params.bundle, page.slug)!,
+                    params.bundle.manifest
+                  )
+                }
+              : {}),
             fileType: 'image',
             contentClass: 'media',
             isPartOfCollection: true
@@ -978,6 +1029,14 @@ export async function publishPostToOwnerCloud(params: {
           metadata: {
             ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
+            ...(sectionBySlug(params.bundle, page.slug)
+              ? {
+                  penFeedPage: penFeedPageForSection(
+                    sectionBySlug(params.bundle, page.slug)!,
+                    params.bundle.manifest
+                  )
+                }
+              : {}),
             fileType: 'note-collection-page',
             contentClass: 'note',
             textPost,
@@ -1003,6 +1062,7 @@ export async function publishPostToOwnerCloud(params: {
         ...publishMeta,
         ...base,
         ...overlayMeta,
+        ...penPresentationFields(params.bundle.manifest),
         fileType: 'collection',
         contentClass: 'collection',
         collection: { collectionFileIds: childIds, title: publishTitle },

@@ -81,7 +81,7 @@ import {
   formCollectsToSheet,
   inputColumnKeys,
   isSheetTrigger,
-  buildActionStageHtml,
+  exportActionSectionForFeed,
   type PenActionMessage,
   nextAllocatePress,
   nextRankPress,
@@ -223,8 +223,7 @@ import {
   defaultPagePresentation,
   getTemplate,
   templateAuthorLabel,
-  PAGE_LAYER_ID,
-  buildActionStageHtml
+  PAGE_LAYER_ID
 } from '@par-noir/pen-protocol';
 import { SocialFeedPhonePreview } from '../../components/SocialFeedPhonePreview';
 import { LayersPopover } from '../../components/LayersPanel';
@@ -254,7 +253,8 @@ export function DocEditorSocialPreview(state: DocEditorReadyState) {
     setActiveLayerId,
     socialSelectedIds,
     setSocialSelectedIds,
-    setTimelineGroupId
+    setTimelineGroupId,
+    playheadSec
   } = state;
   if (!bundle || !section) return null;
   return (
@@ -422,9 +422,15 @@ export function DocEditorSocialPreview(state: DocEditorReadyState) {
                         return t ? templateAuthorLabel(t) : 'You';
                       })()}
                       phoneActiveFeedId="public"
+                      playheadSec={playheadSec}
                       onAction={onStageAction}
                       actionOverlay={
-                        buildActionStageHtml(bundle.sections) ? undefined : (
+                        bundle.sections.some(
+                          (sec) =>
+                            exportActionSectionForFeed(sec).layers.filter(
+                              (l) => l.kind === 'interactive'
+                            ).length > 0
+                        ) ? undefined : (
                         <ActionLayerPhoneOverlay
                           sections={bundle.sections}
                           galleryAspect={bundle.manifest.galleryAspect}

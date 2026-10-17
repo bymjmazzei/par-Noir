@@ -5,12 +5,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
 import type { PenActionMessage } from '@par-noir/pen-protocol';
-import {
-  canvasSizeForAspect,
-  normalizeGalleryAspect,
-  type PenDocManifest,
-  type PenSectionContent
-} from '@par-noir/pen-protocol';
+import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
 import { downloadCloudMediaBlob } from '../services/penAttach';
 import {
@@ -91,7 +86,8 @@ export function BrowseFeedTilePreview({
   engagementOverlay,
   aspectRatio,
   showWidgets = true,
-  onAction
+  onAction,
+  playheadSec
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -106,6 +102,8 @@ export function BrowseFeedTilePreview({
   /** Voter HTML for placed widgets. The editor overlay paints the author frame instead. */
   showWidgets?: boolean;
   onAction?: (message: PenActionMessage) => void;
+  /** Timeline scrubber — drives motion-synced action overlays in preview. */
+  playheadSec?: number;
 }) {
   const base = bundleToFeedTileModel({
     title: manifest.title || 'Untitled',
@@ -116,7 +114,9 @@ export function BrowseFeedTilePreview({
     pageView: manifest.pageView,
     galleryPreviewRef: manifest.galleryPreviewRef,
     galleryPreviewKind: manifest.galleryPreviewKind,
-    galleryPreviewPosterRef: manifest.galleryPreviewPosterRef
+    galleryPreviewPosterRef: manifest.galleryPreviewPosterRef,
+    galleryAspect: manifest.galleryAspect,
+    fileId: manifest.docId
   });
   // Never paint unresolved penmedia:/penlocal: on first render.
   const [model, setModel] = useState(() => scrubUnresolvedMedia(base));
@@ -132,7 +132,9 @@ export function BrowseFeedTilePreview({
       pageView: manifest.pageView,
       galleryPreviewRef: manifest.galleryPreviewRef,
       galleryPreviewKind: manifest.galleryPreviewKind,
-      galleryPreviewPosterRef: manifest.galleryPreviewPosterRef
+      galleryPreviewPosterRef: manifest.galleryPreviewPosterRef,
+      galleryAspect: manifest.galleryAspect,
+      fileId: manifest.docId
     });
     setModel(scrubUnresolvedMedia(next));
     void resolveTileMedia(next, manifest.docId, session).then((resolved) => {
@@ -151,34 +153,6 @@ export function BrowseFeedTilePreview({
         ? '1/1'
         : '9/16');
 
-  const canvas = canvasSizeForAspect(normalizeGalleryAspect(manifest.galleryAspect));
-  const stage = model.pages.some((page) => page.actionStageHtml);
-  const widgetOverlay = showWidgets && !stage ? (
-    <div className="pointer-events-none absolute inset-0 z-10">
-      {sections.flatMap((section) =>
-        (section.layers || [])
-          .filter((layer) => layer.visible !== false && layer.kind === 'interactive')
-          .map((layer) => (
-            <div
-              key={layer.id}
-              className="pointer-events-auto absolute flex items-center justify-center text-[11px] font-medium text-white"
-              style={{
-                left: `${(layer.x / canvas.w) * 100}%`,
-                top: `${(layer.y / canvas.h) * 100}%`,
-                width: `${(layer.w / canvas.w) * 100}%`,
-                height: `${(layer.h / canvas.h) * 100}%`,
-                backgroundColor: layer.backgroundColor || 'rgba(15,118,110,0.85)',
-                transform: layer.rotate || layer.mediaRotate ? `rotate(${layer.rotate ?? layer.mediaRotate}deg)` : undefined,
-                transformOrigin: 'center'
-              }}
-            >
-              {layer.label || 'Button'}
-            </div>
-          ))
-      )}
-    </div>
-  ) : null;
-
   const tile = (
     <FeedTileSurface
       model={model}
@@ -186,9 +160,9 @@ export function BrowseFeedTilePreview({
       compact={compact || bare}
       hideEngagementRail={hideEngagementRail}
       engagementOverlay={engagementOverlay}
-      widgetOverlay={widgetOverlay}
       aspectRatio={resolvedAspect}
       onAction={onAction}
+      externalClockSec={playheadSec}
     />
   );
 

@@ -22,7 +22,11 @@ const PEN_INDEX_KEYS = [
   'templateId',
   'contentClass',
   'actionOverlays',
-  'actionStageHtml'
+  'actionStageHtml',
+  'penFeedPage',
+  'pageView',
+  'pageSwipeAxis',
+  'galleryAspect'
 ] as const;
 
 export function penIndexFields(body: unknown): Record<string, unknown> {

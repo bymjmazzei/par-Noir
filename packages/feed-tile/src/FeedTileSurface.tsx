@@ -3,9 +3,11 @@ import { useEffect, useMemo } from 'react';
 import {
   buildActionStageDocument,
   readPenActionMessage,
-  type PenActionMessage
+  type PenActionMessage,
+  type PenFeedPagePayload
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from './PenMediaPlayer.js';
+import { PenFeedPageStage } from './PenFeedPageStage.js';
 
 export type FeedTilePage = {
   title?: string;
@@ -17,6 +19,8 @@ export type FeedTilePage = {
   mediaKind?: 'image' | 'video';
   /** Action overlay HTML. When set, the page is one iframe: media behind this HTML. */
   actionStageHtml?: string;
+  /** Motion-synced action overlay (preferred over actionStageHtml). */
+  penFeedPage?: PenFeedPagePayload;
   backgroundColor?: string;
   textColor?: string;
 };
@@ -132,11 +136,13 @@ function PenActionStage({
 function PageSurface({
   page,
   titleFallback,
-  onAction
+  onAction,
+  externalClockSec
 }: {
   page: FeedTilePage;
   titleFallback: string;
   onAction?: (message: PenActionMessage) => void;
+  externalClockSec?: number;
 }) {
   const surface: CSSProperties = {
     backgroundColor: page.backgroundColor || '#000000',
@@ -148,6 +154,18 @@ function PageSurface({
     plainFromHtml(page.bodyHtml) ||
     page.title ||
     titleFallback;
+
+  if (page.penFeedPage) {
+    return (
+      <PenFeedPageStage
+        mediaSrc={page.mediaSrc}
+        mediaKind={page.mediaKind}
+        penFeedPage={page.penFeedPage}
+        externalClockSec={externalClockSec}
+        onAction={onAction}
+      />
+    );
+  }
 
   return (
     <div className="relative h-full w-full overflow-hidden" style={surface}>
@@ -189,7 +207,8 @@ export function FeedTileSurface({
   engagementOverlay,
   widgetOverlay,
   aspectRatio = '9/16',
-  onAction
+  onAction,
+  externalClockSec
 }: {
   model: FeedTileViewModel;
   mode?: 'preview' | 'live';
@@ -207,6 +226,8 @@ export function FeedTileSurface({
   aspectRatio?: '9/16' | '16/9' | '1/1';
   /** Press from the action-stage iframe. */
   onAction?: (message: PenActionMessage) => void;
+  /** Editor preview: sync overlay motion to timeline scrubber. */
+  externalClockSec?: number;
 }) {
   const pages =
     model.pages.length > 0
@@ -280,6 +301,7 @@ export function FeedTileSurface({
                 }}
                 titleFallback={model.title}
                 onAction={onAction}
+                externalClockSec={externalClockSec}
               />
             </div>
           ))}
@@ -302,7 +324,12 @@ export function FeedTileSurface({
                   : 'pen-feed-carousel-page relative h-full w-full shrink-0 grow-0 basis-full'
               }
             >
-              <PageSurface page={page} titleFallback={model.title} onAction={onAction} />
+              <PageSurface
+                page={page}
+                titleFallback={model.title}
+                onAction={onAction}
+                externalClockSec={externalClockSec}
+              />
             </div>
           ))}
         </div>
@@ -315,6 +342,7 @@ export function FeedTileSurface({
           }}
           titleFallback={model.title}
           onAction={onAction}
+          externalClockSec={externalClockSec}
         />
       )}
 

@@ -31,6 +31,12 @@ import {
   type FeedPlaybackMetadata,
 } from '../services/feedPreviewPlayback';
 import { isFeedPreviewPlaceholder } from '@par-noir/aggregator-domain';
+import { isPenFeedPlaybackMetadata } from '@par-noir/feed-tile';
+import { PenFeedTilePlayer } from './PenFeedTilePlayer';
+import {
+  buildPenCollectionFeedTileModel,
+  buildPenFeedTileModelForPost
+} from '../utils/penFeedTileModel';
 
 function feedPosterUnderlayStyle(
   metadata: IndexedFile['metadata'] | undefined
@@ -1520,6 +1526,17 @@ export function FullScreenFeed({
         // Final detection (collections take precedence)
         const isVideoFinal = isCollectionFile ? false : isVideo;
         const isImageFinal = isCollectionFile ? false : isImage;
+        const isPenFeedPost = isPenFeedPlaybackMetadata(
+          indexedFile.metadata as Record<string, unknown>
+        );
+        const penGalleryAspect = (indexedFile.metadata as { galleryAspect?: string })
+          .galleryAspect;
+        const penTileAspect =
+          penGalleryAspect === '16/9'
+            ? '16/9'
+            : penGalleryAspect === '1/1'
+              ? '1/1'
+              : '9/16';
         
         // NO THOUGHT DETECTION - notes are just images (thumbnails) now!
         
@@ -1577,8 +1594,26 @@ export function FullScreenFeed({
             )}
             {/* Notes now render as images (thumbnails) - no special rendering needed! */}
             
+            {!isConnectionPlaceholder &&
+              isPenFeedPost &&
+              isVideoFinal &&
+              videoBlobs.get(fileId) && (
+                <PenFeedTilePlayer
+                  aspectRatio={penTileAspect}
+                  model={buildPenFeedTileModelForPost(indexedFile, {
+                    src: videoBlobs.get(fileId),
+                    posterUrl: thumbnails.get(fileId),
+                    kind: 'video'
+                  })}
+                />
+              )}
+
             {/* Full-screen video */}
-            {!isConnectionPlaceholder && isVideoFinal && videoBlobs.get(fileId) && (() => {
+            {!isConnectionPlaceholder &&
+              !isPenFeedPost &&
+              isVideoFinal &&
+              videoBlobs.get(fileId) &&
+              (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -1742,7 +1777,26 @@ export function FullScreenFeed({
 
             {/* Full-screen image (single image) - Only render if NOT a text post */}
             {/* Show image if detected as image (show placeholder if thumbnail not loaded yet) */}
-            {!isConnectionPlaceholder && !isMePageCover && isImageFinal && (() => {
+            {!isConnectionPlaceholder &&
+              isPenFeedPost &&
+              !isMePageCover &&
+              isImageFinal &&
+              thumbnails.get(fileId) && (
+                <PenFeedTilePlayer
+                  aspectRatio={penTileAspect}
+                  model={buildPenFeedTileModelForPost(indexedFile, {
+                    src: thumbnails.get(fileId),
+                    posterUrl: thumbnails.get(fileId),
+                    kind: 'image'
+                  })}
+                />
+              )}
+
+            {!isConnectionPlaceholder &&
+              !isPenFeedPost &&
+              !isMePageCover &&
+              isImageFinal &&
+              (() => {
               const thumbnailUrl = thumbnails.get(fileId);
               
               if (!thumbnailUrl) {
@@ -1853,8 +1907,37 @@ export function FullScreenFeed({
               </div>
             ) : null}
 
+            {!isConnectionPlaceholder &&
+              isPenFeedPost &&
+              isCollectionFile &&
+              (collectionData || collectionDataCache.get(fileId))?.collectionFileIds && (
+                <PenFeedTilePlayer
+                  aspectRatio={penTileAspect}
+                  model={buildPenCollectionFeedTileModel(
+                    indexedFile,
+                    (collectionData || collectionDataCache.get(fileId))!.collectionFileIds,
+                    (memberId) => {
+                      const memberMeta =
+                        collectionMemberMeta.get(memberId) ||
+                        (files.find((f) => f.metadata?.fileId === memberId)?.metadata as
+                          | Record<string, unknown>
+                          | undefined);
+                      if (!memberMeta) return null;
+                      return {
+                        meta: memberMeta,
+                        videoUrl: videoBlobs.get(memberId),
+                        posterUrl: thumbnails.get(memberId)
+                      };
+                    }
+                  )}
+                />
+              )}
+
             {/* Collection - Simple thumbnail slideshow */}
-            {!isConnectionPlaceholder && isCollectionFile && (collectionData || collectionDataCache.get(fileId))?.collectionFileIds ? (
+            {!isConnectionPlaceholder &&
+              !isPenFeedPost &&
+              isCollectionFile &&
+              (collectionData || collectionDataCache.get(fileId))?.collectionFileIds ? (
               (() => {
                 const finalCollectionData = collectionData || collectionDataCache.get(fileId);
                 const memberIds: string[] = finalCollectionData.collectionFileIds;

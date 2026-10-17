@@ -97,7 +97,8 @@ export function SocialFeedPhonePreview({
   large,
   density = 'feed',
   actionOverlay,
-  onAction
+  onAction,
+  playheadSec
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -111,6 +112,7 @@ export function SocialFeedPhonePreview({
   /** Editor-only layer chrome. Omitted for gallery thumbs and browse. */
   actionOverlay?: ReactNode;
   onAction?: (message: PenActionMessage) => void;
+  playheadSec?: number;
 }) {
   const phoneAspectCss = resolvePhoneFrameAspect(manifest);
   const feedAspect = resolveFeedTileAspect(manifest);
@@ -131,6 +133,7 @@ export function SocialFeedPhonePreview({
       aspectRatio={feedAspect}
       showWidgets={!actionOverlay}
       onAction={onAction}
+      playheadSec={playheadSec}
     />
   );
   const showActions = Boolean(actionOverlay) && density !== 'thumb';

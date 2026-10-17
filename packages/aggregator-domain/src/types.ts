@@ -15,6 +15,19 @@ export type PenLicenseFamilySnapshot =
   | 'unconditionalFree'
   | 'unconditionalPaid';
 
+/** Action layers for feed overlay playback (mirrors pen-protocol export). */
+export type PenFeedActionSectionSnapshot = {
+  layers: unknown[];
+  timelineDurationSec?: number;
+};
+
+export type PenFeedPageSnapshot = {
+  slug: string;
+  canvas: { w: number; h: number };
+  timelineDurationSec?: number;
+  actionSection: PenFeedActionSectionSnapshot;
+};
+
 export interface PenLicensingSnapshot {
   family: PenLicenseFamilySnapshot;
   workLicense?: string;
@@ -380,6 +393,12 @@ export interface PublicMetadata {
   }>;
   /** HTML overlay painted above the flattened media inside the feed iframe. */
   actionStageHtml?: string;
+  /** Motion-synced action overlay for one feed page (Pen publish). */
+  penFeedPage?: PenFeedPageSnapshot;
+  /** Pen manifest presentation — collection parent or single post. */
+  pageView?: 'vertical' | 'horizontal' | 'screen';
+  pageSwipeAxis?: 'x' | 'y';
+  galleryAspect?: '9/16' | '16/9' | '1/1';
   /**
    * Snapshot of Pen `manifest.licensing` at publish.
    * Structural mirror of `@par-noir/pen-protocol` PenLicensingRoot — do not import

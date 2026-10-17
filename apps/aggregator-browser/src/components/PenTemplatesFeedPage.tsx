@@ -3,13 +3,16 @@
  */
 import { useMemo } from 'react';
 import type { IndexedFile } from '../types/aggregator';
-import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
+import { FeedTileSurface, compilePenFeedTileModel } from '@par-noir/feed-tile';
+import type { PenFeedPagePayload } from '@par-noir/pen-protocol';
 import { onlyPenTemplates } from '../utils/penTemplateFeed';
 import { publicMediaUrl } from '../services/feedPreviewPlayback';
 
-function fileToTileModel(file: IndexedFile, posterUrl?: string): FeedTileViewModel {
+function fileToTileModel(file: IndexedFile, posterUrl?: string) {
   const title = file.metadata.title || file.metadata.name || 'Template';
-  return {
+  const meta = file.metadata as Record<string, unknown>;
+  const penFeedPage = meta.penFeedPage as PenFeedPagePayload | undefined;
+  return compilePenFeedTileModel({
     title,
     caption: file.metadata.description || title,
     fileId: file.metadata.fileId,
@@ -20,13 +23,14 @@ function fileToTileModel(file: IndexedFile, posterUrl?: string): FeedTileViewMod
         title,
         mediaSrc: posterUrl,
         mediaKind: posterUrl ? 'image' : undefined,
+        penFeedPage,
         actionStageHtml:
           typeof file.metadata.actionStageHtml === 'string' ? file.metadata.actionStageHtml : undefined,
         backgroundColor: '#000000',
         textColor: '#FFFFFF'
       }
     ]
-  };
+  });
 }
 
 export function PenTemplatesFeedPage({

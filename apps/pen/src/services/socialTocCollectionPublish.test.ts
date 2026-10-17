@@ -8,12 +8,18 @@ vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
   return 0;
 });
 
-vi.mock('./composePageVideoEncode', () => ({
-  composePageToVideo: vi.fn(async () => ({
+vi.mock('./penFeedPagePublish', () => ({
+  composePageVideoWithoutActions: vi.fn(async () => ({
     videoBlob: new Blob([1, 2, 3], { type: 'video/mp4' }),
     posterBlob: new Blob([9], { type: 'image/jpeg' }),
-    videoContentType: 'video/mp4'
-  }))
+    videoContentType: 'video/mp4',
+    width: 360,
+    height: 640,
+    durationMs: 5000
+  })),
+  minimalOverlayStillBlob: vi.fn(async () => new Blob([7, 8], { type: 'image/jpeg' })),
+  penFeedPageForSection: vi.fn(),
+  penPresentationFields: vi.fn(() => ({}))
 }));
 
 vi.mock('./penGalleryPreview', () => ({
@@ -97,7 +103,7 @@ describe('social TOC collection publish', () => {
     const handoff = await handoffPromise;
     vi.useRealTimers();
     expect(handoff.contentClass).toBe('collection');
-    expect(handoff.pages.map((p) => p.kind)).toEqual(['video', 'raster']);
+    expect(handoff.pages.map((p) => p.kind)).toEqual(['video', 'overlay']);
     expect(handoff.videos).toHaveLength(1);
     expect(handoff.videos[0]?.slug).toBe('page-1');
   });

@@ -16,10 +16,10 @@ import {
 import { emitTimelineSample } from './timelineSample';
 import { setPlaybackMode } from './playbackMode';
 import {
-  composePageToVideo,
   collectUntaintedVideoSlots,
   rootHasUntaintedPlayableVideo
 } from './composePageVideoEncode';
+import { composePageVideoWithoutActions } from './penFeedPagePublish';
 import {
   rasterizeElementToPosterBlob,
   rasterizeElementSafeStill
@@ -264,8 +264,9 @@ export async function buildAndStoreGalleryPreview(params: {
       root = await waitForUntaintedComposeVideos(root);
       const motion =
         params.clockSection && sectionHasMotion(params.clockSection) ? params.clockSection : null;
-      encoded = await composePageToVideo(
+      encoded = await composePageVideoWithoutActions(
         root,
+        params.sections,
         motion
           ? {
               clockDurationSec: resolveTimelineDuration(motion),
