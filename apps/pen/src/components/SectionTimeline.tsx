@@ -624,6 +624,24 @@ function VideoFileDuration({
   useEffect(() => {
     if (!resolved) return;
     if (reportedForSrc.current === resolved) return;
+
+    const reportSeconds = (seconds: number) => {
+      if (!Number.isFinite(seconds) || !(seconds > 0)) return;
+      if (reportedForSrc.current === resolved) return;
+      reportedForSrc.current = resolved;
+      report.current(layerId, seconds);
+    };
+
+    const mediaKey = `pen-layer:${layerId}`;
+    const fromSharedMaster = () => {
+      const seconds = peekPenMediaController(mediaKey)?.master.duration;
+      if (!Number.isFinite(seconds) || !(seconds > 0)) return false;
+      reportSeconds(seconds);
+      return true;
+    };
+
+    if (fromSharedMaster()) return;
+
     const video = document.createElement('video');
     video.preload = 'metadata';
     let done = false;
@@ -632,13 +650,29 @@ function VideoFileDuration({
       const seconds = video.duration;
       if (!Number.isFinite(seconds) || !(seconds > 0)) return;
       done = true;
-      reportedForSrc.current = resolved;
-      report.current(layerId, seconds);
+      reportSeconds(seconds);
     };
     video.addEventListener('loadedmetadata', finish);
     video.addEventListener('durationchange', finish);
     video.src = resolved;
+
+    const poll = window.setInterval(() => {
+      if (fromSharedMaster()) {
+        window.clearInterval(poll);
+        if (!done) {
+          done = true;
+          video.removeEventListener('loadedmetadata', finish);
+          video.removeEventListener('durationchange', finish);
+          video.removeAttribute('src');
+          video.load();
+        }
+      }
+    }, 200);
+    const pollCap = window.setTimeout(() => window.clearInterval(poll), 8000);
+
     return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(pollCap);
       video.removeEventListener('loadedmetadata', finish);
       video.removeEventListener('durationchange', finish);
       video.removeAttribute('src');
@@ -1021,8 +1055,12 @@ export function SectionTimeline({
   const needsPlayheadDrive = sectionNeedsPlayheadDrive(section);
   const duration = timelineActive ? resolveTimelineDuration(section, undefined, timelineCtx) : 0;
   const [rulerPlayhead, setRulerPlayhead] = useState(playheadSec);
+  const rulerPlayheadRef = useRef(playheadSec);
   useEffect(() => {
-    if (!playing || needsPlayheadDrive) setRulerPlayhead(playheadSec);
+    if (!playing || needsPlayheadDrive) {
+      rulerPlayheadRef.current = playheadSec;
+      setRulerPlayhead(playheadSec);
+    }
   }, [playheadSec, playing, needsPlayheadDrive]);
   const displayPlayhead =
     playing && !needsPlayheadDrive ? rulerPlayhead : playheadSec;
@@ -1278,6 +1316,7 @@ export function SectionTimeline({
     const inSec = videoLayer.inSec ?? 0;
     let lastEmit = 0;
     let stopped = false;
+    let stoppedTransport = false;
     const cleanups: Array<() => void> = [];
 
     const syncFromVideo = () => {
@@ -1287,13 +1326,27 @@ export function SectionTimeline({
       const pageT = inSec + (el.currentTime || 0);
       const capped = Math.min(playSpan, pageT);
       playheadRef.current = capped;
-      setRulerPlayhead(capped);
+      if (Math.abs(rulerPlayheadRef.current - capped) > 0.02) {
+        rulerPlayheadRef.current = capped;
+        setRulerPlayhead(capped);
+      }
       const now = performance.now();
       if (now - lastEmit >= 125) {
         lastEmit = now;
         onPlayhead(capped);
       }
-      if (capped >= playSpan - 0.05 || el.ended) {
+      const hitEnd = pageT >= playSpan - 0.08 || el.ended;
+      if (!hitEnd) return;
+      if (!stoppedTransport) {
+        stoppedTransport = true;
+        if (!el.paused) {
+          try {
+            el.pause();
+          } catch {
+            /* ignore */
+          }
+        }
+        onPlayhead(capped);
         playingRef.current = false;
         onPlaying(false);
         driveRef.current('pause', capped);

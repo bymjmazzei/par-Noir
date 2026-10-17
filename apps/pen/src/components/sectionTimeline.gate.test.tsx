@@ -683,6 +683,7 @@ describe('section timeline', () => {
   it('uses playAtTime for timeline play and does not set loop on pause', () => {
     const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
     expect(timeline).toContain('playAtTime');
+    expect(timeline).toContain('playSpan - 0.08');
     expect(timeline).not.toMatch(/mode === 'pause'[\s\S]{0,120}master\.loop = true/);
   });
 
