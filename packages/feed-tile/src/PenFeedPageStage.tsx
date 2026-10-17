@@ -75,7 +75,8 @@ export function PenFeedPageStage({
   mediaKind = 'image',
   penFeedPage,
   externalClockSec,
-  onAction
+  onAction,
+  fit = 'cover'
 }: {
   mediaSrc?: string;
   mediaKind?: 'image' | 'video';
@@ -83,6 +84,7 @@ export function PenFeedPageStage({
   /** Editor preview: drive overlay from timeline scrubber. */
   externalClockSec?: number;
   onAction?: (message: PenActionMessage) => void;
+  fit?: 'cover' | 'contain';
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoTime, setVideoTime] = useState(0);
@@ -120,6 +122,10 @@ export function PenFeedPageStage({
   );
 
   const isVideo = mediaKind === 'video' && Boolean(mediaSrc);
+  const mediaClass =
+    fit === 'contain'
+      ? 'absolute inset-0 h-full w-full object-contain'
+      : 'absolute inset-0 h-full w-full object-cover';
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
@@ -128,14 +134,14 @@ export function PenFeedPageStage({
           <video
             ref={videoRef}
             src={mediaSrc}
-            className="absolute inset-0 h-full w-full object-cover"
+            className={mediaClass}
             muted
             loop
             playsInline
             autoPlay
           />
         ) : (
-          <img src={mediaSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={mediaSrc} alt="" className={mediaClass} />
         )
       ) : null}
       <div className="pointer-events-none absolute inset-0">

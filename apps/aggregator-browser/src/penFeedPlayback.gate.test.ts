@@ -19,6 +19,15 @@ describe('pen feed playback gate', () => {
     expect(src).toMatch(/handleFeedPenAction/);
   });
 
+  it('PenFeedTilePlayer centers a feed-layout tile in a size container', () => {
+    const src = readFileSync(resolve(root, 'components/PenFeedTilePlayer.tsx'), 'utf8');
+    expect(src).toMatch(/flex h-full w-full items-center justify-center/);
+    expect(src).toMatch(/containerType: 'size'/);
+    expect(src).toMatch(/layout="feed"/);
+    expect(src).not.toMatch(/compact=/);
+    expect(src).not.toMatch(/\bfill\b/);
+  });
+
   it('buildPenCollectionFeedTileModel carries penFeedPage from member meta', () => {
     const src = readFileSync(resolve(root, 'utils/penFeedTileModel.ts'), 'utf8');
     expect(src).toMatch(/penFeedPageFromMetadata/);

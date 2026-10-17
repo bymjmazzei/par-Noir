@@ -82,6 +82,18 @@ function EngagementRail({ mode }: { mode: 'preview' | 'live' }) {
   );
 }
 
+function videoFitClass(fit: MediaFit): string {
+  return fit === 'contain'
+    ? 'h-full w-full [&_video]:object-contain'
+    : 'h-full w-full [&_video]:object-cover';
+}
+
+function imageFitClass(fit: MediaFit): string {
+  return fit === 'contain'
+    ? 'absolute inset-0 h-full w-full object-contain'
+    : 'absolute inset-0 h-full w-full object-cover';
+}
+
 /** Strip tags for a single plain-text poster block (no title+html double paint). */
 function plainFromHtml(html: string | undefined): string {
   if (!html) return '';
@@ -133,16 +145,20 @@ function PenActionStage({
   );
 }
 
+export type MediaFit = 'cover' | 'contain';
+
 function PageSurface({
   page,
   titleFallback,
   onAction,
-  externalClockSec
+  externalClockSec,
+  fit
 }: {
   page: FeedTilePage;
   titleFallback: string;
   onAction?: (message: PenActionMessage) => void;
   externalClockSec?: number;
+  fit: MediaFit;
 }) {
   const surface: CSSProperties = {
     backgroundColor: page.backgroundColor || '#000000',
@@ -163,6 +179,7 @@ function PageSurface({
         penFeedPage={page.penFeedPage}
         externalClockSec={externalClockSec}
         onAction={onAction}
+        fit={fit}
       />
     );
   }
@@ -179,10 +196,10 @@ function PageSurface({
       ) : page.mediaSrc ? (
         isVideo ? (
           <div className="absolute inset-0">
-            <PenMediaPlayer src={page.mediaSrc} className="h-full w-full [&_video]:object-cover" />
+            <PenMediaPlayer src={page.mediaSrc} className={videoFitClass(fit)} />
           </div>
         ) : (
-          <img src={page.mediaSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={page.mediaSrc} alt="" className={imageFitClass(fit)} />
         )
       ) : (
         <div className="pen-feed-tile-body-safe relative flex h-full flex-col justify-center text-center">
@@ -207,6 +224,7 @@ export function FeedTileSurface({
   engagementOverlay,
   widgetOverlay,
   aspectRatio = '9/16',
+  layout = 'preview',
   onAction,
   externalClockSec
 }: {
@@ -224,6 +242,11 @@ export function FeedTileSurface({
   widgetOverlay?: ReactNode;
   /** Tile aspect: 9/16 portrait, 16/9 landscape, 1/1 square. */
   aspectRatio?: '9/16' | '16/9' | '1/1';
+  /**
+   * `feed`: browse slide — tile contain-fits its size container at `aspectRatio`, media is never
+   * cropped, and the host draws the caption.
+   */
+  layout?: 'preview' | 'feed';
   /** Press from the action-stage iframe. */
   onAction?: (message: PenActionMessage) => void;
   /** Editor preview: sync overlay motion to timeline scrubber. */
@@ -261,6 +284,13 @@ export function FeedTileSurface({
         ? 'aspect-square'
         : 'aspect-[9/16]';
 
+  const feed = layout === 'feed';
+  const fit: MediaFit = feed ? 'contain' : 'cover';
+  const ratio = aspectRatio === '16/9' ? '16 / 9' : aspectRatio === '1/1' ? '1 / 1' : '9 / 16';
+  const feedSizing: CSSProperties | undefined = feed
+    ? { aspectRatio: ratio, width: `min(100cqw, calc(100cqh * ${ratio}))` }
+    : undefined;
+
   const captionText = model.caption?.trim();
   const titleText = model.title?.trim() || '';
   const showCaption =
@@ -270,10 +300,13 @@ export function FeedTileSurface({
     <div
       data-pen-compose-export-root="feed"
       className={`relative overflow-hidden bg-black ${
-        compact
-          ? `${aspectClass} w-full`
-          : `${aspectClass} h-full max-h-full w-full max-w-[22rem]`
+        feed
+          ? ''
+          : compact
+            ? `${aspectClass} w-full`
+            : `${aspectClass} h-full max-h-full w-full max-w-[22rem]`
       }`}
+      style={feedSizing}
     >
       {screen ? (
         <div
@@ -285,10 +318,10 @@ export function FeedTileSurface({
           {sharedMedia ? (
             pages[0]?.mediaKind === 'video' ? (
               <div className="pointer-events-none absolute inset-0">
-                <PenMediaPlayer src={sharedMedia} className="h-full w-full [&_video]:object-cover" />
+                <PenMediaPlayer src={sharedMedia} className={videoFitClass(fit)} />
               </div>
             ) : (
-              <img src={sharedMedia} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover" />
+              <img src={sharedMedia} alt="" className={`pointer-events-none ${imageFitClass(fit)}`} />
             )
           ) : null}
           {pages.map((page, i) => (
@@ -302,6 +335,7 @@ export function FeedTileSurface({
                 titleFallback={model.title}
                 onAction={onAction}
                 externalClockSec={externalClockSec}
+                fit={fit}
               />
             </div>
           ))}
@@ -329,6 +363,7 @@ export function FeedTileSurface({
                 titleFallback={model.title}
                 onAction={onAction}
                 externalClockSec={externalClockSec}
+                fit={fit}
               />
             </div>
           ))}
@@ -343,6 +378,7 @@ export function FeedTileSurface({
           titleFallback={model.title}
           onAction={onAction}
           externalClockSec={externalClockSec}
+          fit={fit}
         />
       )}
 
@@ -350,16 +386,18 @@ export function FeedTileSurface({
       {engagement}
 
       {/* Browse-shaped caption: title + caption only (no profile avatar; dedupe equal caption). */}
-      <div className="pen-feed-tile-caption pointer-events-none absolute bottom-4 left-0 right-20 z-20 text-white drop-shadow-md">
-        {titleText ? (
-          <h3 className="pen-feed-tile-caption-title mb-1 line-clamp-1 font-semibold">{titleText}</h3>
-        ) : null}
-        {showCaption ? (
-          <p className="pen-feed-tile-caption-body line-clamp-2 leading-snug text-white/95">
-            {captionText}
-          </p>
-        ) : null}
-      </div>
+      {feed ? null : (
+        <div className="pen-feed-tile-caption pointer-events-none absolute bottom-4 left-0 right-20 z-20 text-white drop-shadow-md">
+          {titleText ? (
+            <h3 className="pen-feed-tile-caption-title mb-1 line-clamp-1 font-semibold">{titleText}</h3>
+          ) : null}
+          {showCaption ? (
+            <p className="pen-feed-tile-caption-body line-clamp-2 leading-snug text-white/95">
+              {captionText}
+            </p>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
