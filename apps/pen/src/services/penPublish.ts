@@ -58,7 +58,12 @@ import {
   licensingForPublish,
   PUBLIC_TEMPLATE_REQUIRES_VERIFICATION
 } from './penPublishGates';
-import { publishPublicCloudFile, renderNotePoster, type CloudRequest } from './penPublicPublish';
+import {
+  defaultCloudRequest,
+  publishPublicCloudFile,
+  renderNotePoster,
+  type CloudRequest
+} from './penPublicPublish';
 import type { FeedPublishExtras } from './penFeedMetadata';
 import { metadataFieldsFromPublishForm } from './penFeedMetadata';
 import { resolvePenMediaSrc } from './penLocalMedia';
@@ -622,6 +627,23 @@ export function actionStageHtmlForPost(sections: LocalDocBundle['sections']): st
   return buildActionStageHtml(sections);
 }
 
+/** Remove prior feed row before re-share so the doc does not accumulate duplicate fileIds. */
+async function supersedePriorPublishedPost(
+  request: CloudRequest | undefined,
+  priorFileId: string | undefined
+): Promise<void> {
+  const trimmed = priorFileId?.trim();
+  if (!trimmed) return;
+  const req = request || defaultCloudRequest();
+  const res = await req(
+    'DELETE',
+    `/api/aggregator/metadata-index/${encodeURIComponent(trimmed)}`
+  );
+  if (res.ok || res.status === 404) return;
+  const text = await res.text().catch(() => res.statusText);
+  throw new Error(`supersede_prior_publish_${res.status} ${text}`);
+}
+
 /** Publish the compiled post to the owner cloud. No template flag. */
 export async function publishPostToOwnerCloud(params: {
   bundle: LocalDocBundle;
@@ -639,6 +661,10 @@ export async function publishPostToOwnerCloud(params: {
   feedPublish?: FeedPublishExtras;
 }): Promise<{ fileId: string }> {
   if (!params.feedIds.length) throw new Error('feed_required');
+  await supersedePriorPublishedPost(
+    params.request,
+    params.bundle.manifest.publishedFileId
+  );
   const publishMeta = params.feedPublish
     ? metadataFieldsFromPublishForm(params.feedPublish.metadata)
     : {};

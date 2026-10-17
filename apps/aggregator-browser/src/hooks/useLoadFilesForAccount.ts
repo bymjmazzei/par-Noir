@@ -7,7 +7,8 @@ import type React from 'react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { listStorageFiles } from '../services/storageApiClient';
 import type { DriveAccount, DriveFile } from '../components/storage/storageTypes';
-import { mapCollectionEntry, mapNoteThumbnailEntry } from './mapStorageListEntries';
+import { mapCollectionEntry, mapNoteThumbnailEntry, mapOwnerCatalogEntry } from './mapStorageListEntries';
+import { fetchOwnerCatalog } from '../services/ownerCatalogService';
 import { isNoteCollectionFileName, isNoteFileName, isNoteThumbnailFileName } from '../utils/noteFileName';
 
 export interface UseLoadFilesForAccountParams {
@@ -371,9 +372,36 @@ export function useLoadFilesForAccount({
         })
         ];
 
+        let mergedMedia = mediaFiles;
+        try {
+          const catalog = await fetchOwnerCatalog(pnIdentifier);
+          const existingIds = new Set(mergedMedia.map((f) => f.id));
+          const catalogRows = catalog
+            .map((row) => {
+              const entry = mapOwnerCatalogEntry({ fileId: row.fileId, metadata: row.metadata });
+              return { entry, metadata: row.metadata };
+            })
+            .filter(({ entry }) => !existingIds.has(entry.id) && !existingIds.has(entry.metadataIndexFileId));
+
+          for (const { entry, metadata } of catalogRows) {
+            existingIds.add(entry.id);
+            existingIds.add(entry.metadataIndexFileId);
+            fileMetadataMap.set(entry.metadataIndexFileId, metadata);
+            if (entry.id !== entry.metadataIndexFileId) {
+              fileMetadataMap.set(entry.id, metadata);
+            }
+            mergedMedia.push(entry);
+            void loadFileMetadata(entry.metadataIndexFileId).catch(() => undefined);
+          }
+        } catch (catalogErr) {
+          if (import.meta.env.DEV) {
+            console.warn('[FileStorageAggregator] Owner catalog merge failed (non-blocking):', catalogErr);
+          }
+        }
+
       setFilesByAccount(prev => {
         const next = new Map(prev);
-        next.set(accountId, mediaFiles);
+        next.set(accountId, mergedMedia);
         return next;
       });
       setError(null);

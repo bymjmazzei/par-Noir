@@ -158,18 +158,42 @@ export function useDriveFileDeletion({
       const accountId = account?.backendId;
       const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
 
-      try {
-        const deletePath = `/api/drive/files/${file.backendFileId}${accountIdParam}`;
-        const response = await ownerFetch(accessToken, 'DELETE', deletePath);
+      const catalogBacked = (file as { catalogBacked?: boolean }).catalogBacked === true;
+      const metadataIndexFileId =
+        (file as { metadataIndexFileId?: string }).metadataIndexFileId || file.backendFileId;
 
-        if (response.ok) {
-          const result = await response.json().catch(() => ({}));
-          console.log('✅ [Delete] File deleted successfully via API (includes file, thumbnail, and metadata)', result);
-        } else if (response.status === 401) {
-          throw new Error('Google Drive authentication expired. Unlock again and retry.');
+      const deleteIndexed = async (): Promise<boolean> => {
+        const deletePath = `/api/aggregator/metadata-index/${encodeURIComponent(metadataIndexFileId)}${accountIdParam}`;
+        const response = await ownerFetch(accessToken, 'DELETE', deletePath);
+        return response.ok || response.status === 404;
+      };
+
+      try {
+        if (catalogBacked) {
+          if (!(await deleteIndexed())) {
+            throw new Error('Failed to delete indexed file');
+          }
+          console.log('✅ [Delete] Indexed post removed via metadata-index');
         } else {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          throw new Error(`Failed to delete file via API: ${errorText}`);
+          const probe = await ownerFetch(accessToken, 'GET', `/api/aggregator/metadata-index/${encodeURIComponent(metadataIndexFileId)}`);
+          if (probe.ok) {
+            const ok = await deleteIndexed();
+            if (!ok) throw new Error('Failed to delete indexed file');
+            console.log('✅ [Delete] Indexed file removed via metadata-index');
+          } else {
+            const deletePath = `/api/drive/files/${file.backendFileId}${accountIdParam}`;
+            const response = await ownerFetch(accessToken, 'DELETE', deletePath);
+
+            if (response.ok) {
+              const result = await response.json().catch(() => ({}));
+              console.log('✅ [Delete] File deleted successfully via API', result);
+            } else if (response.status === 401) {
+              throw new Error('Google Drive authentication expired. Unlock again and retry.');
+            } else {
+              const errorText = await response.text().catch(() => 'Unknown error');
+              throw new Error(`Failed to delete file via API: ${errorText}`);
+            }
+          }
         }
       } catch (apiError) {
         throw new Error(

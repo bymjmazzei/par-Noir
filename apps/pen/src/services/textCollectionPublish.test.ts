@@ -97,6 +97,56 @@ describe('text collection publish', () => {
     ]);
   });
 
+  it('supersedes prior publishedFileId before indexing a new post', async () => {
+    const doc = bundle();
+    let n = 0;
+    let deletePrior = false;
+    const request = async (method: string, path: string, body?: unknown) => {
+      if (method === 'DELETE' && path.includes('/api/aggregator/metadata-index/prior-post')) {
+        deletePrior = true;
+        return new Response('{}', { status: 200 });
+      }
+      if (path === '/api/drive/files') {
+        n += 1;
+        return new Response(JSON.stringify({ id: `file-${n}` }), { status: 200 });
+      }
+      if (path.includes('/ensure-public')) {
+        const id = `file-${n}`;
+        return new Response(
+          JSON.stringify({
+            publicContentRef: {
+              objectId: id,
+              publicUrl: `https://drive.google.com/uc?export=download&id=${id}`,
+              backend: 'google_drive'
+            }
+          }),
+          { status: 200 }
+        );
+      }
+      if (method === 'PUT' && path.includes('/api/aggregator/metadata-index/')) {
+        return new Response('{}', { status: 200 });
+      }
+      return new Response('unexpected', { status: 500 });
+    };
+
+    const withPrior = {
+      ...doc,
+      manifest: { ...doc.manifest, publishedFileId: 'prior-post' }
+    } as typeof doc;
+
+    await publishPostToOwnerCloud({
+      bundle: withPrior,
+      feedIds: ['public', 'collections'],
+      pnIdentifier: 'pn',
+      parentFolderId: 'public-folder',
+      membership: false,
+      request,
+      mixed: writeTextCollectionHandoff(withPrior, { canPublishPublicTemplate: false })
+    });
+
+    expect(deletePrior).toBe(true);
+  });
+
   it('an article title and body stay a single note', () => {
     const article = {
       manifest: {

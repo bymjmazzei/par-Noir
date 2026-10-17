@@ -8,7 +8,7 @@ import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from '../utils/fileTypeUtils';
 import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
-import { gateOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import { gateOwnerRoute, gateOwnerSelfRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
 import { requireAdminApiKey } from './adminDeveloperRoutes';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -1243,6 +1243,51 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       res.status(500).json({ 
         error: 'Failed to fetch stats',
         message: safeClientErrorMessage(error, NODE_ENV === 'production') 
+      });
+    }
+  });
+
+  // GET /api/aggregator/owner-catalog — authenticated owner's indexed posts (incl. Pen publish)
+  app.get('/api/aggregator/owner-catalog', async (req: Request, res: Response) => {
+    try {
+      const tokenPayload = getBearerTokenPayload(req);
+      if (!tokenPayload) {
+        return res.status(401).json({
+          error: 'unauthorized',
+          error_description: 'Invalid or expired access token'
+        });
+      }
+      const pnIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+      if (!pnIdentifier) {
+        return res.status(401).json({ error: 'unauthorized', error_description: 'Missing identity' });
+      }
+      if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) {
+        return;
+      }
+
+      const contentClass = req.query.contentClass as 'media' | 'note' | 'collection' | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+      const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
+
+      const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+      const service = AggregatorMetadataServiceDB.getInstance();
+      const result = await service.listOwnerCatalog(pnIdentifier, {
+        contentClass,
+        limit,
+        offset
+      });
+
+      const { redactCentralIndexEntryForClient } = await import('./feedPreviewClientRedact');
+      return res.json({
+        files: result.files.map((f) => redactCentralIndexEntryForClient(f)),
+        total: result.total,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('❌ [GET /api/aggregator/owner-catalog] Error:', error);
+      return res.status(500).json({
+        error: 'Failed to fetch owner catalog',
+        message: safeClientErrorMessage(error, NODE_ENV === 'production')
       });
     }
   });

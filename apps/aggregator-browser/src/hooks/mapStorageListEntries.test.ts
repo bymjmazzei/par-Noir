@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mapCollectionEntry,
   mapNoteThumbnailEntry,
+  mapOwnerCatalogEntry,
 } from './mapStorageListEntries';
 import { mapCentralIndexEntryToIndexedFile } from '../services/metadata/mapCentralIndexEntry';
 
@@ -43,6 +44,26 @@ describe('mapNoteThumbnailEntry', () => {
     expect(entry.indexMissing).toBe(false);
     expect(entry.mainFileId).toBe('from-meta');
     expect(entry.isPartOfCollection).toBe(true);
+  });
+});
+
+describe('mapOwnerCatalogEntry', () => {
+  it('maps Pen video publish row for storage + delete', () => {
+    const entry = mapOwnerCatalogEntry({
+      fileId: 'index-abc',
+      metadata: {
+        title: 'My post',
+        fileType: 'video',
+        contentClass: 'media',
+        penDocId: 'doc-1',
+        publicContentRef: { objectId: 'drive-env-1' }
+      }
+    });
+    expect(entry.catalogBacked).toBe(true);
+    expect(entry.metadataIndexFileId).toBe('index-abc');
+    expect(entry.id).toBe('drive-env-1');
+    expect(entry.displayName).toBe('My post');
+    expect(entry.penDocId).toBe('doc-1');
   });
 });
 

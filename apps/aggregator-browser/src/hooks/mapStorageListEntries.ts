@@ -3,6 +3,8 @@
  * Orphan Drive files (no public metadata-index row) must still appear in Storage.
  */
 
+import { ownerCatalogDriveId } from '@par-noir/aggregator-domain';
+
 export type DriveListFile = {
   id: string;
   name: string;
@@ -27,6 +29,18 @@ export type CollectionListEntry = DriveListFile & {
   isNoteCollection?: boolean;
   displayName: string;
   indexMissing?: boolean;
+};
+
+export type OwnerCatalogListEntry = DriveListFile & {
+  fileType: string;
+  contentClass?: string;
+  catalogBacked: true;
+  /** metadata-index fileId (DELETE / share). */
+  metadataIndexFileId: string;
+  displayName: string;
+  penDocId?: string;
+  collection?: unknown;
+  indexMissing: false;
 };
 
 export function cleanNoteThumbDisplayName(name: string): string {
@@ -91,6 +105,42 @@ export function mapNoteThumbnailEntry(params: {
  * Build a Storage list entry for a collection file.
  * When metadata is missing, keep the Drive file as an unindexed collection.
  */
+/** Indexed owner-catalog row (Pen publish, etc.) — id is the metadata-index fileId / Drive envelope. */
+export function mapOwnerCatalogEntry(params: {
+  fileId: string;
+  metadata: Record<string, unknown>;
+}): OwnerCatalogListEntry {
+  const { fileId, metadata } = params;
+  const driveId = ownerCatalogDriveId(metadata as { publicContentRef?: { objectId?: string }; fileId?: string }, fileId);
+  const id = driveId || fileId;
+  const title =
+    (typeof metadata.title === 'string' && metadata.title) ||
+    (typeof metadata.name === 'string' && metadata.name) ||
+    id;
+  const fileType = (typeof metadata.fileType === 'string' && metadata.fileType) || 'other';
+  const contentClass =
+    typeof metadata.contentClass === 'string' ? metadata.contentClass : undefined;
+  const penDocId = typeof metadata.penDocId === 'string' ? metadata.penDocId : undefined;
+  const name =
+    (typeof metadata.name === 'string' && metadata.name) ||
+    `pen-catalog-${fileId.slice(0, 8)}`;
+
+  return {
+    id,
+    name,
+    mimeType: 'application/json',
+    size: '0',
+    fileType,
+    contentClass,
+    catalogBacked: true,
+    metadataIndexFileId: fileId,
+    displayName: title.replace(/\.encrypted$/i, ''),
+    penDocId,
+    collection: metadata.collection,
+    indexMissing: false
+  };
+}
+
 export function mapCollectionEntry(params: {
   file: DriveListFile;
   metadata: Record<string, unknown> | null | undefined;

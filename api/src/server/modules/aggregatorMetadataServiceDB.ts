@@ -10,6 +10,7 @@
  * - API write paths (submit/delete) update cache and index together
  */
 
+import { isAggregatorCollectionPart } from '@par-noir/aggregator-domain';
 import { getDatabasePool } from '../utils/database';
 import { PublicMetadata, CentralIndexEntry, CentralIndexResponse } from './aggregatorMetadataService';
 import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
@@ -1202,6 +1203,77 @@ export class AggregatorMetadataServiceDB {
       console.error(`❌ Failed to get metadata for file ${fileId}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Owner storage catalog: all indexed rows for this pn, excluding collection parts.
+   */
+  async listOwnerCatalog(
+    pnIdentifier: string,
+    filters?: {
+      contentClass?: 'media' | 'note' | 'collection';
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<{ files: CentralIndexEntry[]; total: number }> {
+    const db = getDatabasePool();
+    const normalized = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+    const bare = normalized.startsWith('pn-') ? normalized.slice(3) : normalized;
+
+    let tables = this.getAllContentTypeTables();
+    if (filters?.contentClass) {
+      tables = [this.getTableNameForContentClass(filters.contentClass)];
+    }
+
+    const allRows: Array<{
+      file_id: string;
+      metadata: unknown;
+      submitted_at: Date;
+      pn_identifier: string;
+    }> = [];
+    for (const table of tables) {
+      const result = await db.query(
+        `SELECT file_id, metadata, submitted_at, pn_identifier FROM ${table}
+         WHERE pn_identifier = $1 OR pn_identifier = $2`,
+        [normalized, bare]
+      );
+      allRows.push(...result.rows);
+    }
+
+    const unique = new Map<string, (typeof allRows)[number]>();
+    for (const row of allRows) {
+      if (!unique.has(row.file_id)) unique.set(row.file_id, row);
+    }
+
+    const entries: CentralIndexEntry[] = [];
+    for (const row of unique.values()) {
+      const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
+      if (isAggregatorCollectionPart(metadata)) continue;
+      const ft = metadata.fileType;
+      if (ft === 'note-collection-thumbnail' || ft === 'note-collection-page') continue;
+      entries.push({
+        fileId: row.file_id,
+        metadata,
+        submittedAt: row.submitted_at.toISOString(),
+        pnIdentifier: row.pn_identifier
+      });
+    }
+
+    entries.sort((a, b) => {
+      const da = a.metadata.uploadDate
+        ? new Date(a.metadata.uploadDate).getTime()
+        : new Date(a.submittedAt).getTime();
+      const db = b.metadata.uploadDate
+        ? new Date(b.metadata.uploadDate).getTime()
+        : new Date(b.submittedAt).getTime();
+      return db - da;
+    });
+
+    const total = entries.length;
+    const offset = filters?.offset ?? 0;
+    const limit = filters?.limit ?? 500;
+    const page = entries.slice(offset, offset + limit);
+    return { files: page, total };
   }
 
   /** SQL predicate matching public feed rows (isPublic = true). */

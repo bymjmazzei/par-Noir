@@ -13,3 +13,4 @@ export * from './contentExpiry';
 export * from './types';
 export * from './centralMetadata';
 export * from './feedPreview';
+export * from './ownerCatalog';

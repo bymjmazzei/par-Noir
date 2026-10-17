@@ -937,7 +937,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     
     // Check if this is a collection by checking local metadata cache
     // Don't block on loading metadata - let the background processor handle it
-    const existingMetadata = fileMetadataMap.get(file.id);
+    const catalogIndexId = (file as { metadataIndexFileId?: string }).metadataIndexFileId;
+    const existingMetadata = fileMetadataMap.get(catalogIndexId || file.id);
     const isCollection = existingMetadata?.fileType === 'collection' && existingMetadata?.collection?.collectionFileIds;
     const collectionFileIds = isCollection ? existingMetadata.collection.collectionFileIds : [];
     const isNoteCollection = existingMetadata?.isNoteCollection === true;
@@ -977,12 +978,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
     // Queue background task
     // Background processor will load metadata if needed
+    const catalogBacked = (file as { catalogBacked?: boolean }).catalogBacked === true;
+    const metadataIndexFileId =
+      (file as { metadataIndexFileId?: string }).metadataIndexFileId || file.id;
+
     uploadQueueService.addTask({
       type: 'deleteFile',
       accountId,
       metadata: {
-        fileId: file.id,
+        fileId: metadataIndexFileId,
         accountId,
+        catalogBacked,
         isCollection: !!isCollection,
         collectionFileIds: isCollection && collectionFileIds ? collectionFileIds : undefined,
         isNoteCollection: isCollection ? isNoteCollection : undefined

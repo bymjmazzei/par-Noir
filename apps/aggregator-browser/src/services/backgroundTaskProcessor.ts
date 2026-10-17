@@ -10,7 +10,7 @@ import { createCollection } from './collectionService';
 import { FeedService } from './feedService';
 import { saveToFeed, removeFromSavedFeed } from './savedFeedService';
 
-import { ownerFetch, ownerGet } from './ownerApiFetch';
+import { ownerFetch, ownerGet, apiFetch, apiGet } from './ownerApiFetch';
 import { publishPublicShare, revokePublishedPublicContent } from './publicSharePublish';
 import type { PublicContentRef } from '@par-noir/aggregator-domain';
 
@@ -619,11 +619,29 @@ async function processCollectionCreation(
 /**
  * Process file deletion
  */
+async function deleteIndexedPost(
+  fileId: string,
+  accountId: string,
+  accessToken: string
+): Promise<void> {
+  const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+  const response = await apiFetch(
+    'DELETE',
+    `/api/aggregator/metadata-index/${encodeURIComponent(fileId)}${accountIdParam}`,
+    undefined,
+    { authToken: accessToken }
+  );
+  if (response.ok || response.status === 404) return;
+  const errorText = await response.text().catch(() => 'Unknown error');
+  throw new Error(`Failed to delete indexed file: ${errorText}`);
+}
+
 async function processFileDeletion(
   task: UploadTask,
   accessToken: string
 ): Promise<void> {
-  let { fileId, accountId, isCollection, collectionFileIds, isNoteCollection } = task.metadata || {};
+  let { fileId, accountId, isCollection, collectionFileIds, isNoteCollection, catalogBacked } =
+    task.metadata || {};
   
   if (!fileId || !accountId) {
     throw new Error('Missing required fields: fileId, accountId');
@@ -631,24 +649,38 @@ async function processFileDeletion(
 
   uploadQueueService.updateTaskProgress(task.id, 5);
 
+  let metadataObj: Record<string, unknown> | null = null;
   // Load metadata if isCollection wasn't determined upfront (non-blocking in UI)
-  if (isCollection === undefined) {
+  if (isCollection === undefined || catalogBacked === undefined) {
     try {
-      const metadataResponse = await ownerGet(`/api/aggregator/metadata-index/${fileId}`, {
+      const metadataResponse = await apiGet(`/api/aggregator/metadata-index/${fileId}`, {
         authToken: accessToken
       });
       if (metadataResponse.ok) {
         const metadata = await metadataResponse.json();
-        const metadataObj = metadata.metadata || metadata;
-        isCollection = metadataObj.fileType === 'collection' && metadataObj.collection?.collectionFileIds;
-        if (isCollection) {
-          collectionFileIds = metadataObj.collection.collectionFileIds;
-          isNoteCollection = metadataObj.isNoteCollection === true;
+        metadataObj = (metadata.metadata || metadata) as Record<string, unknown>;
+        if (isCollection === undefined) {
+          const col = metadataObj.collection as { collectionFileIds?: string[] } | undefined;
+          isCollection =
+            metadataObj.fileType === 'collection' && Boolean(col?.collectionFileIds?.length);
+          if (isCollection) {
+            collectionFileIds = col!.collectionFileIds;
+            isNoteCollection = metadataObj.isNoteCollection === true;
+          }
         }
       }
     } catch (err) {
       console.warn('[BackgroundTaskProcessor] Failed to load metadata for delete check:', err);
     }
+  }
+
+  const indexed = catalogBacked === true || metadataObj != null;
+  if (indexed) {
+    uploadQueueService.updateTaskProgress(task.id, 40);
+    await deleteIndexedPost(fileId, accountId, accessToken);
+    uploadQueueService.setTaskResult(task.id, { fileId, accountId, deleted: true });
+    uploadQueueService.updateTaskProgress(task.id, 100);
+    return;
   }
 
   uploadQueueService.updateTaskProgress(task.id, 10);

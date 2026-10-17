@@ -32,6 +32,7 @@ import {
 import { fetchOwnerIndex } from './loadFiles/fetchOwnerIndex';
 import { mergeDriveScanWithIndex } from './loadFiles/mergeDriveScanWithIndex';
 import { useTokenRetry } from './loadFiles/useTokenRetry';
+import { applyOwnerCatalogToLoad, fetchOwnerCatalog } from '../../../services/ownerCatalogService';
 
 export interface UseLoadAggregatedFilesParams {
   aggregatorService: FileAggregatorService | null;
@@ -374,6 +375,24 @@ export function useLoadAggregatedFiles({
         }
 
         aggregatedAllFiles.push(...filesForBackend);
+      }
+
+      if (currentPnIdentifier) {
+        const ownerToken = resolveOwnerApiToken(currentPnIdentifier);
+        const catalogBackendId = connectedEntries[0]?.id || 'google_drive';
+        if (ownerToken) {
+          try {
+            const catalog = await fetchOwnerCatalog(currentPnIdentifier, ownerToken);
+            applyOwnerCatalogToLoad({
+              catalog,
+              backendId: catalogBackendId,
+              aggregatedAllFiles,
+              aggregatedMetadataMap
+            });
+          } catch (catalogErr) {
+            console.warn('⚠️ [loadFiles] Owner catalog merge failed (non-blocking):', catalogErr);
+          }
+        }
       }
 
       setFiles(aggregatedAllFiles);
