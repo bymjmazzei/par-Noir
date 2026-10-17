@@ -3,6 +3,7 @@
  */
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -64,7 +65,7 @@ import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import {
   editorVideoNeedsProxyForLayer,
-  sectionBlocksPlayback
+  sectionEncodingBlocksPlayback
 } from '../services/editorVideoReady';
 import type { PenSession } from '../services/penSession';
 import lookSwatch from '../assets/look-apple.jpg';
@@ -657,22 +658,25 @@ function RememberVideoSrc({
   src,
   docId,
   session,
-  srcs
+  srcs,
+  onResolved
 }: {
   layerId: string;
   src: string;
   docId?: string;
   session?: PenSession | null;
   srcs: { current: Map<string, string> };
+  onResolved?: (layerId: string, url: string) => void;
 }) {
   const { resolved } = useResolvedMediaSrc(src, { docId, session });
   useEffect(() => {
     if (!resolved) return;
     srcs.current.set(layerId, resolved);
+    onResolved?.(layerId, resolved);
     return () => {
       srcs.current.delete(layerId);
     };
-  }, [resolved, layerId, srcs]);
+  }, [resolved, layerId, srcs, onResolved]);
   return null;
 }
 
@@ -1164,18 +1168,15 @@ export function SectionTimeline({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [joinMenu, onJoinSelect]);
   const videoSrcs = useRef(new Map<string, string>());
+  const [resolvedClipUrls, setResolvedClipUrls] = useState<Record<string, string>>({});
+  const onClipUrlResolved = useCallback((layerId: string, url: string) => {
+    setResolvedClipUrls((prev) => (prev[layerId] === url ? prev : { ...prev, [layerId]: url }));
+  }, []);
   const ownedVideos = useRef(new Map<string, PenMediaController>());
   playingRef.current = playing;
   if (!playing) playheadRef.current = playheadSec;
 
-  const playbackBlocked = sectionBlocksPlayback(section, pagePresentation, (layer) => {
-    if (peekPenMediaController(`pen-layer:${layer.id}`)) return true;
-    if (!editorVideoNeedsProxyForLayer(layer)) {
-      return Boolean(videoSrcs.current.get(layer.id));
-    }
-    if (!layer.editProxySrc?.trim()) return false;
-    return Boolean(videoSrcs.current.get(layer.id));
-  });
+  const encodingBlocksPlayback = sectionEncodingBlocksPlayback(section, pagePresentation);
 
   function videoController(layer: PenPageLayer, create: boolean): PenMediaController | null {
     if (layer.kind !== 'video') return null;
@@ -1187,7 +1188,7 @@ export function SectionTimeline({
     const key = `pen-layer:${layer.id}`;
     const live = peekPenMediaController(key);
     if (live) return live;
-    const src = videoSrcs.current.get(layer.id);
+    const src = resolvedClipUrls[layer.id] || videoSrcs.current.get(layer.id);
     const held = ownedVideos.current.get(key);
     if (held && src && held.src === src) return held;
     if (!create || !src) return null;
@@ -1793,12 +1794,12 @@ export function SectionTimeline({
           type="button"
           aria-label={playing ? 'Pause' : 'Play'}
           title={
-            playbackBlocked ? 'Preparing preview…' : playing ? 'Pause' : 'Play'
+            encodingBlocksPlayback ? 'Preparing preview…' : playing ? 'Pause' : 'Play'
           }
-          disabled={!timelineActive || playbackBlocked}
+          disabled={!timelineActive || encodingBlocksPlayback}
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600 disabled:opacity-40"
           onClick={() => {
-            if (!timelineActive || playbackBlocked) return;
+            if (!timelineActive || encodingBlocksPlayback) return;
             const next = !playing;
             const at = next && playheadSec >= playSpan - 0.05 ? 0 : playheadSec;
             playheadRef.current = at;
@@ -2245,6 +2246,7 @@ export function SectionTimeline({
                     docId={docId}
                     session={session}
                     srcs={videoSrcs}
+                    onResolved={onClipUrlResolved}
                   />
                 );
               })}

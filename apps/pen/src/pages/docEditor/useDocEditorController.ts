@@ -521,6 +521,18 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     if (!current) return;
     const docId = current.manifest.docId;
     type Bundle = NonNullable<typeof bundle>;
+    const durationCapByOriginal = new Map<string, number>();
+    for (const sec of current.sections) {
+      for (const layer of sec.layers || []) {
+        const original = layerOriginalForProxy(layer);
+        if (!original) continue;
+        const probed = layer.sourceDurationSec;
+        if (typeof probed === 'number' && Number.isFinite(probed) && probed > 0) {
+          const prev = durationCapByOriginal.get(original);
+          if (prev === undefined || probed < prev) durationCapByOriginal.set(original, probed);
+        }
+      }
+    }
     const jobs: Array<{ original: string; apply: (ref: string, b: Bundle) => Bundle }> = [];
     for (const sec of current.sections) {
       for (const layer of sec.layers || []) {
@@ -567,7 +579,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     if (!jobs.length) return;
     let cancelled = false;
     void (async () => {
-      const updates: Array<(b: Bundle) => Bundle> = [];
       const jobCount = jobs.length;
       for (let i = 0; i < jobs.length; i++) {
         const job = jobs[i]!;
@@ -576,6 +587,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           docId,
           originalRef: job.original,
           session,
+          durationCapSec: durationCapByOriginal.get(job.original) ?? null,
           jobIndex,
           jobCount,
           onProgress: (pct) => {
@@ -590,20 +602,18 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             if (!cancelled) setStatus('Saving preview…');
           }
         });
-        if (ref) updates.push((b) => job.apply(ref, b));
-        else if (!cancelled) {
+        if (ref) {
+          const latest = bundleRef.current;
+          if (latest) {
+            const next = job.apply(ref, latest);
+            if (next !== latest) persist(next);
+          }
+        } else if (!cancelled) {
           setError('preview_prepare_failed');
           setStatus(null);
         }
       }
-      if (cancelled) return;
-      if (!updates.length) return;
-      const latest = bundleRef.current;
-      if (!latest) return;
-      let next = latest;
-      for (const update of updates) next = update(next);
-      if (next !== latest) {
-        persist(next);
+      if (!cancelled) {
         setStatus((s) =>
           s?.startsWith('Preparing preview') || s === 'Saving preview…' ? null : s
         );

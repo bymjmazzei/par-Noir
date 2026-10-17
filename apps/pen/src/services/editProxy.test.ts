@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  encodeDurationSec,
   layerOriginalForProxy,
   presentationAwaitingEditProxy,
   proxyRefForFrame,
@@ -8,6 +9,24 @@ import {
   sectionAwaitingEditProxy
 } from './editProxy';
 import type { PenSectionContent } from '@par-noir/pen-protocol';
+
+describe('encodeDurationSec', () => {
+  it('caps encode wait to probed duration when metadata is inflated', () => {
+    expect(encodeDurationSec(120, 5)).toBe(5);
+    expect(encodeDurationSec(5, 5)).toBe(5);
+    expect(encodeDurationSec(8, 5)).toBe(5);
+  });
+
+  it('falls back to metadata when probe is missing', () => {
+    expect(encodeDurationSec(12, null)).toBe(12);
+    expect(encodeDurationSec(12)).toBe(12);
+  });
+
+  it('uses probe when metadata is invalid', () => {
+    expect(encodeDurationSec(Number.NaN, 4)).toBe(4);
+    expect(encodeDurationSec(0, 3)).toBe(3);
+  });
+});
 
 describe('edit proxy size', () => {
   it('fits a 4K frame to a 720 long edge', () => {

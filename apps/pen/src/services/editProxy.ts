@@ -66,6 +66,18 @@ export function proxySize(
   };
 }
 
+/** Wall-clock cap for proxy encode when metadata duration lies (e.g. 120s header on a 5s clip). */
+export function encodeDurationSec(metadataSec: number, probedSec?: number | null): number {
+  if (!Number.isFinite(metadataSec) || metadataSec <= 0) {
+    if (Number.isFinite(probedSec) && probedSec! > 0) return probedSec!;
+    return 0;
+  }
+  if (Number.isFinite(probedSec) && probedSec! > 0) {
+    return Math.min(metadataSec, probedSec);
+  }
+  return metadataSec;
+}
+
 /** Original ref when the frame is already within 720. Null when a proxy must be encoded. */
 export function proxyRefForFrame(
   originalRef: string,
@@ -159,7 +171,7 @@ function waitVideoMeta(video: HTMLVideoElement): Promise<void> {
  */
 export async function encodeEditProxyBlob(
   fileUrl: string,
-  opts?: { onProgress?: (pct: number) => void }
+  opts?: { onProgress?: (pct: number) => void; durationCapSec?: number | null }
 ): Promise<Blob | 'reuse' | null> {
   if (typeof document === 'undefined') return null;
   const video = document.createElement('video');
@@ -179,8 +191,9 @@ export async function encodeEditProxyBlob(
     const sized = proxySize(video.videoWidth, video.videoHeight);
     if (sized.reuse) return 'reuse';
     if (typeof MediaRecorder === 'undefined') return null;
-    const duration = video.duration;
-    if (!Number.isFinite(duration) || duration <= 0) return null;
+    const metadataDuration = video.duration;
+    const encodeSec = encodeDurationSec(metadataDuration, opts?.durationCapSec);
+    if (!(encodeSec > 0)) return null;
     const canvas = document.createElement('canvas');
     canvas.width = sized.width;
     canvas.height = sized.height;
@@ -209,22 +222,34 @@ export async function encodeEditProxyBlob(
     opts?.onProgress?.(5);
     await video.play();
     await new Promise<void>((resolve) => {
-      const timer = window.setTimeout(resolve, (duration + 0.5) * 1000);
-      const report = () => {
-        const pct = Math.min(95, 5 + (video.currentTime / duration) * 90);
-        opts?.onProgress?.(pct);
-      };
-      const draw = () => {
-        if (video.ended || video.paused) return;
-        report();
-        ctx.drawImage(video, 0, 0, sized.width, sized.height);
-        requestAnimationFrame(draw);
-      };
-      video.onended = () => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
         window.clearTimeout(timer);
         opts?.onProgress?.(100);
         resolve();
       };
+      const timer = window.setTimeout(finish, (encodeSec + 0.5) * 1000);
+      const report = () => {
+        const pct = Math.min(95, 5 + (video.currentTime / encodeSec) * 90);
+        opts?.onProgress?.(pct);
+      };
+      const draw = () => {
+        if (done) return;
+        if (video.ended || video.paused) {
+          finish();
+          return;
+        }
+        if (video.currentTime >= encodeSec - 0.05) {
+          finish();
+          return;
+        }
+        report();
+        ctx.drawImage(video, 0, 0, sized.width, sized.height);
+        requestAnimationFrame(draw);
+      };
+      video.onended = finish;
       draw();
     });
     video.pause();
@@ -275,6 +300,7 @@ async function buildProxy(params: {
   session?: { pnIdentifier: string } | null;
   onProgress?: (pct: number) => void;
   onSaving?: () => void;
+  durationCapSec?: number | null;
   jobIndex?: number;
   jobCount?: number;
 }): Promise<string | null> {
@@ -301,7 +327,10 @@ async function buildProxy(params: {
       return null;
     }
     if (!url) return null;
-    const encoded = await encodeEditProxyBlob(url, { onProgress: report });
+    const encoded = await encodeEditProxyBlob(url, {
+      onProgress: report,
+      durationCapSec: params.durationCapSec
+    });
     if (encoded === 'reuse') {
       ready.set(key, params.originalRef);
       return params.originalRef;
@@ -330,6 +359,7 @@ export function ensureEditProxy(params: {
   session?: { pnIdentifier: string } | null;
   onProgress?: (pct: number) => void;
   onSaving?: () => void;
+  durationCapSec?: number | null;
   jobIndex?: number;
   jobCount?: number;
 }): Promise<string | null> {

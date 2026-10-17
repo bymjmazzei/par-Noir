@@ -672,7 +672,9 @@ describe('section timeline', () => {
 
   it('uses editorVideoReady for playback gating, not a parallel still player', () => {
     const timeline = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
-    expect(timeline).toContain('sectionBlocksPlayback');
+    expect(timeline).toContain('sectionEncodingBlocksPlayback');
+    expect(timeline).toContain('onResolved');
+    expect(timeline).toContain('setResolvedClipUrls');
     expect(timeline).not.toContain('VideoLayoutStill');
     expect(timeline).not.toContain('sectionAwaitingEditProxy');
   });

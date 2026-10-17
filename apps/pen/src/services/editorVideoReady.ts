@@ -63,6 +63,19 @@ export function layerPosterRef(layer: PenPageLayer): string | null {
   return publishPlaybackSrc(layer) || null;
 }
 
+/** True only while proxy encode is in flight (no editProxySrc yet). Not while resolving proxy URL. */
+export function sectionEncodingBlocksPlayback(
+  section: PenSectionContent,
+  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo' | 'editProxySrc'> | null
+): boolean {
+  for (const layer of section.layers || []) {
+    if (layer.kind !== 'video' && !layer.backgroundVideo?.trim()) continue;
+    if (!publishPlaybackSrc(layer)) continue;
+    if (layerOriginalForProxy(layer)) return true;
+  }
+  return presentationAwaitingEditProxy(pagePresentation);
+}
+
 export function sectionBlocksPlayback(
   section: PenSectionContent,
   pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo' | 'editProxySrc'> | null,

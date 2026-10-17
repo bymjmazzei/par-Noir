@@ -144,10 +144,12 @@ export function LayerMediaContent({
     !isVideo ||
     playback === 'publish' ||
     editorVideoPlayable(layer, { resolvedPlayUrl: resolved });
+  const awaitingProxyResolve =
+    playback === 'edit' && isVideo && Boolean(layer.editProxySrc?.trim()) && !resolved;
   const posterUrl =
     playback === 'edit' && isVideo && needsProxy && !playable
       ? getAttachPoster(layerPosterRef(layer))
-      : playback === 'edit' && isVideo && playable && !resolved
+      : playback === 'edit' && isVideo && (playable && !resolved || awaitingProxyResolve)
         ? getAttachPoster(layerPosterRef(layer))
         : null;
 
@@ -229,7 +231,8 @@ export function LayerMediaContent({
 
   const showPosterOnly = isVideo && playback === 'edit' && needsProxy && !playable;
   const showPlayer = isVideo && playable && resolved;
-  const showPosterUnderPlayer = isVideo && playable && !resolved;
+  const showPosterUnderPlayer =
+    isVideo && playback === 'edit' && ((playable && !resolved) || awaitingProxyResolve);
 
   return (
     <div
@@ -243,6 +246,9 @@ export function LayerMediaContent({
           <>
             {showPosterOnly || showPosterUnderPlayer ? (
               <LayoutPoster posterUrl={posterUrl} innerStyle={innerStyle} />
+            ) : null}
+            {awaitingProxyResolve ? (
+              <span className="sr-only">Loading preview…</span>
             ) : null}
             {showPlayer ? (
               <PenMediaPlayer
