@@ -33,6 +33,21 @@ async function hydratePenMediaRef(
   await putLocalMediaForDriveFile({ docId, fileId, blob });
 }
 
+async function copyFallbackBytesToPenMediaMaster(
+  primary: string,
+  altUrl: string,
+  docId: string
+): Promise<boolean> {
+  if (!isPenMediaRef(primary)) return false;
+  const fileId = parsePenMediaFileId(primary);
+  if (!fileId) return false;
+  const res = await fetch(altUrl);
+  if (!res.ok) return false;
+  const blob = await res.blob();
+  await putLocalMediaForDriveFile({ docId, fileId, blob });
+  return true;
+}
+
 async function ensureRefResolvable(
   ref: string | undefined,
   fallbackRef: string | undefined,
@@ -42,29 +57,40 @@ async function ensureRefResolvable(
   const primary = ref?.trim();
   if (!primary) return;
   if (!isPenMediaSrcRef(primary)) return;
+
+  const cachedPrimary = await resolvePenMediaSrc(primary, docId);
+  if (cachedPrimary) return;
+
+  const alt = fallbackRef?.trim();
+  if (alt && alt !== primary && isPenMediaSrcRef(alt)) {
+    let altUrl = await resolvePenMediaSrc(alt, docId);
+    if (!altUrl) {
+      try {
+        await hydratePenMediaRef(alt, session, docId);
+        altUrl = await resolvePenMediaSrc(alt, docId);
+      } catch {
+        altUrl = null;
+      }
+    }
+    if (altUrl && (await copyFallbackBytesToPenMediaMaster(primary, altUrl, docId))) {
+      return;
+    }
+  }
+
   try {
     await hydratePenMediaRef(primary, session, docId);
     const url = await resolvePenMediaSrc(primary, docId);
     if (url) return;
   } catch {
-    /* try fallback */
+    /* fall through */
   }
-  const alt = fallbackRef?.trim();
+
   if (!alt || alt === primary || !isPenMediaSrcRef(alt)) {
     throw new Error('publish_media_missing');
   }
   const altUrl = await resolvePenMediaSrc(alt, docId);
-  if (altUrl) {
-    if (isPenMediaRef(primary)) {
-      const fileId = parsePenMediaFileId(primary);
-      if (fileId) {
-        const res = await fetch(altUrl);
-        if (!res.ok) throw new Error('publish_media_missing');
-        const blob = await res.blob();
-        await putLocalMediaForDriveFile({ docId, fileId, blob });
-        return;
-      }
-    }
+  if (altUrl && (await copyFallbackBytesToPenMediaMaster(primary, altUrl, docId))) {
+    return;
   }
   try {
     await hydratePenMediaRef(alt, session, docId);

@@ -17,10 +17,15 @@ export function registerThirdPartyRoutes(app: Application): void {
         const service = getThirdPartyIndexersService();
         const identity = typeof req.query.identity === 'string' ? req.query.identity : undefined;
 
-        const [indexers, access] = await Promise.all([
-          service.listIndexers(),
-          identity ? service.getAccessForIdentity(identity) : Promise.resolve([])
-        ]);
+        const indexers = await service.listIndexers();
+        let access: Awaited<ReturnType<typeof service.getAccessForIdentity>> = [];
+        if (identity) {
+          try {
+            access = await service.getAccessForIdentity(identity);
+          } catch (accessErr: unknown) {
+            console.error('❌ [GET /api/third-party/indexers] access lookup failed:', accessErr);
+          }
+        }
 
         const accessMap = access.reduce<Record<string, boolean>>((acc, entry) => {
           acc[entry.thirdPartyId] = entry.isEnabled;

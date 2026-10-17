@@ -207,6 +207,7 @@ export async function feedR2PresignedPutUrl(
     ContentType: contentType,
     ContentLength: contentLength,
   });
-  const url = await getSignedUrl(r2.client, cmd, { expiresIn: r2.config.signedGetTtlSec });
+  const signed = await getSignedUrl(r2.client, cmd, { expiresIn: r2.config.signedGetTtlSec });
+  const url = rewriteSignedGetHost(signed, r2.config.publicHost, r2.config.bucket);
   return { url, maxBytes };
 }
