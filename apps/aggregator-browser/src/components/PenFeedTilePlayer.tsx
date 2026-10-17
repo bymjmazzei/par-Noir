@@ -16,7 +16,6 @@ export function PenFeedTilePlayer({
         model={model}
         mode="live"
         compact
-        bare
         hideEngagementRail
         aspectRatio={aspectRatio}
         onAction={onAction as Parameters<typeof FeedTileSurface>[0]['onAction']}
