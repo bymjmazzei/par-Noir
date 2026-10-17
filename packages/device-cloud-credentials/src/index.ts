@@ -157,13 +157,12 @@ export {
 export { requireOnlineCloudForSend } from './requireOnlineCloudForSend.js';
 export { deviceDriveCall, extractApiDrivePath, fetchDeviceDriveForSession } from './deviceDriveCall.js';
 export type { DeviceDriveInit } from './deviceDriveCall.js';
-export {
-  DRIVE_UPLOAD_PIECE_BYTES,
-  deviceDriveUploadBlob,
-  deviceDriveUploadBlobForSession,
-  deviceDriveDownloadBlobForSession
-} from './deviceDriveUpload.js';
-export type { DeviceDriveUploadParams, DriveUploadedFile } from './deviceDriveUpload.js';
+export { deviceDriveDownloadBlobForSession } from './deviceDriveUpload.js';
+export { DRIVE_UPLOAD_PIECE_BYTES, deviceDriveUploadStream } from './deviceDriveUploadStream.js';
+export type {
+  DeviceDriveUploadStreamParams,
+  DriveUploadedFile
+} from './deviceDriveUploadStream.js';
 export {
   clearDeviceDriveLayoutInflight,
   ensureDeviceDriveLayout,

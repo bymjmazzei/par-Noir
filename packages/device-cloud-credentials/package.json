@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./drive-upload-stream": {
+      "types": "./dist/deviceDriveUploadStream.d.ts",
+      "import": "./dist/deviceDriveUploadStream.js",
+      "default": "./dist/deviceDriveUploadStream.js"
     }
   },
   "files": ["dist"],
