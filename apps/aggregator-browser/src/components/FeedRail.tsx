@@ -243,7 +243,7 @@ export function FeedRail({
                     if (!isActive) onFeedPrefetch?.(feed.feedId);
                   }}
                   className="relative whitespace-nowrap text-white/85 hover:text-white transition-colors flex items-center justify-center"
-                  style={{ opacity: isActive ? 1 : 0.85, filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6))' }}
+                  style={{ opacity: isActive ? 1 : 0.85, filter: 'drop-shadow(0 1px 0 rgba(0, 0, 0, 0.85))' }}
                 >
                   {isPublicFeed ? (
                     // pN text for public feed (lowercase p with line, uppercase N)
@@ -308,7 +308,7 @@ export function FeedRail({
               setShowDropdown(!showDropdown);
             }}
             className="p-0.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors"
-            style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6))' }}
+            style={{ filter: 'drop-shadow(0 1px 0 rgba(0, 0, 0, 0.85))' }}
             title="Feed options"
           >
             <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
