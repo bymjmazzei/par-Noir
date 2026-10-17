@@ -1279,7 +1279,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
 
       const { redactCentralIndexEntryForClient } = await import('./feedPreviewClientRedact');
       return res.json({
-        files: result.files.map((f) => redactCentralIndexEntryForClient(f)),
+        files: result.files.map((f: any) => redactCentralIndexEntryForClient(f)),
         total: result.total,
         updatedAt: new Date().toISOString()
       });
