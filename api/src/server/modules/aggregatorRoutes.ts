@@ -2667,23 +2667,23 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 `[MetadataIndex PUT] Skipping companion visibility sync for ${actualFileId} (device-cloud)`
               );
             } else {
-              const metadataForType = (metadataForCompanion || {}) as Record<string, unknown>;
+              const metadataForType = (metadataForCompanion || {}) as any;
               const determinedFileType = determineFileType({
-                fileType: metadataForType.fileType as string | undefined,
+                fileType: metadataForType.fileType,
                 collection: metadataForType.collection,
                 textPost: metadataForType.textPost,
                 thought: metadataForType.thought,
-                mimeType: metadataForType.mimeType as string | undefined,
-                isNoteThumbnail: metadataForType.isNoteThumbnail as boolean | undefined,
-                isPartOfCollection: metadataForType.isPartOfCollection as boolean | undefined
+                mimeType: metadataForType.mimeType,
+                isNoteThumbnail: metadataForType.isNoteThumbnail,
+                isPartOfCollection: metadataForType.isPartOfCollection
               });
               const determinedContentClass = determineContentClass({
                 fileType: determinedFileType,
                 collection: metadataForType.collection,
                 textPost: metadataForType.textPost,
                 thought: metadataForType.thought,
-                isNoteThumbnail: metadataForType.isNoteThumbnail as boolean | undefined,
-                isPartOfCollection: metadataForType.isPartOfCollection as boolean | undefined
+                isNoteThumbnail: metadataForType.isNoteThumbnail,
+                isPartOfCollection: metadataForType.isPartOfCollection
               });
               const visibility = isPublic === true ? 'public' : 'private';
               const exists = await CompanionMetadataService.exists(
@@ -2699,7 +2699,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                     visibility,
                     fileType: determinedFileType,
                     contentClass: determinedContentClass,
-                    thumbnailFileId: metadataForType.thumbnailFileId as string | undefined
+                    thumbnailFileId: metadataForType.thumbnailFileId
                   },
                   cloudAccessToken
                 );
