@@ -87,7 +87,6 @@ function feedMetadataIsVideo(meta: FeedPlaybackMetadata | null | undefined): boo
 }
 
 function CollectionMemberSlide({
-  memberFileId,
   posterUrl,
   videoUrl,
   isVideo,
@@ -97,7 +96,6 @@ function CollectionMemberSlide({
   scalingStyles,
   onDimensions,
 }: {
-  memberFileId: string;
   posterUrl?: string;
   videoUrl?: string;
   isVideo: boolean;
@@ -466,7 +464,6 @@ export function FullScreenFeed({
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
   const [mediaDimensions, setMediaDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
   const [showEngagementOverlay, setShowEngagementOverlay] = useState(false);
-  const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map());
   const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
   const [currentCommentIndex, setCurrentCommentIndex] = useState<Map<string, number>>(new Map());
   
@@ -1638,21 +1635,6 @@ export function FullScreenFeed({
                             return newMap;
                           });
                         });
-                        // Track playing state
-                        el.addEventListener('play', () => {
-                          setVideoPlaying(prev => {
-                            const newMap = new Map(prev);
-                            newMap.set(fileId, true);
-                            return newMap;
-                          });
-                        });
-                        el.addEventListener('pause', () => {
-                          setVideoPlaying(prev => {
-                            const newMap = new Map(prev);
-                            newMap.set(fileId, false);
-                            return newMap;
-                          });
-                        });
                       }
                     }}
                     src={videoBlobs.get(fileId)!}
@@ -1907,7 +1889,6 @@ export function FullScreenFeed({
                       return (
                         <CollectionMemberSlide
                           key={`${fileId}-${collectionFileId}`}
-                          memberFileId={collectionFileId}
                           posterUrl={posterUrl}
                           videoUrl={videoUrl}
                           isVideo={isVideoMember}
