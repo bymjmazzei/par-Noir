@@ -24,6 +24,7 @@ import {
   setAnimationDuration,
   sampleSectionLayers,
   sectionHasMotion,
+  sectionNeedsPlayheadDrive,
   setKeyframeEase,
   setLayerAnimation,
   detachClipAsLayer,
@@ -207,6 +208,33 @@ describe('sampleLayerAt', () => {
     ]);
     expect(sampleSectionLayers(held, 2.5).find((item) => item.id === 'mark')?.x).toBe(10);
     expect(sampleSectionLayers(looping, 2.5).find((item) => item.id === 'mark')?.x).toBe(5);
+  });
+});
+
+describe('sectionNeedsPlayheadDrive', () => {
+  it('is false for video-only sections without keys', () => {
+    const doc = section([
+      layer({ id: 'clip', kind: 'video', videoSrc: 'https://example.com/a.mp4' })
+    ]);
+    expect(sectionNeedsPlayheadDrive(doc)).toBe(false);
+  });
+
+  it('is true when any layer has motion keys', () => {
+    expect(sectionNeedsPlayheadDrive(section([layer({ id: 'a', motion: { keys: [{ t: 0, x: 1 }] } })]))).toBe(
+      true
+    );
+  });
+
+  it('is true when a layer has audio tracks', () => {
+    const doc = section([
+      layer({
+        id: 'clip',
+        kind: 'video',
+        videoSrc: 'x',
+        audioTracks: [{ id: 'a', src: 'https://example.com/a.mp3' }]
+      })
+    ]);
+    expect(sectionNeedsPlayheadDrive(doc)).toBe(true);
   });
 });
 

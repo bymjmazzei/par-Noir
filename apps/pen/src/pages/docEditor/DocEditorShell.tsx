@@ -68,6 +68,7 @@ import {
   partitionSectionsForPublish,
   resolveTimelineDuration,
   sectionHasMotion,
+  sectionNeedsPlayheadDrive,
   sectionIsFeedPage,
   isGooglePenFont,
   remapSectionsForAspect,
@@ -406,6 +407,11 @@ export function DocEditorShell(state: DocEditorReadyState) {
     defaultEditorPagePresentation(),
     bundle.manifest.pagePresentation
   );
+  const previewPlayheadSec = useMemo(() => {
+    if (!section) return playheadSec;
+    if (!sectionNeedsPlayheadDrive(section) && timelinePlaying) return 0;
+    return playheadSec;
+  }, [section, playheadSec, timelinePlaying]);
   const previewGutter = previewPageUsesGutter(
     bundle.manifest.pageLayout,
     bundle.manifest.flowWorkspaceWidthPx
@@ -1553,7 +1559,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
                             inputValues={inputValues}
                             onInputValue={setInputValue}
                             votedOptionByGroup={votedOptionByGroup}
-                            playheadSec={playheadSec}
+                            playheadSec={active ? previewPlayheadSec : 0}
                             guideSpan={pageGuideSpan}
                             onSectionChange={(next) => {
                               if (sectionHasVoteButton(next)) {
@@ -1617,7 +1623,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
                     onPollVote={(layer) => void voteOnPoll(layer)}
                     onWidgetAction={(layer) => void runWidgetAction(layer)}
                     snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
-                    playheadSec={playheadSec}
+                    playheadSec={previewPlayheadSec}
                     freePlacement={artboard}
                     drawGuides={false}
                     guideSpan={guideSpanFor(
@@ -1680,7 +1686,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
               session={session}
               onSelectLayer={() => undefined}
               onSectionChange={() => undefined}
-              playheadSec={playheadSec}
+              playheadSec={previewPlayheadSec}
             />
           </div>
         ) : null}

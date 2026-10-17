@@ -23,6 +23,7 @@ import { LayerTitleControl } from './LayerTitleControl';
 import { parseCssColor } from './PanelValueControls';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
+import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
 import { isPenMediaSrcRef, resolvePenMediaSrc } from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
 
@@ -425,18 +426,22 @@ export function LayerObjectToolbar({
     if (!isPage && layer && !isGroup) {
       // Object layers: convert to image/video and fit aspect into the frame / page.
       const aspect = await probeMediaAspect(playable, fileKind);
-      onSectionChange(
-        attachMediaToLayer(
-          section,
-          layer.id,
-          fileKind === 'image' ? { kind: 'image', src } : { kind: 'video', src },
-          {
-            aspectRatio: aspect,
-            pageWidth: contentWidthPx,
-            pageHeight: contentHeightPx
-          }
-        )
+      const next = attachMediaToLayer(
+        section,
+        layer.id,
+        fileKind === 'image' ? { kind: 'image', src } : { kind: 'video', src },
+        {
+          aspectRatio: aspect,
+          pageWidth: contentWidthPx,
+          pageHeight: contentHeightPx
+        }
       );
+      onSectionChange(next);
+      if (fileKind === 'video') {
+        void sectionWithProbedVideoLayerDuration(next, layer.id, src, docId).then((probed) => {
+          if (probed !== next) onSectionChange(probed);
+        });
+      }
       return;
     }
     if (fileKind === 'image') {

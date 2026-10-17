@@ -589,6 +589,7 @@ describe('section timeline', () => {
     expect(text).toContain('aria-label="Animations"');
     expect(text.match(/data-keyframe="[^"]+"/g)).toEqual(['data-keyframe="marked:1"']);
     const drag = readFileSync(resolve(__dirname, './SectionTimeline.tsx'), 'utf8');
+    expect(drag).toContain('sectionNeedsPlayheadDrive');
     const clipDrag = drag.slice(drag.indexOf('function beginClipDrag'), drag.indexOf('function beginResize'));
     expect(clipDrag).not.toContain('const moved');
     const picker = renderToStaticMarkup(

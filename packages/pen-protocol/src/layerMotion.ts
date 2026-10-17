@@ -536,6 +536,20 @@ export function sectionHasMotion(section: PenSectionContent | null | undefined):
   return (section?.layers || []).some((layer) => (layer.motion?.keys?.length || 0) > 0);
 }
 
+/** True when the preview must sample layers every playhead tick (motion, loops, audio lanes). */
+export function sectionNeedsPlayheadDrive(
+  section: PenSectionContent | null | undefined
+): boolean {
+  if (!section) return false;
+  if (sectionHasMotion(section)) return true;
+  for (const layer of section.layers || []) {
+    if (layer.kind === 'guide') continue;
+    if (layer.motion?.loop && (layer.motion?.keys?.length || 0) > 0) return true;
+    if (layer.audioTracks && layer.audioTracks.length > 0) return true;
+  }
+  return false;
+}
+
 export type PenTimelineContext = {
   pageBackgroundVideo?: string;
 };

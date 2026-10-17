@@ -35,6 +35,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
+import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
 import { ActionLayerMenu } from './ActionLayerMenu';
 import { SoundCatalogMenu } from './SoundCatalogMenu';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
@@ -280,6 +281,11 @@ export function LayersPopover({
         ? patchLayerStyle(attached, placed.layerId, { name: 'Video' })
         : attached;
     commit(named);
+    if (mediaKind === 'video') {
+      void sectionWithProbedVideoLayerDuration(named, placed.layerId, src, docId).then((probed) => {
+        if (probed !== named) commit(probed);
+      });
+    }
     onSelectLayer(placed.layerId);
     onSelectedIdsChange([placed.layerId]);
     setMediaOpen(false);

@@ -40,6 +40,7 @@ import {
   raiseTimelineTo,
   resolveTimelineDuration,
   isSectionTimelineActive,
+  sectionNeedsPlayheadDrive,
   sampleLayerAt,
   sanitizeWidgetMarkup,
   setKeyframeEase,
@@ -1013,7 +1014,14 @@ export function SectionTimeline({
     pageBackgroundVideo: pagePresentation?.backgroundVideo
   };
   const timelineActive = isSectionTimelineActive(section, timelineCtx);
+  const needsPlayheadDrive = sectionNeedsPlayheadDrive(section);
   const duration = timelineActive ? resolveTimelineDuration(section, undefined, timelineCtx) : 0;
+  const [rulerPlayhead, setRulerPlayhead] = useState(playheadSec);
+  useEffect(() => {
+    if (!playing || needsPlayheadDrive) setRulerPlayhead(playheadSec);
+  }, [playheadSec, playing, needsPlayheadDrive]);
+  const displayPlayhead =
+    playing && !needsPlayheadDrive ? rulerPlayhead : playheadSec;
   const groups = timelineTracks(section, scopeGroupId);
   const mainTrackId = groups[groups.length - 1]?.trackId ?? null;
   const scopeGroup = scopeGroupId
@@ -1023,7 +1031,7 @@ export function SectionTimeline({
   const active =
     (section.layers || []).find((layer) => layer.id === activeLayerId && layer.kind !== 'guide') ??
     null;
-  const activeLocal = active ? layerSampleTime(section, active, playheadSec) : playheadSec;
+  const activeLocal = active ? layerSampleTime(section, active, displayPlayhead) : displayPlayhead;
   const playheadOnKey = (active?.motion?.keys || []).some(
     (key) => Math.abs(key.t - activeLocal) <= KEYFRAME_EPSILON_SEC
   );
@@ -1219,7 +1227,7 @@ export function SectionTimeline({
   }, [timelineActive, playing, onPlaying]);
 
   useEffect(() => {
-    if (!playing || !timelineActive) return;
+    if (!playing || !timelineActive || !needsPlayheadDrive) return;
     let frame = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -1247,7 +1255,74 @@ export function SectionTimeline({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, playSpan, layerLoops, onPlayhead, onPlaying, timelineActive]);
+  }, [playing, playSpan, layerLoops, onPlayhead, onPlaying, timelineActive, needsPlayheadDrive]);
+
+  useEffect(() => {
+    if (!playing || !timelineActive || needsPlayheadDrive) return;
+    const videoLayer = (section.layers || []).find(
+      (layer) => layer.kind === 'video' && (layer.videoSrc || layer.backgroundVideo)
+    );
+    if (!videoLayer) return;
+    const key = `pen-layer:${videoLayer.id}`;
+    const inSec = videoLayer.inSec ?? 0;
+    let lastEmit = 0;
+    let stopped = false;
+    const cleanups: Array<() => void> = [];
+
+    const syncFromVideo = () => {
+      const ctrl = peekPenMediaController(key);
+      const el = ctrl?.master;
+      if (!el || stopped) return;
+      const pageT = inSec + (el.currentTime || 0);
+      const capped = Math.min(playSpan, pageT);
+      playheadRef.current = capped;
+      setRulerPlayhead(capped);
+      const now = performance.now();
+      if (now - lastEmit >= 125) {
+        lastEmit = now;
+        onPlayhead(capped);
+      }
+      if (capped >= playSpan - 0.05 || el.ended) {
+        playingRef.current = false;
+        onPlaying(false);
+        driveRef.current('pause', capped);
+      }
+    };
+
+    const wire = (ctrl: PenMediaController) => {
+      ctrl.master.addEventListener('timeupdate', syncFromVideo);
+      ctrl.master.addEventListener('ended', syncFromVideo);
+      cleanups.push(() => {
+        ctrl.master.removeEventListener('timeupdate', syncFromVideo);
+        ctrl.master.removeEventListener('ended', syncFromVideo);
+      });
+    };
+
+    const existing = peekPenMediaController(key);
+    if (existing) wire(existing);
+    else {
+      const retry = window.setInterval(() => {
+        const ctrl = peekPenMediaController(key);
+        if (!ctrl) return;
+        wire(ctrl);
+        window.clearInterval(retry);
+      }, 50);
+      cleanups.push(() => window.clearInterval(retry));
+    }
+
+    return () => {
+      stopped = true;
+      cleanups.forEach((fn) => fn());
+    };
+  }, [
+    playing,
+    timelineActive,
+    needsPlayheadDrive,
+    section.layers,
+    playSpan,
+    onPlayhead,
+    onPlaying
+  ]);
 
   function seekTo(time: number) {
     if (!timelineActive) return;
@@ -1727,7 +1802,7 @@ export function SectionTimeline({
           )}
         </button>
         <span className="shrink-0 text-[13px] tabular-nums text-stone-700">
-          {formatTime(layerLoops ? wrapTime(playheadSec, playSpan) : playheadSec)} / {formatTime(playSpan)}
+          {formatTime(layerLoops ? wrapTime(displayPlayhead, playSpan) : displayPlayhead)} / {formatTime(playSpan)}
         </span>
         </div>
         <div className="flex items-center justify-end gap-1 text-stone-500">
@@ -1858,7 +1933,10 @@ export function SectionTimeline({
           const groupLayer = trackLayers.find((item) => item.kind === 'group');
           const layer = trackLayers.find((item) => item.id === activeLayerId) ?? trackLayers[0]!;
           const rowDur = layerClockSpan(section, layer);
-          const local = layer.kind === 'group' ? wrapTime(playheadSec, rowDur) : layerSampleTime(section, layer, playheadSec);
+          const local =
+            layer.kind === 'group'
+              ? wrapTime(displayPlayhead, rowDur)
+              : layerSampleTime(section, layer, displayPlayhead);
           const posed = sampleLayerAt(layer, local, rowDur);
           const clips =
             compound && groupLayer
@@ -1991,7 +2069,7 @@ export function SectionTimeline({
                     {playbackSrc ? (
                     <ClipDecor
                       src={playbackSrc}
-                      still={owner.kind === 'image'}
+                      still={owner.kind === 'image' || owner.kind === 'video'}
                       docId={docId}
                       session={session}
                       playing={playing}
@@ -2146,13 +2224,14 @@ export function SectionTimeline({
                 );
               })}
               {trackLayers.map((item) => {
-                const original = publishPlaybackSrc(item);
-                if (item.kind !== 'video' || !original || item.sourceDurationSec) return null;
+                const probeSrc =
+                  playback === 'publish' ? publishPlaybackSrc(item) : editorPlaybackSrc(item);
+                if (item.kind !== 'video' || !probeSrc || item.sourceDurationSec) return null;
                 return (
                   <VideoFileDuration
                     key={`file-duration-${item.id}`}
                     layerId={item.id}
-                    src={original}
+                    src={probeSrc}
                     docId={docId}
                     session={session}
                     onDuration={(id, seconds) => {
@@ -2240,7 +2319,9 @@ export function SectionTimeline({
             className="absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
             style={{
               left: trackLeft(
-                layerLoops ? wrapTime(playheadSec, playSpan) : Math.min(playheadSec, viewSpan),
+                layerLoops
+                  ? wrapTime(displayPlayhead, playSpan)
+                  : Math.min(displayPlayhead, viewSpan),
                 viewSpan
               )
             }}
