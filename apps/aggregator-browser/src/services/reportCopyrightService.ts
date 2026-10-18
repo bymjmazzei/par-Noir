@@ -4,7 +4,7 @@
 
 import { API_ENDPOINT } from '../config/api';
 
-export type ContentReportType = 'copyright' | 'prohibited';
+export type ContentReportType = 'copyright' | 'prohibited' | 'unsafe_link';
 
 export async function reportContent(
   fileId: string,

@@ -42,7 +42,7 @@ export interface MePageProps {
   setEditingFile: (f: IndexedFile | null) => void;
   onSave: ((file: IndexedFile) => void) | undefined;
   success: (msg: string) => void;
-  onReportCopyright?: (file: IndexedFile) => void;
+  onReportCopyright?: (file: IndexedFile, link?: string) => void;
 }
 
 export function MePage({

@@ -12,7 +12,7 @@ const PRISM_ESCALATED_MIN_REPUTATION = parseInt(process.env.PRISM_ESCALATED_MIN_
 export type FlagSource = 'bot' | 'user_report';
 
 /** Why the item was queued — used on deny to decide isProhibited mark. */
-export type PrismReportType = 'copyright' | 'prohibited' | 'dmca_bot' | 'other';
+export type PrismReportType = 'copyright' | 'prohibited' | 'unsafe_link' | 'dmca_bot' | 'other';
 
 export type RayVote = 'approve' | 'deny' | 'skip';
 
@@ -35,6 +35,8 @@ export interface AddToQueueParams {
   flagSource: FlagSource;
   reporterPnIdentifier?: string | null;
   reportType?: PrismReportType | string | null;
+  /** Reported link, kept on the flag ledger entry. */
+  reportedUrl?: string | null;
 }
 
 /**
@@ -42,7 +44,7 @@ export interface AddToQueueParams {
  */
 export async function addToPrismQueue(params: AddToQueueParams): Promise<string> {
   const db = getDatabasePool();
-  const { fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier, reportType } = params;
+  const { fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier, reportType, reportedUrl } = params;
   const result = await db.query(
     `INSERT INTO prism_review_queue (file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, report_type)
      VALUES ($1, $2, $3, $4, 'pending', $5)
@@ -58,7 +60,12 @@ export async function addToPrismQueue(params: AddToQueueParams): Promise<string>
       activity_type: 'flagged',
       target_file_id: fileId,
       target_owner_pn_identifier: ownerPnIdentifier,
-      metadata: JSON.stringify({ flagSource, queueItemId, reportType: reportType ?? null })
+      metadata: JSON.stringify({
+        flagSource,
+        queueItemId,
+        reportType: reportType ?? null,
+        ...(reportedUrl ? { reportedUrl } : {})
+      })
     });
   } catch (ledgerErr) {
     console.warn('[Prism] Flag ledger write failed:', ledgerErr);

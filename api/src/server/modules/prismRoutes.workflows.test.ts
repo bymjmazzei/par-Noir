@@ -187,6 +187,19 @@ describe('Prism workflows and routes (headless)', () => {
       );
     });
 
+    it('enqueues unsafe link reports with the reported URL', async () => {
+      const res = await request(app)
+        .post('/api/reports')
+        .send({ fileId: 'file-xyz', reportType: 'unsafe_link', reason: 'https://evil.example/login' });
+      expect(res.status).toBe(200);
+      expect(addToPrismQueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reportType: 'unsafe_link',
+          reportedUrl: 'https://evil.example/login',
+        })
+      );
+    });
+
     it('accepts nsfw/spam/other without queueing', async () => {
       for (const reportType of ['nsfw', 'spam', 'other'] as const) {
         addToPrismQueue.mockClear();

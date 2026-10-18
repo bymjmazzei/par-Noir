@@ -32,16 +32,16 @@ describe('runFeedPenEffect', () => {
   });
 
   it('opens a link without an unlocked viewer', async () => {
-    await runFeedPenEffect({ effect: { kind: 'open', url: 'https://example.com/' } });
+    await runFeedPenEffect({ effect: { kind: 'open', url: 'https://example.com/', host: 'example.com', warnings: [] } });
     expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer');
     expect(ownerFetch).not.toHaveBeenCalled();
   });
 
   it('assigns mailto and opens a Messaging handoff', async () => {
-    await runFeedPenEffect({ effect: { kind: 'mailto', href: 'mailto:a%40b.com' } });
+    await runFeedPenEffect({ effect: { kind: 'mailto', href: 'mailto:a%40b.com', to: 'a@b.com' } });
     expect(assign).toHaveBeenCalledWith('mailto:a%40b.com');
     await runFeedPenEffect({
-      effect: { kind: 'messaging', title: 'Send', body: 'Email: x' },
+      effect: { kind: 'messaging', title: 'Send', body: 'Email: x', to: '' },
       penDocId: 'doc-1'
     });
     const url = String(open.mock.calls[0][0]);

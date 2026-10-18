@@ -973,6 +973,7 @@ function App() {
   // State for editing file metadata
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
   const [reportingCopyrightFile, setReportingCopyrightFile] = useState<IndexedFile | null>(null);
+  const [reportingLink, setReportingLink] = useState<string | undefined>(undefined);
   
   // Memoize callbacks for FeedEngagementSidebar to prevent re-renders
   const handleLike = useCallback((fileId: string) => {
@@ -1004,7 +1005,8 @@ function App() {
     }
   }, [share, success, setParam, showErrorToast]);
 
-  const handleReportCopyright = useCallback((file: IndexedFile) => {
+  const handleReportCopyright = useCallback((file: IndexedFile, link?: string) => {
+    setReportingLink(link);
     setReportingCopyrightFile(file);
   }, []);
 
@@ -1219,10 +1221,16 @@ function App() {
           isOpen={!!reportingCopyrightFile}
           onClose={() => setReportingCopyrightFile(null)}
           fileName={reportingCopyrightFile.metadata.name || reportingCopyrightFile.metadata.title}
+          link={reportingLink}
           onSubmit={async (reportType) => {
             const token = await PNOAuthService.getValidAccessToken();
             if (!token) throw new Error('Please sign in to report');
-            await reportContent(reportingCopyrightFile.metadata.fileId, token, reportType);
+            await reportContent(
+              reportingCopyrightFile.metadata.fileId,
+              token,
+              reportType,
+              reportType === 'unsafe_link' ? reportingLink : undefined
+            );
             success('Report submitted. Content will be reviewed by Prism Rays.');
           }}
         />

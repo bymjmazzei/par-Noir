@@ -69,7 +69,7 @@ export interface HomePageContextValue {
   handleComment: (f: IndexedFile) => void;
   handleLike: (fileId: string) => void;
   handleShare: (fileId: string) => void;
-  handleReportCopyright?: (file: IndexedFile) => void;
+  handleReportCopyright?: (file: IndexedFile, link?: string) => void;
   handleCreatorClick: (creatorId: string) => void;
   handleNextFeed: () => void;
   handlePreviousFeed: () => void;

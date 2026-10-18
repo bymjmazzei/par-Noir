@@ -228,7 +228,7 @@ interface FullScreenFeedProps {
   };
   onCreatorClick?: (creatorId: string) => void;
   onMessage?: (creatorId: string) => void;
-  onReportCopyright?: (file: IndexedFile) => void;
+  onReportCopyright?: (file: IndexedFile, link?: string) => void;
   onSwipeLeft?: () => void; // Horizontal swipe left handler
   onSwipeRight?: () => void; // Horizontal swipe right handler
   mePageTab?: 'all' | 'media' | 'notes' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections'; // For Me page tab context
@@ -1613,6 +1613,7 @@ export function FullScreenFeed({
                 return (
                   <PenFeedTilePlayer
                     aspectRatio={penTileAspect}
+                    onReportLink={onReportCopyright ? (url) => onReportCopyright(indexedFile, url) : undefined}
                     model={penModel}
                     playback={slidePlayback}
                     onEffect={(effect) => {
@@ -1778,6 +1779,7 @@ export function FullScreenFeed({
                 return (
                   <PenFeedTilePlayer
                     aspectRatio={penTileAspect}
+                    onReportLink={onReportCopyright ? (url) => onReportCopyright(indexedFile, url) : undefined}
                     model={penModel}
                     onEffect={(effect) => {
                       void runFeedPenEffect({
@@ -1931,6 +1933,7 @@ export function FullScreenFeed({
                 return (
                   <PenFeedTilePlayer
                     aspectRatio={penTileAspect}
+                    onReportLink={onReportCopyright ? (url) => onReportCopyright(indexedFile, url) : undefined}
                     model={penModel}
                     playback={slidePlayback}
                     onEffect={(effect) => {

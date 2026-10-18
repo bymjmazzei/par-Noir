@@ -13,7 +13,8 @@ export function setupPrismRoutes(app: any): void {
    * POST /api/reports
    * Submit a content report. Copyright reports are added to the Prism queue.
    * Requires Bearer token.
-   * Body: { fileId, reportType: 'copyright' | 'nsfw' | 'spam' | 'other' | 'prohibited', reason? }
+   * Body: { fileId, reportType: 'copyright' | 'nsfw' | 'spam' | 'other' | 'prohibited' | 'unsafe_link', reason? }
+   * unsafe_link carries the reported URL in reason.
    */
   app.post('/api/reports', async (req: Request, res: Response) => {
     try {
@@ -26,11 +27,11 @@ export function setupPrismRoutes(app: any): void {
       if (!fileId || !reportType) {
         return res.status(400).json({ error: 'fileId and reportType required' });
       }
-      if (!['copyright', 'nsfw', 'spam', 'other', 'prohibited'].includes(reportType)) {
+      if (!['copyright', 'nsfw', 'spam', 'other', 'prohibited', 'unsafe_link'].includes(reportType)) {
         return res.status(400).json({ error: 'Invalid reportType' });
       }
 
-      if (reportType === 'copyright' || reportType === 'prohibited') {
+      if (reportType === 'copyright' || reportType === 'prohibited' || reportType === 'unsafe_link') {
         const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
         const metadataService = AggregatorMetadataServiceDB.getInstance();
         const entry = await metadataService.getFileMetadata(fileId);
@@ -44,6 +45,9 @@ export function setupPrismRoutes(app: any): void {
           flagSource: 'user_report',
           reporterPnIdentifier: payload.pnIdentifier,
           reportType,
+          ...(reportType === 'unsafe_link' && typeof reason === 'string' && reason.trim()
+            ? { reportedUrl: reason.trim().slice(0, 2048) }
+            : {}),
         });
         try {
           const { recordPrismEntry } = await import('./prismLedgerService');
@@ -133,12 +137,15 @@ export function setupPrismRoutes(app: any): void {
       }
       if (result.resolved && result.status === 'denied' && item) {
         const { executeTakedown } = await import('./dmcaTakedownService');
-        const isProhibitedReport = item.report_type === 'prohibited';
+        const isUnsafeLink = item.report_type === 'unsafe_link';
+        const isProhibitedReport = item.report_type === 'prohibited' || isUnsafeLink;
         await executeTakedown(
           item.file_id,
-          isProhibitedReport
-            ? 'Prism review: content denied (prohibited).'
-            : 'Prism review: content denied (copyright).',
+          isUnsafeLink
+            ? 'Prism review: content denied (unsafe link).'
+            : isProhibitedReport
+              ? 'Prism review: content denied (prohibited).'
+              : 'Prism review: content denied (copyright).',
           'prism_denied'
         );
         if (isProhibitedReport) {

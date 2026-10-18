@@ -1,16 +1,18 @@
 /**
- * Report content modal (copyright or prohibited) → Prism queue
+ * Report content modal (copyright, prohibited, or unsafe link) → Prism queue
  */
 
 import { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
-export type ContentReportType = 'copyright' | 'prohibited';
+export type ContentReportType = 'copyright' | 'prohibited' | 'unsafe_link';
 
 interface ReportCopyrightModalProps {
   isOpen: boolean;
   onClose: () => void;
   fileName?: string;
+  /** Link the viewer chose to report from a Pen button. Preselects the unsafe link reason. */
+  link?: string;
   onSubmit: (reportType: ContentReportType) => Promise<void>;
 }
 
@@ -18,11 +20,12 @@ export function ReportCopyrightModal({
   isOpen,
   onClose,
   fileName,
+  link,
   onSubmit,
 }: ReportCopyrightModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reportType, setReportType] = useState<ContentReportType>('copyright');
+  const [reportType, setReportType] = useState<ContentReportType>(link ? 'unsafe_link' : 'copyright');
 
   if (!isOpen) return null;
 
@@ -64,6 +67,9 @@ export function ReportCopyrightModal({
           {fileName && (
             <span className="block mt-2 text-neutral-500 truncate">File: {fileName}</span>
           )}
+          {link && (
+            <span className="block mt-1 text-neutral-500 break-all">Link: {link}</span>
+          )}
         </p>
         <label className="block text-sm font-medium text-neutral-300 mb-2">
           Reason
@@ -76,6 +82,7 @@ export function ReportCopyrightModal({
         >
           <option value="copyright">Copyright violation</option>
           <option value="prohibited">Prohibited / illegal</option>
+          <option value="unsafe_link">Phishing / unsafe link</option>
         </select>
         {error && (
           <p className="text-red-400 text-sm mb-4">{error}</p>

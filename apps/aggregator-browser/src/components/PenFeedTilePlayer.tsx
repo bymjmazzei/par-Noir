@@ -6,11 +6,13 @@ export function PenFeedTilePlayer({
   model,
   aspectRatio = '9/16',
   onEffect,
+  onReportLink,
   playback
 }: {
   model: FeedTileViewModel;
   aspectRatio?: '9/16' | '16/9' | '1/1';
   onEffect?: (effect: PenActionEffect) => void;
+  onReportLink?: (url: string) => void;
   playback?: FeedPlayback;
 }) {
   return (
@@ -25,6 +27,7 @@ export function PenFeedTilePlayer({
         hideEngagementRail
         aspectRatio={aspectRatio}
         onEffect={onEffect}
+        onReportLink={onReportLink}
         playback={playback}
       />
     </div>
