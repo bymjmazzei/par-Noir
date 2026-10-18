@@ -57,7 +57,6 @@ import {
 } from './penPersonalTemplates';
 import { resolveSigningKeys } from './penKeys';
 import { requestNotaryStamp } from './penApi';
-import { attachImpliedContractProofs } from './openContractProofs';
 import { generateChatKey, generateGroupId } from '@par-noir/dm-crypto';
 import { schedulePrefsCloudPush } from './penPrefsCloud';
 import type { PenLicensingRoot } from '@par-noir/pen-protocol';
@@ -816,6 +815,7 @@ export async function refreshPublishedPostLicensing(params: {
     }
   );
   if (params.session) {
+    const { attachImpliedContractProofs } = await import('./openContractProofs');
     licensing = await attachImpliedContractProofs(
       params.session,
       licensing,
@@ -878,6 +878,7 @@ export async function publishPostToOwnerCloud(params: {
     musicAsset: params.bundle.manifest.classId === 'library.music'
   });
   if (params.session) {
+    const { attachImpliedContractProofs } = await import('./openContractProofs');
     licensing = await attachImpliedContractProofs(
       params.session,
       licensing,

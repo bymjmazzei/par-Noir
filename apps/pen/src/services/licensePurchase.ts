@@ -1,9 +1,4 @@
 import { apiFetch, apiGet } from './penOwnerFetch';
-import {
-  LICENSE_KEY_CONTEXT_V1,
-  buildLicenseKeyPublicInputs,
-  generateZkProofEnvelopeV2
-} from '@par-noir/zk-protocol-v2';
 import { createDocFromTemplate } from './createDocFromTemplate';
 import type { PenSession } from '../App';
 import { resolveSigningKeys } from './penKeys';
@@ -68,6 +63,8 @@ export async function completeLicensePurchase(
   const keys = resolveSigningKeys(session);
 
   const { hashPnIdentifier } = await import('@par-noir/pen-protocol');
+  const { LICENSE_KEY_CONTEXT_V1, buildLicenseKeyPublicInputs, generateZkProofEnvelopeV2 } =
+    await import('@par-noir/zk-protocol-v2');
   const proof = generateZkProofEnvelopeV2({
     mlDsaSecretKey: keys.secretKey,
     mlDsaPublicKey: keys.publicKey,

@@ -11,12 +11,25 @@ const zkProtocolV2Src = path.resolve(__dirname, '../../packages/zk-protocol-v2/s
 
 export default defineConfig(({ command, mode }) => {
   assertViteApiEndpointForBuild({ command, mode, root: __dirname });
+  // Vitest shares this config; gate tests need real Node fs/__dirname.
+  const isVitest = Boolean(process.env.VITEST);
   return {
   base: './',
   plugins: [
     react(),
-    nodePolyfills({ include: ['crypto'] }),
+    // genSTARK / AirScript pull Node builtins (`fs`, `crypto`, …); required for ZK v2 in the browser bundle
+    nodePolyfills({
+      include: isVitest ? ['crypto'] : ['buffer', 'process', 'crypto', 'stream', 'util', 'path', 'fs'],
+    }),
   ],
+  define: isVitest
+    ? {}
+    : {
+        global: 'globalThis',
+        // genSTARK assembly modules reference __dirname for .wasm paths (wasm: false at runtime).
+        __dirname: JSON.stringify('/'),
+        __filename: JSON.stringify('/index.js'),
+      },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
