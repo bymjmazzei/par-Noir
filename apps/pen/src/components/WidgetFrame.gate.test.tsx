@@ -94,4 +94,46 @@ describe('widget trigger panel', () => {
     );
     expect(reveal).toContain('Reveal target');
   });
+
+  it('checks the link while the author types', () => {
+    const render = (openUrl: string, label = 'Go') =>
+      renderToStaticMarkup(
+        <WidgetEditorPanel
+          layer={{ ...button, label, behavior: 'cta.open', openUrl }}
+          section={section}
+          onSectionChange={() => undefined}
+        />
+      );
+    expect(render('https://example.com')).toContain('Opens example.com');
+    expect(render('http://example.com')).toContain('data-widget-link-block="not_https"');
+    expect(render('https://parnoir.com@evil.com')).toContain('data-widget-link-block="credentials"');
+    expect(render('https://example.com/setup.exe')).toContain('data-widget-link-warning="download"');
+    expect(render('https://evil.example', 'Sign in to par Noir')).toContain(
+      'data-widget-link-warning="label_mismatch"'
+    );
+  });
+
+  it('warns that a form asking for a secret will not send', () => {
+    const send: PenPageLayer = { ...button, parentGroupId: 'g', behavior: 'widget.submit', submitTo: 'a@b.co' };
+    const input: PenPageLayer = {
+      id: 'in',
+      kind: 'text',
+      widgetElement: 'input',
+      name: 'Passcode',
+      parentGroupId: 'g',
+      x: 0,
+      y: 0,
+      w: 40,
+      h: 20,
+      zIndex: 2
+    };
+    const html = renderToStaticMarkup(
+      <WidgetEditorPanel
+        layer={send}
+        section={{ ...section, layers: [send, input] }}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html).toContain('data-widget-secret-block');
+  });
 });

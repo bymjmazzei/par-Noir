@@ -19,6 +19,8 @@ import {
   PEN_GOOGLE_FONTS_ALL,
   PEN_FONT_SIZES_PT,
   isGooglePenFont,
+  checkLink,
+  LINK_BLOCK_MESSAGES,
   type PenFontIndexEntry,
   type PenPageLayout,
   type PenSectionContent
@@ -67,6 +69,11 @@ import {
   IconSearch,
   IconTable
 } from './icons/PenIcons';
+
+function proseLinkAllowed(url: string): boolean {
+  if (/^mailto:/i.test(url.trim())) return true;
+  return checkLink(url).ok;
+}
 
 function currentFontSize(editor: Editor): string {
   const attrs = editor.getAttributes('textStyle');
@@ -617,10 +624,18 @@ export function FormatRibbon({
             ed.chain().focus().unsetLink().run();
             return;
           }
-          const href = window.prompt('Link URL');
-          if (href?.trim()) {
-            ed.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run();
+          const raw = window.prompt('Link URL')?.trim();
+          if (!raw) return;
+          if (/^mailto:/i.test(raw)) {
+            ed.chain().focus().extendMarkRange('link').setLink({ href: raw }).run();
+            return;
           }
+          const link = checkLink(raw);
+          if (!link.ok) {
+            window.alert(LINK_BLOCK_MESSAGES[link.reason]);
+            return;
+          }
+          ed.chain().focus().extendMarkRange('link').setLink({ href: link.url }).run();
         }}
       >
         <IconLink />
@@ -1023,7 +1038,12 @@ export function PageCanvas({
       TextEffects,
       Color,
       Highlight.configure({ multicolor: true }),
-      Link.configure({ openOnClick: false, autolink: true }),
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        defaultProtocol: 'https',
+        isAllowedUri: (url) => proseLinkAllowed(url)
+      }),
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,

@@ -4,8 +4,13 @@ import { useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import {
   allocateTotal,
+  checkLink,
+  docToPlainText,
   duplicateButton,
   getTextLayerDoc,
+  LINK_BLOCK_MESSAGES,
+  LINK_WARNING_MESSAGES,
+  secretPromptLayers,
   patchLayerStyle,
   placeWidgetLayer,
   pollLayers,
@@ -95,6 +100,29 @@ function WidgetTextEditor({
         }}
       />
     </div>
+  );
+}
+
+function LinkCheckNote({ layer }: { layer: PenPageLayer }) {
+  if (!(layer.openUrl || '').trim()) return null;
+  const face = `${docToPlainText(layer.textDoc)} ${layer.label || ''}`;
+  const link = checkLink(layer.openUrl, face);
+  if (!link.ok) {
+    return (
+      <span role="alert" data-widget-link-block={link.reason} className="text-xs text-red-600">
+        {LINK_BLOCK_MESSAGES[link.reason]}
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-col gap-0.5 text-xs" data-widget-link-host={link.host}>
+      <span className="text-stone-600">Opens {link.host}</span>
+      {link.warnings.map((warning) => (
+        <span key={warning} className="text-amber-700" data-widget-link-warning={warning}>
+          {LINK_WARNING_MESSAGES[warning]}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -293,6 +321,7 @@ export function WidgetEditorPanel({
                     placeholder="https://"
                     onChange={(event) => onSectionChange(setOpenUrl(section, layer.id, event.target.value))}
                   />
+                  <LinkCheckNote layer={layer} />
                 </label>
               )}
               {layer.behavior === 'widget.submit' && (
@@ -307,6 +336,11 @@ export function WidgetEditorPanel({
                     placeholder="email or pn"
                     onChange={(event) => onSectionChange(setSubmitTo(section, layer.id, event.target.value))}
                   />
+                  {secretPromptLayers(section, layer.parentGroupId || null).length > 0 && (
+                    <span role="alert" data-widget-secret-block className="text-xs text-red-600">
+                      This form asks for a passcode, password, or other secret. It will not send.
+                    </span>
+                  )}
                 </label>
               )}
               {layer.behavior === 'widget.allocate' && (
