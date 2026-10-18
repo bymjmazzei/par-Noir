@@ -81,6 +81,20 @@ const TEXT_LOOKS: Record<
   }
 };
 
+/** Font, size, and color for a text look (ribbon / overlay styling). */
+export function textLookStyle(look: PenTextLook): {
+  fontFamily: string;
+  fontSize: string;
+  color: string;
+} {
+  const spec = TEXT_LOOKS[look];
+  return {
+    fontFamily: spec.fontFamily,
+    fontSize: spec.fontSize,
+    color: spec.color
+  };
+}
+
 function textLookDoc(look: PenTextLook): PenTipTapNode {
   const spec = TEXT_LOOKS[look];
   return {

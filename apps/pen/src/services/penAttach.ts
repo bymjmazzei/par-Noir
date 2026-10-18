@@ -31,6 +31,19 @@ export function pickDeviceVideoFile(): Promise<File | null> {
   });
 }
 
+export function pickDeviceAudioFile(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.onchange = () => {
+      resolve(input.files?.[0] || null);
+    };
+    input.oncancel = () => resolve(null);
+    input.click();
+  });
+}
+
 export { probeMediaAspect, probeVideoDisplayAspect, cachedMediaAspect } from './penMediaAspect';
 
 export interface CloudImageItem {
@@ -42,11 +55,12 @@ export interface CloudImageItem {
 export async function listCloudMedia(
   _accessToken: string,
   pnIdentifier?: string,
-  kind: 'image' | 'video' | 'any' = 'any'
+  kind: 'image' | 'video' | 'audio' | 'any' = 'any'
 ): Promise<CloudImageItem[]> {
   const clauses: string[] = ['trashed=false'];
   if (kind === 'image') clauses.unshift("mimeType contains 'image/'");
   else if (kind === 'video') clauses.unshift("mimeType contains 'video/'");
+  else if (kind === 'audio') clauses.unshift("mimeType contains 'audio/'");
   else clauses.unshift("(mimeType contains 'image/' or mimeType contains 'video/')");
   const q = encodeURIComponent(clauses.join(' and '));
   const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=60`, { pnIdentifier });

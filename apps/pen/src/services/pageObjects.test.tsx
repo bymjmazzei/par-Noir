@@ -13,23 +13,28 @@ import {
 } from '@par-noir/pen-protocol';
 import { buildSocialTemplateRailItems } from './classFeedRailItems';
 import { placeGiphySticker } from './giphyStickers';
-import { attachCatalogTrack, soundHostLayer } from './soundCatalog';
+import { attachCatalogTrack, attachOwnAudioTrack, soundHostLayer } from './soundCatalog';
 import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { SoundCatalogMenu } from '../components/SoundCatalogMenu';
 
 describe('page objects', () => {
-  it('adds text looks from the layered Add menu; page widget presets live in the picker', () => {
+  it('adds text from the flat Add menu; looks live in the ribbon; widget presets in the picker', () => {
     const menu = readFileSync(resolve(__dirname, '../components/LayersPanel.tsx'), 'utf8');
     const presets = readFileSync(resolve(__dirname, '../components/layersAddMenu.ts'), 'utf8');
     const picker = readFileSync(resolve(__dirname, '../components/ActionLayerMenu.tsx'), 'utf8');
-    for (const label of ['Text', 'Media', 'Widgets', 'Stickers', 'Blank', 'Sound']) {
+    const ribbon = readFileSync(resolve(__dirname, '../components/PageCanvas.tsx'), 'utf8');
+    for (const label of ['Text', 'Image', 'Video', 'Audio', 'Widgets', 'Stickers']) {
       expect(menu).toContain(label);
     }
-    expect(menu).toContain('Browse widgets');
+    expect(menu).toContain('Select from device');
+    expect(menu).toContain('Use licensed audio');
+    expect(menu).not.toContain('Browse widgets');
     expect(menu).not.toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
     for (const label of ['Title', 'Caption', 'Quote']) {
       expect(presets).toContain(label);
     }
+    expect(ribbon).toMatch(/LAYERS_TEXT_LOOK_PRESETS/);
+    expect(ribbon).toMatch(/textLookStyle/);
     for (const label of ['Poll', 'Countdown', 'Link']) {
       expect(presets).toContain(label);
     }
@@ -120,5 +125,28 @@ describe('page objects', () => {
     };
     const next = attachCatalogTrack(section, 'photo', { id: 'track-9' });
     expect(next.layers?.[0]?.audioTracks).toEqual([{ id: 'track-9', licensedDocId: 'track-9' }]);
+  });
+
+  it('appends an own audio lane on the media layer', () => {
+    const section: PenSectionContent = {
+      ...emptySection('body'),
+      layers: [
+        {
+          id: 'photo',
+          kind: 'image',
+          x: 0,
+          y: 0,
+          w: 80,
+          h: 80,
+          zIndex: 1,
+          imageSrc: 'https://example.com/a.jpg'
+        }
+      ]
+    };
+    const next = attachOwnAudioTrack(section, 'photo', 'penmedia:file-1');
+    const tracks = next.layers?.[0]?.audioTracks || [];
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0]?.src).toBe('penmedia:file-1');
+    expect(tracks[0]?.gain).toBe(100);
   });
 });

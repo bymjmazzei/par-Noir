@@ -268,14 +268,19 @@ describe('pen feed UX chrome', () => {
     }
   });
 
-  it('layers add menu is New text layer, New group, and Browse widgets', () => {
+  it('layers add menu is flat text/media rows, widget library, and New group', () => {
     const panel = readFileSync(resolve(root, 'components/LayersPanel.tsx'), 'utf8');
     const menu = readFileSync(resolve(root, 'components/ActionLayerMenu.tsx'), 'utf8');
+    const ribbon = readFileSync(resolve(root, 'components/PageCanvas.tsx'), 'utf8');
     const rail = readFileSync(resolve(root, 'services/classFeedRailItems.ts'), 'utf8');
-    expect(panel).toMatch(/Blank/);
+    expect(panel).toMatch(/Select from device/);
+    expect(panel).toMatch(/Select from cloud/);
+    expect(panel).toMatch(/Use licensed audio/);
     expect(panel).toMatch(/Stickers/);
     expect(panel).toMatch(/New group/);
-    expect(panel).toMatch(/Browse widgets/);
+    expect(panel).not.toMatch(/Browse widgets/);
+    expect(ribbon).toMatch(/LAYERS_TEXT_LOOK_PRESETS/);
+    expect(ribbon).toMatch(/textLookStyle/);
     expect(panel).not.toMatch(/Import widget/);
     expect(panel).not.toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
     expect(panel).not.toMatch(/New widget/);
@@ -294,6 +299,8 @@ describe('pen feed UX chrome', () => {
     expect(menu).toMatch(/All widgets/);
     expect(menu).toMatch(/Search widgets/);
     expect(menu).toMatch(/role="dialog"/);
+    expect(menu).toMatch(/pen-gallery-tiles/);
+    expect(menu).toMatch(/pen-gallery-tile/);
     expect(rail).toMatch(/widgets\.widget/);
   });
 

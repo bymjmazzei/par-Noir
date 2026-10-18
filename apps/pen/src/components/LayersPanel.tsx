@@ -16,9 +16,7 @@ import {
   attachMediaToLayer,
   createGroupFromSelection,
   createTextLayer,
-  createTextLookLayer,
   placeWidgetLayer,
-  type PenTextLook,
   defaultLayerName,
   distributeLayers,
   normalizeSection,
@@ -37,16 +35,18 @@ import {
 import type { PenSession } from '../services/penSession';
 import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
 import { setAttachPoster } from '../services/attachPosterCache';
+import {
+  pickDeviceAudioFile,
+  pickDeviceImageFile,
+  pickDeviceVideoFile
+} from '../services/penAttach';
+import { attachOwnAudioTrack, soundHostLayer } from '../services/soundCatalog';
 import { ActionLayerMenu } from './ActionLayerMenu';
 import { SoundCatalogMenu } from './SoundCatalogMenu';
-import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
+import { CloudFeedMediaPicker, type CloudMediaKind } from './CloudFeedMediaPicker';
 import { IconChevron, IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
 import { LayerTitleControl } from './LayerTitleControl';
-import {
-  LAYERS_TEXT_LOOK_PRESETS,
-  LAYERS_WIDGET_ELEMENTS,
-  type LayersAddAccordionSection
-} from './layersAddMenu';
+import { type LayersAddAccordionSection } from './layersAddMenu';
 
 export function layerDisplayLabel(layer: PenPageLayer, all: PenPageLayer[]): string {
   return defaultLayerName(layer, all);
@@ -136,7 +136,9 @@ export function LayersPopover({
   const [stickerOpen, setStickerOpen] = useState(false);
   const [soundOpen, setSoundOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
-  const [mediaKind, setMediaKind] = useState<'image' | 'video'>('image');
+  const [mediaKind, setMediaKind] = useState<CloudMediaKind>('image');
+  const [mediaCloudOnly, setMediaCloudOnly] = useState(false);
+  const [pendingDeviceFile, setPendingDeviceFile] = useState<File | null>(null);
   const [addSection, setAddSection] = useState<LayersAddAccordionSection | null>(null);
   const [renamingLayerId, setRenamingLayerId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
@@ -182,9 +184,12 @@ export function LayersPopover({
       setAddOpen(false);
       setAddSection(null);
       setMediaOpen(false);
+      setPendingDeviceFile(null);
       setRenamingLayerId(null);
     }
   }, [open]);
+
+  const audioHost = soundHostLayer(prepared, activeLayerId);
 
   useEffect(() => {
     if (!open) return;
@@ -239,17 +244,6 @@ export function LayersPopover({
     return layersFrontFirst.reduce((m, l) => Math.max(m, l.zIndex), 0);
   }
 
-  function addLook(look: PenTextLook) {
-    const layer = createTextLookLayer(look, {
-      x: 12,
-      y: 12 + (layersFrontFirst.length % 4) * 8,
-      zIndex: maxZ() + 1
-    });
-    commit(upsertLayer(prepared, layer));
-    onSelectLayer(layer.id);
-    onSelectedIdsChange([layer.id]);
-  }
-
   function addTextLayer() {
     const n = allLayers.filter((l) => l.kind !== 'group').length + 1;
     const layer = createTextLayer({
@@ -272,12 +266,26 @@ export function LayersPopover({
     onSelectedIdsChange([placed.layerId]);
   }
 
+  function closeMediaPicker() {
+    setMediaOpen(false);
+    setPendingDeviceFile(null);
+    setMediaCloudOnly(false);
+  }
+
+  function attachPickedAudio(src: string) {
+    const host = soundHostLayer(prepared, activeLayerId);
+    if (!host) return;
+    commit(attachOwnAudioTrack(prepared, host.id, src));
+    closeMediaPicker();
+  }
+
   function attachPickedMedia(src: string, meta?: { blobUrl?: string }) {
     if (meta?.blobUrl) setAttachPoster(src, meta.blobUrl);
     const active = allLayers.find((layer) => layer.id === activeLayerId);
     const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
     const placed = placeWidgetLayer(prepared, groupId, 'image');
-    const attached = attachMediaToLayer(placed.section, placed.layerId, { kind: mediaKind, src });
+    const layerKind = mediaKind === 'video' ? 'video' : 'image';
+    const attached = attachMediaToLayer(placed.section, placed.layerId, { kind: layerKind, src });
     const named =
       mediaKind === 'video'
         ? patchLayerStyle(attached, placed.layerId, { name: 'Video' })
@@ -290,7 +298,30 @@ export function LayersPopover({
     }
     onSelectLayer(placed.layerId);
     onSelectedIdsChange([placed.layerId]);
-    setMediaOpen(false);
+    closeMediaPicker();
+  }
+
+  async function pickMediaFromDevice(kind: CloudMediaKind) {
+    const file =
+      kind === 'image'
+        ? await pickDeviceImageFile()
+        : kind === 'video'
+          ? await pickDeviceVideoFile()
+          : await pickDeviceAudioFile();
+    if (!file) return;
+    closeAddMenu();
+    setMediaKind(kind);
+    setMediaCloudOnly(false);
+    setPendingDeviceFile(file);
+    setMediaOpen(true);
+  }
+
+  function openMediaFromCloud(kind: CloudMediaKind) {
+    closeAddMenu();
+    setMediaKind(kind);
+    setMediaCloudOnly(true);
+    setPendingDeviceFile(null);
+    setMediaOpen(true);
   }
 
   function insertWidget(next: PenSectionContent, groupId: string) {
@@ -494,124 +525,138 @@ export function LayersPopover({
               <button
                 type="button"
                 role="menuitem"
-                aria-expanded={addSection === 'text'}
-                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
-                onClick={() => toggleAddSection('text')}
+                className="block w-full px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => {
+                  addTextLayer();
+                  closeAddMenu();
+                }}
               >
                 Text
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-expanded={addSection === 'image'}
+                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => toggleAddSection('image')}
+              >
+                Image
                 <IconChevron
-                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'text' ? 'rotate-180' : ''}`}
+                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'image' ? 'rotate-180' : ''}`}
                 />
               </button>
-              {addSection === 'text' && (
+              {addSection === 'image' && (
                 <>
                   <button
                     type="button"
                     role="menuitem"
                     className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
-                    onClick={() => {
-                      addTextLayer();
-                      closeAddMenu();
-                    }}
+                    onClick={() => void pickMediaFromDevice('image')}
                   >
-                    Blank
+                    Select from device
                   </button>
-                  {LAYERS_TEXT_LOOK_PRESETS.map(({ look, label }) => (
-                    <button
-                      key={look}
-                      type="button"
-                      role="menuitem"
-                      className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
-                      onClick={() => {
-                        addLook(look);
-                        closeAddMenu();
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                    onClick={() => openMediaFromCloud('image')}
+                  >
+                    Select from cloud
+                  </button>
                 </>
               )}
               <button
                 type="button"
                 role="menuitem"
-                aria-expanded={addSection === 'media'}
+                aria-expanded={addSection === 'video'}
                 className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
-                onClick={() => toggleAddSection('media')}
+                onClick={() => toggleAddSection('video')}
               >
-                Media
+                Video
                 <IconChevron
-                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'media' ? 'rotate-180' : ''}`}
+                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'video' ? 'rotate-180' : ''}`}
                 />
               </button>
-              {addSection === 'media' && (
+              {addSection === 'video' && (
                 <>
                   <button
                     type="button"
                     role="menuitem"
                     className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
-                    onClick={() => {
-                      closeAddMenu();
-                      setMediaKind('image');
-                      setMediaOpen(true);
-                    }}
+                    onClick={() => void pickMediaFromDevice('video')}
                   >
-                    Image or video
+                    Select from device
                   </button>
                   <button
                     type="button"
                     role="menuitem"
                     className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                    onClick={() => openMediaFromCloud('video')}
+                  >
+                    Select from cloud
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                aria-expanded={addSection === 'audio'}
+                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => toggleAddSection('audio')}
+              >
+                Audio
+                <IconChevron
+                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'audio' ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {addSection === 'audio' && (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!audioHost}
+                    title={audioHost ? undefined : 'Add an image or video first'}
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => void pickMediaFromDevice('audio')}
+                  >
+                    Select from device
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!audioHost}
+                    title={audioHost ? undefined : 'Add an image or video first'}
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => openMediaFromCloud('audio')}
+                  >
+                    Select from cloud
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!audioHost}
+                    title={audioHost ? undefined : 'Add an image or video first'}
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={() => {
                       closeAddMenu();
                       setSoundOpen(true);
                     }}
                   >
-                    Sound
+                    Use licensed audio
                   </button>
                 </>
               )}
               <button
                 type="button"
                 role="menuitem"
-                aria-expanded={addSection === 'widgets'}
-                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
-                onClick={() => toggleAddSection('widgets')}
+                className="block w-full px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => {
+                  closeAddMenu();
+                  setWidgetOpen(true);
+                }}
               >
                 Widgets
-                <IconChevron
-                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'widgets' ? 'rotate-180' : ''}`}
-                />
               </button>
-              {addSection === 'widgets' && (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
-                    onClick={() => {
-                      closeAddMenu();
-                      setWidgetOpen(true);
-                    }}
-                  >
-                    Browse widgets
-                  </button>
-                  {LAYERS_WIDGET_ELEMENTS.map(({ element, label }) => (
-                    <button
-                      key={element}
-                      type="button"
-                      role="menuitem"
-                      className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
-                      onClick={() => {
-                        addPlaced(element);
-                        closeAddMenu();
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </>
-              )}
               <button
                 type="button"
                 role="menuitem"
@@ -644,6 +689,10 @@ export function LayersPopover({
           docId={docId}
           section={prepared}
           onInserted={insertWidget}
+          onPlaceElement={(element) => {
+            addPlaced(element);
+            setWidgetOpen(false);
+          }}
           onCancel={() => setWidgetOpen(false)}
         />
       )}
@@ -670,13 +719,16 @@ export function LayersPopover({
       )}
       <CloudFeedMediaPicker
         open={mediaOpen}
-        onClose={() => setMediaOpen(false)}
+        onClose={closeMediaPicker}
         session={session ?? null}
         kind={mediaKind}
-        kindSwitch
-        onKindChange={setMediaKind}
+        cloudOnly={mediaCloudOnly}
+        deviceFile={pendingDeviceFile}
         docId={docId}
-        onPickMediaSrc={(src, meta) => attachPickedMedia(src, meta)}
+        onPickMediaSrc={(src, meta) => {
+          if (mediaKind === 'audio') attachPickedAudio(src);
+          else attachPickedMedia(src, meta);
+        }}
       />
 
       <ul

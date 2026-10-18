@@ -10,6 +10,8 @@ describe('ActionLayerMenu', () => {
     expect(src).toMatch(/pickPreset/);
     expect(src).toMatch(/Add widget/);
     expect(src).toMatch(/shownPresets/);
+    expect(src).toMatch(/pen-gallery-tiles/);
+    expect(src).toMatch(/onPlaceElement/);
     const presets = readFileSync(resolve(__dirname, 'layersAddMenu.ts'), 'utf8');
     for (const label of ['Poll', 'Countdown', 'Link']) {
       expect(presets).toContain(label);

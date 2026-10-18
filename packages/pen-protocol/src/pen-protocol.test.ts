@@ -58,6 +58,7 @@ import {
   PEN_SYSTEM_FONTS,
   PEN_GOOGLE_FONTS_FEATURED,
   layerLockFingerprint,
+  textLookStyle,
   type PenSectionContent
 } from './index.js';
 import { docToHtml } from './renderRich.js';
@@ -849,5 +850,15 @@ describe('template seeds + Mini featured + layer locks', () => {
       layers: [{ ...base.layers![0], positionLocked: true, visible: false }]
     };
     expect(layerLockFingerprint([base])).not.toBe(layerLockFingerprint([locked]));
+  });
+});
+
+describe('text look styles', () => {
+  it('textLookStyle exposes overlay typography for title', () => {
+    expect(textLookStyle('title')).toEqual({
+      fontFamily: 'Source Serif 4, Georgia, serif',
+      fontSize: '42px',
+      color: '#111111'
+    });
   });
 });

@@ -1,6 +1,11 @@
 /** Licensed catalog tracks land on an image or video layer's audio lane. */
 
-import { patchLayerStyle, type PenPageLayer, type PenSectionContent } from '@par-noir/pen-protocol';
+import {
+  layerAudioTracks,
+  patchLayerStyle,
+  type PenPageLayer,
+  type PenSectionContent
+} from '@par-noir/pen-protocol';
 import { ownerGet } from './penOwnerFetch';
 
 export type CatalogTrack = {
@@ -32,6 +37,24 @@ export async function fetchMusicCatalog(query?: string): Promise<CatalogTrack[]>
   if (!res.ok) throw new Error('catalog_unavailable');
   const body = (await res.json()) as { tracks?: CatalogTrack[] };
   return (body.tracks || []).filter((track) => typeof track.id === 'string' && track.id);
+}
+
+function newAudioTrackId(): string {
+  return `audio_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Appends an uploaded or cloud-picked audio file to the media layer's audio lane. */
+export function attachOwnAudioTrack(
+  section: PenSectionContent,
+  layerId: string,
+  src: string
+): PenSectionContent {
+  const layer = (section.layers || []).find((item) => item.id === layerId);
+  if (!layerHoldsSound(layer)) return section;
+  const tracks = layerAudioTracks(layer?.audioTracks);
+  return patchLayerStyle(section, layerId, {
+    audioTracks: [...tracks, { id: newAudioTrackId(), src, gain: 100, offsetSec: 0 }]
+  });
 }
 
 /** Sets the media layer's audio lane to the chosen registry track. */

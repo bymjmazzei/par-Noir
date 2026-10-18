@@ -13,15 +13,22 @@ describe('layersAddMenu', () => {
     expect(looks).not.toContain('label');
   });
 
-  it('LayersPanel add menu uses accordion sections and Blank', () => {
+  it('LayersPanel add menu uses flat media rows and device/cloud picks', () => {
     const panel = readFileSync(resolve(__dirname, 'LayersPanel.tsx'), 'utf8');
     for (const row of LAYERS_ADD_TOP_ROWS) {
       expect(panel).toContain(row);
     }
-    expect(panel).toContain('Blank');
+    expect(panel).toContain('Select from device');
+    expect(panel).toContain('Select from cloud');
+    expect(panel).toContain('Use licensed audio');
+    expect(panel).not.toContain('Blank');
+    expect(panel).not.toMatch(/\bMedia\b/);
     expect(panel).not.toMatch(/addLook\('label'\)/);
     expect(panel).not.toMatch(/\['label', 'Label'\]/);
     expect(panel).not.toContain('New text layer');
     expect(panel).toContain('LayerTitleControl');
+    const attach = readFileSync(resolve(__dirname, '../services/penAttach.ts'), 'utf8');
+    expect(attach).toContain("mimeType contains 'audio/'");
+    expect(attach).toContain('pickDeviceAudioFile');
   });
 });

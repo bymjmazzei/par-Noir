@@ -20,6 +20,14 @@ export const LAYERS_PAGE_WIDGET_PRESETS: { preset: PageWidgetPreset; label: stri
   { preset: 'link', label: 'Link' }
 ];
 
-export type LayersAddAccordionSection = 'text' | 'media' | 'widgets';
+export type LayersAddAccordionSection = 'image' | 'video' | 'audio';
 
-export const LAYERS_ADD_TOP_ROWS = ['Text', 'Media', 'Widgets', 'Stickers', 'New group'] as const;
+export const LAYERS_ADD_TOP_ROWS = [
+  'Text',
+  'Image',
+  'Video',
+  'Audio',
+  'Widgets',
+  'Stickers',
+  'New group'
+] as const;

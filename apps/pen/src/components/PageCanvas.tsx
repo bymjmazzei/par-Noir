@@ -21,10 +21,13 @@ import {
   isGooglePenFont,
   checkLink,
   LINK_BLOCK_MESSAGES,
+  textLookStyle,
   type PenFontIndexEntry,
   type PenPageLayout,
-  type PenSectionContent
+  type PenSectionContent,
+  type PenTextLook
 } from '@par-noir/pen-protocol';
+import { LAYERS_TEXT_LOOK_PRESETS } from './layersAddMenu';
 import { PageSheetColumn } from './PageSheetColumn';
 import { FontSize } from '../services/fontSizeExtension';
 import { TextEffects } from '../services/textEffectsExtension';
@@ -319,6 +322,17 @@ export function FormatRibbon({
     input.click();
   }
 
+  function applyPenTextLook(look: PenTextLook, close: () => void) {
+    const { fontFamily: ff, fontSize, color } = textLookStyle(look);
+    const primary = ff.split(',')[0]?.trim() || ff;
+    if (isGooglePenFont(primary)) ensureGoogleFontLoaded(primary);
+    const { empty } = ed.state.selection;
+    const chain = ed.chain().focus().setParagraph();
+    if (empty) chain.selectAll();
+    chain.setFontFamily(ff).setFontSize(fontSize).setColor(color).run();
+    close();
+  }
+
   return (
     <div className="pen-ribbon">
       <RibbonMenu label={<span className="pen-ribbon-h-label">{hLabel}</span>} title="Styles">
@@ -333,6 +347,11 @@ export function FormatRibbon({
             >
               Body
             </RibbonItem>
+            {LAYERS_TEXT_LOOK_PRESETS.map(({ look, label }) => (
+              <RibbonItem key={look} active={false} onClick={() => applyPenTextLook(look, close)}>
+                {label}
+              </RibbonItem>
+            ))}
             <RibbonItem
               active={hLabel === 'H1'}
               onClick={() => {

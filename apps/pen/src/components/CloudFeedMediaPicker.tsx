@@ -2,7 +2,7 @@
  * Cloud media picker — stores penmedia: refs (never giant data URLs). Device files
  * upload to Drive here, behind a progress bar, before the layer can be edited.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { attachMediaFile, ensurePenMediaUrl, penMediaRef } from '@par-noir/pen-media';
 import {
   listCloudMedia,
@@ -64,6 +64,8 @@ function UploadProgress({
   );
 }
 
+export type CloudMediaKind = 'image' | 'video' | 'audio';
+
 export function CloudFeedMediaPicker({
   open,
   onClose,
@@ -71,18 +73,20 @@ export function CloudFeedMediaPicker({
   kind,
   docId,
   onPickMediaSrc,
-  kindSwitch = false,
-  onKindChange
+  cloudOnly = false,
+  deviceFile = null
 }: {
   open: boolean;
   onClose: () => void;
   session: PenSession | null;
-  kind: 'image' | 'video';
+  kind: CloudMediaKind;
   docId?: string;
   /** Tiny ref: penlocal:{id} or penmedia:{fileId} */
   onPickMediaSrc: (src: string, meta?: { blobUrl?: string }) => void;
-  kindSwitch?: boolean;
-  onKindChange?: (kind: 'image' | 'video') => void;
+  /** Cloud grid only — no device upload row. */
+  cloudOnly?: boolean;
+  /** When set, upload this file immediately (device pick from parent menu). */
+  deviceFile?: File | null;
 }) {
   const [items, setItems] = useState<CloudImageItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -90,11 +94,47 @@ export function CloudFeedMediaPicker({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [upload, setUpload] = useState<UploadState | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const deviceStartedRef = useRef<File | null>(null);
+
+  const runUpload = useCallback(
+    async (file: File) => {
+      if (!session || !docId) {
+        setError('Document required to attach media');
+        return;
+      }
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setError(null);
+      setUpload({ file, sent: 0, total: file.size, failed: null });
+      try {
+        const out = await attachMediaFile({
+          pnIdentifier: session.pnIdentifier,
+          docId,
+          file,
+          signal: controller.signal,
+          onProgress: (sent, total) =>
+            setUpload((u) => (u && u.file === file ? { ...u, sent, total } : u))
+        });
+        if (controller.signal.aborted) return;
+        abortRef.current = null;
+        setUpload(null);
+        if (kind !== 'audio') setAttachPoster(out.ref, out.blobUrl);
+        onPickMediaSrc(out.ref, kind === 'audio' ? undefined : { blobUrl: out.blobUrl });
+        onClose();
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        abortRef.current = null;
+        setUpload({ file, sent: 0, total: file.size, failed: uploadErrorText(e) });
+      }
+    },
+    [docId, kind, onClose, onPickMediaSrc, session]
+  );
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
-    if (!open || !session) return;
+    if (!open || !session || (deviceFile && !cloudOnly)) return;
     let cancelled = false;
     setBusy(true);
     setError(null);
@@ -111,9 +151,21 @@ export function CloudFeedMediaPicker({
     return () => {
       cancelled = true;
     };
-  }, [open, session, kind]);
+  }, [open, session, kind, cloudOnly, deviceFile]);
+
+  useEffect(() => {
+    if (!open || !deviceFile || cloudOnly || deviceStartedRef.current === deviceFile) return;
+    deviceStartedRef.current = deviceFile;
+    void runUpload(deviceFile);
+  }, [open, deviceFile, cloudOnly, runUpload]);
+
+  useEffect(() => {
+    if (!open) deviceStartedRef.current = null;
+  }, [open]);
 
   if (!open) return null;
+
+  const uploadOnly = Boolean(deviceFile) && !cloudOnly;
 
   function close() {
     abortRef.current?.abort();
@@ -131,10 +183,13 @@ export function CloudFeedMediaPicker({
     setError(null);
     try {
       const ref = penMediaRef(item.id);
-      const blobUrl = await ensurePenMediaUrl({ src: ref, docId, pnIdentifier: session.pnIdentifier });
-      if (!blobUrl) throw new Error('cloud_media_unavailable');
-      setAttachPoster(ref, blobUrl);
-      onPickMediaSrc(ref, { blobUrl });
+      const blobUrl =
+        kind === 'audio'
+          ? undefined
+          : await ensurePenMediaUrl({ src: ref, docId, pnIdentifier: session.pnIdentifier });
+      if (kind !== 'audio' && !blobUrl) throw new Error('cloud_media_unavailable');
+      if (blobUrl) setAttachPoster(ref, blobUrl);
+      onPickMediaSrc(ref, blobUrl ? { blobUrl } : undefined);
       onClose();
     } catch {
       setError('Could not open that file');
@@ -143,49 +198,25 @@ export function CloudFeedMediaPicker({
     }
   }
 
-  async function runUpload(file: File) {
-    if (!session || !docId) {
-      setError('Document required to attach media');
-      return;
-    }
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setError(null);
-    setUpload({ file, sent: 0, total: file.size, failed: null });
-    try {
-      const out = await attachMediaFile({
-        pnIdentifier: session.pnIdentifier,
-        docId,
-        file,
-        signal: controller.signal,
-        onProgress: (sent, total) =>
-          setUpload((u) => (u && u.file === file ? { ...u, sent, total } : u))
-      });
-      if (controller.signal.aborted) return;
-      abortRef.current = null;
-      setUpload(null);
-      setAttachPoster(out.ref, out.blobUrl);
-      onPickMediaSrc(out.ref, { blobUrl: out.blobUrl });
-      onClose();
-    } catch (e) {
-      if (controller.signal.aborted) return;
-      abortRef.current = null;
-      setUpload({ file, sent: 0, total: file.size, failed: uploadErrorText(e) });
-    }
-  }
-
   async function uploadDevice() {
     const file =
-      kind === 'image' ? await pickDeviceImageFile() : await pickDeviceVideoFile();
-    if (file) await runUpload(file);
+      kind === 'image'
+        ? await pickDeviceImageFile()
+        : kind === 'video'
+          ? await pickDeviceVideoFile()
+          : null;
+    if (!file) return;
+    await runUpload(file);
   }
 
   function cancelUpload() {
     abortRef.current?.abort();
     abortRef.current = null;
     setUpload(null);
+    if (uploadOnly) onClose();
   }
+
+  const kindLabel = kind === 'audio' ? 'audio' : kind;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
@@ -196,10 +227,14 @@ export function CloudFeedMediaPicker({
       >
         <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
           <div>
-            <h2 className="text-sm font-bold text-black">Cloud media</h2>
-            <p className="text-[11px] text-neutral-500">
-              Feed posts and library {kind}s from your cloud
-            </p>
+            <h2 className="text-sm font-bold text-black">
+              {uploadOnly ? 'Upload' : 'Cloud media'}
+            </h2>
+            {!uploadOnly && (
+              <p className="text-[11px] text-neutral-500">
+                Feed posts and library {kindLabel} from your cloud
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -209,72 +244,62 @@ export function CloudFeedMediaPicker({
             Close
           </button>
         </div>
-        {kindSwitch && onKindChange && (
-          <div className="flex gap-2 border-b border-neutral-100 px-4 py-2">
-            <button
-              type="button"
-              aria-pressed={kind === 'image'}
-              className={`text-[12px] ${kind === 'image' ? 'font-bold text-black' : 'text-neutral-500'}`}
-              onClick={() => onKindChange('image')}
-            >
-              Image
-            </button>
-            <button
-              type="button"
-              aria-pressed={kind === 'video'}
-              className={`text-[12px] ${kind === 'video' ? 'font-bold text-black' : 'text-neutral-500'}`}
-              onClick={() => onKindChange('video')}
-            >
-              Video
-            </button>
-          </div>
-        )}
-        <div className="border-b border-neutral-100 px-4 py-2">
-          {upload ? (
-            <UploadProgress
-              upload={upload}
-              onCancel={cancelUpload}
-              onRetry={() => void runUpload(upload.file)}
-            />
-          ) : (
-            <button
-              type="button"
-              className="text-[12px] font-bold text-black hover:opacity-60"
-              onClick={() => void uploadDevice()}
-            >
-              Upload from device…
-            </button>
-          )}
-        </div>
-        <div
-          className={`min-h-0 flex-1 overflow-auto p-3 ${upload ? 'pointer-events-none opacity-40' : ''}`}
-          aria-disabled={upload ? true : undefined}
-        >
-          {busy && <p className="text-sm text-neutral-500">Loading…</p>}
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          {!busy && items.length === 0 && (
-            <p className="text-sm text-neutral-500">
-              No cloud {kind}s yet. Upload from device or publish feed media first.
-            </p>
-          )}
-          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {items.map((item) => (
-              <li key={item.id}>
+        {(uploadOnly || !cloudOnly) && (
+          <div className="border-b border-neutral-100 px-4 py-2">
+            {upload ? (
+              <UploadProgress
+                upload={upload}
+                onCancel={cancelUpload}
+                onRetry={() => void runUpload(upload.file)}
+              />
+            ) : (
+              !uploadOnly && (
                 <button
                   type="button"
-                  disabled={loadingId === item.id}
-                  className="flex w-full flex-col gap-1 rounded border border-neutral-200 p-2 text-left hover:border-black disabled:opacity-50"
-                  onClick={() => void pickCloud(item)}
+                  className="text-[12px] font-bold text-black hover:opacity-60"
+                  onClick={() => void uploadDevice()}
                 >
-                  <span className="flex aspect-square items-center justify-center rounded bg-neutral-100 text-[10px] uppercase text-neutral-400">
-                    {item.mimeType?.startsWith('video/') ? 'Video' : 'Image'}
-                  </span>
-                  <span className="truncate text-[11px] text-neutral-700">{item.name}</span>
+                  Upload from device…
                 </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+              )
+            )}
+          </div>
+        )}
+        {!uploadOnly && (
+          <div
+            className={`min-h-0 flex-1 overflow-auto p-3 ${upload ? 'pointer-events-none opacity-40' : ''}`}
+            aria-disabled={upload ? true : undefined}
+          >
+            {busy && <p className="text-sm text-neutral-500">Loading…</p>}
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            {!busy && items.length === 0 && (
+              <p className="text-sm text-neutral-500">
+                No cloud {kindLabel}s yet. Upload from device or publish feed media first.
+              </p>
+            )}
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {items.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    disabled={loadingId === item.id}
+                    className="flex w-full flex-col gap-1 rounded border border-neutral-200 p-2 text-left hover:border-black disabled:opacity-50"
+                    onClick={() => void pickCloud(item)}
+                  >
+                    <span className="flex aspect-square items-center justify-center rounded bg-neutral-100 text-[10px] uppercase text-neutral-400">
+                      {item.mimeType?.startsWith('video/')
+                        ? 'Video'
+                        : item.mimeType?.startsWith('audio/')
+                          ? 'Audio'
+                          : 'Image'}
+                    </span>
+                    <span className="truncate text-[11px] text-neutral-700">{item.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
