@@ -917,6 +917,8 @@ class ProductionServer {
         const { pnRoomId } = require('./server/modules/realtimeEvents');
         socket.join(pnRoomId(oauth.pnIdentifier));
       }
+      const { attachPenLiveRelay } = require('./server/modules/penLiveRelay');
+      attachPenLiveRelay(socket);
 
       socket.on('disconnect', () => {
         if (process.env.NODE_ENV === 'development') {
