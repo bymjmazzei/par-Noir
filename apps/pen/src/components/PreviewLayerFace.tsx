@@ -18,6 +18,7 @@ import { layerPreviewStyle } from './LayerObjectToolbar';
 import { LayerMediaContent } from './LayerMediaContent';
 import type { PenSession } from '../services/penSession';
 import { ResolvedPageBackground } from './EditablePagePreview';
+import { WidgetArtLayerFace } from './WidgetArtLayerFace';
 
 export function PreviewLayerFace({
   layer,
@@ -85,15 +86,7 @@ export function PreviewLayerFace({
     );
   }
   if (layer.widgetElement === 'html') {
-    return (
-      <iframe
-        title={layer.name || 'Snippet'}
-        sandbox=""
-        data-pen-html-snippet="1"
-        className="pointer-events-none h-full w-full border-0 bg-white"
-        srcDoc={layer.htmlSource || ''}
-      />
-    );
+    return <WidgetArtLayerFace layer={layer} shell={shell} docId={docId} session={session} />;
   }
   if (layer.widgetElement === 'input') {
     return (

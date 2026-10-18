@@ -29,6 +29,8 @@ export * from './starterAssets.js';
 export * from './table.js';
 export * from './pollSheet.js';
 export * from './widgetElements.js';
+export * from './widgetArt.js';
+export * from './gradient.js';
 export * from './seedRefs.js';
 export * from './actionPartition.js';
 export * from './actionStage.js';

@@ -141,6 +141,34 @@ export function colorToHex(value: string): string {
   return `#${channel(parsed.r)}${channel(parsed.g)}${channel(parsed.b)}`;
 }
 
+/** Label on the left, swatch on the right; the swatch opens the system color picker. */
+export function ColorBox({
+  label,
+  ariaLabel,
+  value,
+  onChange
+}: {
+  label: string;
+  ariaLabel?: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const hex = colorToHex(value);
+  return (
+    <div className="flex h-5 items-center gap-1">
+      <span className="min-w-0 flex-1 truncate text-[13px] text-stone-500">{label}</span>
+      <input
+        aria-label={ariaLabel ?? label}
+        type="color"
+        value={hex}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-4 w-4 cursor-pointer appearance-none border border-stone-300 p-0 [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
+        style={{ backgroundColor: hex }}
+      />
+    </div>
+  );
+}
+
 /** A color block. Shadow and stroke use this instead of a hue slider. */
 export function ColorBlock({
   label,

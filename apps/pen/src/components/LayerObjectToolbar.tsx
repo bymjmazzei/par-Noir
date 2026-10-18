@@ -20,7 +20,8 @@ import {
 } from '@par-noir/pen-protocol';
 import { ActionBindStrip } from './ActionBindStrip';
 import { LayerTitleControl } from './LayerTitleControl';
-import { parseCssColor } from './PanelValueControls';
+import { ColorBox } from './PanelValueControls';
+import { GradientPicker } from './GradientPicker';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
 import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
@@ -86,12 +87,6 @@ const BLEND_MODES = [
 const RANGE_CLASS =
   'mt-1 h-1 w-full cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-1 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:bg-stone-500';
 
-function colorHex(value: string): string {
-  const parsed = parseCssColor(value);
-  const channel = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
-  return `#${channel(parsed.r)}${channel(parsed.g)}${channel(parsed.b)}`;
-}
-
 function modeLabel(mode: string): string {
   return mode
     .split('-')
@@ -149,33 +144,6 @@ function ValueRow({
           style={{ background: `linear-gradient(to right, #a8a29e ${pct}%, #e7e5e4 ${pct}%)` }}
         />
       ) : null}
-    </div>
-  );
-}
-
-function ColorBox({
-  label,
-  ariaLabel,
-  value,
-  onChange
-}: {
-  label: string;
-  ariaLabel?: string;
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  const hex = colorHex(value);
-  return (
-    <div className="flex h-5 items-center gap-1">
-      <span className="min-w-0 flex-1 truncate text-[13px] text-stone-500">{label}</span>
-      <input
-        aria-label={ariaLabel ?? label}
-        type="color"
-        value={hex}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-4 w-4 cursor-pointer appearance-none border border-stone-300 p-0 [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
-        style={{ backgroundColor: hex }}
-      />
     </div>
   );
 }
@@ -672,19 +640,13 @@ export function LayerObjectToolbar({
                     />
                   )}
                   {fill.mode === 'gradient' && (
-                    <label className="flex h-5 items-center gap-1">
-                      <span className="shrink-0 text-[13px] text-stone-500">Gradient</span>
-                      <input
-                        aria-label="Gradient"
-                        type="text"
-                        className="min-w-0 flex-1 bg-transparent text-right text-[13px] text-stone-700 outline-none"
-                        value={fill.gradient}
-                        onChange={(e) => {
-                          if (isPage) patchPage({ backgroundGradient: e.target.value });
-                          else patchLayer({ backgroundGradient: e.target.value });
-                        }}
-                      />
-                    </label>
+                    <GradientPicker
+                      value={fill.gradient}
+                      onChange={(next) => {
+                        if (isPage) patchPage({ backgroundGradient: next });
+                        else patchLayer({ backgroundGradient: next });
+                      }}
+                    />
                   )}
                 </SectionRow>
               )}

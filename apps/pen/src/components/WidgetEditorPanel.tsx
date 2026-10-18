@@ -23,7 +23,6 @@ import {
   setTextLayerDoc,
   setVoteCorrect,
   setVoteWriteIn,
-  setWidgetHtml,
   setWidgetSvgOnLayer,
   type PenInteractiveBehavior,
   type PenPageLayer,
@@ -35,6 +34,7 @@ import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from './PageCanvas';
 import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
 import { SectionTimeline } from './SectionTimeline';
+import { WidgetArtFillEditor } from './WidgetArtFillEditor';
 
 const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'text', label: 'Text' },
@@ -547,14 +547,16 @@ export function WidgetEditorPanel({
           )}
           <div className="flex min-w-0 flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Object</span>
-            <ColorSwatchButton
-              row
-              label="Fill"
-              value={layer.backgroundColor || '#0f766e'}
-              onChange={(value) =>
-                onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: value }))
-              }
-            />
+            {layer.widgetElement !== 'html' && (
+              <ColorSwatchButton
+                row
+                label="Fill"
+                value={layer.backgroundColor || '#0f766e'}
+                onChange={(value) =>
+                  onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: value }))
+                }
+              />
+            )}
             <ColorSwatchButton
               row
               label="Stroke"
@@ -664,17 +666,13 @@ export function WidgetEditorPanel({
         </div>
       )}
       {layer?.widgetElement === 'html' && (
-        <label className="flex flex-col gap-2 border-b border-stone-200 px-3 py-3 text-sm">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-            HTML snippet
-          </span>
-          <textarea
-            aria-label="HTML snippet"
-            className="min-h-24 border border-stone-300 px-2 py-1 font-mono text-xs"
-            value={layer.htmlSource || ''}
-            onChange={(event) => onSectionChange(setWidgetHtml(section, layer.id, event.target.value))}
-          />
-        </label>
+        <WidgetArtFillEditor
+          layer={layer}
+          section={section}
+          onSectionChange={onSectionChange}
+          session={session}
+          docId={docId}
+        />
       )}
       {layer?.widgetElement === 'svg' && (
         <div className="border-b border-stone-200 px-3 py-3">

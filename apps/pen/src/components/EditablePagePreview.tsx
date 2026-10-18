@@ -70,6 +70,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
 import { WidgetTextInput } from './WidgetTextInput';
+import { WidgetArtLayerFace } from './WidgetArtLayerFace';
 import { LayersPopover, layerDisplayLabel, pageLayerLabel } from './LayersPanel';
 import { IconLayers, IconTapeMeasure } from './icons/PenIcons';
 import {
@@ -1015,12 +1016,11 @@ export function EditablePagePreview({
                 }
                 if (layer.widgetElement === 'html') {
                   return (
-                    <iframe
-                      title={layer.name || 'Snippet'}
-                      sandbox=""
-                      data-pen-html-snippet="1"
-                      className="pointer-events-none h-full w-full border-0 bg-white"
-                      srcDoc={layer.htmlSource || ''}
+                    <WidgetArtLayerFace
+                      layer={layer}
+                      shell={shell}
+                      docId={manifest.docId}
+                      session={session}
                     />
                   );
                 }

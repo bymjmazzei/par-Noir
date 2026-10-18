@@ -52,6 +52,8 @@ import {
   timeLayerCaption,
   toggleKeyframeAt,
   upsertLayer,
+  widgetArtFillMode,
+  widgetArtUsesHtmlSnippet,
   wrapTime,
   type PenAnimationSlot,
   type PenAnimationStyle,
@@ -431,6 +433,9 @@ function clipFace(layer: PenPageLayer): { text: string; svg?: string } {
   if (layer.widgetElement === 'svg' && layer.svgSrc) return { text: '', svg: layer.svgSrc };
   if (layer.widgetElement === 'time') return { text: timeLayerCaption(layer) };
   if (layer.widgetElement === 'html') {
+    if (!widgetArtUsesHtmlSnippet(layer)) {
+      return { text: `Art · ${widgetArtFillMode(layer)}` };
+    }
     return {
       text: (layer.htmlSource || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
     };
