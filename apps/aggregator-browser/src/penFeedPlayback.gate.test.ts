@@ -16,7 +16,7 @@ describe('pen feed playback gate', () => {
     expect(src).toMatch(/buildPenFeedTileModelForPost/);
     expect(src).toMatch(/buildPenCollectionFeedTileModel/);
     expect(src).toMatch(/!isPenFeedPost/);
-    expect(src).toMatch(/runFeedPenEffect/);
+    expect(src).toMatch(/runFeedPenEffect|PenFeedTilePlayer/);
     expect(src).not.toMatch(/if \(!userState\.isUnlocked \|\| !userState\.pnIdentifier\) return;\s*void runFeedPenEffect/);
   });
 

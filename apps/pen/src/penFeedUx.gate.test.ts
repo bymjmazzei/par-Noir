@@ -311,8 +311,7 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/effect\.kind === 'open'/);
     expect(src).toMatch(/effect\.kind === 'mailto'/);
     expect(src).toMatch(/openMessagingWithCorrespondence/);
-    expect(src).toMatch(/castPollVote/);
-    expect(src).toMatch(/queueWidgetAction/);
+    expect(src).toMatch(/respondWidget/);
   });
 
   it('FeedTileSurface caption is browse title+caption without You avatar', () => {

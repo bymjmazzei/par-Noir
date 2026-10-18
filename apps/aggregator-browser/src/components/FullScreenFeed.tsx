@@ -44,7 +44,6 @@ import {
   buildPenCollectionFeedTileModel,
   buildPenFeedTileModelForPost
 } from '../utils/penFeedTileModel';
-import { runFeedPenEffect } from '../services/penFeedActionHandler';
 
 function feedPosterUnderlayStyle(
   metadata: IndexedFile['metadata'] | undefined
@@ -1616,14 +1615,9 @@ export function FullScreenFeed({
                     onReportLink={onReportCopyright ? (url) => onReportCopyright(indexedFile, url) : undefined}
                     model={penModel}
                     playback={slidePlayback}
-                    onEffect={(effect) => {
-                      void runFeedPenEffect({
-                        effect,
-                        penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
-                        creatorPnIdentifier: creatorId,
-                        userPnIdentifier: userState.isUnlocked ? userState.pnIdentifier : undefined
-                      });
-                    }}
+                    penDocId={(indexedFile.metadata as { penDocId?: string }).penDocId}
+                    creatorPnIdentifier={creatorId}
+                    userPnIdentifier={userState.isUnlocked ? userState.pnIdentifier : undefined}
                   />
                 );
               })()}
@@ -1781,14 +1775,9 @@ export function FullScreenFeed({
                     aspectRatio={penTileAspect}
                     onReportLink={onReportCopyright ? (url) => onReportCopyright(indexedFile, url) : undefined}
                     model={penModel}
-                    onEffect={(effect) => {
-                      void runFeedPenEffect({
-                        effect,
-                        penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
-                        creatorPnIdentifier: creatorId,
-                        userPnIdentifier: userState.isUnlocked ? userState.pnIdentifier : undefined
-                      });
-                    }}
+                    penDocId={(indexedFile.metadata as { penDocId?: string }).penDocId}
+                    creatorPnIdentifier={creatorId}
+                    userPnIdentifier={userState.isUnlocked ? userState.pnIdentifier : undefined}
                   />
                 );
               })()}
@@ -1936,14 +1925,9 @@ export function FullScreenFeed({
                     onReportLink={onReportCopyright ? (url) => onReportCopyright(indexedFile, url) : undefined}
                     model={penModel}
                     playback={slidePlayback}
-                    onEffect={(effect) => {
-                      void runFeedPenEffect({
-                        effect,
-                        penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
-                        creatorPnIdentifier: creatorId,
-                        userPnIdentifier: userState.isUnlocked ? userState.pnIdentifier : undefined
-                      });
-                    }}
+                    penDocId={(indexedFile.metadata as { penDocId?: string }).penDocId}
+                    creatorPnIdentifier={creatorId}
+                    userPnIdentifier={userState.isUnlocked ? userState.pnIdentifier : undefined}
                   />
                 );
               })()}

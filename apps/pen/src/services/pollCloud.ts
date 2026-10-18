@@ -1,93 +1,146 @@
 /**
- * Poll sheet + vote rail. Create and structure write the owner's Drive.
- * A vote commits the voter's outbox, caches the tally, and waits for the owner unlock to append sheet 1.
+ * Widget sheet + respond/view rail. Sheets are created on the owner's device.
  */
 
-import { ensureMailboxRouteKey } from '@par-noir/device-cloud-credentials';
+import { createPollSpreadsheetOnDevice } from '@par-noir/device-cloud-credentials';
+import { getCloudAccessTokenFromSession } from '@par-noir/device-cloud-credentials';
 import {
-  PEN_POLL_CREATE_KIND,
-  PEN_POLL_STRUCTURE_KIND,
-  PEN_POLL_VOTE_KIND,
+  backendKindForGroup,
+  encodeWidgetId,
+  revealPolicyFromLayers,
+  structureFromLayers,
   type PollCounts,
-  type PollStructure
+  type PollStructure,
+  type PenSectionContent,
+  type WidgetViewPayload
 } from '@par-noir/pen-protocol';
-import { ownerFetch, ownerGet } from './penOwnerFetch';
-import { queuePenOutbox, sealSessionFromPen } from './penCollab';
+import { apiFetch, ownerGet } from './penOwnerFetch';
 import type { PenSession } from './penSession';
-import { API_ENDPOINT } from '../config/api';
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : 'poll_request_failed');
+    throw new Error(typeof data.error === 'string' ? data.error : 'widget_request_failed');
   }
   return data;
 }
 
-export async function createPollSheet(input: {
+export async function ensureWidgetSheet(input: {
   session: PenSession;
   docId: string;
   groupId: string;
-  structure: PollStructure;
+  section: PenSectionContent;
+  title?: string;
 }): Promise<string> {
-  const res = await ownerFetch(
-    'POST',
-    '/api/pen/apply-inbound',
-    {
-      userPnIdentifier: input.session.pnIdentifier,
-      jobType: PEN_POLL_CREATE_KIND,
-      docId: input.docId,
-      groupId: input.groupId,
-      structure: input.structure
-    },
-    { pnIdentifier: input.session.pnIdentifier }
-  );
-  const data = await readJson(res);
-  const spreadsheetId = String(data.spreadsheetId || '').trim();
-  if (!spreadsheetId) throw new Error('poll_create_failed');
+  const cloudToken = getCloudAccessTokenFromSession(input.session.pnIdentifier);
+  if (!cloudToken) throw new Error('cloud_token_required');
+  const structure = structureFromLayers(input.section, input.groupId);
+  const spreadsheetId = await createPollSpreadsheetOnDevice(cloudToken, {
+    title: input.title || `Poll ${input.docId.slice(0, 8)}`,
+    structure
+  });
   return spreadsheetId;
 }
 
-export async function putPollStructure(input: {
+/** @deprecated use ensureWidgetSheet */
+export const createPollSheet = ensureWidgetSheet;
+
+export async function registerWidget(input: {
   session: PenSession;
   docId: string;
+  groupId: string;
+  section: PenSectionContent;
   spreadsheetId: string;
-  structure: PollStructure;
 }): Promise<void> {
-  const res = await ownerFetch(
+  const structure = structureFromLayers(input.section, input.groupId);
+  const revealPolicy = revealPolicyFromLayers(input.section.layers || [], input.groupId);
+  const kind = backendKindForGroup(input.section, input.groupId);
+  if (!kind) return;
+  const widgetId = encodeWidgetId(input.docId, input.groupId);
+  const res = await apiFetch(
     'POST',
-    '/api/pen/apply-inbound',
+    '/api/pen/widgets/register',
     {
       userPnIdentifier: input.session.pnIdentifier,
-      jobType: PEN_POLL_STRUCTURE_KIND,
+      widgetId,
       docId: input.docId,
-      spreadsheetId: input.spreadsheetId,
-      structure: input.structure
+      kind,
+      structure,
+      revealPolicy,
+      closesAt: structure.closesAt,
+      spreadsheetId: input.spreadsheetId
     },
     { pnIdentifier: input.session.pnIdentifier }
   );
   await readJson(res);
 }
 
-export async function readPollCache(input: {
+/** @deprecated use registerWidget */
+export async function putPollStructure(input: {
   session: PenSession;
-  pollId: string;
-}): Promise<{ structure: PollStructure; counts: PollCounts }> {
-  const res = await ownerGet(`/api/pen/polls/${encodeURIComponent(input.pollId)}`, {
-    pnIdentifier: input.session.pnIdentifier
+  docId: string;
+  spreadsheetId: string;
+  structure: PollStructure;
+  groupId: string;
+  section: PenSectionContent;
+}): Promise<void> {
+  await registerWidget({
+    session: input.session,
+    docId: input.docId,
+    groupId: input.groupId,
+    section: input.section,
+    spreadsheetId: input.spreadsheetId
   });
+}
+
+export async function fetchWidgetView(input: {
+  session: PenSession;
+  widgetId: string;
+}): Promise<WidgetViewPayload> {
+  const res = await ownerGet(
+    `/api/pen/widgets/${encodeURIComponent(input.widgetId)}/view?userPnIdentifier=${encodeURIComponent(input.session.pnIdentifier)}`,
+    { pnIdentifier: input.session.pnIdentifier }
+  );
   const data = await readJson(res);
-  const counts = (data.counts || { total: 0, byOption: {} }) as PollCounts;
-  return {
-    structure: {
-      question: String(data.question || ''),
-      options: Array.isArray(data.options) ? (data.options as PollStructure['options']) : [],
-      closesAt: data.closesAt ? String(data.closesAt) : null
+  return data as WidgetViewPayload;
+}
+
+/** @deprecated use fetchWidgetView */
+export const readPollCache = fetchWidgetView;
+
+export async function respondWidget(input: {
+  session: PenSession;
+  ownerPnIdentifier: string;
+  widgetId: string;
+  respondKind: 'vote' | 'widget_row';
+  responseId: string;
+  optionId?: string;
+  writeIn?: string;
+  row?: Record<string, unknown>;
+}): Promise<{ view: WidgetViewPayload; counts?: PollCounts }> {
+  const res = await apiFetch(
+    'POST',
+    '/api/pen/widgets/respond',
+    {
+      userPnIdentifier: input.session.pnIdentifier,
+      ownerPnIdentifier: input.ownerPnIdentifier,
+      widgetId: input.widgetId,
+      responseId: input.responseId,
+      respondKind: input.respondKind,
+      ...(input.optionId ? { optionId: input.optionId } : {}),
+      ...(input.writeIn ? { writeIn: input.writeIn } : {}),
+      ...(input.row ? { row: input.row } : {})
     },
-    counts
+    { pnIdentifier: input.session.pnIdentifier }
+  );
+  const data = await readJson(res);
+  return {
+    view: data.view as WidgetViewPayload,
+    counts: data.counts as PollCounts | undefined
   };
 }
 
+/** @deprecated use respondWidget */
 export async function castPollVote(input: {
   session: PenSession;
   ownerPnIdentifier: string;
@@ -95,56 +148,23 @@ export async function castPollVote(input: {
   spreadsheetId: string;
   optionId: string;
   writeIn?: string;
+  widgetId?: string;
+  groupId?: string;
 }): Promise<{ enqueued: boolean; counts: PollCounts }> {
+  const widgetId =
+    input.widgetId ||
+    (input.groupId ? encodeWidgetId(input.docId, input.groupId) : '');
+  if (!widgetId) throw new Error('widget_id_required');
   const voteId = crypto.randomUUID();
-  const writeIn = input.writeIn ? { writeIn: input.writeIn } : {};
-  const createdAt = new Date().toISOString();
-  const seal = sealSessionFromPen(input.session);
-  let routeKey = '';
-  if (seal) {
-    try {
-      routeKey = await ensureMailboxRouteKey(input.ownerPnIdentifier, seal, {
-        apiBaseUrl: API_ENDPOINT,
-        authToken: input.session.accessToken,
-        pnIdentifier: input.session.pnIdentifier
-      });
-    } catch {
-      routeKey = '';
-    }
-  }
-  await queuePenOutbox({
+  const result = await respondWidget({
     session: input.session,
-    kind: PEN_POLL_VOTE_KIND,
-    outboxId: voteId,
-    payload: {
-      requestId: voteId,
-      voteId,
-      optionId: input.optionId,
-      ...writeIn,
-      spreadsheetId: input.spreadsheetId,
-      docId: input.docId,
-      createdAt
-    },
-    peerRouteKeys: routeKey ? [routeKey] : [],
-    ownCloudApplied: true
+    ownerPnIdentifier: input.ownerPnIdentifier,
+    widgetId,
+    respondKind: 'vote',
+    responseId: voteId,
+    optionId: input.optionId,
+    writeIn: input.writeIn
   });
-  const res = await ownerFetch(
-    'POST',
-    '/api/pen/polls/vote',
-    {
-      userPnIdentifier: input.session.pnIdentifier,
-      ownerPnIdentifier: input.ownerPnIdentifier,
-      pollId: input.spreadsheetId,
-      docId: input.docId,
-      optionId: input.optionId,
-      ...writeIn,
-      voteId
-    },
-    { pnIdentifier: input.session.pnIdentifier }
-  );
-  const data = await readJson(res);
-  return {
-    enqueued: data.enqueued === true,
-    counts: (data.counts || { total: 0, byOption: {} }) as PollCounts
-  };
+  const counts = result.counts || { total: 0, byOption: {} };
+  return { enqueued: true, counts };
 }

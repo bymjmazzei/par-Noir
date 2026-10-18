@@ -8,12 +8,11 @@ import { FeedTileSurface, saveIcsFile } from '@par-noir/feed-tile';
 import type { PenActionEffect } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { openMessagingWithCorrespondence } from '../services/penCorrespondenceHandoff';
-import { queueWidgetAction } from '../services/widgetAction';
 import { hydrateDocFromCloud } from '../services/penHydrate';
 import { loadDocKey } from '../services/penDocCrypto';
 import { loadLocalDoc, type LocalDocBundle } from '../services/penLocalStore';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
-import { castPollVote } from '../services/pollCloud';
+import { respondWidget } from '../services/pollCloud';
 
 export function DocPreviewPage({
   session,
@@ -70,25 +69,32 @@ export function DocPreviewPage({
       return;
     }
     if (effect.kind !== 'vote' && effect.kind !== 'widget_row') return;
-    const spreadsheetId = effect.spreadsheetId || bundle.manifest.pollSpreadsheetId;
-    if (!spreadsheetId) {
+    if (!effect.widgetId) {
       setStatus('Save the widget before testing it.');
       return;
     }
     try {
       if (effect.kind === 'vote') {
-        await castPollVote({
+        await respondWidget({
           session,
           ownerPnIdentifier: session.pnIdentifier,
-          docId,
-          spreadsheetId,
+          widgetId: effect.widgetId,
+          respondKind: 'vote',
+          responseId: crypto.randomUUID(),
           optionId: effect.optionId,
           writeIn: effect.writeIn
         });
         setStatus('Vote counted.');
         return;
       }
-      await queueWidgetAction({ session, docId, spreadsheetId, row: effect.row });
+      await respondWidget({
+        session,
+        ownerPnIdentifier: session.pnIdentifier,
+        widgetId: effect.widgetId,
+        respondKind: 'widget_row',
+        responseId: effect.row.actionId,
+        row: effect.row as Record<string, unknown>
+      });
       setStatus('Recorded.');
     } catch (e) {
       setStatus(e instanceof Error ? e.message : 'widget_action_failed');

@@ -5,6 +5,7 @@
  */
 
 import type { PenPageLayer, PenSectionContent } from './types.js';
+import { trackingWidgetId } from './widgetView.js';
 
 export type ActionOverlaySpec = {
   layerId: string;
@@ -15,8 +16,8 @@ export type ActionOverlaySpec = {
   bindDocId?: string;
   bindRowId?: string;
   label?: string;
-  /** Owner spreadsheet this press writes. Absent on a reusable template. */
-  spreadsheetId?: string;
+  /** Public widget id (docId:groupLayerId). Absent on a reusable template. */
+  widgetId?: string;
 };
 
 export type LayerActionPartition = {
@@ -40,6 +41,14 @@ export function trackingSpreadsheetId(
   return id || undefined;
 }
 
+export function trackingWidgetIdForPress(
+  docId: string,
+  layers: PenPageLayer[],
+  layer: PenPageLayer
+): string | undefined {
+  return trackingWidgetId(docId, layers, layer);
+}
+
 function isRevealTarget(layer: PenPageLayer, layers: PenPageLayer[]): boolean {
   return layers.some((item) => item.revealLayerId === layer.id);
 }
@@ -60,7 +69,8 @@ function isActionLayer(layer: PenPageLayer, layers: PenPageLayer[]): boolean {
 
 /** Split one section's layers for compose vs feed HTML overlay. */
 export function partitionLayersForCompose(
-  layers: PenPageLayer[] | null | undefined
+  layers: PenPageLayer[] | null | undefined,
+  docId?: string
 ): LayerActionPartition {
   const inert: PenPageLayer[] = [];
   const action: PenPageLayer[] = [];
@@ -69,7 +79,7 @@ export function partitionLayersForCompose(
     if (isActionLayer(layer, layers || [])) {
       action.push(layer);
       if (layer.kind === 'interactive' && layer.behavior) {
-        const spreadsheetId = trackingSpreadsheetId(layers || [], layer);
+        const widgetId = docId ? trackingWidgetId(docId, layers || [], layer) : undefined;
         overlays.push({
           layerId: layer.id,
           kind: 'interactive',
@@ -78,7 +88,7 @@ export function partitionLayersForCompose(
           bindDocId: layer.bindDocId,
           bindRowId: layer.bindRowId,
           label: layer.label,
-          ...(spreadsheetId ? { spreadsheetId } : {})
+          ...(widgetId ? { widgetId } : {})
         });
       }
     } else {
@@ -98,11 +108,12 @@ export function sectionWithoutActionLayers(
 
 /** Collect overlay specs across all sections (feed CDN contract). */
 export function collectActionOverlays(
-  sections: PenSectionContent[] | null | undefined
+  sections: PenSectionContent[] | null | undefined,
+  docId?: string
 ): ActionOverlaySpec[] {
   const out: ActionOverlaySpec[] = [];
   for (const sec of sections || []) {
-    out.push(...partitionLayersForCompose(sec.layers).overlays);
+    out.push(...partitionLayersForCompose(sec.layers, docId).overlays);
   }
   return out;
 }

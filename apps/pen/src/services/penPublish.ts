@@ -757,9 +757,10 @@ export async function uploadCompanionAudioFiles(params: {
 
 /** Clickable overlay specs for a post. Includes the tracking spreadsheet when the group has one. */
 export function actionOverlaysForPost(
-  sections: LocalDocBundle['sections']
+  sections: LocalDocBundle['sections'],
+  docId?: string
 ): ReturnType<typeof collectActionOverlays> {
-  return collectActionOverlays(sections);
+  return collectActionOverlays(sections, docId);
 }
 
 /** Overlay HTML stored beside actionOverlays. Inert media is not in this string. */
@@ -903,7 +904,7 @@ export async function publishPostToOwnerCloud(params: {
         }
       : {})
   };
-  const actionOverlays = actionOverlaysForPost(params.bundle.sections);
+  const actionOverlays = actionOverlaysForPost(params.bundle.sections, params.bundle.manifest.docId);
   const actionStageHtml = actionStageHtmlForPost(params.bundle.sections);
   const overlayMeta = {
     ...(actionOverlays.length ? { actionOverlays } : {}),

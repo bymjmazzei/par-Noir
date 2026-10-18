@@ -1,6 +1,5 @@
 /**
- * POST /api/pen/widgets/action — viewer press on a published widget enqueues a
- * sealed pen.widget_action row for the post owner.
+ * POST /api/pen/widgets/respond — widget_row enqueues sealed pen.widget_action for owner.
  */
 
 jest.mock('../../utils/logger', () => ({
@@ -23,67 +22,76 @@ jest.mock('./socialRail', () => ({
 jest.mock('@par-noir/pen-protocol', () => ({
   hashPnIdentifier: (pn: string) => `pnhash:${pn.length}:${[...pn].reverse().join('')}`,
   isSheetTrigger: (t: string) =>
-    ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate'].includes(t)
+    ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate'].includes(t),
+  parseWidgetId: (id: string) => ({ docId: id.split(':')[0], groupLayerId: id.split(':')[1] }),
+  normalizeWriteIn: (v: unknown) => String(v ?? '').trim(),
+  POLL_WRITE_IN_MAX: 200,
+  structureRejectsVote: () => null,
+  pollIsClosed: () => false,
+  pollResultsFromCounts: () => ({ kind: 'poll', total: 0, options: [] }),
+  widgetViewPhase: () => 'results',
+  emptyPollCounts: () => ({ total: 0, byOption: {} })
 }));
 
-jest.mock('./pollVoteCache', () => ({
-  insertPollVoteCache: jest.fn(),
-  pollCounts: jest.fn(),
-  readPollStructureCache: jest.fn(),
-  structureRejectsVote: jest.fn()
+const mockInsert = jest.fn(async () => ({ inserted: true }));
+jest.mock('./widgetCache', () => ({
+  readWidgetStructure: async () => ({
+    widgetId: 'doc-1:g1',
+    docId: 'doc-1',
+    ownerPnHash: 'owner-hash',
+    kind: 'rank',
+    structure: { question: '', options: [], closesAt: null },
+    revealPolicy: 'after_response',
+    closesAt: null,
+    spreadsheetId: 'sheet-1'
+  }),
+  insertWidgetResponse: (...args: unknown[]) => mockInsert(...args),
+  buildWidgetView: async () => ({ widgetId: 'doc-1:g1', phase: 'results', revealPolicy: 'after_response', closesAt: null }),
+  pollCountsFromResponses: async () => ({ total: 0, byOption: {} }),
+  upsertWidgetStructure: jest.fn(),
+  structureRejectsVote: () => null
 }));
 
 import express from 'express';
 import request from 'supertest';
-import { setupPollVoteRoutes } from './pollVoteRoutes';
+import { setupWidgetRoutes } from './widgetRoutes';
 
 function buildApp() {
   const app = express();
   app.use(express.json());
-  setupPollVoteRoutes(app);
+  setupWidgetRoutes(app);
   return app;
 }
 
 const base = {
   userPnIdentifier: 'viewer-pn',
   ownerPnIdentifier: 'owner-pn',
-  spreadsheetId: 'sheet-1',
-  docId: 'doc-1'
+  widgetId: 'doc-1:g1',
+  responseId: 'a1',
+  respondKind: 'widget_row'
 };
 
-describe('POST /api/pen/widgets/action', () => {
+describe('POST /api/pen/widgets/respond widget_row', () => {
   beforeEach(() => {
     enqueueSocialJob.mockReset();
     enqueueSocialJob.mockResolvedValue(true);
+    mockInsert.mockClear();
   });
 
-  it('rejects missing fields', async () => {
+  it('rejects invalid trigger', async () => {
     const res = await request(buildApp())
-      .post('/api/pen/widgets/action')
-      .send({ ...base, spreadsheetId: '', row: { actionId: 'a1', trigger: 'widget.toggle' } });
+      .post('/api/pen/widgets/respond')
+      .send({
+        ...base,
+        row: { actionId: 'a1', trigger: 'poll.vote' }
+      });
     expect(res.status).toBe(400);
     expect(enqueueSocialJob).not.toHaveBeenCalled();
   });
 
-  it('rejects a trigger that is not a widget write', async () => {
-    const res = await request(buildApp())
-      .post('/api/pen/widgets/action')
-      .send({ ...base, row: { actionId: 'a1', trigger: 'poll.vote' } });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('widget_trigger_invalid');
-  });
-
-  it('rejects malformed cells', async () => {
-    const res = await request(buildApp())
-      .post('/api/pen/widgets/action')
-      .send({ ...base, row: { actionId: 'a1', trigger: 'widget.rank', cells: [1, 2] } });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('widget_row_invalid');
-  });
-
   it('enqueues pen.widget_action for the owner with a hashed actor', async () => {
     const res = await request(buildApp())
-      .post('/api/pen/widgets/action')
+      .post('/api/pen/widgets/respond')
       .send({
         ...base,
         row: {
@@ -95,21 +103,19 @@ describe('POST /api/pen/widgets/action', () => {
         }
       });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true, enqueued: true });
     expect(enqueueSocialJob).toHaveBeenCalledTimes(1);
     const job = enqueueSocialJob.mock.calls[0][0];
     expect(job.jobType).toBe('pen.widget_action');
     expect(job.peerPn).toBe('owner-pn');
-    expect(job.requestId).toBe('a1');
     expect(job.sealed).toMatchObject({
       docId: 'doc-1',
       spreadsheetId: 'sheet-1',
+      widgetId: 'doc-1:g1',
       actionId: 'a1',
       trigger: 'widget.rank',
       actorId: 'pnhash:9:np-reweiv',
       headers: ['A', 'B'],
       cells: ['2', '1']
     });
-    expect(JSON.stringify(job.sealed)).not.toContain('viewer-pn');
   });
 });

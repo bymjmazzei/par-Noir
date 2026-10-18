@@ -216,6 +216,12 @@ export type {
   DeviceAssetDelegation,
 } from './deviceIndexes.js';
 export { appendDeviceCloudRow } from './deviceCloudRow.js';
+export {
+  appendPollVoteOnDevice,
+  createPollSpreadsheetOnDevice,
+  writePollStructureOnDevice,
+  writeWidgetActionTabOnDevice
+} from './penWidgetSheet.js';
 export type { DeviceCloudRowResult } from './deviceCloudRow.js';
 export { readSheetValues, writeSheetValues, appendSheetValues } from './deviceSheet.js';
 export { layoutSheetId } from './layoutSheet.js';

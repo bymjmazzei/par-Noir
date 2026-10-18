@@ -1,5 +1,9 @@
 import { saveIcsFile } from '@par-noir/feed-tile';
-import { buildCorrespondenceHandoffHash, type PenActionEffect } from '@par-noir/pen-protocol';
+import {
+  buildCorrespondenceHandoffHash,
+  type PenActionEffect,
+  type WidgetViewPayload
+} from '@par-noir/pen-protocol';
 import { ownerFetch } from './ownerApiFetch';
 
 const DEFAULT_MESSAGING_ORIGIN = 'https://messaging.parnoir.com';
@@ -18,7 +22,7 @@ export async function runFeedPenEffect(input: {
   penDocId?: string;
   creatorPnIdentifier?: string;
   userPnIdentifier?: string;
-}): Promise<void> {
+}): Promise<WidgetViewPayload | void> {
   const { effect, penDocId, creatorPnIdentifier, userPnIdentifier } = input;
   switch (effect.kind) {
     case 'open':
@@ -37,23 +41,24 @@ export async function runFeedPenEffect(input: {
       return;
     }
     case 'vote': {
-      if (!userPnIdentifier || !effect.spreadsheetId || !penDocId || !creatorPnIdentifier) return;
-      await ownerFetch(
+      if (!userPnIdentifier || !effect.widgetId || !penDocId || !creatorPnIdentifier) return;
+      const responseId = crypto.randomUUID();
+      const res = await ownerFetch(
         'POST',
-        '/api/pen/polls/vote',
+        '/api/pen/widgets/respond',
         {
           userPnIdentifier,
           ownerPnIdentifier: creatorPnIdentifier,
-          pollId: effect.spreadsheetId,
+          widgetId: effect.widgetId,
+          responseId,
+          respondKind: 'vote',
           optionId: effect.optionId,
-          ...(effect.writeIn ? { writeIn: effect.writeIn } : {}),
-          voteId: crypto.randomUUID(),
-          docId: penDocId,
-          createdAt: new Date().toISOString()
+          ...(effect.writeIn ? { writeIn: effect.writeIn } : {})
         },
         { pnIdentifier: userPnIdentifier }
       );
-      return;
+      const data = (await res.json().catch(() => ({}))) as { view?: WidgetViewPayload };
+      return data.view;
     }
     case 'calendar':
       saveIcsFile(effect);
@@ -61,22 +66,42 @@ export async function runFeedPenEffect(input: {
     case 'navigate':
       return;
     case 'widget_row': {
-      if (!userPnIdentifier || !effect.spreadsheetId || !penDocId || !creatorPnIdentifier) return;
-      await ownerFetch(
+      if (!userPnIdentifier || !effect.widgetId || !penDocId || !creatorPnIdentifier) return;
+      const responseId = effect.row.actionId || crypto.randomUUID();
+      const res = await ownerFetch(
         'POST',
-        '/api/pen/widgets/action',
+        '/api/pen/widgets/respond',
         {
           userPnIdentifier,
           ownerPnIdentifier: creatorPnIdentifier,
-          spreadsheetId: effect.spreadsheetId,
-          docId: penDocId,
+          widgetId: effect.widgetId,
+          responseId,
+          respondKind: 'widget_row',
           row: effect.row
         },
         { pnIdentifier: userPnIdentifier }
       );
-      return;
+      const data = (await res.json().catch(() => ({}))) as { view?: WidgetViewPayload };
+      return data.view;
     }
     default:
       return;
   }
+}
+
+export async function fetchPenWidgetView(input: {
+  widgetId: string;
+  userPnIdentifier?: string;
+}): Promise<WidgetViewPayload | null> {
+  const q = input.userPnIdentifier
+    ? `?userPnIdentifier=${encodeURIComponent(input.userPnIdentifier)}`
+    : '';
+  const res = await ownerFetch(
+    'GET',
+    `/api/pen/widgets/${encodeURIComponent(input.widgetId)}/view${q}`,
+    undefined,
+    input.userPnIdentifier ? { pnIdentifier: input.userPnIdentifier } : undefined
+  );
+  if (!res.ok) return null;
+  return (await res.json()) as WidgetViewPayload;
 }

@@ -25,6 +25,7 @@ describe('runFeedPenEffect', () => {
     open.mockReset();
     assign.mockReset();
     vi.stubGlobal('window', { open, location: { assign } });
+    vi.stubGlobal('crypto', { randomUUID: () => 'vote-uuid' });
   });
 
   afterEach(() => {
@@ -49,40 +50,49 @@ describe('runFeedPenEffect', () => {
     expect(decodeURIComponent(url)).toContain('"docId":"doc-1"');
   });
 
-  it('skips sheet rows for a viewer who is not unlocked', async () => {
+  it('skips respond for a viewer who is not unlocked', async () => {
     await runFeedPenEffect({
-      effect: { kind: 'widget_row', spreadsheetId: 'sheet-1', row },
+      effect: { kind: 'widget_row', widgetId: 'doc-1:g', row },
       penDocId: 'doc-1',
       creatorPnIdentifier: 'owner'
     });
     expect(ownerFetch).not.toHaveBeenCalled();
   });
 
-  it('posts sheet rows to the widget action endpoint', async () => {
+  it('posts sheet rows to the widget respond endpoint', async () => {
     await runFeedPenEffect({
-      effect: { kind: 'widget_row', spreadsheetId: 'sheet-1', row },
+      effect: { kind: 'widget_row', widgetId: 'doc-1:g', row },
       penDocId: 'doc-1',
       creatorPnIdentifier: 'owner',
       userPnIdentifier: 'viewer'
     });
     expect(ownerFetch).toHaveBeenCalledWith(
       'POST',
-      '/api/pen/widgets/action',
-      { userPnIdentifier: 'viewer', ownerPnIdentifier: 'owner', spreadsheetId: 'sheet-1', docId: 'doc-1', row },
+      '/api/pen/widgets/respond',
+      expect.objectContaining({
+        userPnIdentifier: 'viewer',
+        ownerPnIdentifier: 'owner',
+        widgetId: 'doc-1:g',
+        respondKind: 'widget_row',
+        row
+      }),
       { pnIdentifier: 'viewer' }
     );
   });
 
-  it('posts votes to the poll endpoint', async () => {
+  it('posts votes to the widget respond endpoint', async () => {
     await runFeedPenEffect({
-      effect: { kind: 'vote', layerId: 'b', optionId: 'opt', spreadsheetId: 'sheet-1' },
+      effect: { kind: 'vote', layerId: 'b', optionId: 'opt', widgetId: 'doc-1:g' },
       penDocId: 'doc-1',
       creatorPnIdentifier: 'owner',
       userPnIdentifier: 'viewer'
     });
-    expect(ownerFetch.mock.calls[0][1]).toBe('/api/pen/polls/vote');
-    expect(ownerFetch.mock.calls[0][2]).toMatchObject({ pollId: 'sheet-1', optionId: 'opt' });
-    expect(ownerFetch.mock.calls[0][2]).not.toHaveProperty('writeIn');
+    expect(ownerFetch.mock.calls[0][1]).toBe('/api/pen/widgets/respond');
+    expect(ownerFetch.mock.calls[0][2]).toMatchObject({
+      widgetId: 'doc-1:g',
+      optionId: 'opt',
+      respondKind: 'vote'
+    });
   });
 
   it('downloads calendar ics without unlock', async () => {
@@ -105,7 +115,7 @@ describe('runFeedPenEffect', () => {
 
   it('forwards a write-in answer with the vote', async () => {
     await runFeedPenEffect({
-      effect: { kind: 'vote', layerId: 'b', optionId: 'other', spreadsheetId: 'sheet-1', writeIn: 'Dark mode' },
+      effect: { kind: 'vote', layerId: 'b', optionId: 'other', widgetId: 'doc-1:g', writeIn: 'Dark mode' },
       penDocId: 'doc-1',
       creatorPnIdentifier: 'owner',
       userPnIdentifier: 'viewer'

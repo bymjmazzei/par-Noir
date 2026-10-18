@@ -3,23 +3,58 @@ import {
   buildActionOverlayAtTime,
   docToHtml,
   docToPlainText,
+  penViewerGroupKey,
+  pollCountsFromWidgetView,
   scoreCaption,
   emptyPenViewerState,
   penViewerButtonFace,
   pressPenAction,
   timeLayerCaption,
+  trackingWidgetId,
+  voteFaceForLayer,
   type PenActionEffect,
   type PenFeedPagePayload,
   type PenPageLayer,
-  type PenViewerState
+  type PenSectionContent,
+  type PenViewerState,
+  type WidgetViewPayload
 } from '@par-noir/pen-protocol';
 import type { CSSProperties } from 'react';
 import { DEFAULT_FEED_PLAYBACK, FeedLoopVideo, type FeedPlayback } from './FeedLoopVideo.js';
 import { LeaveSheet, needsLeaveSheet, type LeaveEffect } from './LeaveSheet.js';
 
-function buttonLabel(layer: PenPageLayer, state: PenViewerState): string {
+function buttonLabel(
+  layer: PenPageLayer,
+  state: PenViewerState,
+  allLayers: PenPageLayer[],
+  docId: string,
+  widgetViews: Record<string, WidgetViewPayload>
+): string {
   const face = layer.textDoc ? docToPlainText(layer.textDoc).trim() : '';
   const authored = face || layer.label || 'Button';
+  if (layer.behavior === 'poll.vote' && docId) {
+    const widgetId = trackingWidgetId(docId, allLayers, layer);
+    const view = widgetId ? widgetViews[widgetId] : undefined;
+    const groupKey = penViewerGroupKey(layer);
+    const voted =
+      (typeof view?.myResponse?.optionId === 'string' ? view.myResponse.optionId : '') ||
+      state.voted[groupKey] ||
+      null;
+    const section: PenSectionContent = {
+      slug: 'feed-action',
+      doc: { type: 'doc', content: [] },
+      layers: allLayers
+    };
+    const runtime = voteFaceForLayer(
+      section,
+      layer,
+      voted,
+      pollCountsFromWidgetView(view),
+      undefined,
+      view?.phase
+    ).text;
+    return runtime || authored;
+  }
   const live = penViewerButtonFace(layer, state);
   return live ? `${authored} · ${live}` : authored;
 }
@@ -82,6 +117,8 @@ function OverlayLayer({
   canvas,
   state,
   allLayers,
+  docId,
+  widgetViews,
   onPress,
   onInput
 }: {
@@ -89,6 +126,8 @@ function OverlayLayer({
   canvas: { w: number; h: number };
   state: PenViewerState;
   allLayers: PenPageLayer[];
+  docId: string;
+  widgetViews: Record<string, WidgetViewPayload>;
   onPress: (layerId: string) => void;
   onInput: (layerId: string, value: string) => void;
 }) {
@@ -106,14 +145,14 @@ function OverlayLayer({
           onPress(layer.id);
         }}
       >
-        {buttonLabel(layer, state)}
+        {buttonLabel(layer, state, allLayers, docId, widgetViews)}
       </button>
     );
   }
   if (layer.kind === 'interactive') {
     return (
       <button type="button" className="flex h-full w-full items-center justify-center text-sm font-medium" style={shell}>
-        {buttonLabel(layer, state)}
+        {buttonLabel(layer, state, allLayers, docId, widgetViews)}
       </button>
     );
   }
@@ -175,8 +214,11 @@ export function PenFeedPageStage({
   mediaSrc,
   mediaKind = 'image',
   penFeedPage,
+  docId = '',
+  widgetViews = {},
   externalClockSec,
   onEffect,
+  onPressBlocked,
   onReportLink,
   actorId,
   fit = 'cover',
@@ -185,13 +227,17 @@ export function PenFeedPageStage({
   mediaSrc?: string;
   mediaKind?: 'image' | 'video';
   penFeedPage: PenFeedPagePayload;
+  docId?: string;
+  widgetViews?: Record<string, WidgetViewPayload>;
   /** Editor preview: drive overlay from timeline scrubber. */
   externalClockSec?: number;
   /**
    * Side effect of a button press (open, vote, sheet row…). Local state stays here.
    * Open, email, and Messaging effects arrive only after the viewer confirms the leave sheet.
    */
-  onEffect?: (effect: PenActionEffect) => void;
+  onEffect?: (effect: PenActionEffect) => void | Promise<void>;
+  /** Viewer must unlock before responding to backend widgets. */
+  onPressBlocked?: () => void;
   /** Report link on the leave sheet. Omit where there is nothing to report to. */
   onReportLink?: (url: string) => void;
   /** Hashed viewer id stamped on sheet rows. */
@@ -206,11 +252,22 @@ export function PenFeedPageStage({
   viewerRef.current = viewer;
 
   const press = (layerId: string) => {
+    const layers = penFeedPage.actionSection.layers;
+    const layer = layers.find((item) => item.id === layerId);
+    if (layer && docId) {
+      const widgetId = trackingWidgetId(docId, layers, layer);
+      const phase = widgetId ? widgetViews[widgetId]?.phase : undefined;
+      if (phase === 'locked') {
+        onPressBlocked?.();
+        return;
+      }
+    }
     const result = pressPenAction({
-      layers: penFeedPage.actionSection.layers,
+      layers,
       layerId,
       state: viewerRef.current,
-      actorId
+      actorId,
+      docId
     });
     viewerRef.current = result.state;
     setViewer(result.state);
@@ -291,6 +348,8 @@ export function PenFeedPageStage({
               canvas={canvas}
               state={viewer}
               allLayers={penFeedPage.actionSection.layers}
+              docId={docId}
+              widgetViews={widgetViews}
               onPress={press}
               onInput={typeInput}
             />

@@ -39,7 +39,7 @@ export function buildPenFeedTileModelForPost(
     actionStageHtml:
       typeof meta.actionStageHtml === 'string' ? meta.actionStageHtml : undefined
   };
-  return compilePenFeedTileModel({
+  const model = compilePenFeedTileModel({
     title:
       (typeof meta.title === 'string' && meta.title) ||
       (typeof meta.name === 'string' && meta.name) ||
@@ -53,6 +53,8 @@ export function buildPenFeedTileModelForPost(
     posterUrl: media.posterUrl,
     pages: [page]
   });
+  const penDocId = typeof meta.penDocId === 'string' ? meta.penDocId : undefined;
+  return penDocId ? { ...model, penDocId } : model;
 }
 
 export function buildPenCollectionFeedTileModel(

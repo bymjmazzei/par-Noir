@@ -19,6 +19,8 @@ import { SOCIAL_JOB_TYPES_APPLIED_VIA_API } from './siloMaterialize.js';
 import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
 import { omitCloudAccessHeader } from './cloudVault.js';
 import { appendDeviceCloudRow } from './deviceCloudRow.js';
+import { appendPollVoteOnDevice, writeWidgetActionTabOnDevice } from './penWidgetSheet.js';
+import { isSheetTrigger } from '@par-noir/pen-protocol';
 import { appendDeviceMessage, upsertDeviceConnection, upsertDeviceInboxThread } from './deviceSocial.js';
 import { layoutSheetId } from './layoutSheet.js';
 import { getSessionDriveIndex } from './sessionMemory.js';
@@ -189,6 +191,30 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
           cryptoVersion: 2,
         });
         body.deviceCloudResult = { spreadsheetId: messageSheet, provider: 'google' };
+      } else if (job.jobType === 'pen.poll_vote') {
+        const sheetId = incomingSheet || spreadsheetId;
+        const actor = String(body.actorId || '');
+        await appendPollVoteOnDevice(cloudToken, sheetId, {
+          user: actor,
+          optionId: String(body.optionId || ''),
+          ...(typeof body.writeIn === 'string' && body.writeIn ? { writeIn: body.writeIn } : {})
+        });
+        body.deviceCloudResult = { spreadsheetId: sheetId, provider: 'google' };
+      } else if (job.jobType === 'pen.widget_action') {
+        const sheetId = incomingSheet || spreadsheetId;
+        const trigger = String(body.trigger || '');
+        if (trigger === 'widget.submit' || isSheetTrigger(trigger)) {
+          await writeWidgetActionTabOnDevice(cloudToken, {
+            spreadsheetId: sheetId,
+            trigger: trigger as import('@par-noir/pen-protocol').WidgetSheetTrigger | 'widget.submit',
+            user: String(body.actorId || ''),
+            createdAt: String(body.createdAt || new Date().toISOString()),
+            ...(typeof body.present === 'boolean' ? { present: body.present } : {}),
+            headers: Array.isArray(body.headers) ? (body.headers as string[]) : [],
+            cells: Array.isArray(body.cells) ? (body.cells as string[]) : []
+          });
+        }
+        body.deviceCloudResult = { spreadsheetId: sheetId, provider: 'google' };
       } else {
         body.deviceCloudResult = await appendDeviceCloudRow(cloudToken, body);
       }

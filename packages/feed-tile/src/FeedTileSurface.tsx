@@ -4,7 +4,8 @@ import {
   buildActionStageDocument,
   readPenActionMessage,
   type PenActionEffect,
-  type PenFeedPagePayload
+  type PenFeedPagePayload,
+  type WidgetViewPayload
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from './PenMediaPlayer.js';
 import { PenFeedPageStage } from './PenFeedPageStage.js';
@@ -35,6 +36,9 @@ export type FeedTileViewModel = {
   pages: FeedTilePage[];
   fileId?: string;
   posterUrl?: string;
+  /** Pen doc id for widget view / respond. */
+  penDocId?: string;
+  widgetViews?: Record<string, WidgetViewPayload>;
   contentClass?: string;
   /** Multipage swipe axis — collections default x; longform units y. */
   pageSwipeAxis?: 'x' | 'y';
@@ -187,17 +191,23 @@ function PageSurface({
   page,
   titleFallback,
   onEffect,
+  onPressBlocked,
   onReportLink,
   actorId,
+  penDocId,
+  widgetViews,
   externalClockSec,
   fit,
   playback
 }: {
   page: FeedTilePage;
   titleFallback: string;
-  onEffect?: (effect: PenActionEffect) => void;
+  onEffect?: (effect: PenActionEffect) => void | Promise<void>;
+  onPressBlocked?: () => void;
   onReportLink?: (url: string) => void;
   actorId?: string;
+  penDocId?: string;
+  widgetViews?: Record<string, WidgetViewPayload>;
   externalClockSec?: number;
   fit: MediaFit;
   /** Set in feed layout only. */
@@ -220,8 +230,11 @@ function PageSurface({
         mediaSrc={page.mediaSrc}
         mediaKind={page.mediaKind}
         penFeedPage={page.penFeedPage}
+        docId={penDocId}
+        widgetViews={widgetViews}
         externalClockSec={externalClockSec}
         onEffect={onEffect}
+        onPressBlocked={onPressBlocked}
         onReportLink={onReportLink}
         actorId={actorId}
         fit={fit}
@@ -272,6 +285,7 @@ export function FeedTileSurface({
   aspectRatio = '9/16',
   layout = 'preview',
   onEffect,
+  onPressBlocked,
   onReportLink,
   actorId,
   externalClockSec,
@@ -297,7 +311,9 @@ export function FeedTileSurface({
    */
   layout?: 'preview' | 'feed';
   /** Side effect of a button press on the action layer. Links arrive after the leave sheet. */
-  onEffect?: (effect: PenActionEffect) => void;
+  onEffect?: (effect: PenActionEffect) => void | Promise<void>;
+  /** Unlock required before backend widget respond. */
+  onPressBlocked?: () => void;
   /** Report link on the leave sheet. Published feed posts only. */
   onReportLink?: (url: string) => void;
   /** Hashed viewer id stamped on sheet rows. */
@@ -421,8 +437,11 @@ export function FeedTileSurface({
                 }}
                 titleFallback={model.title}
                 onEffect={pageEffect(i)}
+                onPressBlocked={onPressBlocked}
                 onReportLink={onReportLink}
                 actorId={actorId}
+                penDocId={model.penDocId}
+                widgetViews={model.widgetViews}
                 externalClockSec={externalClockSec}
                 fit={fit}
                 playback={sharedMedia ? playbackForPage(1) : playbackForPage(i)}
@@ -453,8 +472,11 @@ export function FeedTileSurface({
                 page={page}
                 titleFallback={model.title}
                 onEffect={pageEffect(i)}
+                onPressBlocked={onPressBlocked}
                 onReportLink={onReportLink}
                 actorId={actorId}
+                penDocId={model.penDocId}
+                widgetViews={model.widgetViews}
                 externalClockSec={externalClockSec}
                 fit={fit}
                 playback={playbackForPage(i)}
@@ -471,8 +493,11 @@ export function FeedTileSurface({
           }}
           titleFallback={model.title}
           onEffect={pageEffect(0)}
+          onPressBlocked={onPressBlocked}
           onReportLink={onReportLink}
           actorId={actorId}
+          penDocId={model.penDocId}
+          widgetViews={model.widgetViews}
           externalClockSec={externalClockSec}
           fit={fit}
           playback={feedPlayback}

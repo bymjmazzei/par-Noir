@@ -8,6 +8,7 @@ import {
   docToPlainText,
   duplicateButton,
   frameCountForGroup,
+  groupNeedsTrackingSheet,
   getTextLayerDoc,
   LINK_BLOCK_MESSAGES,
   LINK_WARNING_MESSAGES,
@@ -248,6 +249,31 @@ export function WidgetEditorPanel({
           </button>
         </div>
       ) : null}
+      {layer?.kind === 'group' && groupNeedsTrackingSheet(section, layer.id) && (
+        <div className="border-b border-stone-200 px-3 py-2">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+              Show results
+            </span>
+            <select
+              aria-label="Reveal results policy"
+              className="border border-stone-300 bg-white px-2 py-1"
+              value={layer.revealResults || 'after_response'}
+              onChange={(event) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, {
+                    revealResults: event.target.value as 'after_response' | 'at_close' | 'creator_only'
+                  })
+                )
+              }
+            >
+              <option value="after_response">After you respond</option>
+              <option value="at_close">When poll closes</option>
+              <option value="creator_only">Creator only</option>
+            </select>
+          </label>
+        </div>
+      )}
       {layer?.kind === 'interactive' && (
         <div className="border-b border-stone-200 px-3 py-2">
           <div className="flex flex-col gap-1">

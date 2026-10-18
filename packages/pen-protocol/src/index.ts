@@ -28,6 +28,7 @@ export * from './verifiedAuthor.js';
 export * from './starterAssets.js';
 export * from './table.js';
 export * from './pollSheet.js';
+export * from './widgetView.js';
 export * from './widgetElements.js';
 export * from './widgetArt.js';
 export * from './gradient.js';

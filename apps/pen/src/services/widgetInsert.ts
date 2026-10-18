@@ -6,7 +6,6 @@ import {
   patchLayerStyle,
   rewriteSeedTablePlaceholders,
   sectionNeedsSeedTable,
-  structureFromLayers,
   type PenPageLayer,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
@@ -32,12 +31,11 @@ export async function insertWidgetCopy(input: {
     { maxWidth: input.contentWidthPx }
   );
   if (groupNeedsTrackingSheet(copied.section, copied.groupId)) {
-    const structure = structureFromLayers(copied.section, copied.groupId);
     const spreadsheetId = await createPollSheet({
       session: input.session,
       docId: input.docId,
       groupId: copied.groupId,
-      structure
+      section: copied.section
     });
     const section = patchLayerStyle(copied.section, copied.groupId, { spreadsheetId });
     return { section, groupId: copied.groupId };

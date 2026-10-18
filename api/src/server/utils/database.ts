@@ -614,6 +614,36 @@ export async function initializeDatabase(): Promise<void> {
     `);
 
     await db.query(`
+      CREATE TABLE IF NOT EXISTS widget_structure_cache (
+        widget_id TEXT PRIMARY KEY,
+        doc_id TEXT NOT NULL,
+        owner_pn_hash TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        structure_json TEXT NOT NULL DEFAULT '{}',
+        reveal_policy TEXT NOT NULL DEFAULT 'after_response',
+        closes_at TEXT,
+        spreadsheet_id TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS widget_response_cache (
+        response_id TEXT PRIMARY KEY,
+        widget_id TEXT NOT NULL,
+        actor_hash TEXT NOT NULL,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(widget_id, actor_hash)
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_widget_response_cache_widget
+      ON widget_response_cache(widget_id)
+    `);
+
+    await db.query(`
       CREATE INDEX IF NOT EXISTS idx_engagement_type
       ON engagement(type)
     `);

@@ -4,9 +4,7 @@ import {
   groupNeedsTrackingSheet,
   isSheetTrigger,
   patchLayerStyle,
-  structureFromLayers,
-  type PenSectionContent,
-  type PollStructure
+  type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { createPollSheet } from './pollCloud';
 import type { LocalDocBundle } from './penLocalStore';
@@ -16,7 +14,7 @@ export type MintTrackingSheet = (input: {
   session: PenSession;
   docId: string;
   groupId: string;
-  structure: PollStructure;
+  section: PenSectionContent;
 }) => Promise<string>;
 
 export async function ensureBundleTrackingSheets(input: {
@@ -45,12 +43,7 @@ export async function ensureBundleTrackingSheets(input: {
       const group = groupId
         ? (section.layers || []).find((layer) => layer.id === groupId)
         : undefined;
-      const inherited = (
-        group?.spreadsheetId ||
-        (!groupId ? manifest.pollSpreadsheetId : '') ||
-        (groups.length === 1 ? manifest.pollSpreadsheetId : '') ||
-        ''
-      ).trim();
+      const inherited = (group?.spreadsheetId || '').trim();
       if (inherited) {
         if (groupId && group?.spreadsheetId !== inherited) {
           section = patchLayerStyle(section, groupId, { spreadsheetId: inherited });
@@ -59,18 +52,14 @@ export async function ensureBundleTrackingSheets(input: {
         }
         continue;
       }
+      const effectiveGroupId = groupId || groups[0]?.id || manifest.docId;
       const spreadsheetId = await mint({
         session: input.session,
         docId: manifest.docId,
-        groupId: groupId || manifest.docId,
-        structure: structureFromLayers(section, groupId)
+        groupId: effectiveGroupId,
+        section
       });
-      if (groupId) {
-        section = patchLayerStyle(section, groupId, { spreadsheetId });
-      } else {
-        manifest = { ...manifest, pollSpreadsheetId: spreadsheetId };
-        section = stampTrackingSheet(section, spreadsheetId);
-      }
+      section = patchLayerStyle(section, effectiveGroupId, { spreadsheetId });
     }
     sections[i] = section;
   }

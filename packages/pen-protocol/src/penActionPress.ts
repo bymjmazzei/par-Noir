@@ -3,7 +3,7 @@
  * Pure: returns the viewer's next local state plus one side effect for the host to run.
  */
 
-import { trackingSpreadsheetId } from './actionPartition.js';
+import { trackingWidgetIdForPress } from './actionPartition.js';
 import { icsForEvent } from './icsForEvent.js';
 import {
   frameCountForGroup,
@@ -39,8 +39,8 @@ export type PenActionEffect =
   | { kind: 'open'; url: string; host: string; warnings: LinkWarning[] }
   | { kind: 'mailto'; href: string; to: string }
   | { kind: 'messaging'; title: string; body: string; to: string }
-  | { kind: 'vote'; layerId: string; optionId: string; spreadsheetId?: string; writeIn?: string }
-  | { kind: 'widget_row'; spreadsheetId?: string; row: WidgetActionRow }
+  | { kind: 'vote'; layerId: string; optionId: string; widgetId?: string; writeIn?: string }
+  | { kind: 'widget_row'; widgetId?: string; row: WidgetActionRow }
   | { kind: 'navigate'; goTo: PenGoTo }
   | { kind: 'calendar'; ics: string; filename: string }
   | { kind: 'none' };
@@ -74,6 +74,7 @@ export function pressPenAction(input: {
   layerId: string;
   state: PenViewerState;
   actorId?: string;
+  docId?: string;
   now?: string;
 }): { state: PenViewerState; effect: PenActionEffect } {
   const { layers, state } = input;
@@ -83,11 +84,11 @@ export function pressPenAction(input: {
   const groupId = layer.parentGroupId || null;
   const groupKey = penViewerGroupKey(layer);
   const section = sectionOf(layers);
-  const spreadsheetId = trackingSpreadsheetId(layers, layer);
+  const widgetId = trackingWidgetIdForPress(input.docId || '', layers, layer);
   const actorId = input.actorId || '';
   const sheetRow = (row: WidgetActionRow): PenActionEffect => ({
     kind: 'widget_row',
-    ...(spreadsheetId ? { spreadsheetId } : {}),
+    ...(widgetId ? { widgetId } : {}),
     row
   });
 
@@ -196,7 +197,7 @@ export function pressPenAction(input: {
           kind: 'vote',
           layerId: layer.id,
           optionId,
-          ...(spreadsheetId ? { spreadsheetId } : {}),
+          ...(widgetId ? { widgetId } : {}),
           ...(writeIn ? { writeIn } : {})
         }
       };

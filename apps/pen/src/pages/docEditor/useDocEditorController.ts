@@ -150,7 +150,7 @@ import {
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
 import { requestNotaryStamp, fetchMonetizationStatus } from '../../services/penApi';
-import { createPollSheet, putPollStructure } from '../../services/pollCloud';
+import { ensureWidgetSheet, registerWidget } from '../../services/pollCloud';
 import { ensureBundleTrackingSheets } from '../../services/widgetTracking';
 import { resolveSigningKeys } from '../../services/penKeys';
 import {
@@ -1198,32 +1198,26 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   ): Promise<string> {
     if (!bundle) throw new Error('poll_save_failed');
     const group = groupId ? (source.layers || []).find((layer) => layer.id === groupId) : null;
-    const existing = (group?.spreadsheetId || (!groupId ? bundle.manifest.pollSpreadsheetId : '') || '').trim();
+    const effectiveGroupId =
+      groupId ||
+      (source.layers || []).find((layer) => layer.kind === 'group' && sectionHasVoteButton(source, layer.id))
+        ?.id ||
+      bundle.manifest.docId;
+    const sheetGroup = (source.layers || []).find((layer) => layer.id === effectiveGroupId);
+    const existing = (sheetGroup?.spreadsheetId || group?.spreadsheetId || '').trim();
     if (existing) return existing;
-    const created = await createPollSheet({
+    const created = await ensureWidgetSheet({
       session,
       docId: bundle.manifest.docId,
-      groupId: groupId || bundle.manifest.docId,
-      structure: structureFromLayers(source, groupId)
+      groupId: effectiveGroupId,
+      section: source
     });
-    if (groupId) {
-      persistSection({
-        ...source,
-        layers: (source.layers || []).map((layer) =>
-          layer.id === groupId ? { ...layer, spreadsheetId: created } : layer
-        )
-      });
-    } else {
-      persist({
-        ...bundle,
-        sections: bundle.sections.map((item) => (item.slug === source.slug ? source : item)),
-        manifest: {
-          ...bundle.manifest,
-          pollSpreadsheetId: created,
-          updatedAt: new Date().toISOString()
-        }
-      });
-    }
+    persistSection({
+      ...source,
+      layers: (source.layers || []).map((layer) =>
+        layer.id === effectiveGroupId ? { ...layer, spreadsheetId: created } : layer
+      )
+    });
     return created;
   }
 
@@ -1235,17 +1229,19 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       (layer) => layer.kind === 'group' && sectionHasVoteButton(section, layer.id)
     );
     const targets = groups.length
-      ? groups.map((group) => ({ groupId: group.id as string | null, spreadsheetId: group.spreadsheetId || null }))
-      : [{ groupId: null as string | null, spreadsheetId: bundle.manifest.pollSpreadsheetId || null }];
+      ? groups.map((g) => ({ groupId: g.id, spreadsheetId: g.spreadsheetId || null }))
+      : [{ groupId: bundle.manifest.docId, spreadsheetId: null as string | null }];
     for (const target of targets) {
       if (!sectionHasVoteButton(section, target.groupId)) continue;
-      const structure = structureFromLayers(section, target.groupId);
-      if (!structure.options.length) continue;
       try {
         const spreadsheetId = target.spreadsheetId || (await ensureWidgetSpreadsheet(section, target.groupId));
-        if (structure.options.length) {
-          await putPollStructure({ session, docId, spreadsheetId, structure });
-        }
+        await registerWidget({
+          session,
+          docId,
+          groupId: target.groupId,
+          section,
+          spreadsheetId
+        });
       } catch {
         setError('poll_save_failed');
       }

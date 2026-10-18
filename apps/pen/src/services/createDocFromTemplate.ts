@@ -210,16 +210,28 @@ export async function createDocFromTemplate(input: {
     basedOnFileId: input.basedOnFileId
   });
   if (bundle.sections[0] && sectionHasVoteButton(bundle.sections[0])) {
-    const structure = structureFromLayers(bundle.sections[0]);
+    const section = bundle.sections[0];
+    const groupId =
+      (section.layers || []).find((layer) => layer.kind === 'group' && sectionHasVoteButton(section, layer.id))
+        ?.id || docId;
     const spreadsheetId = await createPollSheet({
       session: input.session,
       docId,
-      groupId: docId,
-      structure
+      groupId,
+      section
     });
     bundle = {
       ...bundle,
-      manifest: { ...bundle.manifest, pollSpreadsheetId: spreadsheetId }
+      sections: bundle.sections.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              layers: (item.layers || []).map((layer) =>
+                layer.id === groupId ? { ...layer, spreadsheetId } : layer
+              )
+            }
+          : item
+      )
     };
     saveLocalDoc(input.session.pnIdentifier, bundle);
   }

@@ -34,7 +34,7 @@ describe('actionOverlaysForPost', () => {
         ]
       }
     ];
-    expect(actionOverlaysForPost(sections)[0]?.spreadsheetId).toBe('sheet-user');
+    expect(actionOverlaysForPost(sections, 'doc-user')[0]?.widgetId).toBe('doc-user:g');
     const html = actionStageHtmlForPost(sections);
     expect(html).toContain('widget.toggle');
     expect(html).toContain('On');

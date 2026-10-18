@@ -18,9 +18,7 @@ import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { verifyPromoteLink, type PenPromoteLink, type PollStructure } from '@par-noir/pen-protocol';
-import { appendPollVote, createPollSpreadsheet, writePollStructure, writeWidgetActionTab } from './pollSheetDrive';
-import { upsertPollStructureCache } from './pollVoteCache';
-import { setupPollVoteRoutes } from './pollVoteRoutes';
+import { setupWidgetRoutes } from './widgetRoutes';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
@@ -277,7 +275,7 @@ export function setupPenRoutes(
     ) => Promise<{ metadataFolderId?: string; pnFolderId?: string } | null>;
   }
 ): void {
-  setupPollVoteRoutes(app);
+  setupWidgetRoutes(app);
   app.post('/api/pen/notary/timestamp', async (req: Request, res: Response) => {
     try {
       if (!requireFirstPartyOAuthClient(req, res)) return;

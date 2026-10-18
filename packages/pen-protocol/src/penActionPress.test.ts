@@ -19,7 +19,7 @@ const group: PenPageLayer = {
 };
 
 function press(layers: PenPageLayer[], layerId: string, state: PenViewerState = emptyPenViewerState()) {
-  return pressPenAction({ layers, layerId, state, actorId: 'actor' });
+  return pressPenAction({ layers, layerId, state, actorId: 'actor', docId: 'doc-1' });
 }
 
 describe('pressPenAction', () => {
@@ -56,9 +56,9 @@ describe('pressPenAction', () => {
     expect(r.state.revealed).toEqual(['t']);
   });
 
-  it('poll.vote uses bindRowId and the group spreadsheet', () => {
+  it('poll.vote uses bindRowId and the group widget id', () => {
     const r = press([group, button('b', { behavior: 'poll.vote', bindRowId: 'opt-a', parentGroupId: 'g' })], 'b');
-    expect(r.effect).toEqual({ kind: 'vote', layerId: 'b', optionId: 'opt-a', spreadsheetId: 'sheet-1' });
+    expect(r.effect).toEqual({ kind: 'vote', layerId: 'b', optionId: 'opt-a', widgetId: 'doc-1:g' });
     expect(r.state.voted).toEqual({ g: 'opt-a' });
   });
 
@@ -74,7 +74,7 @@ describe('pressPenAction', () => {
       kind: 'vote',
       layerId: 'other',
       optionId: 'other',
-      spreadsheetId: 'sheet-1',
+      widgetId: 'doc-1:g',
       writeIn: 'Dark mode'
     });
   });
@@ -82,7 +82,7 @@ describe('pressPenAction', () => {
   it('widget.toggle flips present on the second press', () => {
     const layers = [group, button('b', { behavior: 'widget.toggle', parentGroupId: 'g' })];
     const first = press(layers, 'b');
-    expect(first.effect).toMatchObject({ kind: 'widget_row', spreadsheetId: 'sheet-1', row: { trigger: 'widget.toggle', present: true } });
+    expect(first.effect).toMatchObject({ kind: 'widget_row', widgetId: 'doc-1:g', row: { trigger: 'widget.toggle', present: true } });
     const second = press(layers, 'b', first.state);
     expect(second.effect).toMatchObject({ row: { present: false } });
     expect(second.state.toggled).toEqual([]);
@@ -149,7 +149,7 @@ describe('pressPenAction', () => {
     const sheet = press([group, input, button('s', { behavior: 'widget.submit', parentGroupId: 'g' })], 's', state);
     expect(sheet.effect).toMatchObject({
       kind: 'widget_row',
-      spreadsheetId: 'sheet-1',
+      widgetId: 'doc-1:g',
       row: { trigger: 'widget.submit', headers: ['Email'], cells: ['me@x.com'], fields: { Email: 'me@x.com' } }
     });
   });

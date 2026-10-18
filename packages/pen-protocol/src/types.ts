@@ -199,6 +199,8 @@ export interface PenPageLayer {
   widgetCounts?: { total: number; byOption: Record<string, number> };
   /** Owner spreadsheet for this poll group. Not copied onto a reusable template. */
   spreadsheetId?: string;
+  /** When aggregate results may appear to voters (server-enforced). */
+  revealResults?: 'after_response' | 'at_close' | 'creator_only';
   /** Fill / effects (text boxes and media frames). */
   backgroundColor?: string;
   backgroundImage?: string;

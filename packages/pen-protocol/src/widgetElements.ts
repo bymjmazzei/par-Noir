@@ -580,17 +580,36 @@ export function voteFace(input: {
   correctOptionId: string | null;
   closesAt: string | null;
   votedOptionId: string | null;
+  viewPhase?: import('./widgetView.js').WidgetViewPhase;
   now?: number;
 }): VoteFace {
-  if (!input.votedOptionId) return { kind: 'label', text: input.label };
-  if (input.closesAt && !pollIsClosed(input.closesAt, input.now)) {
-    return { kind: 'countdown', text: formatCountdown(input.closesAt, input.now) };
+  const voted = input.votedOptionId;
+  const phase = input.viewPhase;
+
+  if (phase === 'locked' || phase === 'ballot' || (!phase && !voted)) {
+    return { kind: 'label', text: input.label };
   }
-  if (input.correctOptionId) {
-    if (input.optionId !== input.votedOptionId) return { kind: 'label', text: input.label };
+
+  const hideResults =
+    phase === 'waiting' ||
+    (!phase && Boolean(voted && input.closesAt && !pollIsClosed(input.closesAt, input.now)));
+
+  if (hideResults) {
+    if (voted && input.optionId === voted && input.closesAt && !pollIsClosed(input.closesAt, input.now)) {
+      return { kind: 'countdown', text: formatCountdown(input.closesAt, input.now) };
+    }
+    return { kind: 'label', text: input.label };
+  }
+
+  if (!voted && phase !== 'results' && phase !== 'owner') {
+    return { kind: 'label', text: input.label };
+  }
+
+  if (input.correctOptionId && voted) {
+    if (input.optionId !== voted) return { kind: 'label', text: input.label };
     return {
       kind: 'passfail',
-      text: input.votedOptionId === input.correctOptionId ? 'Correct' : 'Incorrect'
+      text: voted === input.correctOptionId ? 'Correct' : 'Incorrect'
     };
   }
   const n = input.counts?.byOption[input.optionId] || 0;
@@ -602,7 +621,8 @@ export function voteFaceForLayer(
   layer: PenPageLayer,
   votedOptionId: string | null,
   counts: PollCounts | null,
-  now?: number
+  now?: number,
+  viewPhase?: import('./widgetView.js').WidgetViewPhase
 ): VoteFace {
   const structure = structureFromLayers(section, layer.parentGroupId || null);
   return voteFace({
@@ -612,6 +632,7 @@ export function voteFaceForLayer(
     correctOptionId: structure.correctOptionId || null,
     closesAt: structure.closesAt,
     votedOptionId,
+    viewPhase,
     now
   });
 }
