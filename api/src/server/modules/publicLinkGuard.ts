@@ -1,6 +1,6 @@
 /**
  * Guard for Pen button links on aggregator rows. The client runs the same checkLink;
- * this is the server copy plus Google Safe Browsing, which the client cannot call.
+ * this is the server copy plus Google Web Risk, which the client cannot call.
  * Sealed private docs never reach the server, so they are not checked here.
  */
 
@@ -23,8 +23,15 @@ export type PublicLinkGuardFailure = {
 
 type FoundLink = { raw: string; face: string };
 
-const SAFE_BROWSING_ENDPOINT = 'https://safebrowsing.googleapis.com/v4/threatMatches:find';
-const SAFE_BROWSING_BATCH = 500;
+const WEB_RISK_ENDPOINT = 'https://webrisk.googleapis.com/v1/uris:search';
+const WEB_RISK_THREATS = [
+  'MALWARE',
+  'SOCIAL_ENGINEERING',
+  'UNWANTED_SOFTWARE',
+  'SOCIAL_ENGINEERING_EXTENDED_COVERAGE'
+];
+/** Web Risk bills per lookup, one URL each. */
+const MAX_CHECKED_LINKS = 25;
 const MAX_WALK_DEPTH = 12;
 
 let warnedMissingKey = false;
@@ -65,41 +72,24 @@ function asksForSecret(layers: PenPageLayer[]): boolean {
   return [...groups].some((groupId) => secretPromptLayers(section, groupId).length > 0);
 }
 
-async function safeBrowsingMatches(urls: string[], apiKey: string): Promise<string[]> {
-  const flagged: string[] = [];
-  for (let i = 0; i < urls.length; i += SAFE_BROWSING_BATCH) {
-    const batch = urls.slice(i, i + SAFE_BROWSING_BATCH);
-    const res = await fetch(`${SAFE_BROWSING_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client: { clientId: 'parnoir', clientVersion: '1.0' },
-        threatInfo: {
-          threatTypes: [
-            'MALWARE',
-            'SOCIAL_ENGINEERING',
-            'UNWANTED_SOFTWARE',
-            'POTENTIALLY_HARMFUL_APPLICATION'
-          ],
-          platformTypes: ['ANY_PLATFORM'],
-          threatEntryTypes: ['URL'],
-          threatEntries: batch.map((url) => ({ url }))
-        }
-      })
-    });
-    if (!res.ok) throw new Error(`safe_browsing_${res.status}`);
-    const body = (await res.json()) as { matches?: Array<{ threat?: { url?: string } }> };
-    for (const match of body.matches || []) {
-      if (match.threat?.url) flagged.push(match.threat.url);
-    }
-  }
-  return flagged;
+async function webRiskMatches(urls: string[], apiKey: string): Promise<string[]> {
+  const results = await Promise.all(
+    urls.map(async (url) => {
+      const params = new URLSearchParams({ uri: url, key: apiKey });
+      for (const threat of WEB_RISK_THREATS) params.append('threatTypes', threat);
+      const res = await fetch(`${WEB_RISK_ENDPOINT}?${params}`);
+      if (!res.ok) throw new Error(`web_risk_${res.status}`);
+      const body = (await res.json()) as { threat?: { threatTypes?: string[] } };
+      return body.threat?.threatTypes?.length ? url : null;
+    })
+  );
+  return results.filter((url): url is string => url !== null);
 }
 
 /** Null when every Pen link on the row may be shown to viewers. */
 export async function checkPublicLinks(
   metadata: unknown,
-  apiKey: string | undefined = process.env.GOOGLE_SAFE_BROWSING_API_KEY
+  apiKey: string | undefined = process.env.GOOGLE_WEB_RISK_API_KEY
 ): Promise<PublicLinkGuardFailure | null> {
   const links: FoundLink[] = [];
   const layerSets: PenPageLayer[][] = [];
@@ -126,19 +116,26 @@ export async function checkPublicLinks(
     if (!urls.includes(verdict.url)) urls.push(verdict.url);
   }
   if (!urls.length) return null;
+  if (urls.length > MAX_CHECKED_LINKS) {
+    return {
+      status: 400,
+      error: 'unsafe_link',
+      error_description: `A post can link to at most ${MAX_CHECKED_LINKS} different addresses.`
+    };
+  }
 
   if (!apiKey) {
     if (!warnedMissingKey) {
       warnedMissingKey = true;
-      console.warn('[publicLinkGuard] GOOGLE_SAFE_BROWSING_API_KEY unset; skipping Safe Browsing');
+      console.warn('[publicLinkGuard] GOOGLE_WEB_RISK_API_KEY unset; skipping Web Risk');
     }
     return null;
   }
   let flagged: string[];
   try {
-    flagged = await safeBrowsingMatches(urls, apiKey);
+    flagged = await webRiskMatches(urls, apiKey);
   } catch (err) {
-    console.warn('[publicLinkGuard] Safe Browsing failed:', err instanceof Error ? err.message : err);
+    console.warn('[publicLinkGuard] Web Risk failed:', err instanceof Error ? err.message : err);
     return {
       status: 503,
       error: 'link_check_unavailable',
