@@ -62,6 +62,23 @@ describe('pressPenAction', () => {
     expect(r.state.voted).toEqual({ g: 'opt-a' });
   });
 
+  it('a write-in vote sends the group input text and needs some text', () => {
+    const layers = [
+      group,
+      { id: 'field', kind: 'text' as const, widgetElement: 'input' as const, parentGroupId: 'g', x: 0, y: 0, w: 80, h: 20, zIndex: 2 },
+      button('other', { behavior: 'poll.vote', bindRowId: 'other', parentGroupId: 'g', writeIn: true })
+    ];
+    expect(press(layers, 'other').effect.kind).toBe('none');
+    const typed = { ...emptyPenViewerState(), inputs: { field: '  Dark   mode ' } };
+    expect(press(layers, 'other', typed).effect).toEqual({
+      kind: 'vote',
+      layerId: 'other',
+      optionId: 'other',
+      spreadsheetId: 'sheet-1',
+      writeIn: 'Dark mode'
+    });
+  });
+
   it('widget.toggle flips present on the second press', () => {
     const layers = [group, button('b', { behavior: 'widget.toggle', parentGroupId: 'g' })];
     const first = press(layers, 'b');

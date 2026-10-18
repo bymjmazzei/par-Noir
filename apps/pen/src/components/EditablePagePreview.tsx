@@ -995,7 +995,8 @@ export function EditablePagePreview({
                     <iframe
                       title={layer.name || 'Snippet'}
                       sandbox=""
-                      className="pointer-events-auto h-full w-full border-0 bg-white"
+                      data-pen-html-snippet="1"
+                      className="pointer-events-none h-full w-full border-0 bg-white"
                       srcDoc={layer.htmlSource || ''}
                     />
                   );
@@ -1004,7 +1005,7 @@ export function EditablePagePreview({
                   return (
                     <div
                       className="flex h-full w-full items-center justify-center text-xs"
-                      style={shell}
+                      style={{ ...shell, color: layer.textColor || undefined }}
                     >
                       {timeLayerCaption(layer)}
                     </div>
@@ -1023,7 +1024,7 @@ export function EditablePagePreview({
                     <button
                       type="button"
                       className="pointer-events-auto flex h-full w-full items-center justify-center overflow-hidden px-3 text-sm font-medium"
-                      style={shell}
+                      style={{ ...shell, color: layer.textColor || undefined }}
                       title={layer.behavior || 'button'}
                       onClick={(e) => {
                         e.stopPropagation();

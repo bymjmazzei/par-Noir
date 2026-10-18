@@ -94,8 +94,10 @@ export async function castPollVote(input: {
   docId: string;
   spreadsheetId: string;
   optionId: string;
+  writeIn?: string;
 }): Promise<{ enqueued: boolean; counts: PollCounts }> {
   const voteId = crypto.randomUUID();
+  const writeIn = input.writeIn ? { writeIn: input.writeIn } : {};
   const createdAt = new Date().toISOString();
   const seal = sealSessionFromPen(input.session);
   let routeKey = '';
@@ -118,6 +120,7 @@ export async function castPollVote(input: {
       requestId: voteId,
       voteId,
       optionId: input.optionId,
+      ...writeIn,
       spreadsheetId: input.spreadsheetId,
       docId: input.docId,
       createdAt
@@ -134,6 +137,7 @@ export async function castPollVote(input: {
       pollId: input.spreadsheetId,
       docId: input.docId,
       optionId: input.optionId,
+      ...writeIn,
       voteId
     },
     { pnIdentifier: input.session.pnIdentifier }

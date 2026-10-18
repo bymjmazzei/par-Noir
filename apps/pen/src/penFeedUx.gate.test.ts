@@ -291,9 +291,8 @@ describe('pen feed UX chrome', () => {
     expect(panel).not.toMatch(/aria-label="Add text layer"/);
     expect(menu).not.toMatch(/Vote sticker|Embed table|Open sticker/);
     expect(menu).toMatch(/insertWidgetCopy/);
-    expect(menu).toMatch(/placePageWidget/);
-    expect(menu).toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
-    expect(menu).toMatch(/pickPreset/);
+    expect(menu).not.toMatch(/placePageWidget/);
+    expect(menu).toMatch(/curatedWidgetPosterSrc/);
     expect(menu).toMatch(/Add widget/);
     expect(menu).toMatch(/My widgets/);
     expect(menu).toMatch(/All widgets/);

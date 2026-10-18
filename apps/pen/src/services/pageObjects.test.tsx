@@ -8,7 +8,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   createTextLookLayer,
   emptySection,
-  placePageWidget,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { buildSocialTemplateRailItems } from './classFeedRailItems';
@@ -18,7 +17,7 @@ import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { SoundCatalogMenu } from '../components/SoundCatalogMenu';
 
 describe('page objects', () => {
-  it('adds text from the flat Add menu; looks live in the ribbon; widget presets in the picker', () => {
+  it('adds text from the flat Add menu; looks live in the ribbon; picker lists whole widgets', () => {
     const menu = readFileSync(resolve(__dirname, '../components/LayersPanel.tsx'), 'utf8');
     const presets = readFileSync(resolve(__dirname, '../components/layersAddMenu.ts'), 'utf8');
     const picker = readFileSync(resolve(__dirname, '../components/ActionLayerMenu.tsx'), 'utf8');
@@ -35,11 +34,8 @@ describe('page objects', () => {
     }
     expect(ribbon).toMatch(/LAYERS_TEXT_LOOK_PRESETS/);
     expect(ribbon).toMatch(/textLookStyle/);
-    for (const label of ['Poll', 'Countdown', 'Link']) {
-      expect(presets).toContain(label);
-    }
-    expect(picker).toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
-    expect(picker).toMatch(/placePageWidget/);
+    expect(picker).not.toMatch(/placePageWidget|LAYERS_WIDGET_ELEMENTS/);
+    expect(picker).toMatch(/curatedWidgetPosterSrc/);
     expect(presets).not.toMatch(/look: 'label'/);
     const title = createTextLookLayer('title');
     expect(title.name).toBe('Title');
@@ -66,22 +62,6 @@ describe('page objects', () => {
     expect(html).toContain('Text');
     expect(html).not.toContain('Button trigger');
     expect(html).not.toContain('HTML snippet');
-  });
-
-  it('places a poll as two vote buttons', () => {
-    const placed = placePageWidget(emptySection('body'), 'poll');
-    const buttons = (placed.section.layers || []).filter((layer) => layer.kind === 'interactive');
-    expect(buttons).toHaveLength(2);
-    expect(buttons.every((layer) => layer.behavior === 'poll.vote')).toBe(true);
-    expect(buttons.every((layer) => layer.parentGroupId === placed.groupId)).toBe(true);
-    const countdown = placePageWidget(emptySection('body'), 'countdown');
-    const time = countdown.section.layers?.find((layer) => layer.widgetElement === 'time');
-    expect(time?.timeFace).toBe('countdown');
-    expect(time?.parentGroupId).toBe(countdown.groupId);
-    const link = placePageWidget(emptySection('body'), 'link');
-    const open = link.section.layers?.find((layer) => layer.kind === 'interactive');
-    expect(open?.behavior).toBe('cta.open');
-    expect(open?.parentGroupId).toBe(link.groupId);
   });
 
   it('places a GIPHY result as an image layer', () => {

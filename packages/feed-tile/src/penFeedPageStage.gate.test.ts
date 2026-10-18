@@ -11,4 +11,11 @@ describe('PenFeedPageStage overlay clock', () => {
     expect(src).toMatch(/externalClockSec != null \? externalClockSec : videoTime/);
     expect(src).not.toMatch(/mediaKind === 'video' \? videoTime : 0/);
   });
+
+  it('draws time layers as a ticking caption, not an empty box', () => {
+    const src = readFileSync(resolve(root, 'PenFeedPageStage.tsx'), 'utf8');
+    expect(src).toMatch(/widgetElement === 'time'\) \{\s*return <TimeFace/);
+    expect(src).toMatch(/data-pen-time="1"/);
+    expect(src).toMatch(/timeLayerCaption\(layer, now\)/);
+  });
 });

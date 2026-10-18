@@ -1,15 +1,10 @@
 /**
- * Browse widgets in-editor: My widgets, All widgets, quick presets, and search.
- * Catalog picks copy layers into the host section; presets use placePageWidget.
+ * Browse widgets in-editor: My widgets, All widgets, and search.
+ * Tiles are screenshots only (shipped poster, published poster, committed still).
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
-  emptySection,
   listStarterTemplates,
-  placePageWidget,
-  placeWidgetLayer,
-  type PageWidgetPreset,
-  type PenDocManifest,
   type PenPageLayer,
   type PenSectionContent,
   type PenTemplate
@@ -21,33 +16,14 @@ import { loadPublishedWidgetSections } from '../services/publishedWidgetIr';
 import { publicWidgetCatalog } from '../services/widgetCatalog';
 import { insertWidgetCopy } from '../services/widgetInsert';
 import { placeGiphySticker, searchGiphyStickers, type GiphyStickerHit } from '../services/giphyStickers';
-import {
-  LAYERS_PAGE_WIDGET_PRESETS,
-  LAYERS_WIDGET_ELEMENTS
-} from './layersAddMenu';
 import { previewBundleFromTemplate } from './TemplateGalleryThumb';
-import { resolveGalleryMedia, type GalleryMedia } from '../services/penGalleryPreview';
+import type { GalleryMedia } from '../services/penGalleryPreview';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { resolvePublicMediaSignedUrl } from '../services/penPublicFeedMedia';
+import { curatedWidgetPosterSrc } from '../services/widgetPosters';
 
 function sourceLayers(template: PenTemplate): PenPageLayer[] {
   return template.seedSections?.[0]?.layers || [];
-}
-
-function previewManifest(title: string): PenDocManifest {
-  const now = new Date().toISOString();
-  return {
-    docId: 'preview',
-    title,
-    docType: 'widget',
-    classId: 'widgets.widget',
-    templateId: 'preview',
-    templateVersion: '1',
-    groupId: 'preview',
-    toc: ['card'],
-    createdAt: now,
-    updatedAt: now
-  };
 }
 
 function NamedBlackTile({ name }: { name: string }) {
@@ -91,6 +67,25 @@ function CatalogMediaThumb({
   );
 }
 
+function PosterImage({ src, title }: { src: string | null; title: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (failed) return <NamedBlackTile name={title} />;
+  return (
+    <div className="pen-white-media-thumb flex items-center justify-center bg-white">
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          className="max-h-full max-w-full object-contain"
+          draggable={false}
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function PublicPosterThumb({
   fileId,
   title,
@@ -118,19 +113,7 @@ function PublicPosterThumb({
     };
   }, [fileId, session?.accessToken]);
   if (failed) return <NamedBlackTile name={title} />;
-  return (
-    <div className="pen-white-media-thumb flex items-center justify-center bg-white">
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          className="max-h-full max-w-full object-contain"
-          draggable={false}
-          onError={() => setFailed(true)}
-        />
-      ) : null}
-    </div>
-  );
+  return <PosterImage src={src} title={title} />;
 }
 
 function WidgetTemplateThumb({
@@ -144,40 +127,21 @@ function WidgetTemplateThumb({
   session?: PenSession | null;
   posterFileId?: string;
 }) {
+  const curated = curatedWidgetPosterSrc(template.id);
+  if (curated) return <PosterImage src={curated} title={template.title} />;
   if (posterFileId) {
     return <PublicPosterThumb fileId={posterFileId} title={template.title} session={session} />;
   }
-  const bundle = previewBundleFromTemplate(pn, template);
-  if (!bundle) {
+  const manifest = previewBundleFromTemplate(pn, template)?.manifest;
+  const still = manifest?.galleryPreviewPosterRef || manifest?.galleryPreviewRef;
+  if (!manifest || !still) {
     return <NamedBlackTile name={template.title} />;
   }
-  const media = resolveGalleryMedia(bundle.manifest, bundle.sections);
-  if (!media) {
-    return <NamedBlackTile name={template.title} />;
-  }
-  return (
-    <CatalogMediaThumb
-      media={media}
-      session={session}
-      docId={bundle.manifest.docId}
-    />
-  );
-}
-
-function SectionLayersThumb({
-  title,
-  section,
-  session
-}: {
-  title: string;
-  section: PenSectionContent;
-  session?: PenSession | null;
-}) {
-  const media = resolveGalleryMedia(previewManifest(title), [section]);
-  if (media) {
-    return <CatalogMediaThumb media={media} session={session} />;
-  }
-  return <div className="pen-white-media-thumb bg-white" aria-hidden />;
+  const media: GalleryMedia = {
+    src: still,
+    kind: manifest.galleryPreviewPosterRef || manifest.galleryPreviewKind !== 'video' ? 'image' : 'video'
+  };
+  return <CatalogMediaThumb media={media} session={session} docId={manifest.docId} />;
 }
 
 export function ActionLayerMenu({
@@ -185,7 +149,6 @@ export function ActionLayerMenu({
   docId,
   section,
   onInserted,
-  onPlaceElement,
   onCancel,
   classId = 'widgets.widget'
 }: {
@@ -193,14 +156,15 @@ export function ActionLayerMenu({
   docId: string;
   section: PenSectionContent;
   onInserted: (section: PenSectionContent, groupId: string) => void;
-  onPlaceElement?: (element: 'input' | 'button' | 'time' | 'html') => void;
   onCancel: () => void;
   classId?: 'widgets.widget' | 'widgets.sticker';
 }) {
   const sticker = classId === 'widgets.sticker';
   const noun = sticker ? 'sticker' : 'widget';
   const pn = session?.pnIdentifier || '';
-  const starters = listStarterTemplates().filter((t) => t.classId === classId);
+  const starters = listStarterTemplates().filter(
+    (t) => t.classId === classId && sourceLayers(t).length > 0
+  );
   const yours = pn
     ? personalTemplatesAsPenTemplates(pn).filter((t) => t.classId === classId)
     : [];
@@ -235,20 +199,6 @@ export function ActionLayerMenu({
     };
   }, [classId]);
 
-  const shownPresets = useMemo(() => {
-    if (sticker || tab !== 'all') return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return LAYERS_PAGE_WIDGET_PRESETS;
-    return LAYERS_PAGE_WIDGET_PRESETS.filter(({ label }) => label.toLowerCase().includes(q));
-  }, [query, sticker, tab]);
-
-  const shownElements = useMemo(() => {
-    if (sticker || tab !== 'all' || !onPlaceElement) return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return LAYERS_WIDGET_ELEMENTS;
-    return LAYERS_WIDGET_ELEMENTS.filter(({ label }) => label.toLowerCase().includes(q));
-  }, [onPlaceElement, query, sticker, tab]);
-
   const shownTemplates = useMemo(() => {
     const q = query.trim().toLowerCase();
     const rows = tab === 'mine' ? yours : [...starters, ...remote];
@@ -263,21 +213,7 @@ export function ActionLayerMenu({
     return giphyHits.filter((hit) => (hit.title || '').toLowerCase().includes(q));
   }, [giphyHits, query, sticker]);
 
-  const emptyGallery =
-    shownPresets.length === 0 &&
-    shownElements.length === 0 &&
-    shownTemplates.length === 0 &&
-    shownGiphy.length === 0;
-
-  function pickPreset(preset: PageWidgetPreset) {
-    if (!session?.pnIdentifier) {
-      setError(`Unlock to add a ${noun}`);
-      return;
-    }
-    setError(null);
-    const placed = placePageWidget(section, preset);
-    onInserted(placed.section, placed.groupId);
-  }
+  const emptyGallery = shownTemplates.length === 0 && shownGiphy.length === 0;
 
   async function pick(template: PenTemplate) {
     if (!session?.pnIdentifier) {
@@ -379,46 +315,6 @@ export function ActionLayerMenu({
           )}
           <div className="pen-gallery">
             <div className="pen-gallery-tiles">
-              {shownPresets.map(({ preset, label }) => {
-                const placed = placePageWidget(emptySection('body'), preset);
-                return (
-                  <div key={`preset:${preset}`} className="pen-gallery-slot">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className="pen-gallery-tile disabled:opacity-50"
-                      onClick={() => pickPreset(preset)}
-                    >
-                      <div className="pen-gallery-tile-title">
-                        <span className="pen-gallery-tile-title-text">{label}</span>
-                      </div>
-                      <span className="pen-gallery-tile-preview">
-                        <SectionLayersThumb title={label} section={placed.section} session={session} />
-                      </span>
-                    </button>
-                  </div>
-                );
-              })}
-              {shownElements.map(({ element, label }) => {
-                const placed = placeWidgetLayer(emptySection('body'), null, element);
-                return (
-                  <div key={`element:${element}`} className="pen-gallery-slot">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className="pen-gallery-tile disabled:opacity-50"
-                      onClick={() => onPlaceElement?.(element)}
-                    >
-                      <div className="pen-gallery-tile-title">
-                        <span className="pen-gallery-tile-title-text">{label}</span>
-                      </div>
-                      <span className="pen-gallery-tile-preview">
-                        <SectionLayersThumb title={label} section={placed.section} session={session} />
-                      </span>
-                    </button>
-                  </div>
-                );
-              })}
               {shownTemplates.map((template) => (
                 <div key={template.id} className="pen-gallery-slot">
                   <button

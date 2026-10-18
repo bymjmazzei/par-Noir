@@ -5,6 +5,7 @@ import {
   emptyPenViewerState,
   penViewerButtonFace,
   pressPenAction,
+  timeLayerCaption,
   type PenActionEffect,
   type PenFeedPagePayload,
   type PenPageLayer,
@@ -41,6 +42,29 @@ function layerShellStyle(layer: PenPageLayer, canvas: { w: number; h: number }):
     transform: layer.rotate ? `rotate(${layer.rotate}deg)` : undefined,
     borderRadius: layer.cornerRadius != null ? `${layer.cornerRadius}px` : undefined
   };
+}
+
+/** Clock or countdown face; a countdown ticks every second. */
+function TimeFace({ layer, shell }: { layer: PenPageLayer; shell: CSSProperties }) {
+  const [now, setNow] = useState(() => Date.now());
+  const ticking = (layer.timeFace ?? (layer.closesAt ? 'countdown' : 'blank')) === 'countdown';
+  useEffect(() => {
+    if (!ticking) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [ticking]);
+  const caption = timeLayerCaption(layer, now);
+  if (!caption) return null;
+  return (
+    <div
+      className="pointer-events-none flex items-center justify-center overflow-hidden whitespace-nowrap text-xs tabular-nums"
+      style={shell}
+      data-pen-layer={layer.id}
+      data-pen-time="1"
+    >
+      {caption}
+    </div>
+  );
 }
 
 function OverlayLayer({
@@ -82,6 +106,9 @@ function OverlayLayer({
         {buttonLabel(layer, state)}
       </button>
     );
+  }
+  if (layer.widgetElement === 'time') {
+    return <TimeFace layer={layer} shell={shell} />;
   }
   if (layer.widgetElement === 'input') {
     return (

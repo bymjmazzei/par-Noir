@@ -3,22 +3,17 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('ActionLayerMenu', () => {
-  it('lists quick presets in the widget picker via placePageWidget', () => {
+  it('shows whole widgets as screenshot tiles, not building blocks', () => {
     const src = readFileSync(resolve(__dirname, 'ActionLayerMenu.tsx'), 'utf8');
-    expect(src).toMatch(/LAYERS_PAGE_WIDGET_PRESETS/);
-    expect(src).toMatch(/placePageWidget/);
-    expect(src).toMatch(/pickPreset/);
+    expect(src).not.toMatch(/placePageWidget|LAYERS_PAGE_WIDGET_PRESETS|LAYERS_WIDGET_ELEMENTS/);
+    expect(src).not.toMatch(/onPlaceElement|SectionLayersThumb|resolveGalleryMedia/);
+    expect(src).toMatch(/sourceLayers\(t\)\.length > 0/);
+    expect(src).toMatch(/curatedWidgetPosterSrc/);
+    expect(src).toMatch(/resolvePublicMediaSignedUrl/);
+    expect(src).toMatch(/posters/);
     expect(src).toMatch(/Add widget/);
-    expect(src).toMatch(/shownPresets/);
     expect(src).toMatch(/pen-gallery-tiles/);
     expect(src).toMatch(/pen-action-layer-overlay/);
     expect(src).toMatch(/pen-named-black-tile/);
-    expect(src).toMatch(/onPlaceElement/);
-    expect(src).toMatch(/resolvePublicMediaSignedUrl/);
-    expect(src).toMatch(/posters/);
-    const presets = readFileSync(resolve(__dirname, 'layersAddMenu.ts'), 'utf8');
-    for (const label of ['Poll', 'Countdown', 'Link']) {
-      expect(presets).toContain(label);
-    }
   });
 });

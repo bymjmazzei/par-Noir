@@ -21,6 +21,7 @@ import {
   type WidgetActionRow
 } from './widgetElements.js';
 import { checkLink, type LinkWarning } from './linkSafety.js';
+import { normalizeWriteIn } from './pollSheet.js';
 import { docToPlainText } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
 
@@ -43,7 +44,7 @@ export type PenActionEffect =
   | { kind: 'open'; url: string; host: string; warnings: LinkWarning[] }
   | { kind: 'mailto'; href: string; to: string }
   | { kind: 'messaging'; title: string; body: string; to: string }
-  | { kind: 'vote'; layerId: string; optionId: string; spreadsheetId?: string }
+  | { kind: 'vote'; layerId: string; optionId: string; spreadsheetId?: string; writeIn?: string }
   | { kind: 'widget_row'; spreadsheetId?: string; row: WidgetActionRow }
   | { kind: 'none' };
 
@@ -105,13 +106,22 @@ export function pressPenAction(input: {
     }
     case 'poll.vote': {
       const optionId = layer.bindRowId || layer.id;
+      let writeIn = '';
+      if (layer.writeIn) {
+        const field = layers.find(
+          (item) => item.widgetElement === 'input' && (item.parentGroupId || null) === groupId
+        );
+        writeIn = normalizeWriteIn(field ? state.inputs[field.id] : '');
+        if (!writeIn) return none;
+      }
       return {
         state: { ...state, voted: { ...state.voted, [groupKey]: optionId } },
         effect: {
           kind: 'vote',
           layerId: layer.id,
           optionId,
-          ...(spreadsheetId ? { spreadsheetId } : {})
+          ...(spreadsheetId ? { spreadsheetId } : {}),
+          ...(writeIn ? { writeIn } : {})
         }
       };
     }

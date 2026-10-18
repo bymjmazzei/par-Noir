@@ -82,5 +82,16 @@ describe('runFeedPenEffect', () => {
     });
     expect(ownerFetch.mock.calls[0][1]).toBe('/api/pen/polls/vote');
     expect(ownerFetch.mock.calls[0][2]).toMatchObject({ pollId: 'sheet-1', optionId: 'opt' });
+    expect(ownerFetch.mock.calls[0][2]).not.toHaveProperty('writeIn');
+  });
+
+  it('forwards a write-in answer with the vote', async () => {
+    await runFeedPenEffect({
+      effect: { kind: 'vote', layerId: 'b', optionId: 'other', spreadsheetId: 'sheet-1', writeIn: 'Dark mode' },
+      penDocId: 'doc-1',
+      creatorPnIdentifier: 'owner',
+      userPnIdentifier: 'viewer'
+    });
+    expect(ownerFetch.mock.calls[0][2]).toMatchObject({ optionId: 'other', writeIn: 'Dark mode' });
   });
 });

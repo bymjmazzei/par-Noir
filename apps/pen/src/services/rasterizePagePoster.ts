@@ -7,6 +7,8 @@
  * images before SVG foreignObject.
  */
 
+import { sanitizeWidgetMarkup } from '@par-noir/pen-protocol';
+
 const DEFAULT_MAX_EDGE = 1080;
 const JPEG_QUALITY = 0.85;
 
@@ -198,6 +200,64 @@ export function punchVideoHolesFromLive(liveRoot: HTMLElement, cloneRoot: HTMLEl
   cloneRoot.querySelectorAll('video').forEach((v) => v.remove());
 }
 
+const SNIPPET_SELECTOR = 'iframe[data-pen-html-snippet]';
+const snippetStills = new Map<string, string>();
+
+/** Snippet markup drawn on its own SVG, as a PNG data URL (cached per markup and size). */
+export async function snippetStillDataUrl(html: string, w: number, h: number): Promise<string> {
+  const key = `${w}x${h}:${html}`;
+  const cached = snippetStills.get(key);
+  if (cached) return cached;
+  const parsed = new DOMParser().parseFromString(sanitizeWidgetMarkup(html), 'text/html');
+  parsed.querySelectorAll('script, iframe, object, embed, link').forEach((n) => n.remove());
+  parsed.documentElement.setAttribute('style', `width:${w}px;height:${h}px;`);
+  const xhtml = new XMLSerializer().serializeToString(parsed.documentElement);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${xhtml}</foreignObject></svg>`;
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('snippet_raster_failed'));
+      i.src = url;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = w * 2;
+    canvas.height = h * 2;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas_unavailable');
+    ctx.scale(2, 2);
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = canvas.toDataURL('image/png');
+    snippetStills.set(key, data);
+    return data;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Sandboxed snippet frames cannot be serialized; swap each for a still of its markup. */
+export async function inlineHtmlSnippets(liveRoot: HTMLElement, cloneRoot: HTMLElement): Promise<void> {
+  const live = Array.from(liveRoot.querySelectorAll<HTMLIFrameElement>(SNIPPET_SELECTOR));
+  const clones = Array.from(cloneRoot.querySelectorAll<HTMLIFrameElement>(SNIPPET_SELECTOR));
+  for (let i = 0; i < Math.min(live.length, clones.length); i++) {
+    const frame = live[i]!;
+    const clone = clones[i]!;
+    const rect = frame.getBoundingClientRect();
+    const w = Math.max(1, Math.round(rect.width || frame.offsetWidth));
+    const h = Math.max(1, Math.round(rect.height || frame.offsetHeight));
+    try {
+      const img = document.createElement('img');
+      img.src = await snippetStillDataUrl(frame.getAttribute('srcdoc') || '', w, h);
+      img.alt = '';
+      img.style.cssText = `${clone.style.cssText};display:block;width:100%;height:100%;border:0;`;
+      clone.replaceWith(img);
+    } catch {
+      /* frame is dropped by sanitizeCloneForRaster */
+    }
+  }
+}
+
 /** Strip remaining taint sources after styles are inlined. */
 export function sanitizeCloneForRaster(clone: HTMLElement): void {
   clone.querySelectorAll('script, iframe, object, embed, link, style, canvas').forEach((n) =>
@@ -296,6 +356,7 @@ export async function rasterizeElementToPosterBlob(
   inlineSafeComputedStyles(el, clone);
   clone.style.overflow = 'hidden';
   if (punchVideos) punchVideoHolesFromLive(el, clone);
+  await inlineHtmlSnippets(el, clone);
   sanitizeCloneForRaster(clone);
 
   const host = document.createElement('div');

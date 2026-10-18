@@ -42,7 +42,8 @@ export function trackingSpreadsheetId(
 
 function isActionLayer(layer: PenPageLayer): boolean {
   if (layer.visible === false) return false;
-  if (layer.widgetElement === 'html' || layer.widgetElement === 'time' || layer.widgetElement === 'input') {
+  // HTML snippets are static art (no scripts), so they compose with the inert layers in z-order.
+  if (layer.widgetElement === 'time' || layer.widgetElement === 'input') {
     return true;
   }
   if (layer.kind !== 'interactive') return false;

@@ -6,7 +6,7 @@
 import { partitionLayersForCompose } from './actionPartition.js';
 import { docToPlainText } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
-import { sanitizeWidgetMarkup, timeLayerCaption } from './widgetElements.js';
+import { timeLayerCaption } from './widgetElements.js';
 
 function esc(value: string): string {
   return value
@@ -42,10 +42,6 @@ function buttonLabel(layer: PenPageLayer): string {
 function layerHtml(layer: PenPageLayer): string {
   const style = boxStyle(layer);
   const id = esc(layer.id);
-  if (layer.widgetElement === 'html') {
-    const src = esc(sanitizeWidgetMarkup(layer.htmlSource || ''));
-    return `<iframe sandbox="" data-pen-layer="${id}" title="${esc(layer.name || 'Snippet')}" style="${style};border:0;background:#fff" srcdoc="${src}"></iframe>`;
-  }
   if (layer.widgetElement === 'input') {
     const label = esc(layer.label || '');
     return `<input data-pen-layer="${id}" data-pen-input="1" placeholder="${label}" style="${style}" />`;

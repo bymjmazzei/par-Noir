@@ -45,6 +45,7 @@ export async function runFeedPenEffect(input: {
           ownerPnIdentifier: creatorPnIdentifier,
           pollId: effect.spreadsheetId,
           optionId: effect.optionId,
+          ...(effect.writeIn ? { writeIn: effect.writeIn } : {}),
           voteId: crypto.randomUUID(),
           docId: penDocId,
           createdAt: new Date().toISOString()

@@ -317,12 +317,15 @@ export function copyWidgetLayersIntoSection(
     );
   }
   let next = upsertLayer(host, group);
+  const ids = new Map(src.map((layer) => [layer.id, newLayerId()]));
   src.forEach((layer, i) => {
     const { id: _dropId, parentGroupId: _dropParent, spreadsheetId: _dropSheet, ...rest } = layer;
+    const revealLayerId = layer.revealLayerId ? ids.get(layer.revealLayerId) : undefined;
     next = upsertLayer(next, {
       ...rest,
+      ...(revealLayerId ? { revealLayerId } : {}),
       motion: offsetLayerMotion(layer.motion, dx, dy),
-      id: newLayerId(),
+      id: ids.get(layer.id)!,
       parentGroupId: group.id,
       positionLocked: false,
       x: layer.x + dx,

@@ -21,6 +21,7 @@ import {
   setSubmitTo,
   setTextLayerDoc,
   setVoteCorrect,
+  setVoteWriteIn,
   setWidgetHtml,
   setWidgetSvgOnLayer,
   type PenInteractiveBehavior,
@@ -309,6 +310,19 @@ export function WidgetEditorPanel({
                     }
                   />
                   Correct answer
+                </label>
+              )}
+              {layer.behavior === 'poll.vote' && (
+                <label className="flex items-center gap-2 text-stone-700">
+                  <input
+                    type="checkbox"
+                    aria-label="Write-in"
+                    checked={Boolean(layer.writeIn)}
+                    onChange={(event) =>
+                      onSectionChange(setVoteWriteIn(section, layer.id, event.target.checked))
+                    }
+                  />
+                  Write-in (uses this group&apos;s text input)
                 </label>
               )}
               {layer.behavior === 'cta.open' && (

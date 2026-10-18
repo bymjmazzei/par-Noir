@@ -17,14 +17,29 @@ export function voteDataHeaders(options: Array<{ label: string }>): string[] {
   return ['user', ...options.map((option) => option.label || 'Option')];
 }
 
+export const POLL_WRITE_IN_MAX = 200;
+
+/** Typed Other answer: trimmed, single line, capped. Empty when nothing usable was typed. */
+export function normalizeWriteIn(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, POLL_WRITE_IN_MAX);
+}
+
+/** A write-in option holds the typed answer instead of '1'. */
 export function voteMatrixRow(input: {
   user: string;
-  options: Array<{ id: string; label: string }>;
+  options: Array<{ id: string; label: string; writeIn?: boolean }>;
   optionId: string;
+  writeIn?: string;
 }): string[] {
   return [
     input.user,
-    ...input.options.map((option) => (option.id === input.optionId ? '1' : ''))
+    ...input.options.map((option) => {
+      if (option.id !== input.optionId) return '';
+      return option.writeIn ? normalizeWriteIn(input.writeIn) || '1' : '1';
+    })
   ];
 }
 
@@ -48,7 +63,7 @@ export function remapVoteRows(oldHeaders: string[], rows: string[][], newHeaders
 }
 
 export function countsFromVoteMatrix(
-  options: Array<{ id: string; label: string }>,
+  options: Array<{ id: string; label: string; writeIn?: boolean }>,
   rows: Array<Array<string | number | boolean | null>>
 ): PollCounts {
   const byOption: Record<string, number> = {};
@@ -56,7 +71,8 @@ export function countsFromVoteMatrix(
   for (const row of rows) {
     let voted = false;
     options.forEach((option, index) => {
-      if (String(row[index + 1] ?? '').trim() !== '1') return;
+      const cell = String(row[index + 1] ?? '').trim();
+      if (option.writeIn ? !cell : cell !== '1') return;
       byOption[option.id] = (byOption[option.id] || 0) + 1;
       voted = true;
     });
@@ -69,6 +85,8 @@ export const POLL_STRUCTURE_HEADERS = ['field', 'id', 'value'] as const;
 export interface PollOption {
   id: string;
   label: string;
+  /** Answer typed by the voter; tallied as this one option. */
+  writeIn?: boolean;
 }
 
 export interface PollStructure {
@@ -98,6 +116,9 @@ export function structureToSheetRows(structure: PollStructure): string[][] {
   }
   rows.push(['closes_at', '', structure.closesAt || '']);
   if (structure.correctOptionId) rows.push(['correct', structure.correctOptionId, '']);
+  for (const option of structure.options) {
+    if (option.writeIn) rows.push(['write_in', option.id, '']);
+  }
   return rows;
 }
 
@@ -106,6 +127,7 @@ export function sheetRowsToStructure(rows: Array<Array<string | number | boolean
   const options: PollOption[] = [];
   let closesAt: string | null = null;
   let correctOptionId: string | null = null;
+  const writeIns = new Set<string>();
   for (const row of rows) {
     const field = String(row[0] ?? '');
     const id = String(row[1] ?? '');
@@ -114,8 +136,14 @@ export function sheetRowsToStructure(rows: Array<Array<string | number | boolean
     else if (field === 'option' && id) options.push({ id, label: value });
     else if (field === 'closes_at') closesAt = value.trim() || null;
     else if (field === 'correct' && id) correctOptionId = id;
+    else if (field === 'write_in' && id) writeIns.add(id);
   }
-  return { question, options, closesAt, correctOptionId };
+  return {
+    question,
+    options: options.map((option) => (writeIns.has(option.id) ? { ...option, writeIn: true } : option)),
+    closesAt,
+    correctOptionId
+  };
 }
 
 export function emptyPollCounts(): PollCounts {
@@ -172,17 +200,20 @@ export function sectionHasVoteButton(
 
 export function structureFromLayers(section: PenSectionContent, groupId?: string | null): PollStructure {
   const scoped = pollLayers(section, groupId);
-  const questionLayer = scoped.find(
+  const textual = scoped.filter(
     (layer) =>
       layer.kind === 'text' &&
       layer.widgetElement !== 'time' &&
       layer.widgetElement !== 'input' &&
+      layer.widgetElement !== 'html' &&
       layer.name !== 'Results'
   );
+  const questionLayer = textual.find((layer) => layer.name === 'Question') || textual[0];
   const question = questionLayer ? docToPlainText(getTextLayerDoc(questionLayer)).trim() : '';
   const options = scoped.filter(isAnswerButton).map((layer) => ({
     id: layer.bindRowId || layer.id,
-    label: layer.label || layer.name || 'Option'
+    label: layer.label || layer.name || 'Option',
+    ...(layer.writeIn ? { writeIn: true } : {})
   }));
   const correct = scoped.find((layer) => isAnswerButton(layer) && layer.correct);
   const time = scoped.find((layer) => layer.widgetElement === 'time');

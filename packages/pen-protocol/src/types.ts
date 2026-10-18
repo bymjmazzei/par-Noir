@@ -134,6 +134,8 @@ export interface PenPageLayer {
   label?: string;
   /** Vote option marked correct. Pass/fail is vote plus this flag. */
   correct?: boolean;
+  /** Vote option whose answer is typed into the group's text input. Tallied as one option. */
+  writeIn?: boolean;
   /** Open trigger destination. */
   openUrl?: string;
   /** Submit trigger destination: an email address or a pn. */

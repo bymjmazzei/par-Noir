@@ -142,7 +142,7 @@ export async function readPollStructure(
 export async function appendPollVote(
   auth: OAuth2Client,
   spreadsheetId: string,
-  vote: { user: string; optionId: string }
+  vote: { user: string; optionId: string; writeIn?: string }
 ): Promise<{ appended: boolean; closed: boolean }> {
   const structure = await readPollStructure(auth, spreadsheetId);
   if (pollIsClosed(structure.closesAt)) return { appended: false, closed: true };
@@ -154,7 +154,12 @@ export async function appendPollVote(
   const rows = (existing.data.values || []).map((row) => row.map((cell) => String(cell ?? '')));
   const next = upsertUserRow(
     rows,
-    voteMatrixRow({ user: vote.user, options: structure.options, optionId: vote.optionId })
+    voteMatrixRow({
+      user: vote.user,
+      options: structure.options,
+      optionId: vote.optionId,
+      writeIn: vote.writeIn
+    })
   );
   const headers = voteDataHeaders(structure.options);
   await sheets.spreadsheets.values.update({

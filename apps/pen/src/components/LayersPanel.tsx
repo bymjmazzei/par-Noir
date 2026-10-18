@@ -257,15 +257,6 @@ export function LayersPopover({
     onSelectedIdsChange([layer.id]);
   }
 
-  function addPlaced(element: 'button' | 'time' | 'html' | 'input') {
-    const active = allLayers.find((layer) => layer.id === activeLayerId);
-    const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
-    const placed = placeWidgetLayer(prepared, groupId, element);
-    commit(placed.section);
-    onSelectLayer(placed.layerId);
-    onSelectedIdsChange([placed.layerId]);
-  }
-
   function closeMediaPicker() {
     setMediaOpen(false);
     setPendingDeviceFile(null);
@@ -689,10 +680,6 @@ export function LayersPopover({
           docId={docId}
           section={prepared}
           onInserted={insertWidget}
-          onPlaceElement={(element) => {
-            addPlaced(element);
-            setWidgetOpen(false);
-          }}
           onCancel={() => setWidgetOpen(false)}
         />
       )}

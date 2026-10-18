@@ -6,7 +6,12 @@
  */
 
 import type { Application, Request, Response } from 'express';
-import { hashPnIdentifier, isSheetTrigger } from '@par-noir/pen-protocol';
+import {
+  hashPnIdentifier,
+  isSheetTrigger,
+  normalizeWriteIn,
+  POLL_WRITE_IN_MAX
+} from '@par-noir/pen-protocol';
 import {
   gateFirstPartyOwnerRoute,
   requireFirstPartyOAuthClient,
@@ -150,6 +155,14 @@ export function setupPollVoteRoutes(app: Application): void {
       if (!structure) return res.status(404).json({ error: 'poll_not_found' });
       const rejected = structureRejectsVote(structure, optionId);
       if (rejected) return res.status(409).json({ error: rejected });
+      const rawWriteIn = req.body?.writeIn;
+      if (rawWriteIn != null && (typeof rawWriteIn !== 'string' || rawWriteIn.length > POLL_WRITE_IN_MAX * 2)) {
+        return res.status(400).json({ error: 'write_in_invalid' });
+      }
+      const writeIn = normalizeWriteIn(rawWriteIn);
+      const writeInOption = structure.options.find((option) => option.id === optionId)?.writeIn === true;
+      if (writeInOption && !writeIn) return res.status(400).json({ error: 'write_in_required' });
+      if (!writeInOption && writeIn) return res.status(409).json({ error: 'write_in_not_allowed' });
       await insertPollVoteCache({ voteId, pollId, optionId });
       const createdAt = new Date().toISOString();
       const enqueued = await enqueueSocialJob({
@@ -159,6 +172,7 @@ export function setupPollVoteRoutes(app: Application): void {
         sealed: {
           voteId,
           optionId,
+          ...(writeIn ? { writeIn } : {}),
           spreadsheetId: pollId,
           docId: docId || structure.docId,
           createdAt

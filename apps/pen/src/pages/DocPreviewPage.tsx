@@ -74,7 +74,8 @@ export function DocPreviewPage({
           ownerPnIdentifier: session.pnIdentifier,
           docId,
           spreadsheetId,
-          optionId: effect.optionId
+          optionId: effect.optionId,
+          writeIn: effect.writeIn
         });
         setStatus('Vote counted.');
         return;
