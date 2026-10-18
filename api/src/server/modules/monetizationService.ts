@@ -8,10 +8,49 @@ import type { Pool } from 'pg';
 import { getDatabasePool } from '../utils/database';
 import { EngagementService } from './engagementService';
 import { CreatorFundPeriodService, type ClosedFundPeriodRow } from './creatorFundPeriodService';
+import { isCreatorFundPayoutCadenceDayET } from './creatorFundPayoutCadence';
 
 type DbQueryable = Pick<Pool, 'query'>;
 
 const MIN_CREATOR_PAYOUT_CENTS = 1000;
+
+async function stripeChargeNetCents(
+  stripe: Stripe,
+  chargeId: string | null | undefined
+): Promise<{ netCents: number; grossCents: number; feeCents: number }> {
+  if (!chargeId || typeof chargeId !== 'string') {
+    return { netCents: 0, grossCents: 0, feeCents: 0 };
+  }
+  const ch = await stripe.charges.retrieve(chargeId, { expand: ['balance_transaction'] });
+  const grossCents = ch.amount ?? 0;
+  let feeCents = 0;
+  const bt = ch.balance_transaction;
+  if (bt && typeof bt !== 'string') {
+    feeCents = bt.fee ?? 0;
+  }
+  return { netCents: Math.max(0, grossCents - feeCents), grossCents, feeCents };
+}
+
+async function stripeNetFromCheckoutSession(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session
+): Promise<{ netCents: number; grossCents: number; feeCents: number }> {
+  const grossCents = session.amount_total ?? 0;
+  const pi = session.payment_intent;
+  let chargeId: string | null = null;
+  if (typeof pi === 'string') {
+    const intent = await stripe.paymentIntents.retrieve(pi);
+    chargeId =
+      typeof intent.latest_charge === 'string' ? intent.latest_charge : intent.latest_charge?.id ?? null;
+  } else if (pi && typeof pi === 'object') {
+    chargeId =
+      typeof pi.latest_charge === 'string' ? pi.latest_charge : pi.latest_charge?.id ?? null;
+  }
+  if (!chargeId) {
+    return { netCents: grossCents, grossCents, feeCents: 0 };
+  }
+  return stripeChargeNetCents(stripe, chargeId);
+}
 
 function payoutHoldDays(): number {
   const raw = process.env.CREATOR_FUND_PAYOUT_HOLD_DAYS?.trim();
@@ -61,15 +100,39 @@ async function creatorPayoutLedgerSnapshot(
   const processing = await db.query(
     `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS s
      FROM creator_fund_payout_requests
-     WHERE pn_identifier = $1 AND status = 'processing'`,
+     WHERE pn_identifier = $1 AND status IN ('processing', 'queued')`,
+    [pn]
+  );
+  const renewalDebits = await db.query(
+    `SELECT COALESCE(SUM(-delta_cents), 0)::bigint AS s
+     FROM creator_fund_ledger_entries
+     WHERE pn_identifier = $1 AND delta_cents < 0
+       AND reason IN ('maintenance_renewal_balance', 'maintenance_renewal_balance_partial')`,
     [pn]
   );
   return {
     payableEarnedCents: Number(past.rows[0]?.s ?? 0),
     inHoldEarnedCents: Number(hold.rows[0]?.s ?? 0),
     paidOutCents: Number(paid.rows[0]?.s ?? 0),
-    processingReservedCents: Number(processing.rows[0]?.s ?? 0)
+    processingReservedCents: Number(processing.rows[0]?.s ?? 0),
+    renewalDebitsCents: Number(renewalDebits.rows[0]?.s ?? 0)
   };
+}
+
+/** Earnings past hold minus maintenance debits, payouts, and in-flight transfers. */
+export function creatorFundAvailableCents(snap: {
+  payableEarnedCents: number;
+  paidOutCents: number;
+  processingReservedCents: number;
+  renewalDebitsCents: number;
+}): number {
+  return Math.max(
+    0,
+    snap.payableEarnedCents -
+      snap.renewalDebitsCents -
+      snap.paidOutCents -
+      snap.processingReservedCents
+  );
 }
 
 function getStripe(): Stripe | null {
@@ -104,7 +167,6 @@ export interface MonetizationStatusDto {
   verified: boolean;
   maintenanceActive: boolean;
   currentPeriodEnd: string | null;
-  balanceCents: number;
   renewalPriceCents: number | null;
   eligibleForFundAccrual: boolean;
   stripeConfigured: boolean;
@@ -142,12 +204,6 @@ export class MonetizationService {
         }
       | undefined;
 
-    const balRes = await pool.query(
-      `SELECT balance_cents FROM creator_fund_balances WHERE pn_identifier = $1`,
-      [pn]
-    );
-    const balanceCents = balRes.rows[0] ? Number(balRes.rows[0].balance_cents) || 0 : 0;
-
     const connectRes = await pool.query(
       `SELECT payouts_enabled FROM creator_fund_connect_accounts WHERE pn_identifier = $1`,
       [pn]
@@ -180,23 +236,20 @@ export class MonetizationService {
       payableEarnedCents: 0,
       inHoldEarnedCents: 0,
       paidOutCents: 0,
-      processingReservedCents: 0
+      processingReservedCents: 0,
+      renewalDebitsCents: 0
     };
     try {
       ledgerSnap = await creatorPayoutLedgerSnapshot(pool, pn);
     } catch {
       /* tables may be absent until migration on older deployments */
     }
-    const creatorFundPayoutAvailableCents = Math.max(
-      0,
-      ledgerSnap.payableEarnedCents - ledgerSnap.paidOutCents - ledgerSnap.processingReservedCents
-    );
+    const creatorFundPayoutAvailableCents = creatorFundAvailableCents(ledgerSnap);
 
     return {
       verified,
       maintenanceActive,
       currentPeriodEnd: row?.current_period_end ? new Date(row.current_period_end).toISOString() : null,
-      balanceCents,
       renewalPriceCents,
       eligibleForFundAccrual,
       stripeConfigured: isStripeMonetizationConfigured(),
@@ -308,18 +361,11 @@ export class MonetizationService {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO creator_fund_balances (pn_identifier, balance_cents) VALUES ($1, 0)
-         ON CONFLICT (pn_identifier) DO NOTHING`,
-        [pn]
-      );
-      const balRow = await client.query(
-        `SELECT balance_cents FROM creator_fund_balances WHERE pn_identifier = $1 FOR UPDATE`,
-        [pn]
-      );
-      const balance = balRow.rows[0] ? Number(balRow.rows[0].balance_cents) || 0 : 0;
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('cf_payout:' || $1::text))`, [pn]);
+      const snap = await creatorPayoutLedgerSnapshot(client, pn);
+      const available = creatorFundAvailableCents(snap);
 
-      if (balance <= 0) {
+      if (available <= 0) {
         await client.query('ROLLBACK');
         return {
           renewed: false,
@@ -329,14 +375,8 @@ export class MonetizationService {
         };
       }
 
-      if (balance >= renewalCents) {
-        const newBalance = balance - renewalCents;
-        await client.query(
-          `INSERT INTO creator_fund_balances (pn_identifier, balance_cents, updated_at)
-           VALUES ($1, $2, NOW())
-           ON CONFLICT (pn_identifier) DO UPDATE SET balance_cents = $2, updated_at = NOW()`,
-          [pn, newBalance]
-        );
+      if (available >= renewalCents) {
+        const newBalance = available - renewalCents;
 
         const sub = await client.query(
           `SELECT current_period_end FROM monetization_subscriptions WHERE pn_identifier = $1 FOR UPDATE`,
@@ -375,24 +415,17 @@ export class MonetizationService {
         return { renewed: true, balanceAfter: newBalance, needsPayment: false };
       }
 
-      // Partial balance: debit all, create shortfall Checkout
-      const shortfallCents = renewalCents - balance;
+      const shortfallCents = renewalCents - available;
       const newBalance = 0;
-      await client.query(
-        `INSERT INTO creator_fund_balances (pn_identifier, balance_cents, updated_at)
-         VALUES ($1, $2, NOW())
-         ON CONFLICT (pn_identifier) DO UPDATE SET balance_cents = $2, updated_at = NOW()`,
-        [pn, newBalance]
-      );
       await client.query(
         `INSERT INTO creator_fund_ledger_entries (pn_identifier, delta_cents, balance_after_cents, reason, ref_type)
          VALUES ($1, $2, $3, 'maintenance_renewal_balance_partial', 'maintenance')`,
-        [pn, -balance, newBalance]
+        [pn, -available, newBalance]
       );
       await client.query(
         `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, metadata)
          VALUES ($1, 'ledger_balance', 'maintenance_renewal_partial', $2, 'USD', $3::jsonb)`,
-        [pn, balance, JSON.stringify({ channel: 'balance_first_partial', shortfallCents })]
+        [pn, available, JSON.stringify({ channel: 'balance_first_partial', shortfallCents })]
       );
       await client.query('COMMIT');
 
@@ -540,7 +573,7 @@ export class MonetizationService {
   static async requestCreatorFundPayout(
     pnIdentifier: string,
     amountCents: number
-  ): Promise<{ transferId: string; amountCents: number }> {
+  ): Promise<{ payoutRequestId: string; amountCents: number; status: 'queued' }> {
     const stripe = getStripe();
     if (!stripe) throw new Error('stripe_not_configured');
     const pn = pnIdentifier.trim();
@@ -558,17 +591,13 @@ export class MonetizationService {
     if (!destRes.rows[0]?.stripe_account_id || !destRes.rows[0]?.payouts_enabled) {
       throw new Error('connect_payouts_not_ready');
     }
-    const destination = destRes.rows[0].stripe_account_id as string;
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await client.query(`SELECT pg_advisory_xact_lock(hashtext('cf_payout:' || $1::text))`, [pn]);
       const snap = await creatorPayoutLedgerSnapshot(client, pn);
-      const available = Math.max(
-        0,
-        snap.payableEarnedCents - snap.paidOutCents - snap.processingReservedCents
-      );
+      const available = creatorFundAvailableCents(snap);
       if (amt > available) {
         await client.query('ROLLBACK');
         throw new Error('payout_exceeds_available');
@@ -576,33 +605,14 @@ export class MonetizationService {
 
       const insertRes = await client.query(
         `INSERT INTO creator_fund_payout_requests (pn_identifier, amount_cents, status)
-         VALUES ($1, $2, 'processing')
+         VALUES ($1, $2, 'queued')
          RETURNING id`,
         [pn, amt]
       );
       const payoutRowId = String(insertRes.rows[0].id);
 
-      const transfer = await stripe.transfers.create({
-        amount: amt,
-        currency: 'usd',
-        destination,
-        metadata: {
-          payout_request_id: payoutRowId,
-          purpose: 'creator_fund_bounty'
-        }
-      });
-
-      await client.query(
-        `UPDATE creator_fund_payout_requests SET
-           status = 'paid',
-           stripe_transfer_id = $2,
-           updated_at = NOW()
-         WHERE id = $1::uuid AND status = 'processing'`,
-        [payoutRowId, transfer.id]
-      );
-
       await client.query('COMMIT');
-      return { transferId: transfer.id, amountCents: amt };
+      return { payoutRequestId: payoutRowId, amountCents: amt, status: 'queued' };
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
@@ -611,24 +621,112 @@ export class MonetizationService {
     }
   }
 
+  /** Cron: execute queued Connect transfers on 1st/15th Eastern (or `force` for ops). */
+  static async runQueuedCreatorFundPayouts(opts?: {
+    force?: boolean;
+  }): Promise<{ processed: number; skipped?: string; errors: string[] }> {
+    const stripe = getStripe();
+    if (!stripe) throw new Error('stripe_not_configured');
+    if (!opts?.force && !isCreatorFundPayoutCadenceDayET()) {
+      return { processed: 0, skipped: 'not_payout_cadence_day', errors: [] };
+    }
+    const pool = getDatabasePool();
+    const queued = await pool.query(
+      `SELECT id, pn_identifier, amount_cents
+       FROM creator_fund_payout_requests
+       WHERE status = 'queued'
+       ORDER BY created_at ASC
+       LIMIT 200`
+    );
+    let processed = 0;
+    const errors: string[] = [];
+    for (const row of queued.rows) {
+      const payoutRowId = String(row.id);
+      const pn = String(row.pn_identifier).trim();
+      const amt = Number(row.amount_cents);
+      try {
+        await this.syncConnectStatus(pn);
+        const destRes = await pool.query(
+          `SELECT stripe_account_id, payouts_enabled FROM creator_fund_connect_accounts WHERE pn_identifier = $1`,
+          [pn]
+        );
+        const destination = destRes.rows[0]?.stripe_account_id as string | undefined;
+        if (!destination || !destRes.rows[0]?.payouts_enabled) {
+          errors.push(`${payoutRowId}:connect_not_ready`);
+          continue;
+        }
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query(`SELECT pg_advisory_xact_lock(hashtext('cf_payout:' || $1::text))`, [pn]);
+          const locked = await client.query(
+            `SELECT id, amount_cents FROM creator_fund_payout_requests
+             WHERE id = $1::uuid AND status = 'queued' FOR UPDATE`,
+            [payoutRowId]
+          );
+          if (locked.rows.length === 0) {
+            await client.query('ROLLBACK');
+            continue;
+          }
+          await client.query(
+            `UPDATE creator_fund_payout_requests SET status = 'processing', updated_at = NOW()
+             WHERE id = $1::uuid`,
+            [payoutRowId]
+          );
+          const transfer = await stripe.transfers.create({
+            amount: amt,
+            currency: 'usd',
+            destination,
+            metadata: { payout_request_id: payoutRowId, purpose: 'creator_fund_bounty' }
+          });
+          await client.query(
+            `UPDATE creator_fund_payout_requests SET
+               status = 'paid',
+               stripe_transfer_id = $2,
+               updated_at = NOW()
+             WHERE id = $1::uuid`,
+            [payoutRowId, transfer.id]
+          );
+          await client.query('COMMIT');
+          processed += 1;
+        } catch (e) {
+          await client.query('ROLLBACK');
+          await pool.query(
+            `UPDATE creator_fund_payout_requests SET status = 'failed', updated_at = NOW() WHERE id = $1::uuid`,
+            [payoutRowId]
+          );
+          errors.push(`${payoutRowId}:${e instanceof Error ? e.message : 'transfer_failed'}`);
+        } finally {
+          client.release();
+        }
+      } catch (e) {
+        errors.push(`${payoutRowId}:${e instanceof Error ? e.message : 'outer_failed'}`);
+      }
+    }
+    return { processed, errors };
+  }
+
   /**
    * Unconditional paid license — direct charge on seller's Connect account (seller MoR).
    */
   static async createLicenseCheckoutSession(input: {
-    sellerPn: string;
     buyerPn: string;
     assetId: string;
     scope: 'personal' | 'commercial';
-    priceCents: number;
     returnBaseUrl: string;
   }): Promise<{ url: string }> {
     const stripe = getStripe();
     if (!stripe) throw new Error('stripe_not_configured');
-    const seller = input.sellerPn.trim();
     const buyer = input.buyerPn.trim();
     const assetId = input.assetId.trim();
-    const priceCents = Math.floor(Number(input.priceCents));
-    if (!seller || !buyer || !assetId || priceCents <= 0) {
+    const scope = input.scope === 'commercial' ? 'commercial' : 'personal';
+    if (!buyer || !assetId) {
+      throw new Error('license_checkout_invalid');
+    }
+    const { resolvePaidLicenseOffer } = await import('./licenseGrantService');
+    const { sellerPn, priceCents } = await resolvePaidLicenseOffer(assetId, scope);
+    const seller = sellerPn.trim();
+    if (!seller || priceCents <= 0) {
       throw new Error('license_checkout_invalid');
     }
     await this.syncConnectStatus(seller);
@@ -663,7 +761,8 @@ export class MonetizationService {
         metadata: {
           kind: 'license_purchase',
           asset_id: assetId,
-          scope: input.scope,
+          scope,
+          price_cents: String(priceCents),
           seller_pn: seller,
           buyer_pn: buyer,
           pn_identifier: buyer
@@ -673,6 +772,44 @@ export class MonetizationService {
     );
     if (!session.url) throw new Error('checkout_no_url');
     return { url: session.url };
+  }
+
+  static constructConnectWebhookEvent(rawBody: Buffer, signature: string | undefined): Stripe.Event {
+    const stripe = getStripe();
+    const wh = process.env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim();
+    if (!stripe || !wh) {
+      throw new Error('stripe_connect_webhook_not_configured');
+    }
+    if (!signature) {
+      throw new Error('missing_signature');
+    }
+    return stripe.webhooks.constructEvent(rawBody, signature, wh);
+  }
+
+  static async handleStripeConnectWebhookEvent(event: Stripe.Event): Promise<void> {
+    if (event.type !== 'checkout.session.completed') return;
+    const session = event.data.object as Stripe.Checkout.Session;
+    const kind = (session.metadata?.kind || '').trim();
+    if (kind !== 'license_purchase') return;
+    const buyer = (session.metadata?.buyer_pn || '').trim();
+    const seller = (session.metadata?.seller_pn || '').trim();
+    const assetId = (session.metadata?.asset_id || '').trim();
+    const scope = session.metadata?.scope === 'commercial' ? 'commercial' : 'personal';
+    const priceCents = Math.floor(Number(session.metadata?.price_cents || session.amount_total || 0));
+    const paymentRef =
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id || session.id;
+    if (!buyer || !seller || !assetId || priceCents <= 0) return;
+    const { insertLicenseGrant } = await import('./licenseGrantService');
+    await insertLicenseGrant({
+      assetId,
+      sellerPn: seller,
+      buyerPn: buyer,
+      scope,
+      priceCents,
+      stripePaymentRef: paymentRef
+    });
   }
 
   static constructWebhookEvent(rawBody: Buffer, signature: string | undefined): Stripe.Event {
@@ -699,7 +836,8 @@ export class MonetizationService {
         const kind = (session.metadata?.kind || '').trim();
 
         if (session.mode === 'payment' && kind === 'maintenance_shortfall' && pn) {
-          const shortfall = Math.floor(Number(session.metadata?.shortfall_cents || session.amount_total || 0));
+          const { netCents, grossCents, feeCents } = await stripeNetFromCheckoutSession(stripe, session);
+          const shortfall = netCents > 0 ? netCents : Math.floor(Number(session.amount_total || 0));
           if (shortfall > 0) {
             await pool.query(
               `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, stripe_event_id, metadata)
@@ -709,7 +847,12 @@ export class MonetizationService {
                 pn,
                 shortfall,
                 event.id,
-                JSON.stringify({ checkout_session_id: session.id, channel: 'shortfall' })
+                JSON.stringify({
+                  checkout_session_id: session.id,
+                  channel: 'shortfall',
+                  gross_cents: grossCents,
+                  stripe_fee_cents: feeCents
+                })
               ]
             );
             const sub = await pool.query(
@@ -736,29 +879,6 @@ export class MonetizationService {
         }
 
         if (session.mode === 'payment' && kind === 'license_purchase') {
-          // Seller-MoR direct charge: record grant stub for buyer (ZKP mint is client/server follow-on).
-          const buyer = (session.metadata?.buyer_pn || pn || '').trim();
-          const assetId = (session.metadata?.asset_id || '').trim();
-          const scope = (session.metadata?.scope || 'personal').trim();
-          if (buyer && assetId) {
-            await pool.query(
-              `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, stripe_event_id, metadata)
-               VALUES ($1, 'stripe_connect_direct', 'license_purchase', $2, 'USD', $3, $4::jsonb)
-               ON CONFLICT (stripe_event_id) DO NOTHING`,
-              [
-                buyer,
-                Math.floor(Number(session.amount_total || 0)),
-                event.id,
-                JSON.stringify({
-                  asset_id: assetId,
-                  scope,
-                  seller_pn: session.metadata?.seller_pn || '',
-                  checkout_session_id: session.id,
-                  note: 'seller_mor_direct_charge'
-                })
-              ]
-            );
-          }
           break;
         }
 
@@ -801,8 +921,8 @@ export class MonetizationService {
       }
       case 'invoice.paid': {
         const inv = event.data.object as Stripe.Invoice;
-        const amount = inv.amount_paid ?? 0;
-        if (amount <= 0) break;
+        const gross = inv.amount_paid ?? 0;
+        if (gross <= 0) break;
         let pn = (inv.metadata?.pn_identifier || '').trim();
         if (!pn && inv.subscription) {
           const subId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription.id;
@@ -810,6 +930,10 @@ export class MonetizationService {
           pn = (sub.metadata?.pn_identifier || '').trim();
         }
         if (!pn) break;
+        const chargeId =
+          typeof inv.charge === 'string' ? inv.charge : inv.charge?.id ?? null;
+        const { netCents, grossCents, feeCents } = await stripeChargeNetCents(stripe, chargeId);
+        const amount = netCents > 0 ? netCents : gross;
         const ins = await pool.query(
           `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, stripe_event_id, metadata)
            VALUES ($1, 'stripe', $2, $3, $4, $5, $6::jsonb)
@@ -821,7 +945,12 @@ export class MonetizationService {
             amount,
             (inv.currency || 'usd').toUpperCase(),
             event.id,
-            JSON.stringify({ invoice_id: inv.id, subscription: inv.subscription })
+            JSON.stringify({
+              invoice_id: inv.id,
+              subscription: inv.subscription,
+              gross_cents: grossCents || gross,
+              stripe_fee_cents: feeCents
+            })
           ]
         );
         if (ins.rows.length === 0) {

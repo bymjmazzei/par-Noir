@@ -161,7 +161,7 @@ Example: content-rights bucket = 1500; creator claims **7500** (75%) → content
 
 **In pool (earn weight):** root comments on the post; replies in that thread; comments that appear because of a **repost** (attributed to the original post’s bounty pie unless product later splits original/reposter).
 
-**Out of pool or tiny weight (policy later):** bare likes/views; bare repost with no comment.
+**Bounty weight multipliers (period close):** `comment` = **1.0**, `share` = **0.25**, `save` = **0.25**, `like` = **0.1** (constants in `@par-noir/pen-protocol` `ENGAGEMENT_BOUNTY_WEIGHTS`). Bare views and bare repost-without-comment supply **no** weight today.
 
 **Eligibility to receive** engager payouts (when wired): same fund-monetizable rules as other fund disbursements. Unverified actors may still contribute weight into the **10%** unverified bounty dollar pool per existing 90/10 rules.
 

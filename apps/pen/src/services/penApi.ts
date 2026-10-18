@@ -54,25 +54,42 @@ export async function fetchTemplates(accessToken: string) {
 
 export type StorageTierName = 'free' | 'feed' | 'self-hosted' | string;
 
-/**
- * Stripe Connect payouts enabled — gates Conditional (unconditionalPaid) licensing.
- * Fail closed: false when lookup fails.
- */
-export async function fetchMonetizationConnectReady(
+export type PenMonetizationStatus = {
+  maintenanceActive: boolean;
+  connectReady: boolean;
+};
+
+/** Fund licensing membership = verified + active maintenance; Connect gates paid offers. */
+export async function fetchMonetizationStatus(
   accessToken: string,
   pnIdentifier?: string
-): Promise<boolean> {
+): Promise<PenMonetizationStatus> {
   try {
     const res = await apiGet('/api/monetization/status', {
       authToken: accessToken,
       pnIdentifier
     });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { connectOnboarded?: boolean };
-    return data.connectOnboarded === true;
+    if (!res.ok) return { maintenanceActive: false, connectReady: false };
+    const data = (await res.json()) as {
+      maintenanceActive?: boolean;
+      connectOnboarded?: boolean;
+    };
+    return {
+      maintenanceActive: data.maintenanceActive === true,
+      connectReady: data.connectOnboarded === true
+    };
   } catch {
-    return false;
+    return { maintenanceActive: false, connectReady: false };
   }
+}
+
+/** @deprecated use fetchMonetizationStatus */
+export async function fetchMonetizationConnectReady(
+  accessToken: string,
+  pnIdentifier?: string
+): Promise<boolean> {
+  const s = await fetchMonetizationStatus(accessToken, pnIdentifier);
+  return s.connectReady;
 }
 
 /** Fail closed: returns null when lookup fails (treat as not entitled). */

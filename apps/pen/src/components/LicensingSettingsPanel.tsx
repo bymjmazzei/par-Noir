@@ -81,8 +81,8 @@ export function LicensingSettingsPanel({
       <label style={{ fontWeight: 600 }}>License</label>
       {!membership && (
         <p style={{ margin: 0, opacity: 0.8 }}>
-          Unverified accounts publish as free. Verify identity to unlock Social (platform fund) or
-          Conditional (your Stripe) licenses.
+          Social and Conditional licenses require verified identity and active monetization maintenance
+          (dashboard Monetization tab). Otherwise posts publish as free.
         </p>
       )}
       <select

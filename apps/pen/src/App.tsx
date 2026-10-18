@@ -42,6 +42,7 @@ import { TemplatesBrowse } from './components/TemplatesBrowse';
 import { loadBrowseDensity, saveBrowseDensity, type PenBrowseDensity } from './services/penClassPrefs';
 import { useVerifiedAuthor } from './hooks/useVerifiedAuthor';
 import { ensurePlatformTemplateRoots } from './services/penPlatformTemplates';
+import { completeLicensePurchase } from './services/licensePurchase';
 import { clearDocKeysForSession } from './services/penDocCrypto';
 import {
   bindPrefsCloudSession,
@@ -436,6 +437,23 @@ function AuthenticatedApp({
     () => session.mlKemSecretKey || peekMlKemSecretKey() || null
   );
   const verifiedAuthor = useVerifiedAuthor(session);
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('license') !== 'success') return;
+    const asset = q.get('asset')?.trim();
+    if (!asset) return;
+    void completeLicensePurchase(session, asset)
+      .then(() => {
+        q.delete('license');
+        q.delete('asset');
+        const next = `${window.location.pathname}${q.toString() ? `?${q}` : ''}`;
+        window.history.replaceState({}, '', next);
+      })
+      .catch(() => {
+        /* user can retry from templates */
+      });
+  }, [session]);
 
   useEffect(() => {
     if (location.pathname !== '/templates') return;

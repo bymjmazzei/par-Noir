@@ -23,7 +23,6 @@ export interface MonetizationStatusResponse {
   verified: boolean;
   maintenanceActive: boolean;
   currentPeriodEnd: string | null;
-  balanceCents: number;
   renewalPriceCents: number | null;
   eligibleForFundAccrual: boolean;
   stripeConfigured: boolean;
@@ -144,23 +143,25 @@ export class MonetizationService {
   static async requestCreatorFundPayout(
     accessToken: string,
     amountCents: number
-  ): Promise<{ transferId: string; amountCents: number }> {
+  ): Promise<{ payoutRequestId: string; amountCents: number; status: string }> {
     const res = await fetch(`${API_ENDPOINT}/api/monetization/request-payout`, {
       method: 'POST',
       headers: authHeaders(accessToken),
       body: JSON.stringify({ amount_cents: amountCents })
     });
     const data = (await res.json().catch(() => ({}))) as {
-      transferId?: string;
+      payoutRequestId?: string;
       amountCents?: number;
+      status?: string;
       error_description?: string;
     };
     if (!res.ok) {
       throw new Error(data.error_description || `Payout failed (${res.status})`);
     }
     return {
-      transferId: String(data.transferId ?? ''),
-      amountCents: Number(data.amountCents ?? amountCents)
+      payoutRequestId: String(data.payoutRequestId ?? ''),
+      amountCents: Number(data.amountCents ?? amountCents),
+      status: String(data.status ?? 'queued')
     };
   }
 }

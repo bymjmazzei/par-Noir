@@ -149,7 +149,7 @@ import {
   writeTextCollectionHandoff
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
-import { requestNotaryStamp, fetchMonetizationConnectReady } from '../../services/penApi';
+import { requestNotaryStamp, fetchMonetizationStatus } from '../../services/penApi';
 import { createPollSheet, putPollStructure } from '../../services/pollCloud';
 import { ensureBundleTrackingSheets } from '../../services/widgetTracking';
 import { resolveSigningKeys } from '../../services/penKeys';
@@ -307,7 +307,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     listLocalSuggestions(session.pnIdentifier, docId)
   );
   const [connectReady, setConnectReady] = useState(false);
+  const [maintenanceActive, setMaintenanceActive] = useState(false);
   const verifiedAuthor = useVerifiedAuthor(session);
+  const licensingMembership = verifiedAuthor && maintenanceActive;
 
   useEffect(() => {
     let cancel = false;
@@ -374,12 +376,18 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
 
   useEffect(() => {
     let cancelled = false;
-    void fetchMonetizationConnectReady(session.accessToken, session.pnIdentifier)
-      .then((ready) => {
-        if (!cancelled) setConnectReady(ready);
+    void fetchMonetizationStatus(session.accessToken, session.pnIdentifier)
+      .then((s) => {
+        if (!cancelled) {
+          setConnectReady(s.connectReady);
+          setMaintenanceActive(s.maintenanceActive);
+        }
       })
       .catch(() => {
-        if (!cancelled) setConnectReady(false);
+        if (!cancelled) {
+          setConnectReady(false);
+          setMaintenanceActive(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -1651,8 +1659,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               bundle: b,
               feedIds: input.feedIds,
               pnIdentifier: session.pnIdentifier,
-              membership: verifiedAuthor,
+              membership: licensingMembership,
               connectReady,
+              session,
               mixed,
               feedPublish
             });
@@ -1679,8 +1688,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             bundle: b,
             feedIds: input.feedIds,
             pnIdentifier: session.pnIdentifier,
-            membership: verifiedAuthor,
+            membership: licensingMembership,
             connectReady,
+            session,
             video,
             feedPublish
           });
@@ -1700,8 +1710,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             bundle: b,
             feedIds: input.feedIds,
             pnIdentifier: session.pnIdentifier,
-            membership: verifiedAuthor,
+            membership: licensingMembership,
             connectReady,
+            session,
             mixed,
             feedPublish
           });
@@ -1719,8 +1730,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             bundle: b,
             feedIds: input.feedIds,
             pnIdentifier: session.pnIdentifier,
-            membership: verifiedAuthor,
+            membership: licensingMembership,
             connectReady,
+            session,
             feedPublish,
             ...(asCollection
               ? { mixed: writeTextCollectionHandoff(b, publishOpts) }
@@ -2126,6 +2138,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     toggleSocial,
     undoEdit,
     verifiedAuthor,
+    licensingMembership,
     waitTwoFrames,
     widgetEditorLayer,
     widgetSheetTimer,

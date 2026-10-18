@@ -10,6 +10,7 @@ import {
   licensingForTemplateReuse,
   normalizeLicensingRoot,
   claimsFromLicensingRoot,
+  engagementBountyWeight,
   reuseContractForAttachments,
   reuseKindForClass
 } from './licensing.js';
@@ -114,6 +115,14 @@ describe('licensing root', () => {
     const n = normalizeLicensingRoot({ workLicense: 'nope', contracts: 'x' }, 'owner');
     expect(n.family).toBe('unconditionalFree');
     expect(assertLicensingRoot(n)).toBeNull();
+  });
+});
+
+describe('engagementBountyWeight', () => {
+  it('weights comments highest and likes lowest', () => {
+    expect(engagementBountyWeight('comment')).toBe(1);
+    expect(engagementBountyWeight('like')).toBe(0.1);
+    expect(engagementBountyWeight('view')).toBe(0);
   });
 });
 

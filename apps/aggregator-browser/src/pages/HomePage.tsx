@@ -25,6 +25,7 @@ import { IndexedFile } from '../types/aggregator';
 import { HomePageContext } from '../contexts/HomePageContext';
 import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
 import { OverscrollRefreshHost } from '../components/OverscrollRefreshHost';
+import { LicensePurchaseChip } from '../components/LicensePurchaseChip';
 
 function getTextPostData(file: IndexedFile) {
   return (file.metadata as any).textPost || (file.metadata as any).thought || null;
@@ -535,6 +536,13 @@ export function HomePage() {
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1 min-w-0">
                       <h3 className="text-white font-medium truncate group-hover:text-blue-400 transition-colors">{fileName}</h3>
+                      <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                        <LicensePurchaseChip
+                          fileId={file.fileId}
+                          licensing={file.licensing}
+                          accessToken={(ctx as { accessToken?: string })?.accessToken ?? null}
+                        />
+                      </div>
                       <p className="text-text-secondary text-xs mt-1">{isNoteFile ? 'Note' : isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}</p>
                     </div>
                     {file.metadata?.isNSFW && <ContentRatingBadge isNSFW={true} size="sm" className="ml-2 flex-shrink-0" />}

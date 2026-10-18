@@ -188,17 +188,17 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
                 </div>
               )}
             </div>
-            <div className="rounded-lg border border-border bg-secondary p-4">
-              <div className="text-xs text-text-secondary uppercase tracking-wide">Fund balance (ledger)</div>
-              <div className="mt-1 font-medium">
-                {status != null ? `${(status.balanceCents / 100).toFixed(2)} USD` : '—'}
-              </div>
-              {status?.renewalPriceCents != null && status.renewalPriceCents > 0 && (
-                <div className="text-xs text-text-secondary mt-1">
-                  Renewal reference: {(status.renewalPriceCents / 100).toFixed(2)} USD / period
+            {status?.renewalPriceCents != null && status.renewalPriceCents > 0 && (
+              <div className="rounded-lg border border-border bg-secondary p-4">
+                <div className="text-xs text-text-secondary uppercase tracking-wide">Maintenance renewal</div>
+                <div className="mt-1 font-medium">
+                  {(status.renewalPriceCents / 100).toFixed(2)} USD / period
                 </div>
-              )}
-            </div>
+                <div className="text-xs text-text-secondary mt-1">
+                  Balance-first renewal draws from available bounty below.
+                </div>
+              </div>
+            )}
             <div className="rounded-lg border border-border bg-secondary p-4">
               <div className="text-xs text-text-secondary uppercase tracking-wide">Eligible for fund accrual</div>
               <div className="mt-1 font-medium">{status?.eligibleForFundAccrual ? 'Yes' : 'No'}</div>

@@ -6,6 +6,7 @@ import type { Application, Request, Response, NextFunction } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware';
 import { requireAdminApiKey } from './adminDeveloperRoutes';
 import { CreatorFundPeriodService } from './creatorFundPeriodService';
+import { MonetizationService } from './monetizationService';
 import { safeClientErrorMessage } from '../utils/safeError';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -21,6 +22,20 @@ function requireCronOrAdmin(req: Request, res: Response, next: NextFunction): vo
 }
 
 export function registerCreatorFundPeriodRoutes(app: Application): void {
+  app.post('/api/creator-fund/payouts/run', requireCronOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const force = String(req.query.force || req.body?.force || '') === '1';
+      const out = await MonetizationService.runQueuedCreatorFundPayouts({ force });
+      return res.json(out);
+    } catch (e: unknown) {
+      console.error('[creator-fund] payouts run:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
   app.post('/api/creator-fund/periods/close', requireCronOrAdmin, async (req: Request, res: Response) => {
     try {
       const out = await CreatorFundPeriodService.closeIfDue();

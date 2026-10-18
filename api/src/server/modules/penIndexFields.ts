@@ -3,6 +3,8 @@
  * The PUT route otherwise drops anything it does not destructure.
  */
 
+import { assertOpenContractProofsOnLicensing } from './openContractProofGuard';
+
 const PEN_INDEX_KEYS = [
   'feedIds',
   'penClassId',
@@ -32,6 +34,10 @@ const PEN_INDEX_KEYS = [
 export function penIndexFields(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== 'object') return {};
   const src = body as Record<string, unknown>;
+  const proofErr = assertOpenContractProofsOnLicensing(src.licensing);
+  if (proofErr) {
+    throw new Error(proofErr);
+  }
   const out: Record<string, unknown> = {};
   for (const key of PEN_INDEX_KEYS) {
     if (src[key] !== undefined) out[key] = src[key];

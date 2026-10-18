@@ -1207,6 +1207,49 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const fs = await import('fs');
       const path = await import('path');
+      const dropBalPath = path.join(__dirname, '../../migrations/drop_creator_fund_balances.sql');
+      const dropBalSql = fs.readFileSync(dropBalPath, 'utf-8');
+      await db.query(dropBalSql);
+      console.log('✅ drop_creator_fund_balances migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ drop_creator_fund_balances migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const payoutQueuedPath = path.join(
+        __dirname,
+        '../../migrations/add_creator_fund_payout_queued_status.sql'
+      );
+      await db.query(fs.readFileSync(payoutQueuedPath, 'utf-8'));
+      console.log('✅ creator_fund_payout_queued_status migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ creator_fund_payout_queued_status migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const licenseGrantsPath = path.join(__dirname, '../../migrations/add_license_grants.sql');
+      await db.query(fs.readFileSync(licenseGrantsPath, 'utf-8'));
+      console.log('✅ license_grants migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ license_grants migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
       const engFundPath = path.join(
         __dirname,
         '../../migrations/add_engagement_fund_monetizable_flags.sql'

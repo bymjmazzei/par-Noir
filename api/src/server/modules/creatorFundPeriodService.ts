@@ -23,6 +23,8 @@ import {
   licensingFromMetadata,
   recipientIdFromKey
 } from './creatorFundMicroAllocate';
+import { buildPayeeAliasMap, mergeResolvedWeights } from './creatorFundPayeeResolve';
+import { CREATOR_FUND_G_EVENT_TYPES } from './creatorFundRevenue';
 
 const DEFAULT_WINDOW_DAYS = 30;
 const DEFAULT_FUND_PERIOD_TZ = 'America/New_York';
@@ -188,6 +190,16 @@ function allocateProportional(
  * Weights: (1) standard — actor + content owner fund-eligible; (2) orphan — actor eligible,
  * owner not, active music attach — publisher/content redirect to track/music owner.
  */
+async function loadPayeeAliasMap(client: PoolClient): Promise<Map<string, string>> {
+  const res = await client.query(
+    `SELECT identity_id AS pn FROM verified_identities WHERE is_active IS TRUE
+     UNION
+     SELECT pn_identifier AS pn FROM monetization_subscriptions WHERE status = 'active'`
+  );
+  const ids = res.rows.map((r) => String(r.pn ?? '').trim()).filter(Boolean);
+  return buildPayeeAliasMap(ids);
+}
+
 async function allocateCreatorBountyShares(
   client: PoolClient,
   periodId: string,
@@ -196,9 +208,11 @@ async function allocateCreatorBountyShares(
   bountyVerifiedCents: number,
   bountyUnverifiedCents: number
 ): Promise<void> {
+  let aliasMap = await loadPayeeAliasMap(client);
   const aggRes = await client.query(
     `WITH base AS (
        SELECT e.file_id,
+              e.type AS engagement_type,
               e.user_did AS actor_id,
               COALESCE(e.is_verified, FALSE) AS is_verified,
               COALESCE(e.content_owner_fund_monetizable, FALSE) AS owner_m,
@@ -232,6 +246,7 @@ async function allocateCreatorBountyShares(
      ),
      keyed AS (
        SELECT file_id,
+              engagement_type,
               actor_id,
               is_verified,
               owner_pn,
@@ -252,8 +267,28 @@ async function allocateCreatorBountyShares(
      ),
      per_file AS (
        SELECT file_id,
-              SUM(CASE WHEN is_verified THEN 1 ELSE 0 END)::bigint AS cnt_verified,
-              SUM(CASE WHEN NOT is_verified THEN 1 ELSE 0 END)::bigint AS cnt_unverified,
+              SUM(
+                CASE WHEN is_verified THEN
+                  CASE engagement_type
+                    WHEN 'comment' THEN 1.0
+                    WHEN 'share' THEN 0.25
+                    WHEN 'save' THEN 0.25
+                    WHEN 'like' THEN 0.1
+                    ELSE 0
+                  END
+                ELSE 0 END
+              )::double precision AS cnt_verified,
+              SUM(
+                CASE WHEN NOT is_verified THEN
+                  CASE engagement_type
+                    WHEN 'comment' THEN 1.0
+                    WHEN 'share' THEN 0.25
+                    WHEN 'save' THEN 0.25
+                    WHEN 'like' THEN 0.1
+                    ELSE 0
+                  END
+                ELSE 0 END
+              )::double precision AS cnt_unverified,
               bool_or(dual_monetizable) AS dual_monetizable,
               bool_or(orphan_library) AS orphan_library,
               MAX(NULLIF(TRIM(owner_pn), '')) AS owner_pn,
@@ -290,6 +325,17 @@ async function allocateCreatorBountyShares(
     commentsByFile.set(fid, list);
   }
 
+  const extraPn = new Set<string>();
+  for (const row of aggRes.rows) {
+    const o = String(row.owner_pn ?? '').trim();
+    const t = String(row.track_owner_pn ?? '').trim();
+    if (o) extraPn.add(o);
+    if (t) extraPn.add(t);
+  }
+  if (extraPn.size > 0) {
+    aliasMap = buildPayeeAliasMap([...aliasMap.values(), ...extraPn]);
+  }
+
   const verifiedWeights = new Map<string, number>();
   const unverifiedWeights = new Map<string, number>();
 
@@ -322,10 +368,17 @@ async function allocateCreatorBountyShares(
     }
 
     const commentAuthors = commentsByFile.get(fileId) || [];
-    const apply = (target: Map<string, number>, cnt: number) => {
+    const foldPublisher =
+      orphan && trackOwnerPn.trim()
+        ? trackOwnerPn.trim()
+        : ownerPn.trim() || trackOwnerPn.trim();
+    if (!foldPublisher) continue;
+
+    const apply = (global: Map<string, number>, cnt: number) => {
+      const local = new Map<string, number>();
       if (dual && ownerPn) {
         addMicroWeights({
-          target,
+          target: local,
           cnt,
           contentOwnerPn: ownerPn,
           orphan: false,
@@ -337,7 +390,7 @@ async function allocateCreatorBountyShares(
         });
       } else if (orphan && (trackOwnerPn || musicPenDoc)) {
         addMicroWeights({
-          target,
+          target: local,
           cnt,
           contentOwnerPn: ownerPn || trackOwnerPn,
           orphan: true,
@@ -348,6 +401,7 @@ async function allocateCreatorBountyShares(
           commentAuthorPns: commentAuthors
         });
       }
+      mergeResolvedWeights(global, local, aliasMap, foldPublisher);
     };
     apply(verifiedWeights, cv);
     apply(unverifiedWeights, cu);
@@ -445,8 +499,9 @@ export class CreatorFundPeriodService {
       const gRes = await client.query(
         `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS g
          FROM creator_fund_revenue_events
-         WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz`,
-        [periodStart.toISOString(), periodEnd.toISOString()]
+         WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz
+           AND event_type = ANY($3::text[])`,
+        [periodStart.toISOString(), periodEnd.toISOString(), [...CREATOR_FUND_G_EVENT_TYPES]]
       );
       const gCents = Number(gRes.rows[0]?.g ?? 0);
 

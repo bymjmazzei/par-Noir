@@ -261,7 +261,6 @@ export async function registerSuccession(params: {
         }
       }
       const creatorFundTables = [
-        'creator_fund_balances',
         'creator_fund_ledger',
         'creator_fund_payout_requests',
         'creator_fund_allocations',

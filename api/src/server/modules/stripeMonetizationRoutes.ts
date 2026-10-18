@@ -219,19 +219,15 @@ export function registerStripeMonetizationRoutes(app: Application): void {
         });
       }
       const body = req.body as {
-        seller_pn?: string;
         asset_id?: string;
         scope?: string;
-        price_cents?: number;
         return_url?: string;
       };
       const scope = body.scope === 'commercial' ? 'commercial' : 'personal';
       const out = await MonetizationService.createLicenseCheckoutSession({
-        sellerPn: String(body.seller_pn || ''),
         buyerPn: buyer,
         assetId: String(body.asset_id || ''),
         scope,
-        priceCents: Number(body.price_cents),
         returnBaseUrl: String(body.return_url || '')
       });
       return res.json(out);
@@ -283,6 +279,78 @@ export function registerStripeMonetizationRoutes(app: Application): void {
         error: 'server_error',
         error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
       });
+    }
+  });
+
+  app.get('/api/monetization/license-grants', ...auth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const buyer = pnFromReq(req);
+      if (!buyer) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn' });
+      }
+      const assetId = String(req.query.asset_id || '').trim();
+      if (!assetId) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'asset_id required' });
+      }
+      const { getLicenseGrantForBuyer } = await import('./licenseGrantService');
+      const grant = await getLicenseGrantForBuyer(buyer, assetId);
+      return res.json({ grant });
+    } catch (e: unknown) {
+      console.error('[monetization] license-grants get:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
+  app.post(
+    '/api/monetization/license-grants/:grantId/proof',
+    ...auth,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const buyer = pnFromReq(req);
+        if (!buyer) {
+          return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn' });
+        }
+        const grantId = String(req.params.grantId || '').trim();
+        const proof = String(req.body?.proof || '').trim();
+        if (!grantId || !proof) {
+          return res.status(400).json({ error: 'invalid_request', error_description: 'proof required' });
+        }
+        const { attachLicenseGrantProof } = await import('./licenseGrantService');
+        await attachLicenseGrantProof(grantId, buyer, proof);
+        return res.json({ ok: true });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : '';
+        if (msg === 'grant_not_found' || msg === 'proof_invalid' || msg === 'proof_mismatch') {
+          return res.status(400).json({ error: 'invalid_request', error_description: msg });
+        }
+        console.error('[monetization] license-grants proof:', e);
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+        });
+      }
+    }
+  );
+
+  app.post('/api/monetization/stripe-connect-webhook', async (req: Request, res: Response) => {
+    try {
+      const sig = req.headers['stripe-signature'];
+      const raw = req.body;
+      if (!Buffer.isBuffer(raw)) {
+        return res.status(400).send('Webhook requires raw body');
+      }
+      const event = MonetizationService.constructConnectWebhookEvent(
+        raw,
+        typeof sig === 'string' ? sig : undefined
+      );
+      await MonetizationService.handleStripeConnectWebhookEvent(event);
+      return res.json({ received: true });
+    } catch (e: unknown) {
+      console.error('[monetization] connect webhook:', e);
+      return res.status(400).send('Webhook error');
     }
   });
 

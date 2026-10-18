@@ -22,6 +22,7 @@ import { loadPublishedWidgetSections } from '../services/publishedWidgetIr';
 import { publicWidgetCatalog } from '../services/widgetCatalog';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
 import { incrementTemplateUseCount } from '../services/penClassPrefs';
+import { fetchLicenseGrant, startLicenseCheckout } from '../services/licensePurchase';
 import {
   buildSocialTemplateRailItems,
   isTemplatesCatalogClass,
@@ -194,6 +195,15 @@ export function TemplatesBrowse({
         const sections = template?.seedSections;
         if (!template || !sections?.length) {
           throw new Error('This published widget has no layers to copy');
+        }
+        const pubFileId = templateId.slice('pubwidget_'.length);
+        if (template.licensing?.family === 'unconditionalPaid') {
+          const grant = await fetchLicenseGrant(session, pubFileId);
+          if (!grant || grant.status !== 'active') {
+            const url = await startLicenseCheckout(session, pubFileId, window.location.href);
+            window.location.href = url;
+            return;
+          }
         }
         const cloned = await clonePublishedWidget({
           session,

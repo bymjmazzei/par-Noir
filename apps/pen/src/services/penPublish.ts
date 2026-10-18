@@ -57,6 +57,7 @@ import {
 } from './penPersonalTemplates';
 import { resolveSigningKeys } from './penKeys';
 import { requestNotaryStamp } from './penApi';
+import { attachImpliedContractProofs } from './openContractProofs';
 import { generateChatKey, generateGroupId } from '@par-noir/dm-crypto';
 import { schedulePrefsCloudPush } from './penPrefsCloud';
 import type { PenLicensingRoot } from '@par-noir/pen-protocol';
@@ -796,12 +797,50 @@ async function loadStillBytesForPublish(
 }
 
 /** Publish the compiled post to the owner cloud. No template flag. */
+export async function refreshPublishedPostLicensing(params: {
+  fileId: string;
+  bundle: LocalDocBundle;
+  membership: boolean;
+  connectReady?: boolean;
+  request?: CloudRequest;
+  session?: PenSession;
+}): Promise<void> {
+  const req = params.request ?? defaultCloudRequest();
+  let licensing = licensingForPublish(
+    params.bundle.manifest.licensing,
+    params.bundle.manifest.ownerPnHash,
+    {
+      membership: params.membership,
+      connectReady: params.connectReady,
+      musicAsset: params.bundle.manifest.classId === 'library.music'
+    }
+  );
+  if (params.session) {
+    licensing = await attachImpliedContractProofs(
+      params.session,
+      licensing,
+      params.bundle.manifest.docId,
+      params.bundle.manifest.ownerPnHash || ''
+    );
+  }
+  const put = await req(
+    'PUT',
+    `/api/aggregator/metadata-index/${encodeURIComponent(params.fileId)}`,
+    { licensing }
+  );
+  if (!put.ok) {
+    const text = await put.text().catch(() => put.statusText);
+    throw new Error(`licensing_snapshot_refresh_${put.status} ${text}`);
+  }
+}
+
 export async function publishPostToOwnerCloud(params: {
   bundle: LocalDocBundle;
   feedIds: string[];
   pnIdentifier: string;
   membership: boolean;
   connectReady?: boolean;
+  session?: PenSession;
   request?: CloudRequest;
   /** par-noir-pen/{docId}/public/. Resolved when omitted. */
   parentFolderId?: string;
@@ -833,11 +872,19 @@ export async function publishPostToOwnerCloud(params: {
     params.bundle.manifest.docId,
     params.parentFolderId
   );
-  const licensing = licensingForPublish(params.bundle.manifest.licensing, params.bundle.manifest.ownerPnHash, {
+  let licensing = licensingForPublish(params.bundle.manifest.licensing, params.bundle.manifest.ownerPnHash, {
     membership: params.membership,
     connectReady: params.connectReady,
     musicAsset: params.bundle.manifest.classId === 'library.music'
   });
+  if (params.session) {
+    licensing = await attachImpliedContractProofs(
+      params.session,
+      licensing,
+      params.bundle.manifest.docId,
+      params.bundle.manifest.ownerPnHash || ''
+    );
+  }
   const effectiveFeedIds =
     params.mixed != null
       ? ensureShareFeedIds(params.feedIds, 'collection')

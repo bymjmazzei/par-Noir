@@ -25,7 +25,7 @@ Pen templates and docs need a **root** place for (1) license **family**, (2) ope
 
 6. **Platform buckets / claimBps / splits** — unchanged defaults (engager 1500, content 1500, music 1000, cap 2500).
 
-7. **ZKP:** `parnoir.open_creator_contract.v1` (implied contracts); `parnoir.license_key.v1` (paid grants).
+7. **ZKP:** `parnoir.open_creator_contract.v1` (implied contracts); `parnoir.license_key.v1` (paid grants). Pen mints open-contract envelopes on implied publish (`grantProofRef` on the index snapshot); API `penIndexFields` verifies proofs when present. Paid checkout uses Connect webhooks → `license_grants`; buyer posts `license_key` proof via `POST /api/monetization/license-grants/:id/proof`.
 
 8. **Period close** calls `allocatePostBounty` for micro weights; non-implied roots contribute **0** claim.
 

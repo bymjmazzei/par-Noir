@@ -536,18 +536,4 @@ app.get('/api/engagement/:fileId/metrics', async (req: Request, res: Response) =
   }
 });
 
-// GET /api/engagement/:fileId/monetization - Get monetization metrics (verified-only)
-app.get('/api/engagement/:fileId/monetization', async (req: Request, res: Response) => {
-  try {
-    const { RecommendationService } = await import('./recommendationService');
-    const { fileId } = req.params;
-    
-    const metrics = await RecommendationService.getMonetizationMetrics(fileId);
-    return res.json(metrics);
-  } catch (error: any) {
-    console.error('Error getting monetization metrics:', error);
-    return res.status(500).json({ error: 'Failed to get monetization metrics', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
-  }
-});
-
 }

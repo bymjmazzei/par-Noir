@@ -181,7 +181,6 @@ describe('l5ProductRouteBoundary gate', () => {
       expect(isPublicEngagementRead('GET', '/file1/likes')).toBe(true);
       expect(isPublicEngagementRead('POST', '/api/engagement/file1/like')).toBe(false);
       expect(isPublicEngagementRead('GET', '/api/engagement/file1/like')).toBe(false);
-      expect(isPublicEngagementRead('GET', '/api/engagement/file1/monetization')).toBe(false);
     });
 
     it('mounted middleware allows anonymous GET comments', async () => {

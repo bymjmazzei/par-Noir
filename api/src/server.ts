@@ -485,6 +485,7 @@ class ProductionServer {
       '/health/ready',
       '/favicon.ico',
       '/api/monetization/stripe-webhook',
+      '/api/monetization/stripe-connect-webhook',
     ];
     const publicNoOriginGetOnlyPrefixes = [
       '/api/aggregator/metadata-index',
@@ -691,7 +692,11 @@ class ProductionServer {
     // Exception: Stripe webhooks require raw body for signature verification
     this.app.use((req, res, next) => {
       const p = req.path || req.url?.split('?')[0] || '';
-      if (req.method === 'POST' && p === '/api/monetization/stripe-webhook') {
+      if (
+        req.method === 'POST' &&
+        (p === '/api/monetization/stripe-webhook' ||
+          p === '/api/monetization/stripe-connect-webhook')
+      ) {
         return express.raw({ type: 'application/json', limit: '1mb' })(req, res, next);
       }
       const limit = req.method === 'POST' && p === '/api/drive/files' ? '200mb' : '10mb';

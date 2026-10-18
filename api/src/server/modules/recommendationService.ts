@@ -224,41 +224,6 @@ export class RecommendationService {
   }
 
   /**
-   * Get monetization metrics (verified-only engagement)
-   */
-  static async getMonetizationMetrics(fileId: string): Promise<{
-    verifiedLikes: number;
-    verifiedComments: number;
-    verifiedShares: number;
-    verifiedSaves: number;
-    estimatedValue: number;
-  }> {
-    const metrics = await EngagementService.getEngagementMetrics(fileId);
-
-    // Monetization rates (per verified engagement)
-    const RATES = {
-      like: 0.01,      // $0.01 per verified like
-      comment: 0.05,  // $0.05 per verified comment
-      share: 0.02,    // $0.02 per verified share
-      save: 0.01      // $0.01 per verified save
-    };
-
-    const estimatedValue = 
-      metrics.verified.likes * RATES.like +
-      metrics.verified.comments * RATES.comment +
-      metrics.verified.shares * RATES.share +
-      metrics.verified.saves * RATES.save;
-
-    return {
-      verifiedLikes: metrics.verified.likes,
-      verifiedComments: metrics.verified.comments,
-      verifiedShares: metrics.verified.shares,
-      verifiedSaves: metrics.verified.saves,
-      estimatedValue
-    };
-  }
-
-  /**
    * Get recommended content for a feed
    */
   static async getRecommendedContent(

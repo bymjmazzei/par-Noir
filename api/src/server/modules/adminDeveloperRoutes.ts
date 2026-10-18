@@ -67,7 +67,7 @@ const KPI_REGISTRY: KpiDefinition[] = [
     label: 'Payout Hold Ratio',
     owner: 'economics',
     formula: 'payout_in_hold_cents / max(total_available_plus_hold,1)',
-    source: ['creator_fund_balances', 'creator_fund_payout_requests'],
+    source: ['creator_fund_period_creator_allocations', 'creator_fund_payout_requests'],
     freshnessSlaSec: 300,
     thresholds: { goodGte: 0, warnGte: 0, badLt: 0 },
     decisionPlaybook: 'If rising > 25%, investigate payout bottlenecks and compliance holds.',
@@ -409,7 +409,12 @@ export function registerAdminDeveloperRoutes(app: Application): void {
         db.query(`SELECT COUNT(*)::bigint AS total_posts FROM feed_posts`),
         db.query(`SELECT COUNT(DISTINCT user_did)::bigint AS first_engagers FROM engagement`),
         db.query(`SELECT COUNT(*)::bigint AS monetized_users FROM monetization_subscriptions WHERE status = 'active'`),
-        db.query(`SELECT COUNT(*)::bigint AS payout_eligible_users FROM creator_fund_balances WHERE balance_cents > 0`),
+        db.query(`
+          SELECT COUNT(DISTINCT a.recipient_identity_id)::bigint AS payout_eligible_users
+          FROM creator_fund_period_creator_allocations a
+          INNER JOIN creator_fund_periods p ON p.id = a.period_id
+          WHERE p.status = 'closed' AND a.allocation_cents > 0
+        `),
         db.query(`
           SELECT
             COUNT(*)::bigint AS total,

@@ -158,6 +158,7 @@ import {
   promoteProjectToFinishedLibraryDoc,
   saveProjectAsLibraryTemplate,
   publishPostToOwnerCloud,
+  refreshPublishedPostLicensing,
   publishTemplateToOwnerCloud,
   writeComposedVideoPublishHandoff,
   writeMixedPagesPublishHandoff,
@@ -352,6 +353,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     toggleSocial,
     undoEdit,
     verifiedAuthor,
+    licensingMembership,
     waitTwoFrames,
     widgetEditorLayer,
     widgetSheetTimer,
@@ -876,7 +878,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
               })
             }
             ownerPnHash={bundle?.manifest.ownerPnHash}
-            membership={verifiedAuthor}
+            membership={licensingMembership}
             connectReady={connectReady}
             musicAsset={bundle?.manifest.classId === 'library.music'}
             onLicensingChange={(next) => {
@@ -885,6 +887,18 @@ export function DocEditorShell(state: DocEditorReadyState) {
                 ...bundle,
                 manifest: { ...bundle.manifest, licensing: next }
               });
+              const fileId = bundle.manifest.publishedFileId;
+              if (fileId) {
+                void refreshPublishedPostLicensing({
+                  fileId,
+                  bundle: { ...bundle, manifest: { ...bundle.manifest, licensing: next } },
+                  membership: licensingMembership,
+                  connectReady,
+                  session
+                }).catch(() => {
+                  /* snapshot refresh is best-effort */
+                });
+              }
             }}
             onOpenHistory={() => {
               setShowHistory(true);

@@ -73,6 +73,22 @@ export interface PlatformRoyaltyConfig {
 
 export const BPS_DENOM = 10000;
 
+/** Relative weight per engagement type for creator-fund period close (comments dominate). */
+export const ENGAGEMENT_BOUNTY_WEIGHTS: Record<'comment' | 'share' | 'save' | 'like', number> = {
+  comment: 1,
+  share: 0.25,
+  save: 0.25,
+  like: 0.1
+};
+
+export function engagementBountyWeight(type: string): number {
+  if (type === 'comment') return ENGAGEMENT_BOUNTY_WEIGHTS.comment;
+  if (type === 'share') return ENGAGEMENT_BOUNTY_WEIGHTS.share;
+  if (type === 'save') return ENGAGEMENT_BOUNTY_WEIGHTS.save;
+  if (type === 'like') return ENGAGEMENT_BOUNTY_WEIGHTS.like;
+  return 0;
+}
+
 export function defaultPlatformRoyaltyConfig(): PlatformRoyaltyConfig {
   return {
     engagerPoolBps: 1500,
