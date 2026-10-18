@@ -278,6 +278,9 @@ export function DocEditorShell(state: DocEditorReadyState) {
     lastDraftAt,
     ledgerRef,
     ledgerTimerRef,
+    liveCollab,
+    liveReadOnly,
+    liveStatus,
     navigate,
     onEditorReady,
     onStoryBlockHeights,
@@ -825,6 +828,27 @@ export function DocEditorShell(state: DocEditorReadyState) {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {liveStatus !== 'off' ? (
+            <span
+              className={`hidden items-center gap-1 px-1 text-[11px] sm:inline-flex ${
+                liveStatus === 'live' ? 'text-teal-700' : 'text-neutral-400'
+              }`}
+              role="status"
+              title={
+                liveStatus === 'live'
+                  ? 'Live — edits sync end-to-end encrypted with collaborators'
+                  : 'Connecting to collaborators…'
+              }
+            >
+              <span
+                aria-hidden
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  liveStatus === 'live' ? 'bg-teal-500' : 'bg-neutral-300'
+                }`}
+              />
+              {liveStatus === 'live' ? 'Live' : 'Connecting…'}
+            </span>
+          ) : null}
           <SaveMenu
             canCommit={canCommit}
             canSuggest={canSuggest}
@@ -1216,11 +1240,13 @@ export function DocEditorShell(state: DocEditorReadyState) {
           ) : writingEnabled && canvasSection && section ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <PageCanvas
-                key={
+                key={`${
                   flowsBody && isPageLayerId(activeLayerId)
                     ? `story:${section.storyId || activeSlug}:${session.pnIdentifier}:${historyEpoch}`
                     : `${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`
-                }
+                }:${liveCollab?.key ?? (liveReadOnly ? 'ro' : 'rw')}`}
+                collab={liveCollab ? { fragment: liveCollab.fragment } : undefined}
+                readOnly={liveReadOnly}
                 section={canvasSection}
                 sectionTitle={writingLabel}
                 pageLayout={pageLayout}

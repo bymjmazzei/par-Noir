@@ -9,6 +9,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { Awareness, applyPenLiveAwareness, sealPenLiveAwareness } from './awareness.js';
 import { PenLiveUpdateBatcher, sealPenLiveBatch, type PenLiveSigner } from './batch.js';
+import { openBytes, sealBytes } from './crypto.js';
 import { PEN_LIVE_REMOTE } from './docModel.js';
 import { penLiveRoomToken } from './roomToken.js';
 import { penLiveDiffFor, penLiveStateVector } from './syncProtocol.js';
@@ -19,13 +20,24 @@ export const PEN_LIVE_CHUNK_CHARS = 48_000;
 const MAX_REASSEMBLY_CHARS = 16_000_000;
 const CHUNK_TTL_MS = 30_000;
 
-export type PenLiveWireKind = 'batch' | 'sync' | 'awareness';
+export type PenLiveWireKind = 'batch' | 'sync' | 'awareness' | 'control';
 
 export interface PenLiveChunk {
   chunk: { id: string; i: number; n: number; part: string };
 }
 
-export type PenLiveWirePayload = PenLiveBatch | PenLiveChunk | PenLiveAwareness;
+/** docKey-encrypted JSON (key claims, owner-signed role updates); content is checked by the receiver. */
+export interface PenLiveControlEnvelope {
+  docId: string;
+  keyEpoch: number;
+  control: string;
+}
+
+export type PenLiveWirePayload =
+  | PenLiveBatch
+  | PenLiveChunk
+  | PenLiveAwareness
+  | PenLiveControlEnvelope;
 
 /** Socket transport supplied by the app (socket.io in Pen, an in-memory hub in tests). */
 export interface PenLiveTransport {
@@ -52,6 +64,10 @@ export interface PenLiveSessionOptions {
   onReject?: (reason: PenLiveRejectReason) => void;
   /** Fired after a remote update or sync reply is applied. */
   onRemoteApplied?: () => void;
+  /** First verified sync request from a peer session (any role). */
+  onPeer?: (pnHash: string) => void;
+  /** Decrypted control message; the receiver must verify it. */
+  onControl?: (message: unknown) => void;
 }
 
 function isChunk(payload: PenLiveWirePayload): payload is PenLiveChunk {
@@ -179,6 +195,17 @@ export class PenLiveSession {
     this.sendBatch('sync', 'sync1', penLiveStateVector(this.opts.ydoc));
   }
 
+  sendControl(message: object): void {
+    const room = this.room;
+    const { docId, keyEpoch, docKey, transport } = this.opts;
+    this.sendChain = this.sendChain
+      .then(async () => {
+        const control = await sealBytes(new TextEncoder().encode(JSON.stringify(message)), docKey);
+        transport.send('control', room, { docId, keyEpoch, control });
+      })
+      .catch(() => undefined);
+  }
+
   /** Resolves once queued sends have been handed to the transport. */
   drain(): Promise<void> {
     this.batcher.flush();
@@ -265,6 +292,17 @@ export class PenLiveSession {
 
   private async receive(kind: PenLiveWireKind, payload: PenLiveWirePayload): Promise<void> {
     const { ydoc, docId, keyEpoch, docKey, roles, ownerPnHash } = this.opts;
+    if (kind === 'control') {
+      const env = payload as PenLiveControlEnvelope;
+      if (env.docId !== docId || env.keyEpoch !== keyEpoch || typeof env.control !== 'string') return;
+      try {
+        const bytes = await openBytes(env.control, docKey);
+        this.opts.onControl?.(JSON.parse(new TextDecoder().decode(bytes)));
+      } catch {
+        /* not for this key */
+      }
+      return;
+    }
     if (kind === 'awareness') {
       await applyPenLiveAwareness({
         awareness: this.awareness,
@@ -301,6 +339,7 @@ export class PenLiveSession {
         this.syncedWith.add(peer);
         this.requestSync();
         this.sendAwareness([ydoc.clientID]);
+        this.opts.onPeer?.(batch.authorPnHash);
       }
       return;
     }

@@ -212,6 +212,24 @@ import { useNavigate } from 'react-router-dom';
 import type { PenSession } from '../../services/penSession';
 import { peerRoutes } from './peerRoutes';
 import { penControllerReady } from '../penControllerReady';
+import {
+  PEN_DRAFT_UPSERT_KIND,
+  withMemberSigningKey,
+  type PenSectionContent
+} from '@par-noir/pen-protocol';
+import type {
+  PenLiveDocState,
+  PenLiveRemoteChange,
+  PenLiveSealedSnapshot
+} from '@par-noir/pen-live';
+import { queuePenOutbox } from '../../services/penCollab';
+import { saveDriveLiveSnapshot, saveLocalLiveSnapshot } from '../../services/penLiveStore';
+import type { LocalDocBundle } from '../../services/penLocalStore';
+import { usePenLive } from './usePenLive';
+
+/** Mailbox jobs stay small; larger live state reaches peers over the relay instead. */
+const LIVE_FANOUT_MAX_CHARS = 400_000;
+const LIVE_FANOUT_EVERY_MS = 5 * 60_000;
 
 /** Ready keys validated by controllerReadyState.gate.test.ts */
 export type DocEditorReadyState = {
@@ -281,7 +299,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   );
   const [savedTick, setSavedTick] = useState(0);
   const [historyEpoch, setHistoryEpoch] = useState(0);
-  const [historyUi, setHistoryUi] = useState({ canUndo: false, canRedo: false });
+  const [ledgerHistoryUi, setHistoryUi] = useState({ canUndo: false, canRedo: false });
   const bundleRef = useRef(bundle);
   const dirtyRef = useRef(false);
   const activeSlugRef = useRef(activeSlug);
@@ -291,6 +309,159 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   bundleRef.current = bundle;
   dirtyRef.current = dirty;
   activeSlugRef.current = activeSlug;
+
+  /** Sections/toc a live update replaced (null = deleted), so stale closures persist the latest. */
+  const liveReplacedRef = useRef(new WeakMap<object, object | null>());
+  const liveActiveRef = useRef(false);
+  const liveEditedRef = useRef(false);
+
+  const commitLiveBundle = useCallback((next: LocalDocBundle) => {
+    bundleRef.current = next;
+    setBundle(next);
+    setDirty(true);
+    if (!next.manifest.toc.includes(activeSlugRef.current)) {
+      setActiveSlug(next.manifest.toc[0] || 'body');
+    }
+  }, []);
+
+  const onLiveRemote = useCallback(
+    (change: PenLiveRemoteChange) => {
+      const current = bundleRef.current;
+      if (!current) return;
+      const replaced = liveReplacedRef.current;
+      const sections = current.sections.slice();
+      for (const [slug, next] of change.sections) {
+        const idx = sections.findIndex((s) => s.slug === slug);
+        if (idx >= 0) {
+          replaced.set(sections[idx], next);
+          if (next) sections[idx] = next;
+          else sections.splice(idx, 1);
+        } else if (next) {
+          sections.push(next);
+        }
+      }
+      const manifest = { ...current.manifest };
+      if (change.title !== undefined) manifest.title = change.title;
+      if (change.toc) {
+        replaced.set(current.manifest.toc, change.toc);
+        manifest.toc = change.toc;
+      }
+      commitLiveBundle({ ...current, sections, manifest });
+    },
+    [commitLiveBundle]
+  );
+
+  const onLiveAdopt = useCallback(
+    (state: PenLiveDocState) => {
+      const current = bundleRef.current;
+      if (!current) return;
+      const replaced = liveReplacedRef.current;
+      for (const s of current.sections) {
+        replaced.set(s, state.sections.find((n) => n.slug === s.slug) ?? null);
+      }
+      replaced.set(current.manifest.toc, state.toc);
+      commitLiveBundle({
+        ...current,
+        sections: state.sections,
+        manifest: { ...current.manifest, title: state.title || current.manifest.title, toc: state.toc }
+      });
+    },
+    [commitLiveBundle]
+  );
+
+  const onLiveAttest = useCallback(
+    (pnHash: string, mlDsaPublicKey: string, attestation: { by: string; signature: string }) => {
+      const current = bundleRef.current;
+      if (!current) return;
+      persist({
+        ...current,
+        manifest: {
+          ...current.manifest,
+          roles: withMemberSigningKey(current.manifest.roles || [], pnHash, mlDsaPublicKey, attestation),
+          updatedAt: new Date().toISOString()
+        }
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const fanoutLiveSnapshot = useCallback(
+    async (sealed: PenLiveSealedSnapshot | null, rolesUpdate: unknown) => {
+      const groupId = bundleRef.current?.manifest.groupId;
+      if (!sealed || !groupId || !liveEditedRef.current) return;
+      if (sealed.ciphertext.length > LIVE_FANOUT_MAX_CHARS) return;
+      liveEditedRef.current = false;
+      const peerRouteKeys = await peerRoutes(session, groupId);
+      if (!peerRouteKeys.length) return;
+      await queuePenOutbox({
+        session,
+        kind: PEN_DRAFT_UPSERT_KIND,
+        outboxId: `pen_live_${crypto.randomUUID()}`,
+        payload: { docId, groupId, liveSnapshot: sealed, liveRoles: rolesUpdate || undefined },
+        peerRouteKeys,
+        ownCloudApplied: true
+      });
+      void promotePenOutboxAndFanout(session);
+    },
+    [docId, session]
+  );
+
+  const live = usePenLive({
+    session,
+    docId,
+    bundle,
+    onRemote: onLiveRemote,
+    onAdopt: onLiveAdopt,
+    onAttest: onLiveAttest,
+    onClosed: (sealed, rolesUpdate) => {
+      void fanoutLiveSnapshot(sealed, rolesUpdate).catch(() => undefined);
+    }
+  });
+  const liveActive = live.status === 'live';
+  liveActiveRef.current = liveActive;
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  const historyUi = liveActive
+    ? { canUndo: live.canUndo, canRedo: live.canRedo }
+    : ledgerHistoryUi;
+
+  useEffect(() => {
+    if (liveActive && bundle) {
+      live.applyLocal({
+        title: bundle.manifest.title,
+        toc: bundle.manifest.toc,
+        sections: bundle.sections
+      });
+    }
+  }, [bundle, liveActive, live.applyLocal]);
+
+  useEffect(() => {
+    if (!liveActive) return;
+    const tick = window.setInterval(() => {
+      const handle = liveRef.current;
+      void handle
+        .sealSnapshot()
+        .then((sealed) => fanoutLiveSnapshot(sealed, handle.rolesUpdate()))
+        .catch(() => undefined);
+    }, LIVE_FANOUT_EVERY_MS);
+    return () => window.clearInterval(tick);
+  }, [liveActive, fanoutLiveSnapshot]);
+
+  /** Swap superseded sections/toc for the live versions (persist from a stale render). */
+  function rebaseOnLive(next: LocalDocBundle): LocalDocBundle {
+    const replaced = liveReplacedRef.current;
+    const latest = <T extends object>(value: T): T | null => {
+      let cur: T | null = value;
+      for (let i = 0; cur && replaced.has(cur) && i < 1000; i++) cur = replaced.get(cur) as T | null;
+      return cur;
+    };
+    const sections = next.sections
+      .map((s) => latest(s))
+      .filter((s): s is PenSectionContent => s !== null);
+    const toc = latest(next.manifest.toc) || next.manifest.toc;
+    return { ...next, sections, manifest: { ...next.manifest, toc } };
+  }
   const [error, setError] = useState<string | null>(null);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const widgetSheetTimer = useRef<number | null>(null);
@@ -539,6 +710,19 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     return true;
   }, [section, activeLayerId]);
 
+  const liveCollab = useMemo(() => {
+    if (!liveActive || !canvasSection || !writingEnabled) {
+      live.bindFragment(null);
+      return null;
+    }
+    const layerId = isPageLayerId(activeLayerId) ? null : activeLayerId;
+    return live.bindFragment({ slug: canvasSection.slug, layerId, doc: canvasSection.doc });
+    // Rebind only when the bound text target changes, not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveActive, live.canEdit, canvasSection?.slug, activeLayerId, writingEnabled, live.bindFragment]);
+  const liveReadOnly = live.status === 'connecting' || (liveActive && !live.canEdit);
+  const liveStatus = live.status;
+
   const activeMediaLayer = useMemo(() => {
     if (!section || isPageLayerId(activeLayerId)) return null;
     const layer = section.layers?.find((l) => l.id === activeLayerId);
@@ -742,7 +926,12 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     [bumpHistoryUi]
   );
 
+  // Live docs undo through Yjs so only this user's own changes are reverted.
   const undoEdit = useCallback(() => {
+    if (liveActiveRef.current) {
+      liveRef.current.undo();
+      return;
+    }
     flushLedgerPush();
     const snap = ledgerRef.current.undo();
     if (snap) applyHistorySnapshot(snap);
@@ -750,6 +939,10 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   }, [applyHistorySnapshot, bumpHistoryUi, flushLedgerPush]);
 
   const redoEdit = useCallback(() => {
+    if (liveActiveRef.current) {
+      liveRef.current.redo();
+      return;
+    }
     flushLedgerPush();
     const snap = ledgerRef.current.redo();
     if (snap) applyHistorySnapshot(snap);
@@ -774,6 +967,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      // A live-bound editor already undid its own text.
+      if (e.defaultPrevented) return;
       e.preventDefault();
       if (key === 'y' || (key === 'z' && e.shiftKey)) redoEdit();
       else undoEdit();
@@ -798,6 +993,24 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       .then((fromCloud) => {
         if (cancelled) return;
         if (!fromCloud) return;
+        if (liveActiveRef.current) {
+          // Live state owns sections/title/toc; take only the rest of the replica.
+          setBundle((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  chain: fromCloud.chain,
+                  manifest: {
+                    ...fromCloud.manifest,
+                    title: prev.manifest.title,
+                    toc: prev.manifest.toc,
+                    roles: prev.manifest.roles || fromCloud.manifest.roles
+                  }
+                }
+              : prev
+          );
+          return;
+        }
         if (dirtyRef.current) return;
         setBundle(fromCloud);
         setActiveSlug(fromCloud.manifest.toc[0] || 'body');
@@ -851,6 +1064,10 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   }, [docId, session]);
 
   function persist(next: NonNullable<typeof bundle>, opts?: { draft?: boolean }) {
+    if (liveActiveRef.current) {
+      next = rebaseOnLive(next);
+      liveEditedRef.current = true;
+    }
     const stamped = {
       ...next,
       manifest: {
@@ -997,6 +1214,18 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     });
   }, [bundle, isWidgetDoc]);
 
+  /** Durable live state beside the draft: local buffer and this member's own Drive. */
+  async function persistLiveSnapshot(): Promise<void> {
+    try {
+      const sealed = await liveRef.current.sealSnapshot();
+      if (!sealed) return;
+      saveLocalLiveSnapshot(session.pnIdentifier, docId, sealed);
+      await saveDriveLiveSnapshot(session.pnIdentifier, docId, sealed);
+    } catch {
+      /* offline — peers and the local copy still hold the state */
+    }
+  }
+
   async function persistDraftAsync(opts?: { silent?: boolean }): Promise<LocalDocBundle> {
     const current = bundleRef.current;
     if (!current) throw new Error('no_bundle');
@@ -1025,6 +1254,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setBundle({ ...next });
     setDirty(false);
     setLastDraftAt(now);
+
+    if (liveActiveRef.current) void persistLiveSnapshot();
 
     try {
       const saved = await saveLocalDocAsync(session.pnIdentifier, next);
@@ -2088,6 +2319,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     lastDraftAt,
     ledgerRef,
     ledgerTimerRef,
+    liveCollab,
+    liveReadOnly,
+    liveStatus,
     navigate,
     onEditorReady,
     onStoryBlockHeights,

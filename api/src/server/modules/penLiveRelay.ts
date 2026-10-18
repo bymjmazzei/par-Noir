@@ -15,7 +15,7 @@ const RATE_CAPACITY = 80;
 const RATE_REFILL_PER_SEC = 40;
 const ROOM_TOKEN_RE = /^[a-f0-9]{64}$/;
 
-const RELAY_EVENTS = ['pen:batch', 'pen:sync', 'pen:awareness'] as const;
+const RELAY_EVENTS = ['pen:batch', 'pen:sync', 'pen:awareness', 'pen:control'] as const;
 
 type Ack = ((res: { ok: boolean; error?: string }) => void) | undefined;
 

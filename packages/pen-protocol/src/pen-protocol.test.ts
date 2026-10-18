@@ -164,17 +164,23 @@ describe('pen roles', () => {
 
   it('keeps member signing keys across role changes', () => {
     const owner = 'ownerhash';
+    const attestation = { by: owner, signature: 'sig' };
     const roles = withMemberSigningKey(
       ensureOwnerAssignment([{ pnHash: 'peer', role: 'collaborator' }], owner),
       'peer',
-      'pk-peer'
+      'pk-peer',
+      attestation
     );
     const next = applyRoleChange(roles, owner, 'peer', 'viewer', 'owner');
     expect(next?.find((r) => r.pnHash === 'peer')).toEqual({
       pnHash: 'peer',
       role: 'viewer',
-      mlDsaPublicKey: 'pk-peer'
+      mlDsaPublicKey: 'pk-peer',
+      keyAttestation: attestation
     });
+    // A new key without an attestation drops the old one.
+    const rekeyed = withMemberSigningKey(next || [], 'peer', 'pk-new');
+    expect(rekeyed.find((r) => r.pnHash === 'peer')?.keyAttestation).toBeUndefined();
     const owned = ensureOwnerAssignment(
       [{ pnHash: owner, role: 'owner', mlDsaPublicKey: 'pk-owner' }],
       owner

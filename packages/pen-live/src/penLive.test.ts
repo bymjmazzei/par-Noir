@@ -12,11 +12,19 @@ import type {
   PenTipTapNode
 } from '@par-noir/pen-protocol';
 import {
+  PEN_LIVE_LOCAL,
   PEN_LIVE_REMOTE,
   PenLiveBridge,
   PenLiveReplayGuard,
   PenLiveSession,
+  attestMemberKey,
   bytesToBase64,
+  deriveKeyClaimSecret,
+  makeKeyClaim,
+  signRolesUpdate,
+  trustedLiveRoles,
+  verifyKeyClaim,
+  verifyRolesUpdate,
   openPenLiveBatch,
   openPenLiveSnapshot,
   penLiveRoomToken,
@@ -199,6 +207,50 @@ describe('doc model', () => {
     sync(a, b);
     expect(seen).toContain('body');
   });
+
+  it('leaves an editor-bound fragment to the editor', () => {
+    const doc = new Y.Doc();
+    const bridge = new PenLiveBridge(doc, schema);
+    const state = baseState();
+    bridge.applyLocal(state);
+    const frag = bridge.ensureFragment('body', null, para('ignored'))!;
+    expect(textOf(section(readPenLiveState(doc)).doc)).toBe('Hello');
+    bridge.bind(frag);
+    bridge.applyLocal({ ...state, sections: [{ ...section(state), doc: para('Stale editor JSON') }] });
+    expect(textOf(section(readPenLiveState(doc)).doc)).toBe('Hello');
+    bridge.bind(null);
+    bridge.applyLocal({ ...state, sections: [{ ...section(state), doc: para('Unbound write') }] });
+    expect(textOf(section(readPenLiveState(doc)).doc)).toBe('Unbound write');
+  });
+
+  it('creates a missing text-layer fragment from the given doc', () => {
+    const doc = new Y.Doc();
+    const bridge = new PenLiveBridge(doc, schema);
+    bridge.applyLocal({ ...baseState(), sections: [{ slug: 'body', doc: para('Hi'), layers: [layer('l9')] }] });
+    const frag = bridge.ensureFragment('body', 'l9', para('Layer text'));
+    expect(frag).not.toBeNull();
+    expect(textOf(section(readPenLiveState(doc)).layers?.[0]?.textDoc)).toBe('Layer text');
+    expect(bridge.ensureFragment('missing', null, para('x'))).toBeNull();
+  });
+
+  it('reports undo of local edits so the app can show it', () => {
+    const doc = new Y.Doc();
+    const bridge = new PenLiveBridge(doc, schema);
+    const state = baseState();
+    bridge.applyLocal(state);
+    const undo = new Y.UndoManager([doc.getMap('sections'), doc.getMap('meta')], {
+      trackedOrigins: new Set([PEN_LIVE_LOCAL])
+    });
+    const l1 = section(state).layers![0]!;
+    bridge.applyLocal({ ...state, sections: [{ ...section(state), layers: [{ ...l1, x: 77 }] }] });
+    const seen: PenSectionContent[] = [];
+    bridge.onRemote((change) => {
+      const s = change.sections.get('body');
+      if (s) seen.push(s);
+    });
+    undo.undo();
+    expect(seen.at(-1)?.layers?.[0]?.x).toBe(0);
+  });
 });
 
 function keys() {
@@ -296,6 +348,61 @@ describe('batch verification', () => {
   it('derives a different room per key epoch', () => {
     expect(penLiveRoomToken(docKey, 'g1', 0)).not.toBe(penLiveRoomToken(docKey, 'g1', 1));
     expect(penLiveRoomToken(docKey, 'g1', 0)).toBe(penLiveRoomToken(docKey, 'g1', 0));
+  });
+});
+
+describe('member key attestation', () => {
+  const owner = keys();
+  const member = keys();
+  const intruder = keys();
+  const anchor = { docId: 'd1', ownerPnHash: 'owner', ownerMlDsaPublicKey: owner.pub };
+  const ownerKem = bytesToBase64(new Uint8Array(32).fill(9));
+
+  it('trusts a member key only with an owner attestation for this doc', () => {
+    const keyAttestation = attestMemberKey({
+      docId: 'd1',
+      pnHash: 'member',
+      mlDsaPublicKey: member.pub,
+      owner: { pnHash: 'owner', mlDsaSecretKey: owner.secret }
+    });
+    const roles: PenRoleAssignment[] = [
+      { pnHash: 'owner', role: 'owner', mlDsaPublicKey: intruder.pub },
+      { pnHash: 'member', role: 'collaborator', mlDsaPublicKey: member.pub, keyAttestation },
+      { pnHash: 'self-asserted', role: 'collaborator', mlDsaPublicKey: intruder.pub }
+    ];
+    const trusted = trustedLiveRoles(roles, anchor);
+    expect(trusted.find((r) => r.pnHash === 'owner')?.mlDsaPublicKey).toBe(owner.pub);
+    expect(trusted.find((r) => r.pnHash === 'member')?.mlDsaPublicKey).toBe(member.pub);
+    expect(trusted.find((r) => r.pnHash === 'self-asserted')?.mlDsaPublicKey).toBeUndefined();
+    expect(trustedLiveRoles(roles, { ...anchor, docId: 'other' }).find((r) => r.pnHash === 'member')?.mlDsaPublicKey).toBeUndefined();
+  });
+
+  it('accepts a key claim made with the invite secret and refuses one made without it', () => {
+    const secret = deriveKeyClaimSecret(ownerKem, 'd1', 'member');
+    const claim = makeKeyClaim({ docId: 'd1', pnHash: 'member', mlDsaPublicKey: member.pub, claimSecret: secret });
+    expect(verifyKeyClaim(ownerKem, claim)).toBe(true);
+    const otherSecret = deriveKeyClaimSecret(ownerKem, 'd1', 'intruder');
+    const forged = makeKeyClaim({ docId: 'd1', pnHash: 'member', mlDsaPublicKey: intruder.pub, claimSecret: otherSecret });
+    expect(verifyKeyClaim(ownerKem, forged)).toBe(false);
+    expect(verifyKeyClaim(ownerKem, { ...claim, mlDsaPublicKey: intruder.pub })).toBe(false);
+  });
+
+  it('verifies owner-signed role updates', () => {
+    const update = signRolesUpdate({
+      docId: 'd1',
+      keyEpoch: 0,
+      roles: [{ pnHash: 'member', role: 'viewer' }],
+      owner: { pnHash: 'owner', mlDsaSecretKey: owner.secret }
+    });
+    expect(verifyRolesUpdate(update, anchor)).toBe(true);
+    expect(verifyRolesUpdate({ ...update, roles: [{ pnHash: 'member', role: 'owner' }] }, anchor)).toBe(false);
+    const byIntruder = signRolesUpdate({
+      docId: 'd1',
+      keyEpoch: 0,
+      roles: [],
+      owner: { pnHash: 'owner', mlDsaSecretKey: intruder.secret }
+    });
+    expect(verifyRolesUpdate(byIntruder, anchor)).toBe(false);
   });
 });
 
@@ -461,6 +568,38 @@ describe('live session over a relay', () => {
     await settle([a.session, b.session]);
     expect(readPenLiveState(a.ydoc).title).toBe('Doc');
     await Promise.all([a.session.stop(), b.session.stop()]);
+  });
+
+  it('delivers control messages to members on the same key and reports peers', async () => {
+    const hub = createHub();
+    const seed = penLiveSeedUpdate(baseState(), schema);
+    const a = open(hub, 'owner', owner.secret, seed);
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, seed, PEN_LIVE_REMOTE);
+    const controls: unknown[] = [];
+    const peers: string[] = [];
+    const b = new PenLiveSession({
+      ydoc,
+      docId: 'd1',
+      groupId: 'g1',
+      keyEpoch: 0,
+      docKey,
+      signer: { pnHash: 'collab', mlDsaSecretKey: collab.secret },
+      roles,
+      ownerPnHash: 'owner',
+      transport: hub.transport(),
+      batchWindowMs: 5,
+      onControl: (m) => controls.push(m),
+      onPeer: (pn) => peers.push(pn)
+    });
+    b.start();
+    a.session.start();
+    await settle([a.session, b]);
+    a.session.sendControl({ t: 'ping', n: 1 });
+    await settle([a.session, b]);
+    expect(controls).toEqual([{ t: 'ping', n: 1 }]);
+    expect(peers).toContain('owner');
+    await Promise.all([a.session.stop(), b.stop()]);
   });
 
   it('shares presence between members', async () => {

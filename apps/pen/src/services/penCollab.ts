@@ -44,6 +44,17 @@ import {
   openSocialEnvelope,
   sealSocialEnvelope
 } from '@par-noir/dm-crypto';
+import {
+  deriveKeyClaimSecret,
+  isPenLiveSealedSnapshot,
+  type PenLiveRolesUpdate
+} from '@par-noir/pen-live';
+import { loadDocKey } from './penDocCrypto';
+import {
+  PEN_LIVE_SNAPSHOT_EVENT,
+  mergeLiveSnapshotIntoLocal,
+  saveLiveRolesUpdate
+} from './penLiveStore';
 import { API_ENDPOINT } from '../config/api';
 import { appendDeviceGroupRow, listDeviceGroups } from '@par-noir/device-cloud-credentials';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
@@ -164,7 +175,12 @@ export async function invitePenCollaborator(params: {
   const peerEnv = await sealSocialEnvelope(params.peerMlKemPublicKey, params.groupId, {
     docKey,
     docId: params.docId,
-    role: params.role
+    role: params.role,
+    liveClaimSecret: deriveKeyClaimSecret(
+      params.session.mlKemSecretKey,
+      params.docId,
+      hashPnIdentifier(params.peerPnIdentifier)
+    )
   });
   const peerWrapped = JSON.stringify(peerEnv);
 
@@ -408,6 +424,46 @@ async function applyPenDocInviteClaimFromMailbox(
   return true;
 }
 
+/**
+ * pen.draft_upsert carrying live state: merge it into this member's local live
+ * snapshot and tell an open editor. Applied on device; never sent to apply-inbound.
+ */
+async function applyPenLiveSnapshotFromMailbox(
+  session: PenSession,
+  job: { id: string; jobType: string; payload: Record<string, unknown> }
+): Promise<boolean> {
+  const payload: Record<string, unknown> = { ...(job.payload || {}) };
+  const envelope = payload.envelope as { kemCiphertext: string; ciphertext: string } | undefined;
+  if (envelope?.kemCiphertext) {
+    if (!session.mlKemSecretKey) return false;
+    const contextId = String(payload.envelopeContext || payload.requestId || job.jobType);
+    Object.assign(
+      payload,
+      await openSocialEnvelope<Record<string, unknown>>(envelope, session.mlKemSecretKey, contextId)
+    );
+  }
+  const sealed = payload.liveSnapshot;
+  if (!isPenLiveSealedSnapshot(sealed)) return false;
+  const docId = String(payload.docId || '');
+  const groupId = String(payload.groupId || '');
+  if (!docId) return false;
+  const { ensureDocKeyFromGroup } = await import('./penHydrate');
+  const docKey =
+    loadDocKey(docId) || (groupId ? await ensureDocKeyFromGroup({ session, docId, groupId }) : null);
+  if (!docKey) return false;
+  // A snapshot from an older key epoch simply does not merge; it is still consumed.
+  await mergeLiveSnapshotIntoLocal({ pn: session.pnIdentifier, docId, incoming: sealed, docKey });
+  if (payload.liveRoles && typeof payload.liveRoles === 'object') {
+    saveLiveRolesUpdate(session.pnIdentifier, docId, payload.liveRoles as PenLiveRolesUpdate);
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(PEN_LIVE_SNAPSHOT_EVENT, { detail: { docId, sealed } }));
+  } catch {
+    /* non-browser */
+  }
+  return true;
+}
+
 /** Drain mailbox and apply pen.* jobs into this user's Drive. */
 const mailboxRouteByPn = new Map<string, string>();
 const drainInFlight = new Map<string, Promise<number>>();
@@ -475,6 +531,24 @@ export async function drainPenMailbox(session: PenSession): Promise<number> {
         continue;
       }
       if (!String(job.jobType || '').startsWith('pen.')) continue;
+      if (job.jobType === PEN_DRAFT_UPSERT_KIND) {
+        let handled = false;
+        try {
+          handled = await applyPenLiveSnapshotFromMailbox(session, job);
+        } catch {
+          handled = false;
+        }
+        if (handled) {
+          applied += 1;
+          await ownerFetch(
+            'POST',
+            '/api/mailbox/ack',
+            { pnIdentifier: session.pnIdentifier, routeKey, jobIds: [job.id] },
+            { pnIdentifier: session.pnIdentifier }
+          ).catch(() => null);
+          continue;
+        }
+      }
       let ok = false;
       try {
         ok = await apply({

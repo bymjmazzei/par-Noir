@@ -81,6 +81,17 @@ describe('pen live relay', () => {
     expect(atC).toEqual([]);
   });
 
+  it('relays encrypted control messages (key claims, role updates)', async () => {
+    const a = await client('pn-a');
+    const b = await client('pn-b');
+    await join(a);
+    await join(b);
+    const atB = collect(b, 'pen:control');
+    a.emit('pen:control', { roomToken: ROOM, payload: { docId: 'd', keyEpoch: 0, control: 'x' } });
+    await wait();
+    expect(atB).toEqual([{ roomToken: ROOM, payload: { docId: 'd', keyEpoch: 0, control: 'x' } }]);
+  });
+
   it('refuses unauthenticated sockets', async () => {
     const anon = await client();
     const b = await client('pn-b');

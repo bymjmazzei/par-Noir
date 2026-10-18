@@ -13,6 +13,53 @@ import {
 } from '@par-noir/dm-crypto';
 import { listDeviceGroups } from '@par-noir/device-cloud-credentials';
 import { penSessionDrive } from './penDriveLibrary';
+import { loadLiveClaimSecret, saveLiveClaimSecret } from './penLiveStore';
+
+/** Open this member's group row: owner wrap, or sealed peer invite (docKey + live claim secret). */
+async function openGroupRow(params: {
+  session: PenSession;
+  groupId: string;
+}): Promise<{ docKey: string | null; liveClaimSecret: string | null }> {
+  const none = { docKey: null, liveClaimSecret: null };
+  if (!params.session.mlKemSecretKey) return none;
+  try {
+    const drive = await penSessionDrive(params.session.pnIdentifier);
+    const sheetId = drive.index.sheetIds.groups;
+    if (!sheetId) return none;
+    const groups = await listDeviceGroups(drive.accessToken, sheetId);
+    const row = groups.find((g) => g.groupId === params.groupId);
+    const wrapped = row?.wrappedChatKey || '';
+    if (!wrapped) return none;
+
+    try {
+      const parsed = JSON.parse(wrapped) as unknown;
+      if (isSocialEnvelope(parsed)) {
+        const opened = await openSocialEnvelope<{
+          docKey?: string;
+          docId?: string;
+          liveClaimSecret?: string;
+        }>(parsed, params.session.mlKemSecretKey, params.groupId);
+        if (opened.docKey) {
+          return { docKey: opened.docKey, liveClaimSecret: opened.liveClaimSecret || null };
+        }
+      }
+    } catch {
+      /* not a social envelope — try owner wrap */
+    }
+    try {
+      const docKey = await unwrapChatKeyForOwner(
+        wrapped,
+        params.session.mlKemSecretKey,
+        params.groupId
+      );
+      return { docKey, liveClaimSecret: null };
+    } catch {
+      return none;
+    }
+  } catch {
+    return none;
+  }
+}
 
 /** Try to recover docKey from group membership (owner wrap or sealed peer invite). */
 export async function ensureDocKeyFromGroup(params: {
@@ -22,46 +69,24 @@ export async function ensureDocKeyFromGroup(params: {
 }): Promise<string | null> {
   const existing = loadDocKey(params.docId);
   if (existing) return existing;
-  if (!params.session.mlKemSecretKey) return null;
+  const { docKey, liveClaimSecret } = await openGroupRow(params);
+  if (docKey) saveDocKey(params.docId, docKey);
+  if (liveClaimSecret) saveLiveClaimSecret(params.docId, liveClaimSecret);
+  return docKey;
+}
 
-  try {
-    const drive = await penSessionDrive(params.session.pnIdentifier);
-    const sheetId = drive.index.sheetIds.groups;
-    if (!sheetId) return null;
-    const groups = await listDeviceGroups(drive.accessToken, sheetId);
-    const row = groups.find((g) => g.groupId === params.groupId);
-    const wrapped = row?.wrappedChatKey || '';
-    if (!wrapped) return null;
-
-    let docKey: string | null = null;
-    try {
-      const parsed = JSON.parse(wrapped) as unknown;
-      if (isSocialEnvelope(parsed)) {
-        const opened = await openSocialEnvelope<{
-          docKey?: string;
-          docId?: string;
-        }>(parsed, params.session.mlKemSecretKey, params.groupId);
-        if (opened.docKey) docKey = opened.docKey;
-      }
-    } catch {
-      /* not a social envelope — try owner wrap */
-    }
-    if (!docKey) {
-      try {
-        docKey = await unwrapChatKeyForOwner(
-          wrapped,
-          params.session.mlKemSecretKey,
-          params.groupId
-        );
-      } catch {
-        return null;
-      }
-    }
-    if (docKey) saveDocKey(params.docId, docKey);
-    return docKey;
-  } catch {
-    return null;
-  }
+/** Claim secret the owner sealed into this member's invite (null for the owner and legacy invites). */
+export async function ensureLiveClaimSecret(params: {
+  session: PenSession;
+  docId: string;
+  groupId: string;
+}): Promise<string | null> {
+  const existing = loadLiveClaimSecret(params.docId);
+  if (existing) return existing;
+  const { docKey, liveClaimSecret } = await openGroupRow(params);
+  if (docKey && !loadDocKey(params.docId)) saveDocKey(params.docId, docKey);
+  if (liveClaimSecret) saveLiveClaimSecret(params.docId, liveClaimSecret);
+  return liveClaimSecret;
 }
 
 export async function hydrateDocFromCloud(params: {

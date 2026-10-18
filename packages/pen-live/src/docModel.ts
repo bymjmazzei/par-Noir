@@ -152,12 +152,22 @@ function mergeClips(
   }
 }
 
+interface WriteCtx {
+  ydoc: Y.Doc;
+  schema: Schema;
+  /** Fragment owned by a live editor binding; the bridge never rewrites it. */
+  bound: Y.XmlFragment | null;
+}
+
+function writeOwnedFragment(ctx: WriteCtx, frag: Y.XmlFragment, json: PenTipTapNode): void {
+  if (frag !== ctx.bound) writeFragment(ctx.ydoc, frag, json, ctx.schema);
+}
+
 function writeLayer(
-  ydoc: Y.Doc,
+  ctx: WriteCtx,
   lmap: AnyMap,
   prev: PenPageLayer | undefined,
-  next: PenPageLayer,
-  schema: Schema
+  next: PenPageLayer
 ): void {
   writeFields(
     lmap,
@@ -167,9 +177,9 @@ function writeLayer(
   );
   if (!prev || prev.textDoc !== next.textDoc) {
     if (next.textDoc === undefined) {
-      if (lmap.has('textDoc')) lmap.delete('textDoc');
+      if (lmap.has('textDoc') && lmap.get('textDoc') !== ctx.bound) lmap.delete('textDoc');
     } else {
-      writeFragment(ydoc, childOf(lmap, 'textDoc', () => new Y.XmlFragment()), next.textDoc, schema);
+      writeOwnedFragment(ctx, childOf(lmap, 'textDoc', () => new Y.XmlFragment()), next.textDoc);
     }
   }
   if (!prev || !sameJson(prev.clips, next.clips)) {
@@ -186,11 +196,10 @@ function writeLayer(
 }
 
 function writeSection(
-  ydoc: Y.Doc,
+  ctx: WriteCtx,
   ymap: AnyMap,
   prev: PenSectionContent | undefined,
-  next: PenSectionContent,
-  schema: Schema
+  next: PenSectionContent
 ): void {
   writeFields(
     childOf(ymap, 'fields', () => new Y.Map()),
@@ -199,7 +208,7 @@ function writeSection(
     SECTION_SKIP
   );
   if (!prev || prev.doc !== next.doc) {
-    writeFragment(ydoc, childOf(ymap, 'body', () => new Y.XmlFragment()), next.doc, schema);
+    writeOwnedFragment(ctx, childOf(ymap, 'body', () => new Y.XmlFragment()), next.doc);
   }
 
   const layersMap = childOf<AnyMap>(ymap, 'layers', () => new Y.Map());
@@ -221,11 +230,11 @@ function writeSection(
     if (prevLayer === layer && layersMap.has(layer.id)) continue;
     const existing = layersMap.get(layer.id) as AnyMap | undefined;
     if (existing) {
-      writeLayer(ydoc, existing, prevLayer, layer, schema);
+      writeLayer(ctx, existing, prevLayer, layer);
     } else {
       const lmap = new Y.Map<any>();
       layersMap.set(layer.id, lmap);
-      writeLayer(ydoc, lmap, undefined, layer, schema);
+      writeLayer(ctx, lmap, undefined, layer);
     }
   }
 
@@ -303,11 +312,44 @@ export class PenLiveBridge {
   private known = new Map<string, PenSectionContent>();
   private knownTitle: string | undefined;
   private knownToc: string[] | undefined;
+  private bound: Y.XmlFragment | null = null;
 
   constructor(
     readonly ydoc: Y.Doc,
     private readonly schema: Schema
   ) {}
+
+  /**
+   * Hand one text fragment to an editor binding (y-prosemirror). The editor
+   * writes it directly, so `applyLocal` leaves it alone.
+   */
+  bind(fragment: Y.XmlFragment | null): void {
+    this.bound = fragment;
+  }
+
+  /**
+   * Text fragment for a section body (`layerId` null) or text layer, created
+   * from `doc` when the Y.Doc does not hold one yet.
+   */
+  ensureFragment(slug: string, layerId: string | null, doc: PenTipTapNode): Y.XmlFragment | null {
+    const existing = layerId ? layerTextFragment(this.ydoc, slug, layerId) : sectionBodyFragment(this.ydoc, slug);
+    if (existing) return existing;
+    const ymap = penLiveSectionsMap(this.ydoc).get(slug);
+    if (!ymap) return null;
+    let target: AnyMap = ymap;
+    if (layerId) {
+      const lmap = (ymap.get('layers') as AnyMap | undefined)?.get(layerId) as AnyMap | undefined;
+      if (!lmap) return null;
+      target = lmap;
+    }
+    let frag: Y.XmlFragment | null = null;
+    // Default origin: peers receive it, but local undo does not track it.
+    this.ydoc.transact(() => {
+      frag = childOf(target, layerId ? 'textDoc' : 'body', () => new Y.XmlFragment());
+      writeFragment(this.ydoc, frag, doc, this.schema);
+    });
+    return frag;
+  }
 
   /** Record app state as already in sync (after a remote emit or initial load). */
   adopt(state: PenLiveDocState): void {
@@ -325,7 +367,8 @@ export class PenLiveBridge {
   }
 
   applyLocal(state: PenLiveDocState): void {
-    const { ydoc, schema } = this;
+    const { ydoc } = this;
+    const ctx: WriteCtx = { ydoc, schema: this.schema, bound: this.bound };
     ydoc.transact(() => {
       const meta = metaMap(ydoc);
       if (this.knownTitle !== state.title && meta.get('title') !== state.title) {
@@ -344,21 +387,24 @@ export class PenLiveBridge {
         const existing = sections.get(section.slug);
         if (prev === section && existing) continue;
         if (existing) {
-          writeSection(ydoc, existing, prev, section, schema);
+          writeSection(ctx, existing, prev, section);
         } else {
           const ymap = new Y.Map<any>();
           sections.set(section.slug, ymap);
-          writeSection(ydoc, ymap, undefined, section, schema);
+          writeSection(ctx, ymap, undefined, section);
         }
       }
     }, PEN_LIVE_LOCAL);
     this.adopt(state);
   }
 
-  /** Subscribe to peer changes. The bridge adopts emitted sections itself. */
+  /**
+   * Subscribe to changes the app did not write itself: peer updates and
+   * Y.UndoManager undo/redo. The bridge adopts emitted sections itself.
+   */
   onRemote(cb: (change: PenLiveRemoteChange) => void): () => void {
     const handler = (tr: Y.Transaction) => {
-      if (tr.origin !== PEN_LIVE_REMOTE) return;
+      if (tr.origin !== PEN_LIVE_REMOTE && !(tr.origin instanceof Y.UndoManager)) return;
       const sections = penLiveSectionsMap(this.ydoc);
       const meta = metaMap(this.ydoc);
       const slugs = new Set<string>();

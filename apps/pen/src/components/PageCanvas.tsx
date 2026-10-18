@@ -1,18 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import TextAlign from '@tiptap/extension-text-align';
-import Underline from '@tiptap/extension-underline';
-import { TextStyle } from '@tiptap/extension-text-style';
-import FontFamily from '@tiptap/extension-font-family';
-import { Color } from '@tiptap/extension-color';
-import Highlight from '@tiptap/extension-highlight';
-import Link from '@tiptap/extension-link';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
+import Collaboration from '@tiptap/extension-collaboration';
+import type * as Y from 'yjs';
+import { ySyncPluginKey } from 'y-prosemirror';
 import {
   PEN_SYSTEM_FONTS,
   PEN_GOOGLE_FONTS_FEATURED,
@@ -29,11 +19,8 @@ import {
 } from '@par-noir/pen-protocol';
 import { LAYERS_TEXT_LOOK_PRESETS } from './layersAddMenu';
 import { PageSheetColumn } from './PageSheetColumn';
-import { FontSize } from '../services/fontSizeExtension';
-import { TextEffects } from '../services/textEffectsExtension';
-import { PenImage, type PenImageWrap } from '../services/penImageExtension';
-import { PenVideo } from '../services/penVideoExtension';
-import { PenEmbed } from '../services/penEmbedExtension';
+import type { PenImageWrap } from '../services/penImageExtension';
+import { penEditorExtensions } from '../services/penEditorExtensions';
 import { sectionToTipTapDoc, tipTapDocToSection } from '../services/penBlocks';
 import { PEN_STICKERS } from '../services/stickerPack';
 import { downloadPenMedia } from '@par-noir/pen-media';
@@ -72,11 +59,6 @@ import {
   IconSearch,
   IconTable
 } from './icons/PenIcons';
-
-function proseLinkAllowed(url: string): boolean {
-  if (/^mailto:/i.test(url.trim())) return true;
-  return checkLink(url).ok;
-}
 
 function currentFontSize(editor: Editor): string {
   const attrs = editor.getAttributes('textStyle');
@@ -1018,7 +1000,8 @@ export function PageCanvas({
   onBlockHeights,
   focusBlockIndex = null,
   focusBlockKey,
-  frameStartBlocks
+  frameStartBlocks,
+  collab
 }: {
   section: PenSectionContent;
   /** Writing tree label — Body section title or selected overlay object name. */
@@ -1042,41 +1025,20 @@ export function PageCanvas({
   focusBlockKey?: string;
   /** First block index of each frame, including 0. */
   frameStartBlocks?: number[];
+  /**
+   * Live co-editing: bind the editor to this Yjs fragment. Fixed for the life
+   * of the editor — remount (key) when it changes.
+   */
+  collab?: { fragment: Y.XmlFragment };
 }) {
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-        // Document-level ActivityLedger owns undo (append-only / never discard).
-        history: false
-      }),
-      Underline,
-      TextStyle,
-      FontFamily,
-      FontSize,
-      TextEffects,
-      Color,
-      Highlight.configure({ multicolor: true }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        defaultProtocol: 'https',
-        isAllowedUri: (url) => proseLinkAllowed(url)
-      }),
-      Table.configure({ resizable: true }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      PenImage.configure({ inline: false, allowBase64: true }),
-      PenVideo,
-      PenEmbed.configure({ pnIdentifier }),
-      Placeholder.configure({
-        placeholder: sectionTitle ? `Write ${sectionTitle.toLowerCase()}…` : 'Start typing…'
-      }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] })
+      ...penEditorExtensions({ pnIdentifier, sectionTitle }),
+      ...(collab ? [Collaboration.configure({ fragment: collab.fragment })] : [])
     ],
     editable: !readOnly,
-    content: sectionToTipTapDoc(section),
+    // Bound editors render from the fragment.
+    ...(collab ? {} : { content: sectionToTipTapDoc(section) }),
     editorProps: {
       attributes: {
         class: compact
@@ -1084,7 +1046,9 @@ export function PageCanvas({
           : 'pen-word-prose outline-none min-h-[18rem]'
       }
     },
-    onUpdate: ({ editor: ed }) => {
+    onUpdate: ({ editor: ed, transaction }) => {
+      // Peer edits reach the app through the live bridge, not as local changes.
+      if (transaction.getMeta(ySyncPluginKey)?.isChangeOrigin) return;
       onChange(tipTapDocToSection(section.slug, ed.getJSON()));
     }
   });
@@ -1095,14 +1059,14 @@ export function PageCanvas({
   }, [editor, onEditorReady]);
 
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || collab) return;
     const next = sectionToTipTapDoc(section);
     const cur = JSON.stringify(editor.getJSON());
     const incoming = JSON.stringify(next);
     if (cur !== incoming) {
       editor.commands.setContent(next, false);
     }
-  }, [section.slug, section.doc, editor]);
+  }, [section.slug, section.doc, editor, collab]);
 
   const columnRef = useRef<HTMLDivElement>(null);
   const heightsRef = useRef(onBlockHeights);

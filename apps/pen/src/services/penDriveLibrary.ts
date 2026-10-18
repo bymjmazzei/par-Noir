@@ -358,6 +358,36 @@ export async function writePenDocFiles(params: {
   }
 }
 
+const LIVE_SNAPSHOT_FILE = 'live.ysnap';
+
+/** Sealed Yjs live state (docKey envelope JSON) beside doc.json. */
+export async function writeLiveSnapshotFile(params: {
+  accessToken: string;
+  pnFolderId: string;
+  docId: string;
+  sealedJson: string;
+}): Promise<void> {
+  const root = await ensurePenRoot(params.accessToken, params.pnFolderId);
+  const docName = docRootPath(params.docId).split('/').pop() || sanitizeSegment(params.docId);
+  const docFolder = await ensureChildFolder(params.accessToken, root, docName);
+  await writeNamedText(params.accessToken, docFolder, LIVE_SNAPSHOT_FILE, params.sealedJson);
+}
+
+export async function readLiveSnapshotFile(params: {
+  accessToken: string;
+  pnFolderId: string;
+  docId: string;
+}): Promise<string | null> {
+  const root = await penRootFolderId(params.accessToken, params.pnFolderId);
+  if (!root) return null;
+  const docName = docRootPath(params.docId).split('/').pop() || sanitizeSegment(params.docId);
+  const docFolder = await findChild(params.accessToken, root, docName, FOLDER);
+  if (!docFolder) return null;
+  const id = await findChild(params.accessToken, docFolder, LIVE_SNAPSHOT_FILE);
+  if (!id) return null;
+  return (await downloadDriveText(params.accessToken, id)) || null;
+}
+
 export async function removePenDoc(
   accessToken: string,
   pnFolderId: string,

@@ -9,6 +9,8 @@ export interface PenRoleAssignment {
   role: PenRole;
   /** Member ML-DSA public key (base64); peers verify live edit batch signatures against it. */
   mlDsaPublicKey?: string;
+  /** Owner's ML-DSA signature binding `mlDsaPublicKey` to `pnHash` for this doc. */
+  keyAttestation?: { by: string; signature: string };
 }
 
 export type PenAclAction =
@@ -94,14 +96,16 @@ export function applyRoleChange(
   const prior = assignments.find((a) => a.pnHash === targetPnHash);
   const without = assignments.filter((a) => a.pnHash !== targetPnHash);
   if (nextRole == null) return without;
-  return [
-    ...without,
-    {
-      pnHash: targetPnHash,
-      role: nextRole,
-      ...(prior?.mlDsaPublicKey ? { mlDsaPublicKey: prior.mlDsaPublicKey } : {})
-    }
-  ];
+  return [...without, { ...signingKeyOf(prior), pnHash: targetPnHash, role: nextRole }];
+}
+
+function signingKeyOf(
+  a: PenRoleAssignment | undefined
+): Pick<PenRoleAssignment, 'mlDsaPublicKey' | 'keyAttestation'> {
+  return {
+    ...(a?.mlDsaPublicKey ? { mlDsaPublicKey: a.mlDsaPublicKey } : {}),
+    ...(a?.keyAttestation ? { keyAttestation: a.keyAttestation } : {})
+  };
 }
 
 export function ensureOwnerAssignment(
@@ -110,21 +114,19 @@ export function ensureOwnerAssignment(
 ): PenRoleAssignment[] {
   const prior = (assignments || []).find((a) => a.pnHash === ownerPnHash);
   const base = (assignments || []).filter((a) => a.pnHash !== ownerPnHash);
-  return [
-    {
-      pnHash: ownerPnHash,
-      role: 'owner',
-      ...(prior?.mlDsaPublicKey ? { mlDsaPublicKey: prior.mlDsaPublicKey } : {})
-    },
-    ...base
-  ];
+  return [{ ...signingKeyOf(prior), pnHash: ownerPnHash, role: 'owner' }, ...base];
 }
 
 /** Attach or replace a member's ML-DSA verification key without changing their role. */
 export function withMemberSigningKey(
   assignments: PenRoleAssignment[],
   pnHash: string,
-  mlDsaPublicKey: string
+  mlDsaPublicKey: string,
+  keyAttestation?: PenRoleAssignment['keyAttestation']
 ): PenRoleAssignment[] {
-  return assignments.map((a) => (a.pnHash === pnHash ? { ...a, mlDsaPublicKey } : a));
+  return assignments.map((a) => {
+    if (a.pnHash !== pnHash) return a;
+    const { keyAttestation: _drop, ...rest } = a;
+    return { ...rest, mlDsaPublicKey, ...(keyAttestation ? { keyAttestation } : {}) };
+  });
 }
