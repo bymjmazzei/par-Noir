@@ -301,6 +301,8 @@ describe('pen feed UX chrome', () => {
     expect(menu).toMatch(/role="dialog"/);
     expect(menu).toMatch(/pen-gallery-tiles/);
     expect(menu).toMatch(/pen-gallery-tile/);
+    expect(menu).toMatch(/pen-action-layer-overlay/);
+    expect(menu).toMatch(/pen-named-black-tile/);
     expect(rail).toMatch(/widgets\.widget/);
   });
 

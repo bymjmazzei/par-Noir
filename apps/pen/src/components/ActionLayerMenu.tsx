@@ -25,8 +25,9 @@ import {
   LAYERS_PAGE_WIDGET_PRESETS,
   LAYERS_WIDGET_ELEMENTS
 } from './layersAddMenu';
-import { DocGalleryPreview } from './DocGalleryPreview';
-import { TemplateGalleryThumb } from './TemplateGalleryThumb';
+import { previewBundleFromTemplate } from './TemplateGalleryThumb';
+import { resolveGalleryMedia, type GalleryMedia } from '../services/penGalleryPreview';
+import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 
 function sourceLayers(template: PenTemplate): PenPageLayer[] {
   return template.seedSections?.[0]?.layers || [];
@@ -37,18 +38,85 @@ function previewManifest(title: string): PenDocManifest {
   return {
     docId: 'preview',
     title,
-    docType: 'note',
-    classId: 'social.post',
+    docType: 'widget',
+    classId: 'widgets.widget',
     templateId: 'preview',
     templateVersion: '1',
     groupId: 'preview',
-    toc: ['body'],
+    toc: ['card'],
     createdAt: now,
     updatedAt: now
   };
 }
 
-function LayerPreviewThumb({
+function NamedBlackTile({ name }: { name: string }) {
+  return (
+    <div className="pen-named-black-tile">
+      <span className="pen-named-black-tile-text">{name}</span>
+    </div>
+  );
+}
+
+function CatalogMediaThumb({
+  media,
+  session,
+  docId = 'preview'
+}: {
+  media: GalleryMedia;
+  session?: PenSession | null;
+  docId?: string;
+}) {
+  const { resolved } = useResolvedMediaSrc(media.src, { docId, session });
+  return (
+    <div className="pen-white-media-thumb flex items-center justify-center bg-white">
+      {resolved ? (
+        media.kind === 'video' ? (
+          <video
+            src={resolved}
+            className="max-h-full max-w-full object-contain"
+            muted
+            playsInline
+          />
+        ) : (
+          <img
+            src={resolved}
+            alt=""
+            className="max-h-full max-w-full object-contain"
+            draggable={false}
+          />
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function WidgetTemplateThumb({
+  template,
+  pn,
+  session
+}: {
+  template: PenTemplate;
+  pn: string;
+  session?: PenSession | null;
+}) {
+  const bundle = previewBundleFromTemplate(pn, template);
+  if (!bundle) {
+    return <NamedBlackTile name={template.title} />;
+  }
+  const media = resolveGalleryMedia(bundle.manifest, bundle.sections);
+  if (!media) {
+    return <NamedBlackTile name={template.title} />;
+  }
+  return (
+    <CatalogMediaThumb
+      media={media}
+      session={session}
+      docId={bundle.manifest.docId}
+    />
+  );
+}
+
+function SectionLayersThumb({
   title,
   section,
   session
@@ -57,13 +125,11 @@ function LayerPreviewThumb({
   section: PenSectionContent;
   session?: PenSession | null;
 }) {
-  return (
-    <DocGalleryPreview
-      manifest={previewManifest(title)}
-      sections={[section]}
-      session={session}
-    />
-  );
+  const media = resolveGalleryMedia(previewManifest(title), [section]);
+  if (media) {
+    return <CatalogMediaThumb media={media} session={session} />;
+  }
+  return <div className="pen-white-media-thumb bg-white" aria-hidden />;
 }
 
 export function ActionLayerMenu({
@@ -187,14 +253,11 @@ export function ActionLayerMenu({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex bg-black/40 p-[3vh_2vw]"
-      onClick={onCancel}
-    >
+    <div className="pen-action-layer-overlay" onClick={onCancel}>
       <div
         role="dialog"
         aria-label={sticker ? 'Add sticker' : 'Add widget'}
-        className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white text-[12px] text-neutral-800 shadow-xl"
+        className="pen-action-layer-panel text-[12px] text-neutral-800"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-4 py-3">
@@ -258,7 +321,7 @@ export function ActionLayerMenu({
           </form>
         )}
 
-        <div className="pen-gallery-wrap pen-templates-gallery min-h-0 flex-1 overflow-auto">
+        <div className="pen-gallery-wrap pen-templates-gallery pen-action-layer-gallery min-h-0 flex-1 overflow-auto bg-white">
           {emptyGallery && (
             <p className="px-4 py-6 text-neutral-500">{sticker ? 'No stickers' : 'No widgets'}</p>
           )}
@@ -278,7 +341,7 @@ export function ActionLayerMenu({
                         <span className="pen-gallery-tile-title-text">{label}</span>
                       </div>
                       <span className="pen-gallery-tile-preview">
-                        <LayerPreviewThumb title={label} section={placed.section} session={session} />
+                        <SectionLayersThumb title={label} section={placed.section} session={session} />
                       </span>
                     </button>
                   </div>
@@ -298,7 +361,7 @@ export function ActionLayerMenu({
                         <span className="pen-gallery-tile-title-text">{label}</span>
                       </div>
                       <span className="pen-gallery-tile-preview">
-                        <LayerPreviewThumb title={label} section={placed.section} session={session} />
+                        <SectionLayersThumb title={label} section={placed.section} session={session} />
                       </span>
                     </button>
                   </div>
@@ -316,12 +379,7 @@ export function ActionLayerMenu({
                       <span className="pen-gallery-tile-title-text">{template.title}</span>
                     </div>
                     <span className="pen-gallery-tile-preview">
-                      <TemplateGalleryThumb
-                        pn={pn}
-                        templateId={template.id}
-                        template={template}
-                        session={session}
-                      />
+                      <WidgetTemplateThumb template={template} pn={pn} session={session} />
                     </span>
                   </button>
                 </div>
@@ -339,12 +397,14 @@ export function ActionLayerMenu({
                     <div className="pen-gallery-tile-title">
                       <span className="pen-gallery-tile-title-text">{hit.title || 'Sticker'}</span>
                     </div>
-                    <span className="pen-gallery-tile-preview flex items-center justify-center bg-neutral-50 p-2">
-                      <img
-                        src={hit.url}
-                        alt={hit.title || 'Sticker'}
-                        className="max-h-full max-w-full object-contain"
-                      />
+                    <span className="pen-gallery-tile-preview">
+                      <div className="pen-white-media-thumb flex items-center justify-center bg-white p-2">
+                        <img
+                          src={hit.url}
+                          alt={hit.title || 'Sticker'}
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
                     </span>
                   </button>
                 </div>
