@@ -15,11 +15,14 @@
     "@par-noir/dm-crypto": "file:../../packages/dm-crypto",
     "@par-noir/feed-tile": "file:../../packages/feed-tile",
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
+    "@par-noir/pen-live": "file:../../packages/pen-live",
     "@par-noir/pen-media": "file:../../packages/pen-media",
     "@par-noir/pen-protocol": "file:../../packages/pen-protocol",
-    "@par-noir/social-connections": "file:../../packages/social-connections",
     "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
+    "@par-noir/social-connections": "file:../../packages/social-connections",
     "@par-noir/zk-protocol-v2": "file:../../packages/zk-protocol-v2",
+    "@tiptap/extension-collaboration": "^2.27.3",
+    "@tiptap/extension-collaboration-cursor": "^2.27.3",
     "@tiptap/extension-color": "^2.27.3",
     "@tiptap/extension-font-family": "^2.27.3",
     "@tiptap/extension-highlight": "^2.27.3",
@@ -40,7 +43,11 @@
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.22.0"
+    "react-router-dom": "^6.22.0",
+    "socket.io-client": "^4.8.4",
+    "y-prosemirror": "^1.3.7",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

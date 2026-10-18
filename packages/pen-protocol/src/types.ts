@@ -734,7 +734,9 @@ export interface PenLiveBatch {
   docId: string;
   keyEpoch: number;
   authorPnHash: string;
-  /** Per-author monotonically increasing counter for replay rejection. */
+  /** Sender's Yjs client id; replay state is kept per (author, clientId). */
+  clientId: number;
+  /** Strictly increasing per (author, clientId) for replay rejection. */
   seq: number;
   /** `update` = incremental edit; `sync1` = state vector request; `sync2` = diff reply. */
   type: 'update' | 'sync1' | 'sync2';
