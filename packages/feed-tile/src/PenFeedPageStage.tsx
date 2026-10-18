@@ -12,6 +12,7 @@ import {
 } from '@par-noir/pen-protocol';
 import type { CSSProperties } from 'react';
 import { DEFAULT_FEED_PLAYBACK, FeedLoopVideo, type FeedPlayback } from './FeedLoopVideo.js';
+import { LeaveSheet, needsLeaveSheet, type LeaveEffect } from './LeaveSheet.js';
 
 function buttonLabel(layer: PenPageLayer, state: PenViewerState): string {
   const face = layer.textDoc ? docToPlainText(layer.textDoc).trim() : '';
@@ -126,6 +127,7 @@ export function PenFeedPageStage({
   penFeedPage,
   externalClockSec,
   onEffect,
+  onReportLink,
   actorId,
   fit = 'cover',
   playback = DEFAULT_FEED_PLAYBACK
@@ -135,8 +137,13 @@ export function PenFeedPageStage({
   penFeedPage: PenFeedPagePayload;
   /** Editor preview: drive overlay from timeline scrubber. */
   externalClockSec?: number;
-  /** Side effect of a button press (open, vote, sheet row…). Local state stays here. */
+  /**
+   * Side effect of a button press (open, vote, sheet row…). Local state stays here.
+   * Open, email, and Messaging effects arrive only after the viewer confirms the leave sheet.
+   */
   onEffect?: (effect: PenActionEffect) => void;
+  /** Report link on the leave sheet. Omit where there is nothing to report to. */
+  onReportLink?: (url: string) => void;
   /** Hashed viewer id stamped on sheet rows. */
   actorId?: string;
   fit?: 'cover' | 'contain';
@@ -144,6 +151,7 @@ export function PenFeedPageStage({
 }) {
   const [videoTime, setVideoTime] = useState(0);
   const [viewer, setViewer] = useState<PenViewerState>(emptyPenViewerState);
+  const [leaving, setLeaving] = useState<LeaveEffect | null>(null);
   const viewerRef = useRef(viewer);
   viewerRef.current = viewer;
 
@@ -156,7 +164,12 @@ export function PenFeedPageStage({
     });
     viewerRef.current = result.state;
     setViewer(result.state);
-    if (result.effect.kind !== 'none') onEffect?.(result.effect);
+    if (result.effect.kind === 'none') return;
+    if (needsLeaveSheet(result.effect)) {
+      setLeaving(result.effect);
+      return;
+    }
+    onEffect?.(result.effect);
   };
 
   const typeInput = (layerId: string, value: string) => {
@@ -229,6 +242,24 @@ export function PenFeedPageStage({
           ))}
         </div>
       </div>
+      {leaving ? (
+        <LeaveSheet
+          effect={leaving}
+          onCancel={() => setLeaving(null)}
+          onContinue={() => {
+            setLeaving(null);
+            onEffect?.(leaving);
+          }}
+          onReportLink={
+            onReportLink
+              ? (url) => {
+                  setLeaving(null);
+                  onReportLink(url);
+                }
+              : undefined
+          }
+        />
+      ) : null}
     </div>
   );
 }

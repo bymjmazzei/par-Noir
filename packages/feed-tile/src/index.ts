@@ -5,6 +5,7 @@ export {
   type FeedTilePage
 } from './FeedTileSurface.js';
 export { PenFeedPageStage } from './PenFeedPageStage.js';
+export { LeaveSheet, needsLeaveSheet, type LeaveEffect } from './LeaveSheet.js';
 export {
   compilePenFeedTileModel,
   isPenFeedPlaybackMetadata,

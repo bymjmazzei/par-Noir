@@ -184,6 +184,7 @@ function PageSurface({
   page,
   titleFallback,
   onEffect,
+  onReportLink,
   actorId,
   externalClockSec,
   fit,
@@ -192,6 +193,7 @@ function PageSurface({
   page: FeedTilePage;
   titleFallback: string;
   onEffect?: (effect: PenActionEffect) => void;
+  onReportLink?: (url: string) => void;
   actorId?: string;
   externalClockSec?: number;
   fit: MediaFit;
@@ -217,6 +219,7 @@ function PageSurface({
         penFeedPage={page.penFeedPage}
         externalClockSec={externalClockSec}
         onEffect={onEffect}
+        onReportLink={onReportLink}
         actorId={actorId}
         fit={fit}
         playback={playback}
@@ -266,6 +269,7 @@ export function FeedTileSurface({
   aspectRatio = '9/16',
   layout = 'preview',
   onEffect,
+  onReportLink,
   actorId,
   externalClockSec,
   playback
@@ -289,8 +293,10 @@ export function FeedTileSurface({
    * cropped, and the host draws the caption.
    */
   layout?: 'preview' | 'feed';
-  /** Side effect of a button press on the action layer. */
+  /** Side effect of a button press on the action layer. Links arrive after the leave sheet. */
   onEffect?: (effect: PenActionEffect) => void;
+  /** Report link on the leave sheet. Published feed posts only. */
+  onReportLink?: (url: string) => void;
   /** Hashed viewer id stamped on sheet rows. */
   actorId?: string;
   /** Editor preview: sync overlay motion to timeline scrubber. */
@@ -384,6 +390,7 @@ export function FeedTileSurface({
                 }}
                 titleFallback={model.title}
                 onEffect={onEffect}
+                onReportLink={onReportLink}
                 actorId={actorId}
                 externalClockSec={externalClockSec}
                 fit={fit}
@@ -414,6 +421,7 @@ export function FeedTileSurface({
                 page={page}
                 titleFallback={model.title}
                 onEffect={onEffect}
+                onReportLink={onReportLink}
                 actorId={actorId}
                 externalClockSec={externalClockSec}
                 fit={fit}
@@ -431,6 +439,7 @@ export function FeedTileSurface({
           }}
           titleFallback={model.title}
           onEffect={onEffect}
+          onReportLink={onReportLink}
           actorId={actorId}
           externalClockSec={externalClockSec}
           fit={fit}
