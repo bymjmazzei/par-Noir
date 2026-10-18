@@ -1,4 +1,5 @@
 import type { SeedBundle } from '../starterSeeds.js';
+import type { PenPageLayer } from '../types.js';
 import { socialPresentation } from '../starterSeeds.js';
 import { plainDoc } from '../widgetElements.js';
 import { artHtml, artLayer, buttonLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
@@ -91,7 +92,7 @@ export function seedWebsiteDoc(): SeedBundle {
       backgroundColor: '#ffffff',
       textColor: '#111827',
       cornerRadius: 8
-    },
+    } satisfies PenPageLayer,
     buttonLayer(
       'ws_contact_send',
       { x: 24, y: 224, w: 120, h: 40, z: 5 },

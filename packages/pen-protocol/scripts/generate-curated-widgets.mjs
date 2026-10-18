@@ -122,13 +122,38 @@ function shapes(i) {
   return `<div class="s" style="width:${a}px;height:${a}px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>`;
 }
 
-function layerLines(id, title, category, aspect, gi) {
+function usesOpt(behavior) {
+  return ['vote', 'reveal', 'toggleReveal', 'step', 'quiz', 'toggle', 'rank', 'allocate', 'pagego'].includes(behavior);
+}
+
+function usesBodyStyle(behavior) {
+  return ['reveal', 'toggleReveal', 'step'].includes(behavior);
+}
+
+function usesCountdown(id) {
+  return id.includes('countdown') || id.includes('launch');
+}
+
+function kitImportLine(behaviors, ids) {
+  const names = new Set(['artHtml', 'artLayer', 'buttonLayer', 'curatedCardSeed', 'kickerStyle', 'textLayer', 'titleStyle']);
+  for (const b of behaviors) {
+    if (usesBodyStyle(b)) names.add('bodyStyle');
+  }
+  for (const id of ids) {
+    if (usesCountdown(id)) names.add('countdownLayer');
+  }
+  return `import { ${[...names].sort().join(', ')} } from './kit.js';`;
+}
+
+function layerLines(id, title, category, aspect, gi, behavior) {
   const h = aspect === 'story' ? 640 : aspect === 'banner' ? 120 : 360;
   const prefix = id.replace(/\./g, '_').replace(/widget_/g, 'w_');
   const grad = GRADIENTS[gi % GRADIENTS.length];
   const lines = [];
   lines.push(`export function seed${toSeedName(id)}(): SeedBundle {`);
-  lines.push(`  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };`);
+  if (usesOpt(behavior)) {
+    lines.push(`  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };`);
+  }
   lines.push(`  return curatedCardSeed([`);
   lines.push(`    artLayer('${prefix}_art', artHtml('${grad}', '${shapes(gi)}'), ${h}),`);
   lines.push(`    textLayer('${prefix}_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, '${category.toUpperCase()}', kickerStyle),`);
@@ -201,9 +226,9 @@ function finishSeed({ lines, prefix, h, id, behavior }) {
     lines.push(`    buttonLayer('${prefix}_next', { x: 24, y: ${yBase}, w: 120, h: 36, z: 5 }, 'Next', opt, { behavior: 'widget.step', stepDir: 'next' })`);
   } else if (behavior === 'quiz') {
     lines.push(`    buttonLayer('${prefix}_ans', { x: 24, y: ${yBase}, w: 312, h: 36, z: 5 }, 'Answer', opt, { behavior: 'quiz.answer', correct: true }),`);
-    lines.push(`    { id: '${prefix}_score', kind: 'text', widgetElement: 'score', name: 'Score', x: 24, y: ${yBase + 44}, w: 120, h: 32, zIndex: 6, positionLocked: false, backgroundColor: 'transparent', textColor: '#fff' }`);
+    lines.push(`    { id: '${prefix}_score', kind: 'text' as const, widgetElement: 'score' as const, name: 'Score', x: 24, y: ${yBase + 44}, w: 120, h: 32, zIndex: 6, positionLocked: false, backgroundColor: 'transparent', textColor: '#fff' }`);
   } else if (behavior === 'submit') {
-    lines.push(`    { id: '${prefix}_in', kind: 'text', widgetElement: 'input', name: 'Field', label: 'Your reply…', x: 24, y: ${yBase}, w: 312, h: 36, zIndex: 5, positionLocked: false, backgroundColor: '#fff', textColor: '#111', cornerRadius: 8 },`);
+    lines.push(`    { id: '${prefix}_in', kind: 'text' as const, widgetElement: 'input' as const, name: 'Field', label: 'Your reply…', x: 24, y: ${yBase}, w: 312, h: 36, zIndex: 5, positionLocked: false, backgroundColor: '#fff', textColor: '#111', cornerRadius: 8 },`);
     lines.push(`    buttonLayer('${prefix}_send', { x: 24, y: ${yBase + 44}, w: 120, h: 36, z: 6 }, 'Send', { fill: '#0f766e', color: '#fff' }, { behavior: 'widget.submit' })`);
   } else if (behavior === 'stamp') {
     lines.push(`    buttonLayer('${prefix}_st', { x: 24, y: ${yBase}, w: 160, h: 40, z: 5 }, 'Check in', { fill: '#34d399', color: '#111' }, { behavior: 'widget.stamp' })`);
@@ -220,7 +245,7 @@ function finishSeed({ lines, prefix, h, id, behavior }) {
   } else if (behavior === 'mailto') {
     lines.push(`    buttonLayer('${prefix}_msg', { x: 24, y: ${yBase}, w: 200, h: 40, z: 5 }, 'Message', { fill: '#6366f1', color: '#fff' }, { behavior: 'cta.open', openUrl: 'mailto:hello@parnoir.com' })`);
   }
-  const needsCountdown = id.includes('countdown') || id.includes('launch');
+  const needsCountdown = usesCountdown(id);
   if (needsCountdown) {
     lines.push(`,`);
     lines.push(`    countdownLayer('${prefix}_cd', { x: 24, y: ${yBase - 60}, w: 120, h: 24, z: 4 }, '#fde68a', 3)`);
@@ -301,9 +326,8 @@ export function countdownLayer(id: string, box: { x: number; y: number; w: numbe
 
   for (const [cat, items] of Object.entries(CATEGORIES)) {
     const fileSeeds = [];
-    fileSeeds.push(`import type { SeedBundle } from '../starterSeeds.js';`);
-    fileSeeds.push(`import { artHtml, artLayer, bodyStyle, buttonLayer, countdownLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';`);
-    fileSeeds.push('');
+    const fileBehaviors = [];
+    const fileIds = [];
     const LEGACY_IDS = new Set([
       'widget.poll_writein.v1',
       'widget.quiz.v1',
@@ -318,22 +342,29 @@ export function countdownLayer(id: string, box: { x: number; y: number; w: numbe
           'widget.rsvp.v1': 'seedRsvpWidget',
           'widget.link_card.v1': 'seedLinkCardWidget'
         }[id];
-        meta.push({ id, category: cat, title, description: desc, focus, seed: legacySeed });
+        meta.push({ id, category: cat, title, description: desc, focus, seedExport: legacySeed });
         gi++;
         continue;
       }
       const aspect = id.includes('live') || id.includes('banner') || id.includes('stats') || id.includes('cta') || id.includes('logos') ? 'banner' : id.includes('swipeup') ? 'story' : 'square';
-      const partial = layerLines(id, title, cat, aspect, gi);
       const behavior = behaviorFor(id, title);
+      fileBehaviors.push(behavior);
+      fileIds.push(id);
+      const partial = layerLines(id, title, cat, aspect, gi, behavior);
       fileSeeds.push(finishSeed({ ...partial, id, behavior }));
       fileSeeds.push('');
-      meta.push({ id, category: cat, title, description: desc, focus, seed: `seed${toSeedName(id)}` });
+      meta.push({ id, category: cat, title, description: desc, focus, seedExport: `seed${toSeedName(id)}` });
       seedExports.push(`seed${toSeedName(id)}`);
       gi++;
     }
     const fname = `${cat}.ts`;
     categoryFiles.push(fname);
-    await writeFile(path.join(outDir, fname), fileSeeds.join('\n'));
+    const header = [
+      `import type { SeedBundle } from '../starterSeeds.js';`,
+      kitImportLine(fileBehaviors, fileIds),
+      ''
+    ];
+    await writeFile(path.join(outDir, fname), [...header, ...fileSeeds].join('\n'));
   }
 
   const legacy = `/** Hand-authored starters (richer than generated defaults). */
@@ -446,6 +477,15 @@ type Entry = {
   seed: () => SeedBundle;
 };
 
+type CuratedMetaRow = {
+  id: string;
+  category: CuratedWidgetCategory;
+  title: string;
+  description: string;
+  focus: string;
+  seedExport: string;
+};
+
 const LEGACY: Record<string, () => SeedBundle> = {
   'widget.poll_writein.v1': legacy.seedPollWriteInWidget,
   'widget.quiz.v1': legacy.seedQuizWidget,
@@ -453,14 +493,16 @@ const LEGACY: Record<string, () => SeedBundle> = {
   'widget.link_card.v1': legacy.seedLinkCardWidget
 };
 
-const META: Omit<Entry, 'seed'>[] = ${JSON.stringify(meta, null, 2)};
+const META: CuratedMetaRow[] = ${JSON.stringify(meta, null, 2)};
+
+const seedModules = { ...polls, ...quizzes, ...events, ...links, ...forms, ...community, ...social, ...creator, ...website, ...education, ...utilities, ...legacy } as Record<string, () => SeedBundle>;
 
 export const CURATED_WIDGET_ENTRIES: Entry[] = META.map((row) => {
-  const mod = { ...polls, ...quizzes, ...events, ...links, ...forms, ...community, ...social, ...creator, ...website, ...education, ...utilities, ...legacy } as Record<string, () => SeedBundle>;
   const legacyFn = LEGACY[row.id];
-  const fn = legacyFn || mod[row.seed];
-  if (!fn) throw new Error(\`missing seed \${row.seed} for \${row.id}\`);
-  return { ...row, seed: fn };
+  const fn = legacyFn || seedModules[row.seedExport];
+  if (!fn) throw new Error(\`missing seed \${row.seedExport} for \${row.id}\`);
+  const { seedExport: _seedExport, ...rest } = row;
+  return { ...rest, seed: fn };
 });
 
 export const CURATED_WIDGET_IDS = CURATED_WIDGET_ENTRIES.map((e) => e.id);
@@ -492,21 +534,6 @@ export {
   seedLinkCardWidget
 } from './legacy.js';
 `;
-
-  await writeFile(
-    path.join(outDir, 'registerHelpers.ts'),
-    `import type { PenTemplate } from '../templates.js';
-import type { SeedBundle } from '../starterSeeds.js';
-
-export function proseStarter(input: { title: string; focus: string }): string {
-  return \`Create a \${input.title} widget. \${input.focus}\`;
-}
-
-export function withSeedBundle(base: Omit<PenTemplate, 'seedSections' | 'seedPagePresentation' | 'seedPageLayout'>, seed: SeedBundle): PenTemplate {
-  return { ...base, seedSections: seed.seedSections, seedPagePresentation: seed.seedPagePresentation, seedPageLayout: seed.seedPageLayout };
-}
-`
-  );
 
   await writeFile(path.join(outDir, 'index.ts'), index);
 

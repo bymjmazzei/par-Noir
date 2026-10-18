@@ -469,9 +469,9 @@ export function setButtonTrigger(
   } else {
     delete next.bindRowId;
     delete next.correct;
-    if (behavior !== 'cta.open') delete next.openUrl;
+    delete next.openUrl;
     if (behavior !== 'widget.submit') delete next.submitTo;
-    if (behavior !== 'widget.reveal') delete next.revealLayerId;
+    delete next.revealLayerId;
     delete next.goTo;
     delete next.revealMode;
     delete next.stepDir;

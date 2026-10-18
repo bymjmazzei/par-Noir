@@ -1,5 +1,5 @@
 import type { SeedBundle } from '../starterSeeds.js';
-import { artHtml, artLayer, bodyStyle, buttonLayer, countdownLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
+import { artHtml, artLayer, bodyStyle, buttonLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
 
 export function seedQuizTruefalse(): SeedBundle {
   const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
@@ -52,7 +52,7 @@ export function seedQuizMulti(): SeedBundle {
     textLayer('w_quiz_multi_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'QUIZZES', kickerStyle),
     textLayer('w_quiz_multi_v1_t', { x: 24, y: 44, w: 312, h: 56, z: 3 }, 'Multi-question quiz', titleStyle),
     buttonLayer('w_quiz_multi_v1_ans', { x: 24, y: 280, w: 312, h: 36, z: 5 }, 'Answer', opt, { behavior: 'quiz.answer', correct: true }),
-    { id: 'w_quiz_multi_v1_score', kind: 'text', widgetElement: 'score', name: 'Score', x: 24, y: 324, w: 120, h: 32, zIndex: 6, positionLocked: false, backgroundColor: 'transparent', textColor: '#fff' }
+    { id: 'w_quiz_multi_v1_score', kind: 'text' as const, widgetElement: 'score' as const, name: 'Score', x: 24, y: 324, w: 120, h: 32, zIndex: 6, positionLocked: false, backgroundColor: 'transparent', textColor: '#fff' }
   ]);
 }
 

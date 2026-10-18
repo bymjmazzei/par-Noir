@@ -50,6 +50,15 @@ type Entry = {
   seed: () => SeedBundle;
 };
 
+type CuratedMetaRow = {
+  id: string;
+  category: CuratedWidgetCategory;
+  title: string;
+  description: string;
+  focus: string;
+  seedExport: string;
+};
+
 const LEGACY: Record<string, () => SeedBundle> = {
   'widget.poll_writein.v1': legacy.seedPollWriteInWidget,
   'widget.quiz.v1': legacy.seedQuizWidget,
@@ -57,14 +66,14 @@ const LEGACY: Record<string, () => SeedBundle> = {
   'widget.link_card.v1': legacy.seedLinkCardWidget
 };
 
-const META: Omit<Entry, 'seed'>[] = [
+const META: CuratedMetaRow[] = [
   {
     "id": "widget.poll_quick.v1",
     "category": "polls",
     "title": "Quick poll",
     "description": "One question and three tap options.",
     "focus": "Keep the three vote buttons.",
-    "seed": "seedPollQuick"
+    "seedExport": "seedPollQuick"
   },
   {
     "id": "widget.poll_writein.v1",
@@ -72,7 +81,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Poll with write-in",
     "description": "Three options, Other field, countdown.",
     "focus": "Keep vote buttons and write-in.",
-    "seed": "seedPollWriteInWidget"
+    "seedExport": "seedPollWriteInWidget"
   },
   {
     "id": "widget.poll_thisorthat.v1",
@@ -80,7 +89,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "This or that",
     "description": "Pick between two bold options.",
     "focus": "Two vote buttons only.",
-    "seed": "seedPollThisorthat"
+    "seedExport": "seedPollThisorthat"
   },
   {
     "id": "widget.poll_rating.v1",
@@ -88,7 +97,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Rating scale",
     "description": "Rate from 1 to 5.",
     "focus": "Five vote buttons in a row.",
-    "seed": "seedPollRating"
+    "seedExport": "seedPollRating"
   },
   {
     "id": "widget.poll_hottake.v1",
@@ -96,7 +105,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Hot take meter",
     "description": "Agree or disagree on a spicy prompt.",
     "focus": "Two vote buttons.",
-    "seed": "seedPollHottake"
+    "seedExport": "seedPollHottake"
   },
   {
     "id": "widget.poll_hidden.v1",
@@ -104,7 +113,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Hidden result poll",
     "description": "Vote first, reveal totals after.",
     "focus": "Reveal shows results text.",
-    "seed": "seedPollHidden"
+    "seedExport": "seedPollHidden"
   },
   {
     "id": "widget.poll_rank.v1",
@@ -112,7 +121,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Rank favorites",
     "description": "Rank three items with drag-free taps.",
     "focus": "Rank trigger on options.",
-    "seed": "seedPollRank"
+    "seedExport": "seedPollRank"
   },
   {
     "id": "widget.poll_budget.v1",
@@ -120,7 +129,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Budget split",
     "description": "Allocate points across three buckets.",
     "focus": "Allocate trigger.",
-    "seed": "seedPollBudget"
+    "seedExport": "seedPollBudget"
   },
   {
     "id": "widget.quiz.v1",
@@ -128,7 +137,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Trivia quiz",
     "description": "Three answers, one correct, reveal explanation.",
     "focus": "Mark correct answer.",
-    "seed": "seedQuizWidget"
+    "seedExport": "seedQuizWidget"
   },
   {
     "id": "widget.quiz_truefalse.v1",
@@ -136,7 +145,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "True or false",
     "description": "A single statement to judge.",
     "focus": "Two answer buttons.",
-    "seed": "seedQuizTruefalse"
+    "seedExport": "seedQuizTruefalse"
   },
   {
     "id": "widget.quiz_image.v1",
@@ -144,7 +153,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Guess the image",
     "description": "Blur lifts on reveal.",
     "focus": "Reveal target is art caption.",
-    "seed": "seedQuizImage"
+    "seedExport": "seedQuizImage"
   },
   {
     "id": "widget.quiz_riddle.v1",
@@ -152,7 +161,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Riddle of the day",
     "description": "Riddle with hidden answer.",
     "focus": "Reveal shows answer.",
-    "seed": "seedQuizRiddle"
+    "seedExport": "seedQuizRiddle"
   },
   {
     "id": "widget.quiz_personality.v1",
@@ -160,7 +169,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Personality pick",
     "description": "Choose the vibe that fits you.",
     "focus": "Three vote options.",
-    "seed": "seedQuizPersonality"
+    "seedExport": "seedQuizPersonality"
   },
   {
     "id": "widget.quiz_multi.v1",
@@ -168,7 +177,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Multi-question quiz",
     "description": "Step through questions with score.",
     "focus": "Step + answer + score.",
-    "seed": "seedQuizMulti"
+    "seedExport": "seedQuizMulti"
   },
   {
     "id": "widget.quiz_uncover.v1",
@@ -176,7 +185,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Tap to uncover",
     "description": "Toggle hidden message.",
     "focus": "Toggle reveal mode.",
-    "seed": "seedQuizUncover"
+    "seedExport": "seedQuizUncover"
   },
   {
     "id": "widget.rsvp.v1",
@@ -184,7 +193,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "RSVP",
     "description": "Going, Maybe, Can't go with countdown.",
     "focus": "Edit event copy and countdown.",
-    "seed": "seedRsvpWidget"
+    "seedExport": "seedRsvpWidget"
   },
   {
     "id": "widget.event_launch.v1",
@@ -192,7 +201,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Launch countdown",
     "description": "Countdown with notify CTA.",
     "focus": "Open link on notify.",
-    "seed": "seedEventLaunch"
+    "seedExport": "seedEventLaunch"
   },
   {
     "id": "widget.event_live.v1",
@@ -200,7 +209,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Live now banner",
     "description": "Wide banner for a live stream.",
     "focus": "Open stream link.",
-    "seed": "seedEventLive"
+    "seedExport": "seedEventLive"
   },
   {
     "id": "widget.event_checkin.v1",
@@ -208,7 +217,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Event check-in",
     "description": "Stamp when you arrive.",
     "focus": "Stamp trigger.",
-    "seed": "seedEventCheckin"
+    "seedExport": "seedEventCheckin"
   },
   {
     "id": "widget.event_savedate.v1",
@@ -216,7 +225,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Save the date",
     "description": "Add to calendar button.",
     "focus": "Calendar CTA.",
-    "seed": "seedEventSavedate"
+    "seedExport": "seedEventSavedate"
   },
   {
     "id": "widget.event_agenda.v1",
@@ -224,7 +233,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Agenda card",
     "description": "Three agenda items revealed.",
     "focus": "Tab reveal per item.",
-    "seed": "seedEventAgenda"
+    "seedExport": "seedEventAgenda"
   },
   {
     "id": "widget.link_card.v1",
@@ -232,7 +241,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Link card",
     "description": "Headline and open button.",
     "focus": "Set open URL.",
-    "seed": "seedLinkCardWidget"
+    "seedExport": "seedLinkCardWidget"
   },
   {
     "id": "widget.link_bio.v1",
@@ -240,7 +249,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Link in bio",
     "description": "Three links stacked.",
     "focus": "Three open buttons.",
-    "seed": "seedLinkBio"
+    "seedExport": "seedLinkBio"
   },
   {
     "id": "widget.link_teaser.v1",
@@ -248,7 +257,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Read more teaser",
     "description": "Teaser with reveal body.",
     "focus": "Reveal long copy.",
-    "seed": "seedLinkTeaser"
+    "seedExport": "seedLinkTeaser"
   },
   {
     "id": "widget.link_appbadge.v1",
@@ -256,7 +265,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "App badge",
     "description": "Download badge CTA.",
     "focus": "Open store link.",
-    "seed": "seedLinkAppbadge"
+    "seedExport": "seedLinkAppbadge"
   },
   {
     "id": "widget.link_swipeup.v1",
@@ -264,7 +273,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Story swipe-up",
     "description": "Tall story CTA.",
     "focus": "Open link.",
-    "seed": "seedLinkSwipeup"
+    "seedExport": "seedLinkSwipeup"
   },
   {
     "id": "widget.link_message.v1",
@@ -272,7 +281,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Message me",
     "description": "Start a conversation.",
     "focus": "Open messaging handoff.",
-    "seed": "seedLinkMessage"
+    "seedExport": "seedLinkMessage"
   },
   {
     "id": "widget.form_newsletter.v1",
@@ -280,7 +289,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Newsletter",
     "description": "Email field and subscribe.",
     "focus": "Submit sends row.",
-    "seed": "seedFormNewsletter"
+    "seedExport": "seedFormNewsletter"
   },
   {
     "id": "widget.form_contact.v1",
@@ -288,7 +297,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Contact",
     "description": "Name, email, message.",
     "focus": "Submit form.",
-    "seed": "seedFormContact"
+    "seedExport": "seedFormContact"
   },
   {
     "id": "widget.form_feedback.v1",
@@ -296,7 +305,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Feedback box",
     "description": "Short feedback field.",
     "focus": "Submit.",
-    "seed": "seedFormFeedback"
+    "seedExport": "seedFormFeedback"
   },
   {
     "id": "widget.form_waitlist.v1",
@@ -304,7 +313,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Waitlist",
     "description": "Join waitlist field.",
     "focus": "Submit.",
-    "seed": "seedFormWaitlist"
+    "seedExport": "seedFormWaitlist"
   },
   {
     "id": "widget.form_quote.v1",
@@ -312,7 +321,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Request a quote",
     "description": "Project details field.",
     "focus": "Submit.",
-    "seed": "seedFormQuote"
+    "seedExport": "seedFormQuote"
   },
   {
     "id": "widget.form_multistep.v1",
@@ -320,7 +329,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Multi-step form",
     "description": "Three steps with next.",
     "focus": "Step through fields.",
-    "seed": "seedFormMultistep"
+    "seedExport": "seedFormMultistep"
   },
   {
     "id": "widget.community_features.v1",
@@ -328,7 +337,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Feature board",
     "description": "Rank three feature ideas.",
     "focus": "Rank buttons.",
-    "seed": "seedCommunityFeatures"
+    "seedExport": "seedCommunityFeatures"
   },
   {
     "id": "widget.community_guestbook.v1",
@@ -336,7 +345,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Guestbook",
     "description": "Sign with stamp + note.",
     "focus": "Stamp and input.",
-    "seed": "seedCommunityGuestbook"
+    "seedExport": "seedCommunityGuestbook"
   },
   {
     "id": "widget.community_challenge.v1",
@@ -344,7 +353,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Challenge tracker",
     "description": "Toggle daily habits.",
     "focus": "Toggle rows.",
-    "seed": "seedCommunityChallenge"
+    "seedExport": "seedCommunityChallenge"
   },
   {
     "id": "widget.community_reactions.v1",
@@ -352,7 +361,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Reaction bar",
     "description": "Pick a reaction.",
     "focus": "Vote options.",
-    "seed": "seedCommunityReactions"
+    "seedExport": "seedCommunityReactions"
   },
   {
     "id": "widget.community_ama.v1",
@@ -360,7 +369,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "AMA box",
     "description": "Ask a question field.",
     "focus": "Submit question.",
-    "seed": "seedCommunityAma"
+    "seedExport": "seedCommunityAma"
   },
   {
     "id": "widget.social_quote.v1",
@@ -368,7 +377,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Quote card",
     "description": "Pull quote typography.",
     "focus": "Open source link.",
-    "seed": "seedSocialQuote"
+    "seedExport": "seedSocialQuote"
   },
   {
     "id": "widget.social_announce.v1",
@@ -376,7 +385,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Announcement",
     "description": "Bold news headline.",
     "focus": "Open details.",
-    "seed": "seedSocialAnnounce"
+    "seedExport": "seedSocialAnnounce"
   },
   {
     "id": "widget.social_beforeafter.v1",
@@ -384,7 +393,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Before / after",
     "description": "Tab between two shots.",
     "focus": "Tab reveal.",
-    "seed": "seedSocialBeforeafter"
+    "seedExport": "seedSocialBeforeafter"
   },
   {
     "id": "widget.social_tip.v1",
@@ -392,7 +401,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Tip of the day",
     "description": "Hidden tip on tap.",
     "focus": "Reveal tip.",
-    "seed": "seedSocialTip"
+    "seedExport": "seedSocialTip"
   },
   {
     "id": "widget.social_stat.v1",
@@ -400,7 +409,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Stat highlight",
     "description": "Big number story.",
     "focus": "Open report.",
-    "seed": "seedSocialStat"
+    "seedExport": "seedSocialStat"
   },
   {
     "id": "widget.social_bts.v1",
@@ -408,7 +417,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Behind the scenes",
     "description": "Photo with caption reveal.",
     "focus": "Reveal caption.",
-    "seed": "seedSocialBts"
+    "seedExport": "seedSocialBts"
   },
   {
     "id": "widget.social_milestone.v1",
@@ -416,7 +425,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Milestone",
     "description": "Celebrate with stamp.",
     "focus": "Stamp celebration.",
-    "seed": "seedSocialMilestone"
+    "seedExport": "seedSocialMilestone"
   },
   {
     "id": "widget.creator_product.v1",
@@ -424,7 +433,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Product card",
     "description": "Product pitch and buy link.",
     "focus": "Open shop.",
-    "seed": "seedCreatorProduct"
+    "seedExport": "seedCreatorProduct"
   },
   {
     "id": "widget.creator_tipjar.v1",
@@ -432,7 +441,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Tip jar",
     "description": "Support link.",
     "focus": "Open tip URL.",
-    "seed": "seedCreatorTipjar"
+    "seedExport": "seedCreatorTipjar"
   },
   {
     "id": "widget.creator_portfolio.v1",
@@ -440,7 +449,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Portfolio piece",
     "description": "Case study teaser.",
     "focus": "Open project.",
-    "seed": "seedCreatorPortfolio"
+    "seedExport": "seedCreatorPortfolio"
   },
   {
     "id": "widget.web_nav.v1",
@@ -448,7 +457,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Nav bar",
     "description": "Home About Contact links.",
     "focus": "Page go buttons.",
-    "seed": "seedWebNav"
+    "seedExport": "seedWebNav"
   },
   {
     "id": "widget.web_hero.v1",
@@ -456,7 +465,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Hero",
     "description": "Hero headline band.",
     "focus": "Open CTA.",
-    "seed": "seedWebHero"
+    "seedExport": "seedWebHero"
   },
   {
     "id": "widget.web_features.v1",
@@ -464,7 +473,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Feature grid",
     "description": "Three feature blurbs.",
     "focus": "Static layout.",
-    "seed": "seedWebFeatures"
+    "seedExport": "seedWebFeatures"
   },
   {
     "id": "widget.web_testimonial.v1",
@@ -472,7 +481,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Testimonial",
     "description": "Quote from a customer.",
     "focus": "Open case study.",
-    "seed": "seedWebTestimonial"
+    "seedExport": "seedWebTestimonial"
   },
   {
     "id": "widget.web_pricing.v1",
@@ -480,7 +489,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Pricing tiers",
     "description": "Three plan buttons.",
     "focus": "Open checkout links.",
-    "seed": "seedWebPricing"
+    "seedExport": "seedWebPricing"
   },
   {
     "id": "widget.web_team.v1",
@@ -488,7 +497,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Team",
     "description": "Three team cards.",
     "focus": "Open profiles.",
-    "seed": "seedWebTeam"
+    "seedExport": "seedWebTeam"
   },
   {
     "id": "widget.web_gallery.v1",
@@ -496,7 +505,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Gallery carousel",
     "description": "Step through slides.",
     "focus": "Step frames.",
-    "seed": "seedWebGallery"
+    "seedExport": "seedWebGallery"
   },
   {
     "id": "widget.web_contact.v1",
@@ -504,7 +513,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Contact section",
     "description": "Contact form strip.",
     "focus": "Submit.",
-    "seed": "seedWebContact"
+    "seedExport": "seedWebContact"
   },
   {
     "id": "widget.web_footer.v1",
@@ -512,7 +521,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Footer",
     "description": "Links and copyright.",
     "focus": "Open links.",
-    "seed": "seedWebFooter"
+    "seedExport": "seedWebFooter"
   },
   {
     "id": "widget.web_stats.v1",
@@ -520,7 +529,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Stats strip",
     "description": "Three metrics banner.",
     "focus": "Open report.",
-    "seed": "seedWebStats"
+    "seedExport": "seedWebStats"
   },
   {
     "id": "widget.web_logos.v1",
@@ -528,7 +537,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Logo wall",
     "description": "Partner logos row.",
     "focus": "Open partners.",
-    "seed": "seedWebLogos"
+    "seedExport": "seedWebLogos"
   },
   {
     "id": "widget.web_cta.v1",
@@ -536,7 +545,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "CTA band",
     "description": "Full-width call to action.",
     "focus": "Open signup.",
-    "seed": "seedWebCta"
+    "seedExport": "seedWebCta"
   },
   {
     "id": "widget.web_faq.v1",
@@ -544,7 +553,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "FAQ accordion",
     "description": "Questions with tab answers.",
     "focus": "Tab reveal.",
-    "seed": "seedWebFaq"
+    "seedExport": "seedWebFaq"
   },
   {
     "id": "widget.web_tabs.v1",
@@ -552,7 +561,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Tabs section",
     "description": "Switch tab panels.",
     "focus": "Tab reveal.",
-    "seed": "seedWebTabs"
+    "seedExport": "seedWebTabs"
   },
   {
     "id": "widget.edu_flashcard.v1",
@@ -560,7 +569,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Flashcard",
     "description": "Term with toggle definition.",
     "focus": "Toggle back.",
-    "seed": "seedEduFlashcard"
+    "seedExport": "seedEduFlashcard"
   },
   {
     "id": "widget.edu_deck.v1",
@@ -568,7 +577,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Flashcard deck",
     "description": "Step through cards.",
     "focus": "Step + toggle.",
-    "seed": "seedEduDeck"
+    "seedExport": "seedEduDeck"
   },
   {
     "id": "widget.edu_checklist.v1",
@@ -576,7 +585,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Lesson checklist",
     "description": "Toggle lesson items.",
     "focus": "Toggle rows.",
-    "seed": "seedEduChecklist"
+    "seedExport": "seedEduChecklist"
   },
   {
     "id": "widget.edu_check.v1",
@@ -584,7 +593,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Knowledge check",
     "description": "One question quiz.",
     "focus": "Answer buttons.",
-    "seed": "seedEduCheck"
+    "seedExport": "seedEduCheck"
   },
   {
     "id": "widget.edu_vocab.v1",
@@ -592,7 +601,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Vocabulary card",
     "description": "Word and reveal meaning.",
     "focus": "Reveal definition.",
-    "seed": "seedEduVocab"
+    "seedExport": "seedEduVocab"
   },
   {
     "id": "widget.util_countdown.v1",
@@ -600,7 +609,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Countdown",
     "description": "Event countdown clock.",
     "focus": "Edit end time.",
-    "seed": "seedUtilCountdown"
+    "seedExport": "seedUtilCountdown"
   },
   {
     "id": "widget.util_clock.v1",
@@ -608,7 +617,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Clock",
     "description": "Live clock face.",
     "focus": "Set clock time.",
-    "seed": "seedUtilClock"
+    "seedExport": "seedUtilClock"
   },
   {
     "id": "widget.util_banner.v1",
@@ -616,7 +625,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Announcement banner",
     "description": "Wide promo strip.",
     "focus": "Open link.",
-    "seed": "seedUtilBanner"
+    "seedExport": "seedUtilBanner"
   },
   {
     "id": "widget.util_checklist.v1",
@@ -624,7 +633,7 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Checklist",
     "description": "Toggle tasks.",
     "focus": "Toggle items.",
-    "seed": "seedUtilChecklist"
+    "seedExport": "seedUtilChecklist"
   },
   {
     "id": "widget.util_tally.v1",
@@ -632,16 +641,18 @@ const META: Omit<Entry, 'seed'>[] = [
     "title": "Tally counter",
     "description": "Increment counter stamps.",
     "focus": "Stamp tally.",
-    "seed": "seedUtilTally"
+    "seedExport": "seedUtilTally"
   }
 ];
 
+const seedModules = { ...polls, ...quizzes, ...events, ...links, ...forms, ...community, ...social, ...creator, ...website, ...education, ...utilities, ...legacy } as Record<string, () => SeedBundle>;
+
 export const CURATED_WIDGET_ENTRIES: Entry[] = META.map((row) => {
-  const mod = { ...polls, ...quizzes, ...events, ...links, ...forms, ...community, ...social, ...creator, ...website, ...education, ...utilities, ...legacy } as Record<string, () => SeedBundle>;
   const legacyFn = LEGACY[row.id];
-  const fn = legacyFn || mod[row.seed];
-  if (!fn) throw new Error(`missing seed ${row.seed} for ${row.id}`);
-  return { ...row, seed: fn };
+  const fn = legacyFn || seedModules[row.seedExport];
+  if (!fn) throw new Error(`missing seed ${row.seedExport} for ${row.id}`);
+  const { seedExport: _seedExport, ...rest } = row;
+  return { ...rest, seed: fn };
 });
 
 export const CURATED_WIDGET_IDS = CURATED_WIDGET_ENTRIES.map((e) => e.id);

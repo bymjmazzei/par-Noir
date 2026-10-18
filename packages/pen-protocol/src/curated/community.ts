@@ -1,5 +1,5 @@
 import type { SeedBundle } from '../starterSeeds.js';
-import { artHtml, artLayer, bodyStyle, buttonLayer, countdownLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
+import { artHtml, artLayer, buttonLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
 
 export function seedCommunityFeatures(): SeedBundle {
   const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
@@ -12,7 +12,6 @@ export function seedCommunityFeatures(): SeedBundle {
 }
 
 export function seedCommunityGuestbook(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
   return curatedCardSeed([
     artLayer('w_community_guestbook_v1_art', artHtml('radial-gradient(circle at 30% 20%,#4c1d95 0%,#111827 70%)', '<div class="s" style="width:260px;height:260px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
     textLayer('w_community_guestbook_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'COMMUNITY', kickerStyle),
@@ -43,12 +42,11 @@ export function seedCommunityReactions(): SeedBundle {
 }
 
 export function seedCommunityAma(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
   return curatedCardSeed([
     artLayer('w_community_ama_v1_art', artHtml('linear-gradient(120deg,#14532d 0%,#166534 50%,#052e16 100%)', '<div class="s" style="width:220px;height:220px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
     textLayer('w_community_ama_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'COMMUNITY', kickerStyle),
     textLayer('w_community_ama_v1_t', { x: 24, y: 44, w: 312, h: 56, z: 3 }, 'AMA box', titleStyle),
-    { id: 'w_community_ama_v1_in', kind: 'text', widgetElement: 'input', name: 'Field', label: 'Your reply…', x: 24, y: 280, w: 312, h: 36, zIndex: 5, positionLocked: false, backgroundColor: '#fff', textColor: '#111', cornerRadius: 8 },
+    { id: 'w_community_ama_v1_in', kind: 'text' as const, widgetElement: 'input' as const, name: 'Field', label: 'Your reply…', x: 24, y: 280, w: 312, h: 36, zIndex: 5, positionLocked: false, backgroundColor: '#fff', textColor: '#111', cornerRadius: 8 },
     buttonLayer('w_community_ama_v1_send', { x: 24, y: 324, w: 120, h: 36, z: 6 }, 'Send', { fill: '#0f766e', color: '#fff' }, { behavior: 'widget.submit' })
   ]);
 }

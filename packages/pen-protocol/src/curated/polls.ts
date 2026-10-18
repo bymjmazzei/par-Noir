@@ -1,5 +1,5 @@
 import type { SeedBundle } from '../starterSeeds.js';
-import { artHtml, artLayer, bodyStyle, buttonLayer, countdownLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
+import { artHtml, artLayer, bodyStyle, buttonLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
 
 export function seedPollQuick(): SeedBundle {
   const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };

@@ -1,8 +1,7 @@
 import type { SeedBundle } from '../starterSeeds.js';
-import { artHtml, artLayer, bodyStyle, buttonLayer, countdownLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
+import { artHtml, artLayer, bodyStyle, buttonLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
 
 export function seedCreatorProduct(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
   return curatedCardSeed([
     artLayer('w_creator_product_v1_art', artHtml('linear-gradient(120deg,#14532d 0%,#166534 50%,#052e16 100%)', '<div class="s" style="width:180px;height:180px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
     textLayer('w_creator_product_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'CREATOR', kickerStyle),
@@ -23,7 +22,6 @@ export function seedCreatorTipjar(): SeedBundle {
 }
 
 export function seedCreatorPortfolio(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
   return curatedCardSeed([
     artLayer('w_creator_portfolio_v1_art', artHtml('linear-gradient(155deg,#be123c 0%,#9f1239 50%,#4c0519 100%)', '<div class="s" style="width:220px;height:220px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
     textLayer('w_creator_portfolio_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'CREATOR', kickerStyle),

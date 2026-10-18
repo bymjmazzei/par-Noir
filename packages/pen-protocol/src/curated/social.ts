@@ -1,19 +1,17 @@
 import type { SeedBundle } from '../starterSeeds.js';
-import { artHtml, artLayer, bodyStyle, buttonLayer, countdownLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
+import { artHtml, artLayer, bodyStyle, buttonLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
 
 export function seedSocialQuote(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
   return curatedCardSeed([
     artLayer('w_social_quote_v1_art', artHtml('linear-gradient(165deg,#1c1917 0%,#44403c 40%,#78716c 100%)', '<div class="s" style="width:240px;height:240px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
     textLayer('w_social_quote_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'SOCIAL', kickerStyle),
     textLayer('w_social_quote_v1_t', { x: 24, y: 44, w: 312, h: 56, z: 3 }, 'Quote card', titleStyle),
-    { id: 'w_social_quote_v1_in', kind: 'text', widgetElement: 'input', name: 'Field', label: 'Your reply…', x: 24, y: 280, w: 312, h: 36, zIndex: 5, positionLocked: false, backgroundColor: '#fff', textColor: '#111', cornerRadius: 8 },
+    { id: 'w_social_quote_v1_in', kind: 'text' as const, widgetElement: 'input' as const, name: 'Field', label: 'Your reply…', x: 24, y: 280, w: 312, h: 36, zIndex: 5, positionLocked: false, backgroundColor: '#fff', textColor: '#111', cornerRadius: 8 },
     buttonLayer('w_social_quote_v1_send', { x: 24, y: 324, w: 120, h: 36, z: 6 }, 'Send', { fill: '#0f766e', color: '#fff' }, { behavior: 'widget.submit' })
   ]);
 }
 
 export function seedSocialAnnounce(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
   return curatedCardSeed([
     artLayer('w_social_announce_v1_art', artHtml('linear-gradient(155deg,#be123c 0%,#9f1239 50%,#4c0519 100%)', '<div class="s" style="width:260px;height:260px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
     textLayer('w_social_announce_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'SOCIAL', kickerStyle),
@@ -45,7 +43,6 @@ export function seedSocialTip(): SeedBundle {
 }
 
 export function seedSocialStat(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
   return curatedCardSeed([
     artLayer('w_social_stat_v1_art', artHtml('radial-gradient(circle at 30% 20%,#4c1d95 0%,#111827 70%)', '<div class="s" style="width:220px;height:220px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
     textLayer('w_social_stat_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'SOCIAL', kickerStyle),
@@ -66,7 +63,6 @@ export function seedSocialBts(): SeedBundle {
 }
 
 export function seedSocialMilestone(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
   return curatedCardSeed([
     artLayer('w_social_milestone_v1_art', artHtml('linear-gradient(145deg,#0ea5e9 0%,#6366f1 55%,#312e81 100%)', '<div class="s" style="width:260px;height:260px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
     textLayer('w_social_milestone_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'SOCIAL', kickerStyle),
