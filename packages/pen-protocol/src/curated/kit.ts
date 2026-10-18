@@ -5,25 +5,159 @@ import type { PenPageLayer, PenTipTapNode } from '../types.js';
 
 export const CURATED_SANS = 'Montserrat, Helvetica, sans-serif';
 export const CURATED_SERIF = 'Source Serif 4, Georgia, serif';
+export const CURATED_MONO = 'Courier New, monospace';
 
-export const kickerStyle = { fontFamily: CURATED_SANS, fontSize: 11, color: '#fde68a', bold: true as const };
-export const titleStyle = { fontFamily: CURATED_SERIF, fontSize: 24, color: '#ffffff', bold: true as const };
-export const bodyStyle = { fontFamily: CURATED_SANS, fontSize: 14, color: '#ffffff', bold: true as const };
+export type Box = { x: number; y: number; w: number; h: number; z: number };
+export type Look = { fill: string; color: string };
+export type Font = {
+  family?: 'sans' | 'serif' | 'mono';
+  size: number;
+  color: string;
+  bold?: boolean;
+  italic?: boolean;
+  align?: 'left' | 'center' | 'right';
+};
 
-function styledDoc(text: string, style: { fontFamily: string; fontSize: number; color: string; bold?: boolean }): PenTipTapNode {
-  const marks: NonNullable<PenTipTapNode['marks']> = [{ type: 'textStyle', attrs: { fontFamily: style.fontFamily, fontSize: `${style.fontSize}px`, color: style.color } }];
-  if (style.bold) marks.push({ type: 'bold' });
-  return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text, marks }] }] };
+export function box(x: number, y: number, w: number, h: number, z: number): Box {
+  return { x, y, w, h, z };
+}
+
+export type Theme = {
+  bg: string;
+  ink: string;
+  muted: string;
+  accent: string;
+  primary: Look;
+  ghost: Look;
+  field: Look;
+};
+
+/** Named palettes; widgets pick one and override where the art needs it. */
+export const themes = {
+  ink: {
+    bg: '#0b0b0c',
+    ink: '#f5f5f4',
+    muted: 'rgba(245,245,244,0.62)',
+    accent: '#facc15',
+    primary: { fill: '#facc15', color: '#0b0b0c' },
+    ghost: { fill: 'rgba(255,255,255,0.1)', color: '#f5f5f4' },
+    field: { fill: '#1c1c1f', color: '#f5f5f4' }
+  },
+  paper: {
+    bg: '#f6f1e7',
+    ink: '#1c1917',
+    muted: '#78716c',
+    accent: '#b45309',
+    primary: { fill: '#1c1917', color: '#f6f1e7' },
+    ghost: { fill: '#ffffff', color: '#1c1917' },
+    field: { fill: '#ffffff', color: '#1c1917' }
+  },
+  sunset: {
+    bg: '#7c2d12',
+    ink: '#fff7ed',
+    muted: 'rgba(255,247,237,0.72)',
+    accent: '#fdba74',
+    primary: { fill: '#fff7ed', color: '#7c2d12' },
+    ghost: { fill: 'rgba(255,255,255,0.16)', color: '#fff7ed' },
+    field: { fill: '#fff7ed', color: '#431407' }
+  },
+  forest: {
+    bg: '#052e16',
+    ink: '#ecfdf5',
+    muted: 'rgba(236,253,245,0.68)',
+    accent: '#86efac',
+    primary: { fill: '#86efac', color: '#052e16' },
+    ghost: { fill: 'rgba(255,255,255,0.12)', color: '#ecfdf5' },
+    field: { fill: '#ecfdf5', color: '#052e16' }
+  },
+  night: {
+    bg: '#0f172a',
+    ink: '#e2e8f0',
+    muted: 'rgba(226,232,240,0.62)',
+    accent: '#818cf8',
+    primary: { fill: '#818cf8', color: '#0f172a' },
+    ghost: { fill: 'rgba(255,255,255,0.1)', color: '#e2e8f0' },
+    field: { fill: '#1e293b', color: '#e2e8f0' }
+  },
+  citrus: {
+    bg: '#fef9c3',
+    ink: '#1a2e05',
+    muted: '#4d7c0f',
+    accent: '#65a30d',
+    primary: { fill: '#1a2e05', color: '#fef9c3' },
+    ghost: { fill: '#ffffff', color: '#1a2e05' },
+    field: { fill: '#ffffff', color: '#1a2e05' }
+  },
+  rose: {
+    bg: '#fff1f2',
+    ink: '#4c0519',
+    muted: '#9f1239',
+    accent: '#e11d48',
+    primary: { fill: '#e11d48', color: '#ffffff' },
+    ghost: { fill: '#ffffff', color: '#4c0519' },
+    field: { fill: '#ffffff', color: '#4c0519' }
+  },
+  slate: {
+    bg: '#e2e8f0',
+    ink: '#0f172a',
+    muted: '#475569',
+    accent: '#0369a1',
+    primary: { fill: '#0f172a', color: '#ffffff' },
+    ghost: { fill: '#ffffff', color: '#0f172a' },
+    field: { fill: '#ffffff', color: '#0f172a' }
+  }
+} satisfies Record<string, Theme>;
+
+function familyOf(font: Font): string {
+  if (font.family === 'serif') return CURATED_SERIF;
+  if (font.family === 'mono') return CURATED_MONO;
+  return CURATED_SANS;
+}
+
+/** Each string in `content` becomes its own paragraph. */
+export function richDoc(content: string | string[], font: Font): PenTipTapNode {
+  const lines = Array.isArray(content) ? content : [content];
+  const marks: NonNullable<PenTipTapNode['marks']> = [
+    { type: 'textStyle', attrs: { fontFamily: familyOf(font), fontSize: `${font.size}px`, color: font.color } }
+  ];
+  if (font.bold) marks.push({ type: 'bold' });
+  if (font.italic) marks.push({ type: 'italic' });
+  return {
+    type: 'doc',
+    content: lines.map((line) => ({
+      type: 'paragraph',
+      ...(font.align && font.align !== 'left' ? { attrs: { textAlign: font.align } } : {}),
+      content: line ? [{ type: 'text', text: line, marks }] : []
+    }))
+  };
+}
+
+/** Editor text layers pad their content by 8px; authored boxes are the visible text area. */
+const TEXT_PAD_PX = 8;
+
+function padTextLayers(layers: PenPageLayer[]): PenPageLayer[] {
+  const art = layers.find((layer) => layer.widgetElement === 'html');
+  const frameW = art?.w ?? 360;
+  const frameH = art?.h ?? 360;
+  return layers.map((layer) => {
+    if (layer.widgetElement !== 'text' || layer.backgroundColor !== 'transparent') return layer;
+    const x = Math.max(0, layer.x - TEXT_PAD_PX);
+    const y = Math.max(0, layer.y - TEXT_PAD_PX);
+    const right = Math.min(frameW, layer.x + layer.w + TEXT_PAD_PX);
+    const bottom = Math.min(frameH, layer.y + layer.h + TEXT_PAD_PX);
+    return { ...layer, x, y, w: right - x, h: bottom - y };
+  });
 }
 
 export function curatedCardSeed(layers: PenPageLayer[]): SeedBundle {
+  layers = padTextLayers(layers);
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
       backgroundColor: 'transparent',
       backgroundGradient: undefined,
       backgroundImage: undefined,
-      fontFamily: 'Source Serif 4, Georgia, serif',
+      fontFamily: CURATED_SERIF,
       fontSize: 28,
       textAlign: 'left',
       textColor: '#141414',
@@ -36,22 +170,162 @@ export function curatedCardSeed(layers: PenPageLayer[]): SeedBundle {
   };
 }
 
+/** The art layer defines the poster frame: 360 wide, 360 / 640 / 120 tall. */
 export function artLayer(id: string, htmlSource: string, h = 360): PenPageLayer {
   return { id, kind: 'text', widgetElement: 'html', name: 'Art', x: 0, y: 0, w: 360, h, zIndex: 1, positionLocked: false, htmlSource };
 }
 
-export function artHtml(background: string, shapes: string): string {
-  return `<style>html,body{margin:0;height:100%;overflow:hidden}body{background:${background}}.s{position:absolute;border-radius:50%}</style>${shapes}`;
+/** `.s` is an absolute circle, `.r` an absolute block; `css` adds per-widget rules. */
+export function artHtml(background: string, shapes: string, css = ''): string {
+  return `<style>html,body{margin:0;height:100%;overflow:hidden}body{background:${background};position:relative}.s{position:absolute;border-radius:50%}.r{position:absolute}${css}</style>${shapes}`;
 }
 
-export function textLayer(id: string, box: { x: number; y: number; w: number; h: number; z: number }, text: string, style: { fontFamily: string; fontSize: number; color: string; bold?: boolean }, extra: Partial<PenPageLayer> = {}): PenPageLayer {
-  return { id, kind: 'text', widgetElement: 'text', name: text.slice(0, 24), x: box.x, y: box.y, w: box.w, h: box.h, zIndex: box.z, positionLocked: false, backgroundColor: 'transparent', textDoc: styledDoc(text, style), ...extra };
+export function textLayer(id: string, b: Box, content: string | string[], font: Font, extra: Partial<PenPageLayer> = {}): PenPageLayer {
+  const first = Array.isArray(content) ? content[0] || '' : content;
+  return {
+    id,
+    kind: 'text',
+    widgetElement: 'text',
+    name: first.slice(0, 24) || 'Text',
+    x: b.x,
+    y: b.y,
+    w: b.w,
+    h: b.h,
+    zIndex: b.z,
+    positionLocked: false,
+    backgroundColor: 'transparent',
+    textDoc: richDoc(content, font),
+    ...extra
+  };
 }
 
-export function buttonLayer(id: string, box: { x: number; y: number; w: number; h: number; z: number }, face: string, look: { fill: string; color: string }, extra: Partial<PenPageLayer>): PenPageLayer {
-  return { id, kind: 'interactive', widgetElement: 'button', name: face, label: face, x: box.x, y: box.y, w: box.w, h: box.h, zIndex: box.z, positionLocked: false, backgroundColor: look.fill, textColor: look.color, cornerRadius: Math.round(box.h / 2), textDoc: styledDoc(face, { fontFamily: CURATED_SANS, fontSize: 14, color: look.color, bold: true }), ...extra };
+/** A filled text layer: cards, tiles, slides, reveal panels. */
+export function panelLayer(
+  id: string,
+  b: Box,
+  fill: string,
+  content: string | string[],
+  font: Font,
+  extra: Partial<PenPageLayer> = {}
+): PenPageLayer {
+  return textLayer(id, b, content, font, {
+    name: extra.name || 'Panel',
+    backgroundColor: fill,
+    cornerRadius: 12,
+    ...extra
+  });
 }
 
-export function countdownLayer(id: string, box: { x: number; y: number; w: number; h: number; z: number }, color: string, days: number): PenPageLayer {
-  return { id, kind: 'text', widgetElement: 'time', name: 'Countdown', x: box.x, y: box.y, w: box.w, h: box.h, zIndex: box.z, positionLocked: false, backgroundColor: 'transparent', textColor: color, timeFace: 'countdown', closesAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString() };
+export function buttonLayer(
+  id: string,
+  b: Box,
+  face: string,
+  look: Look,
+  extra: Partial<PenPageLayer>,
+  opts: { size?: number; radius?: number; stroke?: string } = {}
+): PenPageLayer {
+  return {
+    id,
+    kind: 'interactive',
+    widgetElement: 'button',
+    name: face,
+    label: face,
+    x: b.x,
+    y: b.y,
+    w: b.w,
+    h: b.h,
+    zIndex: b.z,
+    positionLocked: false,
+    backgroundColor: look.fill,
+    textColor: look.color,
+    cornerRadius: opts.radius ?? Math.round(b.h / 2),
+    ...(opts.stroke ? { strokeColor: opts.stroke, strokeWidth: 1 } : {}),
+    textDoc: richDoc(face, { size: opts.size ?? 14, color: look.color, bold: true, align: 'center' }),
+    ...extra
+  };
+}
+
+export function inputLayer(id: string, b: Box, placeholder: string, look: Look, extra: Partial<PenPageLayer> = {}): PenPageLayer {
+  return {
+    id,
+    kind: 'text',
+    widgetElement: 'input',
+    name: placeholder.replace(/…$/, '') || 'Field',
+    label: placeholder,
+    x: b.x,
+    y: b.y,
+    w: b.w,
+    h: b.h,
+    zIndex: b.z,
+    positionLocked: false,
+    backgroundColor: look.fill,
+    textColor: look.color,
+    cornerRadius: 10,
+    ...extra
+  };
+}
+
+export function scoreLayer(id: string, b: Box, color: string, fill = 'transparent'): PenPageLayer {
+  return {
+    id,
+    kind: 'text',
+    widgetElement: 'score',
+    name: 'Score',
+    x: b.x,
+    y: b.y,
+    w: b.w,
+    h: b.h,
+    zIndex: b.z,
+    positionLocked: false,
+    backgroundColor: fill,
+    textColor: color,
+    cornerRadius: Math.round(b.h / 2)
+  };
+}
+
+export function countdownLayer(id: string, b: Box, color: string, days: number, fill = 'transparent'): PenPageLayer {
+  return {
+    id,
+    kind: 'text',
+    widgetElement: 'time',
+    name: 'Countdown',
+    x: b.x,
+    y: b.y,
+    w: b.w,
+    h: b.h,
+    zIndex: b.z,
+    positionLocked: false,
+    backgroundColor: fill,
+    textColor: color,
+    cornerRadius: Math.round(b.h / 2),
+    timeFace: 'countdown',
+    closesAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+  };
+}
+
+export function clockLayer(id: string, b: Box, color: string, time: string, fill = 'transparent'): PenPageLayer {
+  return {
+    id,
+    kind: 'text',
+    widgetElement: 'time',
+    name: 'Clock',
+    x: b.x,
+    y: b.y,
+    w: b.w,
+    h: b.h,
+    zIndex: b.z,
+    positionLocked: false,
+    backgroundColor: fill,
+    textColor: color,
+    cornerRadius: Math.round(b.h / 2),
+    timeFace: 'clock',
+    clockTime: time
+  };
+}
+
+/** ISO start `days` from now at `hour`:00 local. */
+export function eventStartIn(days: number, hour: number): string {
+  const d = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  d.setHours(hour, 0, 0, 0);
+  return d.toISOString();
 }

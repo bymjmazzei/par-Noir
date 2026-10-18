@@ -34,7 +34,9 @@ import {
   emptyPenViewerState,
   frameCountForGroup,
   layerVisibleInViewer,
+  penViewerGroupKey,
   sampleSectionLayers,
+  scorePreviewCaption,
   mergePagePresentation,
   migrateSectionLayerGeomToPx,
   normalizeSection,
@@ -235,12 +237,12 @@ export function EditablePagePreview({
   );
   const layers = useMemo(() => {
     const sampled = sampleSectionLayers(prepared, playheadSec);
-    if (!widgetPreviewGroupId || frameCountForGroup(sampled, widgetPreviewGroupId) <= 1) {
+    if (frameCountForGroup(sampled, widgetPreviewGroupId) <= 1) {
       return sampled;
     }
     const viewer = {
       ...emptyPenViewerState(),
-      steps: { [widgetPreviewGroupId]: widgetPreviewFrame }
+      steps: { [penViewerGroupKey({ parentGroupId: widgetPreviewGroupId })]: widgetPreviewFrame }
     };
     return sampled.filter(
       (layer) => layer.kind === 'group' || layerVisibleInViewer(layer, sampled, viewer)
@@ -1020,6 +1022,16 @@ export function EditablePagePreview({
                       className="pointer-events-none h-full w-full border-0 bg-white"
                       srcDoc={layer.htmlSource || ''}
                     />
+                  );
+                }
+                if (layer.widgetElement === 'score') {
+                  return (
+                    <div
+                      className="flex h-full w-full items-center justify-center text-sm font-semibold tabular-nums"
+                      style={{ ...shell, color: layer.textColor || undefined }}
+                    >
+                      {scorePreviewCaption(prepared.layers || [], layer.parentGroupId || null)}
+                    </div>
                   );
                 }
                 if (layer.widgetElement === 'time') {

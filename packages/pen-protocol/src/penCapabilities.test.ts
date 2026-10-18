@@ -50,6 +50,8 @@ describe('widget capabilities', () => {
       state: emptyPenViewerState()
     }).state;
     expect(buildActionOverlayAtTime(exported, 0, stepped).map((l) => l.id)).toContain('b');
+    expect(buildActionOverlayAtTime(exported, 0, stepped).map((l) => l.id)).toContain('next');
+    expect(buildActionOverlayAtTime(exported, 0, { revealed: [], hidden: [], steps: {} }).map((l) => l.id)).toContain('next');
   });
 
   it('quiz answer and score caption', () => {

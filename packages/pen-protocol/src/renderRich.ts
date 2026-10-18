@@ -13,6 +13,16 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Unquoted family names must be plain identifiers; `Source Serif 4` is not, so CSS drops the whole declaration. */
+function cssFontFamilyList(value: string): string {
+  return value
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .map((name) => (/^['"]/.test(name) || /^-?[A-Za-z_][\w-]*(\s+-?[A-Za-z_][\w-]*)*$/.test(name) ? name : `'${name.replace(/'/g, '')}'`))
+    .join(', ');
+}
+
 function styleFromMarks(marks: PenTipTapMark[] | undefined): {
   open: string[];
   close: string[];
@@ -57,7 +67,7 @@ function styleFromMarks(marks: PenTipTapMark[] | undefined): {
         const color = m.attrs?.color ? String(m.attrs.color) : '';
         const textShadow = m.attrs?.textShadow ? String(m.attrs.textShadow) : '';
         const textBlur = m.attrs?.textBlur ? String(m.attrs.textBlur) : '';
-        if (fontFamily) styles.push(`font-family:${esc(fontFamily)}`);
+        if (fontFamily) styles.push(`font-family:${esc(cssFontFamilyList(fontFamily))}`);
         if (fontSize) styles.push(`font-size:${esc(fontSize)}`);
         if (color) styles.push(`color:${esc(color)}`);
         if (textShadow) styles.push(`text-shadow:${esc(textShadow)}`);

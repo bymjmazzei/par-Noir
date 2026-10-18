@@ -447,6 +447,20 @@ describe('classes + templates', () => {
     expect(docToHtml(sec.doc)).toContain('<em>italic</em>');
   });
 
+  it('quotes font family names CSS would otherwise reject', async () => {
+    const { docToHtml } = await import('./index.js');
+    const html = docToHtml({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'Hi', marks: [{ type: 'textStyle', attrs: { fontFamily: 'Source Serif 4, Georgia, serif' } }] }]
+        }
+      ]
+    });
+    expect(html).toContain("font-family:'Source Serif 4', Georgia, serif");
+  });
+
   it('fails closed on unknown template', () => {
     expect(() => requireTemplate('nope')).toThrow(/unknown_pen_template/);
   });

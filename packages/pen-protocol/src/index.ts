@@ -34,6 +34,8 @@ export * from './actionPartition.js';
 export * from './actionStage.js';
 export * from './feedActionSection.js';
 export * from './penActionPress.js';
+export * from './penViewerOverlay.js';
+export * from './icsForEvent.js';
 export * from './linkSafety.js';
 export * from './linkBlocklist.js';
 export * from './correspondenceHandoff.js';

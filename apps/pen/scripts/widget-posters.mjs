@@ -31,7 +31,7 @@ try {
   const ids = protocol.CURATED_WIDGET_IDS;
   await mkdir(outDir, { recursive: true });
   browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 900, height: 900 }, deviceScaleFactor: 2 });
+  const page = await browser.newPage({ viewport: { width: 900, height: 1000 }, deviceScaleFactor: 2 });
   for (const id of ids) {
     await page.goto(`${base}/widget-posters.html?id=${encodeURIComponent(id)}`);
     await page.locator('[data-pen-compose-export-root]').first().waitFor({ state: 'visible', timeout: 30000 });

@@ -188,7 +188,7 @@ export function WidgetEditorPanel({
   /** Sticker docs keep SVG, image, and text. Buttons and sheet writes stay hidden. */
   hideTriggers?: boolean;
 }) {
-  const frameCount = scopeGroupId ? frameCountForGroup(section.layers || [], scopeGroupId) : 1;
+  const frameCount = frameCountForGroup(section.layers || [], scopeGroupId);
   const fileRef = useRef<HTMLInputElement>(null);
   const tools = hideTriggers
     ? [

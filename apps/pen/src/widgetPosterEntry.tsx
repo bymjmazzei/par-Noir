@@ -1,4 +1,4 @@
-/** Dev-only stage for scripts/widget-posters.mjs: one starter widget on a 1:1 page, no session. */
+/** Dev-only stage for scripts/widget-posters.mjs: one starter widget on a page sized to its art, no session. */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -8,8 +8,8 @@ import { previewBundleFromTemplate } from './components/TemplateGalleryThumb';
 import './services/penMediaSetup';
 import './index.css';
 
-/** 360px card plus the editor's default 40px page padding on each side. */
-const STAGE_PX = 440;
+/** The editor's default page padding on each side of the art frame. */
+const STAGE_PAD_PX = 40;
 
 function PosterStage() {
   const id = new URLSearchParams(window.location.search).get('id') || '';
@@ -17,13 +17,14 @@ function PosterStage() {
   const bundle = template ? previewBundleFromTemplate(undefined, template) : null;
   const section = bundle?.sections[0];
   if (!bundle || !section) return <p data-poster-missing="1">Unknown widget {id}</p>;
+  const art = section.layers?.find((layer) => layer.widgetElement === 'html');
   return (
     <EditablePagePreview
       manifest={{
         ...bundle.manifest,
         pageLayout: 'flow',
-        flowWorkspaceWidthPx: STAGE_PX,
-        flowWorkspaceHeightPx: STAGE_PX
+        flowWorkspaceWidthPx: (art?.w ?? 360) + 2 * STAGE_PAD_PX,
+        flowWorkspaceHeightPx: (art?.h ?? 360) + 2 * STAGE_PAD_PX
       }}
       section={section}
       activeLayerId={PAGE_LAYER_ID}

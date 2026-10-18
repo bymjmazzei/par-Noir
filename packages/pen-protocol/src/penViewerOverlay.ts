@@ -62,16 +62,8 @@ export function layerVisibleInViewer(
   }
   if (state.hidden.includes(layer.id)) return false;
 
-  const groupKey = penViewerGroupKey(layer);
-  const groupId = layer.parentGroupId || null;
   if (layer.stepFrame != null) {
-    return layer.stepFrame === currentFrame(state, groupKey);
-  }
-  if (groupId && frameCountForGroup(layers, groupId) > 1) {
-    const siblings = layers.filter((l) => (l.parentGroupId || null) === groupId && l.stepFrame != null);
-    if (siblings.length > 0) {
-      return false;
-    }
+    return layer.stepFrame === currentFrame(state, penViewerGroupKey(layer));
   }
   return true;
 }
@@ -99,4 +91,12 @@ export function scoreCaption(layers: PenPageLayer[], state: PenViewerState, grou
   const { correct, total } = viewerScore(layers, state, groupId);
   if (!total) return '';
   return `${correct} / ${total}`;
+}
+
+/** Editor face before anyone answers: zero out of the widget's correct answers. */
+export function scorePreviewCaption(layers: PenPageLayer[], groupId: string | null): string {
+  const total = layers.filter(
+    (layer) => layer.behavior === 'quiz.answer' && layer.correct && (layer.parentGroupId || null) === groupId
+  ).length;
+  return total ? `0 / ${total}` : 'Score';
 }

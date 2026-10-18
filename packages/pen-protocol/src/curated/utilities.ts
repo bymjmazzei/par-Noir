@@ -1,50 +1,116 @@
 import type { SeedBundle } from '../starterSeeds.js';
-import { artHtml, artLayer, buttonLayer, countdownLayer, curatedCardSeed, kickerStyle, textLayer, titleStyle } from './kit.js';
+import {
+  artHtml,
+  artLayer,
+  box,
+  buttonLayer,
+  clockLayer,
+  countdownLayer,
+  curatedCardSeed,
+  eventStartIn,
+  textLayer,
+  themes
+} from './kit.js';
 
+/** A large countdown under the event name, with a reminder. */
 export function seedUtilCountdown(): SeedBundle {
+  const t = themes.sunset;
   return curatedCardSeed([
-    artLayer('w_util_countdown_v1_art', artHtml('linear-gradient(135deg,#fef3c7 0%,#fde68a 45%,#f59e0b 100%)', '<div class="s" style="width:220px;height:220px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
-    textLayer('w_util_countdown_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'UTILITIES', kickerStyle),
-    textLayer('w_util_countdown_v1_t', { x: 24, y: 44, w: 312, h: 56, z: 3 }, 'Countdown', titleStyle),
-    buttonLayer('w_util_countdown_v1_go', { x: 24, y: 280, w: 200, h: 40, z: 5 }, 'Open', { fill: '#111827', color: '#fff' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com' })
-,
-    countdownLayer('w_util_countdown_v1_cd', { x: 24, y: 220, w: 120, h: 24, z: 4 }, '#fde68a', 3)
+    artLayer(
+      'cd_art',
+      artHtml(
+        'linear-gradient(180deg,#9a3412 0%,#7c2d12 55%,#431407 100%)',
+        '<div class="s" style="width:280px;height:280px;left:40px;top:150px;background:radial-gradient(circle,#fdba74 0%,#f97316 45%,rgba(249,115,22,0) 70%)"></div><div class="r" style="left:0;top:262px;width:360px;height:98px;background:#431407"></div>'
+      )
+    ),
+    textLayer('cd_kicker', box(24, 28, 240, 20, 2), 'SUMMER SOLSTICE PARTY', { size: 11, color: t.accent, bold: true }),
+    textLayer('cd_title', box(24, 52, 312, 64, 3), ['Sunset on the roof', 'starts in'], { family: 'serif', size: 22, color: t.ink, bold: true }),
+    countdownLayer('cd_time', box(48, 136, 264, 72, 4), t.ink, 21, 'rgba(67,20,7,0.55)'),
+    buttonLayer('cd_remind', box(24, 286, 180, 44, 5), 'Add to calendar', t.primary, {
+      behavior: 'cta.calendar',
+      eventTitle: 'Sunset on the roof',
+      eventStart: eventStartIn(21, 19),
+      eventLocation: 'Rooftop, 210 Marsh St',
+      eventDurationMin: 180
+    }, { size: 13 })
   ]);
 }
 
+/** Two cities side by side. */
 export function seedUtilClock(): SeedBundle {
+  const t = themes.slate;
   return curatedCardSeed([
-    artLayer('w_util_clock_v1_art', artHtml('linear-gradient(145deg,#0ea5e9 0%,#6366f1 55%,#312e81 100%)', '<div class="s" style="width:240px;height:240px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
-    textLayer('w_util_clock_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'UTILITIES', kickerStyle),
-    textLayer('w_util_clock_v1_t', { x: 24, y: 44, w: 312, h: 56, z: 3 }, 'Clock', titleStyle),
-    buttonLayer('w_util_clock_v1_go', { x: 24, y: 280, w: 200, h: 40, z: 5 }, 'Open', { fill: '#111827', color: '#fff' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com' })
+    artLayer(
+      'ck_art',
+      artHtml(
+        '#e2e8f0',
+        '<div class="dial" style="left:24px;background:#ffffff"></div><div class="dial" style="left:192px;background:#0f172a"></div>',
+        '.dial{position:absolute;top:96px;width:144px;height:144px;border-radius:50%;box-shadow:0 6px 16px rgba(15,23,42,.12)}'
+      )
+    ),
+    textLayer('ck_kicker', box(24, 24, 240, 20, 2), 'TEAM HOURS', { size: 11, color: t.accent, bold: true }),
+    textLayer('ck_title', box(24, 46, 312, 36, 3), 'When we are online', { family: 'serif', size: 22, color: t.ink, bold: true }),
+    clockLayer('ck_ny', box(40, 152, 112, 32, 4), t.ink, '09:00'),
+    clockLayer('ck_tk', box(208, 152, 112, 32, 5), '#ffffff', '22:00'),
+    textLayer('ck_ny_label', box(24, 252, 144, 44, 6), ['New York', 'Mon–Fri'], { size: 13, color: t.ink, bold: true, align: 'center' }),
+    textLayer('ck_tk_label', box(192, 252, 144, 44, 7), ['Tokyo', 'Mon–Fri'], { size: 13, color: t.ink, bold: true, align: 'center' }),
+    buttonLayer('ck_book', box(90, 304, 180, 40, 8), 'Book a call', t.primary, { behavior: 'cta.open', openUrl: 'https://parnoir.com/book' }, { size: 13 })
   ]);
 }
 
+/** One-line notice across a banner. */
 export function seedUtilBanner(): SeedBundle {
   return curatedCardSeed([
-    artLayer('w_util_banner_v1_art', artHtml('linear-gradient(120deg,#14532d 0%,#166534 50%,#052e16 100%)', '<div class="s" style="width:260px;height:260px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 120),
-    textLayer('w_util_banner_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'UTILITIES', kickerStyle),
-    textLayer('w_util_banner_v1_t', { x: 24, y: 44, w: 312, h: 56, z: 3 }, 'Announcement banner', titleStyle),
-    buttonLayer('w_util_banner_v1_go', { x: 24, y: 72, w: 200, h: 40, z: 5 }, 'Open', { fill: '#111827', color: '#fff' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com' })
+    artLayer(
+      'ub_art',
+      artHtml(
+        'repeating-linear-gradient(135deg,#fde047 0 18px,#facc15 18px 36px)',
+        '<div class="r" style="left:12px;top:12px;width:336px;height:96px;border-radius:12px;background:#1c1917"></div>'
+      ),
+      120
+    ),
+    textLayer('ub_msg', box(28, 28, 196, 64, 2), ['Heads up: shipping pauses', 'Dec 24 – Jan 2.'], { size: 13, color: '#fde047', bold: true }),
+    buttonLayer('ub_more', box(232, 38, 104, 44, 3), 'Learn more', { fill: '#fde047', color: '#1c1917' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/shipping' }, { size: 12 })
   ]);
 }
 
+/** Five items to tick off before a trip. */
 export function seedUtilChecklist(): SeedBundle {
-  const opt = { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' };
+  const t = themes.paper;
+  const item = { fill: '#ffffff', color: t.ink };
+  const items = ['Passport', 'Chargers', 'Meds', 'House keys', 'Snacks'];
   return curatedCardSeed([
-    artLayer('w_util_checklist_v1_art', artHtml('linear-gradient(165deg,#1c1917 0%,#44403c 40%,#78716c 100%)', '<div class="s" style="width:180px;height:180px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
-    textLayer('w_util_checklist_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'UTILITIES', kickerStyle),
-    textLayer('w_util_checklist_v1_t', { x: 24, y: 44, w: 312, h: 56, z: 3 }, 'Checklist', titleStyle),
-    buttonLayer('w_util_checklist_v1_t1', { x: 24, y: 280, w: 312, h: 36, z: 5 }, 'Task one', opt, { behavior: 'widget.toggle', bindRowId: 'w_util_checklist_v1_t1' })
+    artLayer(
+      'uc_art',
+      artHtml(
+        '#f6f1e7',
+        '<div class="tag"></div>',
+        '.tag{position:absolute;right:24px;top:20px;width:52px;height:64px;border-radius:8px 8px 8px 8px;background:#b45309;clip-path:polygon(0 18%,50% 0,100% 18%,100% 100%,0 100%)}.tag::after{content:"";position:absolute;left:21px;top:12px;width:10px;height:10px;border-radius:50%;background:#f6f1e7}'
+      )
+    ),
+    textLayer('uc_kicker', box(24, 22, 200, 20, 2), 'BEFORE YOU GO', { size: 11, color: t.accent, bold: true }),
+    textLayer('uc_title', box(24, 44, 240, 36, 3), 'Packing list', { family: 'serif', size: 24, color: t.ink, bold: true }),
+    ...items.map((face, i) =>
+      buttonLayer(`uc_${i + 1}`, box(24, 96 + i * 50, 312, 40, 4 + i), face, item, { behavior: 'widget.toggle', bindRowId: `uc_${i + 1}` }, { size: 13, radius: 10, stroke: '#e7e0d2' })
+    )
   ]);
 }
 
+/** A big +1 that stamps a count. */
 export function seedUtilTally(): SeedBundle {
+  const t = themes.ink;
   return curatedCardSeed([
-    artLayer('w_util_tally_v1_art', artHtml('linear-gradient(155deg,#be123c 0%,#9f1239 50%,#4c0519 100%)', '<div class="s" style="width:200px;height:200px;right:-50px;top:-40px;background:rgba(255,255,255,0.15)"></div><div class="s" style="width:90px;height:90px;left:-30px;bottom:-30px;background:rgba(255,255,255,0.1)"></div>'), 360),
-    textLayer('w_util_tally_v1_k', { x: 24, y: 12, w: 280, h: 28, z: 2 }, 'UTILITIES', kickerStyle),
-    textLayer('w_util_tally_v1_t', { x: 24, y: 44, w: 312, h: 56, z: 3 }, 'Tally counter', titleStyle),
-    buttonLayer('w_util_tally_v1_st', { x: 24, y: 280, w: 160, h: 40, z: 5 }, 'Check in', { fill: '#34d399', color: '#111' }, { behavior: 'widget.stamp' })
+    artLayer(
+      'ut_art',
+      artHtml(
+        '#0b0b0c',
+        '<div class="ring"></div>',
+        '.ring{position:absolute;left:90px;top:100px;width:180px;height:180px;border-radius:50%;border:2px dashed rgba(250,204,21,.4);box-sizing:border-box}'
+      )
+    ),
+    textLayer('ut_kicker', box(24, 24, 260, 20, 2), 'GLASSES OF WATER TODAY', { size: 11, color: t.accent, bold: true }),
+    textLayer('ut_hint', box(24, 48, 312, 32, 3), 'Tap to count', { family: 'serif', size: 20, color: t.ink, bold: true }),
+    buttonLayer('ut_plus', box(110, 120, 140, 140, 4), '+1', t.primary, { behavior: 'widget.stamp', label: 'Glass of water' }, { size: 44 }),
+    textLayer('ut_goal', box(24, 300, 312, 28, 5), 'Goal: 8 by bedtime', { size: 13, color: t.muted, align: 'center' })
   ]);
 }
