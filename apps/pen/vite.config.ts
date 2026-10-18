@@ -7,6 +7,7 @@ import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-en
 const pqcSrc = path.resolve(__dirname, '../../packages/pqc-crypto/src');
 const penSrc = path.resolve(__dirname, '../../packages/pen-protocol/src');
 const aggregatorDomainSrc = path.resolve(__dirname, '../../packages/aggregator-domain/src');
+const zkProtocolV2Src = path.resolve(__dirname, '../../packages/zk-protocol-v2/src');
 
 export default defineConfig(({ command, mode }) => {
   assertViteApiEndpointForBuild({ command, mode, root: __dirname });
@@ -30,6 +31,8 @@ export default defineConfig(({ command, mode }) => {
       '@par-noir/feed-tile': path.resolve(__dirname, '../../packages/feed-tile/src/index.ts'),
       '@par-noir/pen-media': path.resolve(__dirname, '../../packages/pen-media/src/index.ts'),
       '@par-noir/aggregator-domain': path.resolve(aggregatorDomainSrc, 'index.ts'),
+      '@par-noir/zk-protocol-v2/envelope': path.resolve(zkProtocolV2Src, 'envelope.ts'),
+      '@par-noir/zk-protocol-v2': path.resolve(zkProtocolV2Src, 'index.ts'),
     },
   },
   build: {
