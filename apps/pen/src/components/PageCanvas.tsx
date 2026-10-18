@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import type * as Y from 'yjs';
+import type { Awareness } from 'y-protocols/awareness';
 import { ySyncPluginKey } from 'y-prosemirror';
 import {
   PEN_SYSTEM_FONTS,
@@ -1029,12 +1031,24 @@ export function PageCanvas({
    * Live co-editing: bind the editor to this Yjs fragment. Fixed for the life
    * of the editor — remount (key) when it changes.
    */
-  collab?: { fragment: Y.XmlFragment };
+  collab?: {
+    fragment: Y.XmlFragment;
+    /** Peer cursors and selections in this text. */
+    presence?: { awareness: Awareness; user: { name: string; color: string } };
+  };
 }) {
   const editor = useEditor({
     extensions: [
       ...penEditorExtensions({ pnIdentifier, sectionTitle }),
-      ...(collab ? [Collaboration.configure({ fragment: collab.fragment })] : [])
+      ...(collab ? [Collaboration.configure({ fragment: collab.fragment })] : []),
+      ...(collab?.presence
+        ? [
+            CollaborationCursor.configure({
+              provider: { awareness: collab.presence.awareness },
+              user: collab.presence.user
+            })
+          ]
+        : [])
     ],
     editable: !readOnly,
     // Bound editors render from the fragment.

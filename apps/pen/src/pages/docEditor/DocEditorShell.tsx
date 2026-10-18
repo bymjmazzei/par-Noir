@@ -279,6 +279,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     ledgerRef,
     ledgerTimerRef,
     liveCollab,
+    livePeers,
     liveReadOnly,
     liveStatus,
     navigate,
@@ -849,6 +850,35 @@ export function DocEditorShell(state: DocEditorReadyState) {
               {liveStatus === 'live' ? 'Live' : 'Connecting…'}
             </span>
           ) : null}
+          {livePeers.length > 0 ? (
+            <div className="flex items-center -space-x-1.5 pr-1" aria-label="Collaborators here now">
+              {livePeers.slice(0, 5).map((peer) => (
+                <button
+                  key={peer.pnHash}
+                  type="button"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-[10px] font-semibold uppercase text-white"
+                  style={{ backgroundColor: peer.color }}
+                  title={
+                    peer.activeSectionSlug
+                      ? `${peer.name} · ${peer.activeSectionSlug}`
+                      : peer.name
+                  }
+                  onClick={() => {
+                    if (peer.activeSectionSlug && bundle.manifest.toc.includes(peer.activeSectionSlug)) {
+                      setActiveSlug(peer.activeSectionSlug);
+                    }
+                  }}
+                >
+                  {peer.name.slice(0, 1)}
+                </button>
+              ))}
+              {livePeers.length > 5 ? (
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-neutral-200 px-1 text-[10px] text-neutral-700">
+                  +{livePeers.length - 5}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <SaveMenu
             canCommit={canCommit}
             canSuggest={canSuggest}
@@ -1245,7 +1275,11 @@ export function DocEditorShell(state: DocEditorReadyState) {
                     ? `story:${section.storyId || activeSlug}:${session.pnIdentifier}:${historyEpoch}`
                     : `${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`
                 }:${liveCollab?.key ?? (liveReadOnly ? 'ro' : 'rw')}`}
-                collab={liveCollab ? { fragment: liveCollab.fragment } : undefined}
+                collab={
+                  liveCollab
+                    ? { fragment: liveCollab.fragment, presence: liveCollab.presence }
+                    : undefined
+                }
                 readOnly={liveReadOnly}
                 section={canvasSection}
                 sectionTitle={writingLabel}

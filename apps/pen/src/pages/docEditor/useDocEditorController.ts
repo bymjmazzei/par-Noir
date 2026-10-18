@@ -716,10 +716,19 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       return null;
     }
     const layerId = isPageLayerId(activeLayerId) ? null : activeLayerId;
-    return live.bindFragment({ slug: canvasSection.slug, layerId, doc: canvasSection.doc });
+    const bound = live.bindFragment({ slug: canvasSection.slug, layerId, doc: canvasSection.doc });
+    return bound ? { ...bound, presence: live.cursor() ?? undefined } : null;
     // Rebind only when the bound text target changes, not on every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveActive, live.canEdit, canvasSection?.slug, activeLayerId, writingEnabled, live.bindFragment]);
+  const livePeers = live.peers;
+
+  useEffect(() => {
+    live.setPresence({
+      activeSectionSlug: activeSlug,
+      selectedLayerIds: activeLayerId ? [activeLayerId] : []
+    });
+  }, [activeSlug, activeLayerId, live.setPresence]);
   const liveReadOnly = live.status === 'connecting' || (liveActive && !live.canEdit);
   const liveStatus = live.status;
 
@@ -2320,6 +2329,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     ledgerRef,
     ledgerTimerRef,
     liveCollab,
+    livePeers,
     liveReadOnly,
     liveStatus,
     navigate,

@@ -18,9 +18,15 @@ import {
   bytesToBase64,
   makeKeyClaim,
   penLiveHasContent,
+  penLivePresenceColor,
   penLiveSectionsMap,
   penLiveSeedUpdate,
+  readPenLivePeers,
   readPenLiveState,
+  setPenLivePresence,
+  type Awareness,
+  type PenLivePeer,
+  type PenLivePresenceUser,
   sealPenLiveSnapshot,
   signRolesUpdate,
   trustedLiveRoles,
@@ -78,6 +84,12 @@ export interface PenLiveHandle {
   bindFragment(
     target: { slug: string; layerId: string | null; doc: PenTipTapNode } | null
   ): { fragment: Y.XmlFragment; key: string } | null;
+  /** Other members on this doc right now. */
+  peers: PenLivePeer[];
+  /** Where this user is working (shown to peers). */
+  setPresence(pen: { activeSectionSlug?: string; selectedLayerIds?: string[] }): void;
+  /** Awareness + local user for editor cursors while live. */
+  cursor(): { awareness: Awareness; user: PenLivePresenceUser } | null;
   sealSnapshot(): Promise<PenLiveSealedSnapshot | null>;
   /** Latest owner-signed roles update this device holds (for durable fanout). */
   rolesUpdate(): PenLiveRolesUpdate | null;
@@ -95,6 +107,12 @@ interface Runtime {
   signer: PenLiveSigner;
   signerPublicKey: string;
   isOwner: boolean;
+  user: PenLivePresenceUser;
+}
+
+/** Label peers see: the pN handle without its prefix. */
+function presenceName(pnIdentifier: string): string {
+  return pnIdentifier.replace(/^pn-/, '').slice(0, 24) || 'Collaborator';
 }
 
 const fragmentIds = new WeakMap<Y.XmlFragment, string>();
@@ -130,6 +148,8 @@ export function usePenLive(params: {
   const [status, setStatus] = useState<PenLiveStatus>('off');
   const [canEdit, setCanEdit] = useState(false);
   const [undoUi, setUndoUi] = useState({ canUndo: false, canRedo: false });
+  const [peers, setPeers] = useState<PenLivePeer[]>([]);
+  const presenceRef = useRef<{ activeSectionSlug?: string; selectedLayerIds?: string[] }>({});
   const runtimeRef = useRef<Runtime | null>(null);
   const statusRef = useRef<PenLiveStatus>('off');
   const rolesUpdateRef = useRef<PenLiveRolesUpdate | null>(null);
@@ -267,6 +287,16 @@ export function usePenLive(params: {
       }
     });
 
+    const user: PenLivePresenceUser = {
+      name: presenceName(session.pnIdentifier),
+      color: penLivePresenceColor(signer.pnHash)
+    };
+    const awareness = liveSession.awareness;
+    setPenLivePresence(awareness, user, { pnHash: signer.pnHash, ...presenceRef.current });
+    const onAwarenessChange = () =>
+      setPeers(readPenLivePeers(awareness, trustedLiveRoles(rolesSource(), anchor), ownerPnHash));
+    awareness.on('change', onAwarenessChange);
+
     const undo = new Y.UndoManager([penLiveSectionsMap(ydoc), ydoc.getMap('meta')], {
       trackedOrigins: new Set([PEN_LIVE_LOCAL])
     });
@@ -300,7 +330,8 @@ export function usePenLive(params: {
       anchor,
       signer,
       signerPublicKey,
-      isOwner
+      isOwner,
+      user
     };
 
     const onSnapshotEvent = (e: Event) => {
@@ -351,6 +382,8 @@ export function usePenLive(params: {
       disposed = true;
       for (const t of timers) window.clearTimeout(t);
       window.removeEventListener(PEN_LIVE_SNAPSHOT_EVENT, onSnapshotEvent);
+      awareness.off('change', onAwarenessChange);
+      setPeers([]);
       offRemote();
       const wasLive = statusRef.current === 'live';
       runtimeRef.current = null;
@@ -423,6 +456,22 @@ export function usePenLive(params: {
     []
   );
 
+  const setPresence = useCallback(
+    (pen: { activeSectionSlug?: string; selectedLayerIds?: string[] }) => {
+      presenceRef.current = pen;
+      const rt = runtimeRef.current;
+      if (!rt) return;
+      setPenLivePresence(rt.session.awareness, rt.user, { pnHash: rt.signer.pnHash, ...pen });
+    },
+    []
+  );
+
+  const cursor = useCallback(() => {
+    const rt = runtimeRef.current;
+    if (!rt || statusRef.current !== 'live') return null;
+    return { awareness: rt.session.awareness, user: rt.user };
+  }, []);
+
   const undoLive = useCallback(() => runtimeRef.current?.undo.undo(), []);
   const redoLive = useCallback(() => runtimeRef.current?.undo.redo(), []);
 
@@ -441,6 +490,9 @@ export function usePenLive(params: {
     redo: redoLive,
     applyLocal,
     bindFragment,
+    peers,
+    setPresence,
+    cursor,
     sealSnapshot,
     rolesUpdate: () => rolesUpdateRef.current,
     session: () => runtimeRef.current?.session ?? null

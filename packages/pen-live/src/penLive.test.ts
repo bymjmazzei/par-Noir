@@ -27,8 +27,11 @@ import {
   verifyRolesUpdate,
   openPenLiveBatch,
   openPenLiveSnapshot,
+  penLivePresenceColor,
   penLiveRoomToken,
   penLiveSeedUpdate,
+  readPenLivePeers,
+  setPenLivePresence,
   readPenLiveState,
   sealPenLiveBatch,
   sealPenLiveSnapshot,
@@ -613,6 +616,33 @@ describe('live session over a relay', () => {
     await settle([a.session, b.session]);
     const states = Array.from(b.session.awareness.getStates().values());
     expect(states.some((s) => (s as { user?: { name?: string } }).user?.name === 'Owner')).toBe(true);
+    await Promise.all([a.session.stop(), b.session.stop()]);
+  });
+
+  it('lists present members once each, with where they are working', async () => {
+    const hub = createHub();
+    const seed = penLiveSeedUpdate(baseState(), schema);
+    const a = open(hub, 'owner', owner.secret, seed);
+    const b = open(hub, 'collab', collab.secret, seed);
+    a.session.start();
+    b.session.start();
+    setPenLivePresence(
+      a.session.awareness,
+      { name: 'Owner', color: penLivePresenceColor('owner') },
+      { pnHash: 'owner', activeSectionSlug: 'body', selectedLayerIds: ['l1'] }
+    );
+    setPenLivePresence(b.session.awareness, { name: 'Collab', color: '#000' }, { pnHash: 'collab' });
+    await settle([a.session, b.session]);
+    const peers = readPenLivePeers(b.session.awareness, roles, 'owner');
+    expect(peers).toHaveLength(1);
+    expect(peers[0]).toMatchObject({
+      pnHash: 'owner',
+      name: 'Owner',
+      activeSectionSlug: 'body',
+      selectedLayerIds: ['l1'],
+      color: penLivePresenceColor('owner')
+    });
+    expect(readPenLivePeers(b.session.awareness, [], 'someone-else')).toEqual([]);
     await Promise.all([a.session.stop(), b.session.stop()]);
   });
 });

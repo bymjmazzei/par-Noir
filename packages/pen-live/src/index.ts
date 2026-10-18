@@ -8,3 +8,4 @@ export * from './snapshot.js';
 export * from './awareness.js';
 export * from './session.js';
 export * from './attest.js';
+export * from './presence.js';
