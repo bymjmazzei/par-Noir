@@ -255,4 +255,87 @@ describe('Pen owner-cloud publish', () => {
     });
     expect(published.fileId).toBe('wt-1');
   });
+
+  it('template publish uploads the captured poster and replaces the prior template row', async () => {
+    const bundle = {
+      manifest: {
+        docId: 'w-2',
+        title: 'Poll',
+        docType: 'widget',
+        classId: 'widgets.widget',
+        templateId: 'widget.v1',
+        templateVersion: '1',
+        templatePublishedFileId: 'old-tpl',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        toc: []
+      },
+      sections: [
+        {
+          slug: 'card',
+          doc: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Poll' }] }]
+          },
+          layers: []
+        }
+      ],
+      chain: { docId: 'w-2', genesis: { hash: 'g' }, links: [] }
+    } as unknown as LocalDocBundle;
+
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const request = async (method: string, path: string, body?: unknown) => {
+      calls.push({ method, path, body });
+      if (method === 'DELETE') return new Response('{}', { status: 200 });
+      if (path === '/api/drive/files') {
+        return new Response(JSON.stringify({ id: 'wt-2' }), { status: 200 });
+      }
+      if (path.startsWith('/api/aggregator/feed-media/owner-upload')) {
+        return new Response('{}', { status: 200 });
+      }
+      if (path === '/api/aggregator/feed-media/confirm-upload') {
+        return new Response('{}', { status: 200 });
+      }
+      if (path.includes('/ensure-public')) {
+        return new Response(
+          JSON.stringify({
+            publicContentRef: {
+              objectId: 'wt-2',
+              publicUrl: 'https://drive.google.com/uc?export=download&id=wt-2',
+              backend: 'google_drive'
+            }
+          }),
+          { status: 200 }
+        );
+      }
+      if (method === 'PUT') return new Response('{}', { status: 200 });
+      return new Response('unexpected', { status: 500 });
+    };
+
+    const posterBlob = new Blob([7, 7, 7], { type: 'image/jpeg' });
+    await publishTemplateToOwnerCloud({
+      bundle,
+      templateLicensing: defaultLicensingRoot('owner'),
+      verified: true,
+      pnIdentifier: 'pn',
+      request,
+      parentFolderId: 'public-folder',
+      posterBlob
+    });
+
+    const del = calls.findIndex(
+      (c) => c.method === 'DELETE' && c.path === '/api/aggregator/metadata-index/old-tpl'
+    );
+    const firstUpload = calls.findIndex((c) => c.path === '/api/drive/files');
+    expect(del).toBeGreaterThanOrEqual(0);
+    expect(del).toBeLessThan(firstUpload);
+    const posterUpload = calls.find(
+      (c) =>
+        c.path.startsWith('/api/aggregator/feed-media/owner-upload') &&
+        c.path.includes('variant=poster')
+    );
+    expect((posterUpload?.body as Blob | undefined)?.size).toBe(posterBlob.size);
+    const put = calls.find((c) => c.method === 'PUT');
+    expect((put?.body as { feedPoster?: unknown }).feedPoster).toBeTruthy();
+  });
 });

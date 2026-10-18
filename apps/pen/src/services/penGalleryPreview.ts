@@ -23,6 +23,7 @@ import {
   rasterizeElementSafeStill
 } from './rasterizePagePoster';
 import { attachMediaFile, penMediaRef, putLocalMedia, uploadStoredMedia } from '@par-noir/pen-media';
+import { FEED_PREVIEW_POSTER_MAX_BYTES } from '@par-noir/aggregator-domain';
 import type { PenSession } from './penSession';
 
 export type GalleryMedia = { src: string; kind: 'image' | 'video' };
@@ -176,6 +177,29 @@ export function findComposeExportRoot(): HTMLElement | null {
 
 function findComposeRoot(): HTMLElement | null {
   return findComposeExportRoot();
+}
+
+const TEMPLATE_POSTER_MAX_EDGE = 720;
+const TEMPLATE_POSTER_QUALITIES = [0.82, 0.7, 0.58, 0.46, 0.34];
+
+/**
+ * Still of the mounted compose root for a public template's CDN poster.
+ * Returns null when nothing fits FEED_PREVIEW_POSTER_MAX_BYTES.
+ */
+export async function captureTemplatePosterBlob(): Promise<Blob | null> {
+  const root = findComposeRoot();
+  if (!root) return null;
+  for (const raster of [rasterizeElementToPosterBlob, rasterizeElementSafeStill]) {
+    for (const quality of TEMPLATE_POSTER_QUALITIES) {
+      try {
+        const blob = await raster(root, { maxEdge: TEMPLATE_POSTER_MAX_EDGE, quality });
+        if (blob.size > 0 && blob.size <= FEED_PREVIEW_POSTER_MAX_BYTES) return blob;
+      } catch {
+        break;
+      }
+    }
+  }
+  return null;
 }
 
 /** Upload now; offline, keep it device-only and let the sync job upload it later. */

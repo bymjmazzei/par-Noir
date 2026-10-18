@@ -28,6 +28,7 @@ import {
 import { previewBundleFromTemplate } from './TemplateGalleryThumb';
 import { resolveGalleryMedia, type GalleryMedia } from '../services/penGalleryPreview';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
+import { resolvePublicMediaSignedUrl } from '../services/penPublicFeedMedia';
 
 function sourceLayers(template: PenTemplate): PenPageLayer[] {
   return template.seedSections?.[0]?.layers || [];
@@ -90,15 +91,62 @@ function CatalogMediaThumb({
   );
 }
 
+function PublicPosterThumb({
+  fileId,
+  title,
+  session
+}: {
+  fileId: string;
+  title: string;
+  session?: PenSession | null;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setSrc(null);
+    setFailed(false);
+    void resolvePublicMediaSignedUrl(fileId, 'poster', session?.accessToken)
+      .then((url) => {
+        if (!cancelled) setSrc(url);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId, session?.accessToken]);
+  if (failed) return <NamedBlackTile name={title} />;
+  return (
+    <div className="pen-white-media-thumb flex items-center justify-center bg-white">
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          className="max-h-full max-w-full object-contain"
+          draggable={false}
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function WidgetTemplateThumb({
   template,
   pn,
-  session
+  session,
+  posterFileId
 }: {
   template: PenTemplate;
   pn: string;
   session?: PenSession | null;
+  posterFileId?: string;
 }) {
+  if (posterFileId) {
+    return <PublicPosterThumb fileId={posterFileId} title={template.title} session={session} />;
+  }
   const bundle = previewBundleFromTemplate(pn, template);
   if (!bundle) {
     return <NamedBlackTile name={template.title} />;
@@ -157,6 +205,7 @@ export function ActionLayerMenu({
     ? personalTemplatesAsPenTemplates(pn).filter((t) => t.classId === classId)
     : [];
   const [remote, setRemote] = useState<PenTemplate[]>([]);
+  const [posters, setPosters] = useState<Map<string, string>>(() => new Map());
   const [tab, setTab] = useState<'mine' | 'all'>('all');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -171,12 +220,15 @@ export function ActionLayerMenu({
       .then(async (entries) => {
         const published = await loadPublishedWidgetSections(entries);
         if (cancelled) return;
-        setRemote(
-          publicWidgetCatalog(entries, published).templates.filter((template) => template.classId === classId)
-        );
+        const catalog = publicWidgetCatalog(entries, published);
+        setRemote(catalog.templates.filter((template) => template.classId === classId));
+        setPosters(catalog.posters);
       })
       .catch(() => {
-        if (!cancelled) setRemote([]);
+        if (!cancelled) {
+          setRemote([]);
+          setPosters(new Map());
+        }
       });
     return () => {
       cancelled = true;
@@ -379,7 +431,12 @@ export function ActionLayerMenu({
                       <span className="pen-gallery-tile-title-text">{template.title}</span>
                     </div>
                     <span className="pen-gallery-tile-preview">
-                      <WidgetTemplateThumb template={template} pn={pn} session={session} />
+                      <WidgetTemplateThumb
+                        template={template}
+                        pn={pn}
+                        session={session}
+                        posterFileId={posters.get(template.id)}
+                      />
                     </span>
                   </button>
                 </div>

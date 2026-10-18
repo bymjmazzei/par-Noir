@@ -168,6 +168,7 @@ import { publishDocCloud, upsertDraftCloud } from '../../services/penCloudStore'
 import { enqueueSyncJob } from '../../services/penSyncQueue';
 import {
   buildAndStoreGalleryPreview,
+  captureTemplatePosterBlob,
   docRequiresGalleryVideoCompose,
   withGalleryPreview
 } from '../../services/penGalleryPreview';
@@ -1764,13 +1765,26 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           setError('Publish the post before publishing the template');
           return;
         }
+        setStatus('Building template poster…');
+        let posterBlob: Blob | null = null;
+        try {
+          flushSync(() => setGalleryComposeCapture(true));
+          await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+          await new Promise((r) => setTimeout(r, 450));
+          posterBlob = await captureTemplatePosterBlob();
+        } catch {
+          posterBlob = null;
+        } finally {
+          setGalleryComposeCapture(false);
+        }
         setStatus('Publishing template to your cloud…');
         const { fileId } = await publishTemplateToOwnerCloud({
           bundle: b,
           templateLicensing,
           verified: verifiedAuthor,
           pnIdentifier: session.pnIdentifier,
-          connectReady
+          connectReady,
+          posterBlob
         });
         const next = bundleRef.current || b;
         persist({

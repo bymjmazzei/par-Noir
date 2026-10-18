@@ -14,6 +14,8 @@ describe('ActionLayerMenu', () => {
     expect(src).toMatch(/pen-action-layer-overlay/);
     expect(src).toMatch(/pen-named-black-tile/);
     expect(src).toMatch(/onPlaceElement/);
+    expect(src).toMatch(/resolvePublicMediaSignedUrl/);
+    expect(src).toMatch(/posters/);
     const presets = readFileSync(resolve(__dirname, 'layersAddMenu.ts'), 'utf8');
     for (const label of ['Poll', 'Countdown', 'Link']) {
       expect(presets).toContain(label);

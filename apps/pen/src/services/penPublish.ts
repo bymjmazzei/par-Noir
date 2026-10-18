@@ -1153,6 +1153,8 @@ export async function publishTemplateToOwnerCloud(params: {
   connectReady?: boolean;
   request?: CloudRequest;
   parentFolderId?: string;
+  /** Raster of the template page. Falls back to a title card when absent. */
+  posterBlob?: Blob | null;
 }): Promise<{ fileId: string }> {
   if (!params.verified) throw new Error(PUBLIC_TEMPLATE_REQUIRES_VERIFICATION);
   const classId = params.bundle.manifest.classId || '';
@@ -1182,8 +1184,12 @@ export async function publishTemplateToOwnerCloud(params: {
     sections: params.bundle.sections.map(stripPollSpreadsheetFromSection),
     licensing
   };
-  const poster = await renderNotePoster(compiled.title, textPost.content);
+  const poster =
+    params.posterBlob && params.posterBlob.size > 0
+      ? params.posterBlob
+      : await renderNotePoster(compiled.title, textPost.content);
   const kind = params.bundle.manifest.basedOnTemplateId ? 'remix' : 'template';
+  await supersedePriorPublishedPost(params.request, params.bundle.manifest.templatePublishedFileId);
   return publishPublicCloudFile({
     request: params.request,
     parentFolderId,
