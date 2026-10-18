@@ -1092,9 +1092,14 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       scheduleLedgerPush(stamped);
       return;
     }
+    // Live: peers may edit during the async save, so memory keeps the newest state.
+    if (liveActiveRef.current) {
+      bundleRef.current = stamped;
+      setBundle({ ...stamped });
+    }
     void saveLocalDocAsync(session.pnIdentifier, stamped)
       .then((saved) => {
-        setBundle({ ...saved });
+        if (!liveActiveRef.current) setBundle({ ...saved });
         setDirty(false);
         setLastDraftAt(saved.manifest.updatedAt);
         scheduleLedgerPush(saved);
@@ -1268,8 +1273,10 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
 
     try {
       const saved = await saveLocalDocAsync(session.pnIdentifier, next);
-      setBundle({ ...saved });
-      bundleRef.current = saved;
+      if (!liveActiveRef.current) {
+        setBundle({ ...saved });
+        bundleRef.current = saved;
+      }
 
       const draftMeta = {
         draftId,

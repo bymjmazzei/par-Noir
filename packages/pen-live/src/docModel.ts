@@ -283,15 +283,37 @@ export function readPenLiveSection(ymap: AnyMap, slug: string): PenSectionConten
   return section;
 }
 
+/**
+ * Page order. Writers replace the whole array, so concurrent edits merge to a
+ * union with repeats: keep first occurrences of pages that still exist.
+ */
+function readToc(ydoc: Y.Doc): string[] {
+  const sections = penLiveSectionsMap(ydoc);
+  const raw = metaMap(ydoc).get('toc');
+  const list: string[] = raw instanceof Y.Array ? raw.toArray() : Array.isArray(raw) ? raw : [];
+  const seen = new Set<string>();
+  const toc = list.filter((slug) => {
+    if (seen.has(slug) || !sections.has(slug)) return false;
+    seen.add(slug);
+    return true;
+  });
+  return toc.length || !sections.size ? toc : Array.from(sections.keys());
+}
+
+function writeToc(ydoc: Y.Doc, toc: string[]): void {
+  const meta = metaMap(ydoc);
+  const cur = meta.get('toc');
+  const arr = cur instanceof Y.Array ? (cur as Y.Array<string>) : new Y.Array<string>();
+  if (arr !== cur) meta.set('toc', arr);
+  if (arr.length) arr.delete(0, arr.length);
+  if (toc.length) arr.insert(0, toc.slice());
+}
+
 export function readPenLiveState(ydoc: Y.Doc): PenLiveDocState {
   const meta = metaMap(ydoc);
   const sections: PenSectionContent[] = [];
   penLiveSectionsMap(ydoc).forEach((ymap, slug) => sections.push(readPenLiveSection(ymap, slug)));
-  return {
-    title: String(meta.get('title') ?? ''),
-    toc: Array.isArray(meta.get('toc')) ? (meta.get('toc') as string[]) : sections.map((s) => s.slug),
-    sections
-  };
+  return { title: String(meta.get('title') ?? ''), toc: readToc(ydoc), sections };
 }
 
 function sectionSlugOf(type: Y.AbstractType<any>, sections: Y.Map<AnyMap>): string | null {
@@ -374,8 +396,8 @@ export class PenLiveBridge {
       if (this.knownTitle !== state.title && meta.get('title') !== state.title) {
         meta.set('title', state.title);
       }
-      if (!sameJson(this.knownToc, state.toc) && !sameJson(meta.get('toc'), state.toc)) {
-        meta.set('toc', clone(state.toc));
+      if (!sameJson(this.knownToc, state.toc) && !sameJson(readToc(ydoc), state.toc)) {
+        writeToc(ydoc, state.toc);
       }
       const sections = penLiveSectionsMap(ydoc);
       const nextSlugs = new Set(state.sections.map((s) => s.slug));
@@ -418,7 +440,10 @@ export class PenLiveBridge {
         if (slug) slugs.add(slug);
       }
       for (const key of tr.changed.get(sections) || []) {
-        if (key) slugs.add(key);
+        if (!key) continue;
+        slugs.add(key);
+        // Pages added or removed change the effective toc.
+        metaChanged = true;
       }
       if (tr.changed.has(meta)) metaChanged = true;
       if (!slugs.size && !metaChanged) return;
@@ -437,14 +462,14 @@ export class PenLiveBridge {
       }
       if (metaChanged) {
         const title = meta.get('title');
-        const toc = meta.get('toc');
+        const toc = readToc(this.ydoc);
         if (typeof title === 'string') {
           change.title = title;
           this.knownTitle = title;
         }
-        if (Array.isArray(toc)) {
-          change.toc = toc as string[];
-          this.knownToc = change.toc;
+        if (!sameJson(toc, this.knownToc)) {
+          change.toc = toc;
+          this.knownToc = toc;
         }
       }
       cb(change);

@@ -211,6 +211,99 @@ describe('doc model', () => {
     expect(seen).toContain('body');
   });
 
+  it('keeps both pages when two editors add one at the same time', () => {
+    const [a, b] = forkFromSeed(baseState());
+    const ba = new PenLiveBridge(a, schema);
+    const bb = new PenLiveBridge(b, schema);
+    const sa = readPenLiveState(a);
+    const sb = readPenLiveState(b);
+    ba.adopt(sa);
+    bb.adopt(sb);
+    ba.applyLocal({ ...sa, toc: ['body', 'p2'], sections: [...sa.sections, { slug: 'p2', doc: para('A') }] });
+    bb.applyLocal({ ...sb, toc: ['body', 'p3'], sections: [...sb.sections, { slug: 'p3', doc: para('B') }] });
+    sync(a, b);
+    const merged = readPenLiveState(a);
+    expect(merged.toc.slice().sort()).toEqual(['body', 'p2', 'p3']);
+    expect(merged.toc).toEqual(readPenLiveState(b).toc);
+  });
+
+  it('drops a deleted page from the toc even when a peer reordered pages concurrently', () => {
+    const start: PenLiveDocState = {
+      title: 'Doc',
+      toc: ['body', 'p2', 'p3'],
+      sections: ['body', 'p2', 'p3'].map((slug) => ({ slug, doc: para(slug) }))
+    };
+    const [a, b] = forkFromSeed(start);
+    const ba = new PenLiveBridge(a, schema);
+    const bb = new PenLiveBridge(b, schema);
+    const sa = readPenLiveState(a);
+    const sb = readPenLiveState(b);
+    ba.adopt(sa);
+    bb.adopt(sb);
+    ba.applyLocal({ ...sa, toc: ['body', 'p3'], sections: sa.sections.filter((s) => s.slug !== 'p2') });
+    bb.applyLocal({ ...sb, toc: ['p3', 'body', 'p2'] });
+    sync(a, b);
+    const merged = readPenLiveState(a);
+    expect(merged.toc).not.toContain('p2');
+    expect(merged.toc.slice().sort()).toEqual(['body', 'p3']);
+    expect(merged).toEqual(readPenLiveState(b));
+  });
+
+  it('converges concurrent layer reorders without duplicate layers', () => {
+    const start: PenLiveDocState = {
+      title: 'Doc',
+      toc: ['body'],
+      sections: [{ slug: 'body', doc: para('x'), layers: [layer('l1'), layer('l2'), layer('l3')] }]
+    };
+    const [a, b] = forkFromSeed(start);
+    const ba = new PenLiveBridge(a, schema);
+    const bb = new PenLiveBridge(b, schema);
+    const sa = readPenLiveState(a);
+    const sb = readPenLiveState(b);
+    ba.adopt(sa);
+    bb.adopt(sb);
+    const [l1, l2, l3] = section(sa).layers!;
+    ba.applyLocal({ ...sa, sections: [{ ...section(sa), layers: [l3!, l1!, l2!] }] });
+    bb.applyLocal({ ...sb, sections: [{ ...section(sb), layers: [l2!, l1!, l3!] }] });
+    sync(a, b);
+    const ids = section(readPenLiveState(a)).layers!.map((l) => l.id);
+    expect(ids.slice().sort()).toEqual(['l1', 'l2', 'l3']);
+    expect(ids).toEqual(section(readPenLiveState(b)).layers!.map((l) => l.id));
+  });
+
+  it('merges concurrent widget settings and a concurrent move on one layer', () => {
+    const start: PenLiveDocState = {
+      title: 'Doc',
+      toc: ['body'],
+      sections: [
+        {
+          slug: 'body',
+          doc: para('x'),
+          layers: [layer('w1', { kind: 'interactive', behavior: 'poll.vote', name: 'Poll' })]
+        }
+      ]
+    };
+    const [a, b] = forkFromSeed(start);
+    const ba = new PenLiveBridge(a, schema);
+    const bb = new PenLiveBridge(b, schema);
+    const sa = readPenLiveState(a);
+    const sb = readPenLiveState(b);
+    ba.adopt(sa);
+    bb.adopt(sb);
+    const wa = section(sa).layers![0]!;
+    const wb = section(sb).layers![0]!;
+    ba.applyLocal({ ...sa, sections: [{ ...section(sa), layers: [{ ...wa, name: 'Favourite colour?' }] }] });
+    bb.applyLocal({ ...sb, sections: [{ ...section(sb), layers: [{ ...wb, x: 120, y: 64 }] }] });
+    sync(a, b);
+    expect(section(readPenLiveState(a)).layers![0]).toMatchObject({
+      behavior: 'poll.vote',
+      name: 'Favourite colour?',
+      x: 120,
+      y: 64
+    });
+    expect(readPenLiveState(a)).toEqual(readPenLiveState(b));
+  });
+
   it('leaves an editor-bound fragment to the editor', () => {
     const doc = new Y.Doc();
     const bridge = new PenLiveBridge(doc, schema);
