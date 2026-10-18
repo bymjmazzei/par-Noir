@@ -5,7 +5,7 @@
 
 import { assertOpenContractProofsOnLicensing } from './openContractProofGuard';
 
-const PEN_INDEX_KEYS = [
+export const PEN_INDEX_KEYS = [
   'feedIds',
   'penClassId',
   'penCategoryId',
@@ -28,8 +28,28 @@ const PEN_INDEX_KEYS = [
   'penFeedPage',
   'pageView',
   'pageSwipeAxis',
-  'galleryAspect'
+  'galleryAspect',
+  'penPostUpdatedAt'
 ] as const;
+
+/** Pen-owned + preview keys that an in-place post update may clear when absent from the body. */
+export const PEN_POST_UPDATE_CLEARABLE_KEYS = [
+  ...PEN_INDEX_KEYS,
+  'feedPoster',
+  'feedPreviewSd',
+  'feedPreviewHd',
+  'textPost',
+  'collection'
+] as const;
+
+/** Keys present on the existing row that are missing from this update body. */
+export function penPostUpdateClearKeys(body: unknown): string[] {
+  if (!body || typeof body !== 'object') {
+    return [...PEN_POST_UPDATE_CLEARABLE_KEYS];
+  }
+  const src = body as Record<string, unknown>;
+  return PEN_POST_UPDATE_CLEARABLE_KEYS.filter((key) => src[key] === undefined);
+}
 
 export function penIndexFields(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== 'object') return {};

@@ -146,7 +146,8 @@ import {
   writeComposedVideoPublishHandoff,
   writeMixedPagesPublishHandoff,
   writeSocialTocCollectionHandoff,
-  writeTextCollectionHandoff
+  writeTextCollectionHandoff,
+  type PublishPostTarget
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
 import { requestNotaryStamp, fetchMonetizationStatus } from '../../services/penApi';
@@ -186,6 +187,7 @@ import {
 import { assertDocMediaOnDrive } from '../../services/penDraftFlush';
 import { ensurePublishPlaybackBytes } from '../../services/penPublishMedia';
 import type { ShareToFeedSubmit } from '../../components/ShareToFeedDialog';
+import { forkDocForNewPost } from '../../services/forkDocForNewPost';
 import { ensureGoogleFontsLoaded } from '../../services/penGoogleFonts';
 import {
   appendLocalComment,
@@ -1928,6 +1930,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       setError('social_feed_only');
       return;
     }
+    const mode = input.mode || 'share';
     void (async () => {
       try {
         setError(null);
@@ -1938,6 +1941,23 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           manifest: { ...b.manifest, title: input.metadata.name.trim() }
         });
         b = bundleRef.current || b;
+
+        let navigatedToFork = false;
+        if (mode === 'new') {
+          setStatus('Copying doc for new post…');
+          const fork = await forkDocForNewPost({ session, source: b });
+          b = fork;
+          bundleRef.current = fork;
+          navigatedToFork = true;
+        }
+
+        let target: PublishPostTarget = { kind: 'new' };
+        if (mode === 'update') {
+          const fileId = b.manifest.publishedFileId?.trim();
+          if (!fileId) throw new Error('update_requires_published_post');
+          target = { kind: 'update', fileId };
+        }
+
         await ensurePublishPlaybackBytes({
           session,
           docId: b.manifest.docId,
@@ -1962,7 +1982,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           metadata: input.metadata,
           indexingPermissions: input.indexingPermissions
         };
-        setStatus('Publishing to your cloud…');
+        setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
         let publishResult: {
           fileId: string;
           penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
@@ -2010,7 +2030,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
                 setStatus(`Encoding feed pages… ${Math.round(pct)}%`);
               }
             });
-            setStatus('Publishing to your cloud…');
+            setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
             publishResult = await publishPostToOwnerCloud({
               bundle: b,
               feedIds: input.feedIds,
@@ -2019,7 +2039,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               connectReady,
               session,
               mixed,
-              feedPublish
+              feedPublish,
+              target
             });
           } else if (
             shouldPublishAsSingleComposedVideoForFeed(b.sections, feedManifest)
@@ -2039,7 +2060,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               setStatus(`Encoding composed video… ${Math.round(pct)}%`);
             }
           });
-          setStatus('Publishing to your cloud…');
+          setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
           publishResult = await publishPostToOwnerCloud({
             bundle: b,
             feedIds: input.feedIds,
@@ -2048,7 +2069,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             connectReady,
             session,
             video,
-            feedPublish
+            feedPublish,
+            target
           });
           } else if (shouldPublishAsMixedPages(b.sections)) {
           setStatus('Encoding video pages…');
@@ -2061,7 +2083,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               setStatus(`Encoding video pages… ${Math.round(pct)}%`);
             }
           });
-          setStatus('Publishing to your cloud…');
+          setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
           publishResult = await publishPostToOwnerCloud({
             bundle: b,
             feedIds: input.feedIds,
@@ -2070,7 +2092,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             connectReady,
             session,
             mixed,
-            feedPublish
+            feedPublish,
+            target
           });
           } else {
           const template = getTemplate(b.manifest.templateId);
@@ -2090,6 +2113,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             connectReady,
             session,
             feedPublish,
+            target,
             ...(asCollection
               ? { mixed: writeTextCollectionHandoff(b, publishOpts) }
               : {})
@@ -2100,8 +2124,11 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
             publishResult.fileId,
             publishResult.penFeedMediaBySlug
           );
-          setStatus('Published to your cloud');
+          setStatus(mode === 'update' ? 'Shared post updated' : 'Published to your cloud');
           window.setTimeout(() => setStatus(null), 4000);
+          if (navigatedToFork) {
+            navigate(`/d/${b.manifest.docId}`);
+          }
         } finally {
           teardownComposeCaptureForEncode(prevSlug);
         }

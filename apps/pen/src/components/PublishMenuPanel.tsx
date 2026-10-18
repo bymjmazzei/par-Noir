@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { defaultLicensingRoot, type PenLicensingRoot } from '@par-noir/pen-protocol';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { LicensingSettingsPanel } from './LicensingSettingsPanel';
-import { ShareToFeedDialog, type ShareToFeedSubmit } from './ShareToFeedDialog';
+import {
+  ShareToFeedDialog,
+  type ShareToFeedMode,
+  type ShareToFeedSubmit
+} from './ShareToFeedDialog';
 
 export type PublishMenuPanelProps = {
   projectEnabled: boolean;
@@ -65,6 +69,7 @@ export function PublishMenuPanel({
   onRequestClose
 }: PublishMenuPanelProps) {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareMode, setShareMode] = useState<ShareToFeedMode>('share');
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateLicense, setTemplateLicense] = useState<PenLicensingRoot>(() =>
     defaultLicensingRoot(ownerPnHash, { membership: membership === true })
@@ -74,9 +79,19 @@ export function PublishMenuPanel({
     (hasPublishedPost === true || widgetTemplatesOnly === true);
   const showLicensing = membership === true;
   const socialActive = isSocial || feedEnabled === true;
+  const alreadyShared = hasPublishedPost === true;
 
   function close() {
     onRequestClose?.();
+  }
+
+  function openShare(mode: ShareToFeedMode) {
+    if (!socialActive && onToggleSocial) {
+      onToggleSocial();
+    }
+    setShareMode(mode);
+    setShareDialogOpen(true);
+    setTemplateOpen(false);
   }
 
   function submitTemplate() {
@@ -114,20 +129,35 @@ export function PublishMenuPanel({
           </button>
         </div>
       )}
-      <button
-        type="button"
-        title="Share this post to feeds and aggregators"
-        className="block w-full px-0 py-1.5 text-left text-[12px] text-stone-800 hover:opacity-70"
-        onClick={() => {
-          if (!socialActive && onToggleSocial) {
-            onToggleSocial();
-          }
-          setShareDialogOpen(true);
-          setTemplateOpen(false);
-        }}
-      >
-        Share to feed…
-      </button>
+      {alreadyShared ? (
+        <>
+          <button
+            type="button"
+            title="Update the existing feed post. Engagement is kept."
+            className="block w-full px-0 py-1.5 text-left text-[12px] text-stone-800 hover:opacity-70"
+            onClick={() => openShare('update')}
+          >
+            Update shared post…
+          </button>
+          <button
+            type="button"
+            title="Create a separate copy of this doc and publish it as a new post"
+            className="block w-full px-0 py-1.5 text-left text-[12px] text-stone-800 hover:opacity-70"
+            onClick={() => openShare('new')}
+          >
+            Share as new post…
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          title="Share this post to feeds and aggregators"
+          className="block w-full px-0 py-1.5 text-left text-[12px] text-stone-800 hover:opacity-70"
+          onClick={() => openShare('share')}
+        >
+          Share to feed…
+        </button>
+      )}
       {manifest && sections && (
         <ShareToFeedDialog
           open={shareDialogOpen}
@@ -135,6 +165,7 @@ export function PublishMenuPanel({
           manifest={manifest}
           sections={sections}
           pnIdentifier={pnIdentifier}
+          mode={shareMode}
           onSubmit={(payload) => {
             onShareToAggregators(payload);
             close();

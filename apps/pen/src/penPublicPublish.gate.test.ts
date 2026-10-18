@@ -116,12 +116,16 @@ describe('Pen owner-cloud publish', () => {
     expect(editor).toContain('publishTemplateToOwnerCloud');
     expect(editor).toContain('toggleSocial');
     expect(menu).toContain('Share to feed');
+    expect(menu).toContain('Update shared post');
+    expect(menu).toContain('Share as new post');
+    expect(menu).toContain('hasPublishedPost');
     expect(menu).not.toContain('Publish live');
     expect(menu).toContain('ShareToFeedDialog');
     expect(menu).not.toContain('Send preview to a pN');
     expect(menu).not.toContain('previewPn');
     expect(menu).not.toContain('onSendPreview');
   });
+
 
   it('a reusable template is a second index row after the post', async () => {
     const bundle = {

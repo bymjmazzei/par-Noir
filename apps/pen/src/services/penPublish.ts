@@ -768,7 +768,59 @@ export function actionStageHtmlForPost(sections: LocalDocBundle['sections']): st
   return buildActionStageHtml(sections);
 }
 
-/** Remove prior feed row before re-share so the doc does not accumulate duplicate fileIds. */
+export type PublishPostTarget =
+  | { kind: 'new' }
+  | { kind: 'update'; fileId: string };
+
+type PriorPublishedRow = {
+  collectionFileIds: string[];
+  companionAudioFileIds: string[];
+};
+
+async function loadPriorPublishedRow(
+  request: CloudRequest | undefined,
+  fileId: string
+): Promise<PriorPublishedRow> {
+  const req = request || defaultCloudRequest();
+  const res = await req(
+    'GET',
+    `/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`
+  );
+  if (!res.ok) return { collectionFileIds: [], companionAudioFileIds: [] };
+  const data = (await res.json()) as { metadata?: Record<string, unknown> };
+  const meta = data.metadata || {};
+  const collection =
+    meta.collection && typeof meta.collection === 'object'
+      ? (meta.collection as { collectionFileIds?: unknown })
+      : null;
+  const collectionFileIds = Array.isArray(collection?.collectionFileIds)
+    ? collection!.collectionFileIds!.filter((id): id is string => typeof id === 'string' && !!id)
+    : [];
+  const companionAudioFileIds = Array.isArray(meta.companionAudioFileIds)
+    ? meta.companionAudioFileIds.filter((id): id is string => typeof id === 'string' && !!id)
+    : [];
+  return { collectionFileIds, companionAudioFileIds };
+}
+
+/** Delete superseded collection children / companion audio after an in-place post update. */
+async function deleteSupersededIndexRows(
+  request: CloudRequest | undefined,
+  fileIds: string[]
+): Promise<void> {
+  if (!fileIds.length) return;
+  const req = request || defaultCloudRequest();
+  for (const id of fileIds) {
+    const res = await req(
+      'DELETE',
+      `/api/aggregator/metadata-index/${encodeURIComponent(id)}`
+    );
+    if (res.ok || res.status === 404) continue;
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`cleanup_prior_child_${res.status} ${text}`);
+  }
+}
+
+/** Template publish still supersedes the prior template row (separate from social posts). */
 async function supersedePriorPublishedPost(
   request: CloudRequest | undefined,
   priorFileId: string | undefined
@@ -850,16 +902,24 @@ export async function publishPostToOwnerCloud(params: {
   /** Test hook. Production uploads each own lane as its own audio file. */
   uploadCompanionAudio?: (bytes: Uint8Array, index: number, mime: string) => Promise<string>;
   feedPublish?: FeedPublishExtras;
+  /** Default new. Update keeps the same fileId so engagement is preserved. */
+  target?: PublishPostTarget;
 }): Promise<{
   fileId: string;
   penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
 }> {
   if (!params.feedIds.length) throw new Error('feed_required');
   const penFeedMediaBySlug: NonNullable<PenDocManifest['penFeedMediaBySlug']> = {};
-  await supersedePriorPublishedPost(
-    params.request,
-    params.bundle.manifest.publishedFileId
-  );
+  const target: PublishPostTarget = params.target || { kind: 'new' };
+  const replaceFileId =
+    target.kind === 'update' ? target.fileId.trim() || undefined : undefined;
+  if (target.kind === 'update' && !replaceFileId) {
+    throw new Error('update_requires_file_id');
+  }
+  const prior =
+    replaceFileId
+      ? await loadPriorPublishedRow(params.request, replaceFileId)
+      : { collectionFileIds: [] as string[], companionAudioFileIds: [] as string[] };
   const publishMeta = params.feedPublish
     ? metadataFieldsFromPublishForm(params.feedPublish.metadata)
     : {};
@@ -933,6 +993,7 @@ export async function publishPostToOwnerCloud(params: {
       title: publishTitle,
       previews: params.video.previews,
       indexingPermissions,
+      replaceFileId,
       metadata: {
         ...publishMeta,
         ...base,
@@ -947,6 +1008,12 @@ export async function publishPostToOwnerCloud(params: {
     if (videoSlug) {
       penFeedMediaBySlug[videoSlug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'video' };
     }
+    await cleanupAfterUpdate({
+      request: params.request,
+      prior,
+      keepCompanion: companion.fileIds,
+      keepChildren: []
+    });
     return {
       fileId: uploaded.fileId,
       penFeedMediaBySlug: Object.keys(penFeedMediaBySlug).length ? penFeedMediaBySlug : undefined
@@ -1091,6 +1158,7 @@ export async function publishPostToOwnerCloud(params: {
       title: publishTitle,
       previews: posterPreview(poster),
       indexingPermissions,
+      replaceFileId,
       metadata: {
         ...publishMeta,
         ...base,
@@ -1101,6 +1169,12 @@ export async function publishPostToOwnerCloud(params: {
         collection: { collectionFileIds: childIds, title: publishTitle },
         description: caption
       }
+    });
+    await cleanupAfterUpdate({
+      request: params.request,
+      prior,
+      keepCompanion: companion.fileIds,
+      keepChildren: childIds
     });
     return {
       fileId: uploaded.fileId,
@@ -1129,6 +1203,7 @@ export async function publishPostToOwnerCloud(params: {
     title: publishTitle,
     previews: posterPreview(poster),
     indexingPermissions,
+    replaceFileId,
     metadata: {
       ...publishMeta,
       ...base,
@@ -1139,7 +1214,27 @@ export async function publishPostToOwnerCloud(params: {
       description: caption || textPost.content
     }
   });
+  await cleanupAfterUpdate({
+    request: params.request,
+    prior,
+    keepCompanion: companion.fileIds,
+    keepChildren: []
+  });
   return { fileId: uploaded.fileId };
+}
+
+async function cleanupAfterUpdate(params: {
+  request?: CloudRequest;
+  prior: PriorPublishedRow;
+  keepCompanion: string[];
+  keepChildren: string[];
+}): Promise<void> {
+  const keep = new Set([...params.keepCompanion, ...params.keepChildren]);
+  const stale = [
+    ...params.prior.collectionFileIds,
+    ...params.prior.companionAudioFileIds
+  ].filter((id) => id && !keep.has(id));
+  await deleteSupersededIndexRows(params.request, [...new Set(stale)]);
 }
 
 /**

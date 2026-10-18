@@ -2204,6 +2204,11 @@ export class AggregatorMetadataServiceDB {
       persistOnDiscover?: boolean;
       /** Pen post/template fields (feedIds, penDocId, licensing, penTemplateKind, …). */
       provenance?: Record<string, unknown>;
+      /**
+       * Hard-delete these keys after merge (Pen post update replace semantics).
+       * Engagement rows are never touched.
+       */
+      clearKeys?: string[];
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -2216,15 +2221,22 @@ export class AggregatorMetadataServiceDB {
       }
 
       const metadata = current.metadata;
+      const clearKeySet = new Set(
+        (updates.clearKeys || []).filter((k) => typeof k === 'string' && k.length > 0)
+      );
 
       // Preserve existing schema metadata (static/auto-extracted fields)
       const existingSchema = (metadata as any).schema || {};
 
       // Preserve textPost/thought/collection from existing metadata if not explicitly updated
       // These fields are critical for rendering and should never be lost
-      const existingTextPost = (metadata as any).textPost;
+      const existingTextPost = clearKeySet.has('textPost')
+        ? undefined
+        : (metadata as any).textPost;
       const existingThought = (metadata as any).thought;
-      const existingCollection = (metadata as any).collection;
+      const existingCollection = clearKeySet.has('collection')
+        ? undefined
+        : (metadata as any).collection;
       
       // Extract share fields so we can handle them explicitly (null = delete)
       const {
@@ -2305,25 +2317,29 @@ export class AggregatorMetadataServiceDB {
           ? updates.feedPoster === null
             ? {}
             : { feedPoster: updates.feedPoster }
-          : existingFeedPoster
+          : !clearKeySet.has('feedPoster') && existingFeedPoster
             ? { feedPoster: existingFeedPoster }
             : {}),
         ...(updates.feedPreviewSd !== undefined
           ? updates.feedPreviewSd === null
             ? {}
             : { feedPreviewSd: updates.feedPreviewSd }
-          : existingFeedPreviewSd
+          : !clearKeySet.has('feedPreviewSd') && existingFeedPreviewSd
             ? { feedPreviewSd: existingFeedPreviewSd }
             : {}),
         ...(updates.feedPreviewHd !== undefined
           ? updates.feedPreviewHd === null
             ? {}
             : { feedPreviewHd: updates.feedPreviewHd }
-          : existingFeedPreviewHd
+          : !clearKeySet.has('feedPreviewHd') && existingFeedPreviewHd
             ? { feedPreviewHd: existingFeedPreviewHd }
             : {}),
         ...(updates.provenance || {}),
       };
+
+      for (const key of clearKeySet) {
+        delete (updatedMetadata as any)[key];
+      }
 
       // Ensure keywords and tags are in sync
       if (updatedMetadata.keywords && !updatedMetadata.tags) {

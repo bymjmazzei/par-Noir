@@ -35,7 +35,7 @@ import { scheduleDocCloudBootstrap } from './penSyncFlush';
 import { createPollSheet } from './pollCloud';
 import { mintDocKey } from './penDocCrypto';
 
-function randomDocId(): string {
+export function randomPenDocId(): string {
   return `pen_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
 }
 
@@ -43,7 +43,11 @@ function randomDraftId(): string {
   return `draft_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
-async function persistBundle(input: {
+/**
+ * Shared create / fork bootstrap: genesis, docKey, local buffer, cloud schedule.
+ * Callers supply sections and optional manifest overrides (e.g. forkedFromDocId).
+ */
+export async function bootstrapDocBundle(input: {
   session: PenSession;
   template: PenTemplate;
   docId: string;
@@ -51,6 +55,18 @@ async function persistBundle(input: {
   title?: string;
   basedOnTemplateId?: string;
   basedOnFileId?: string;
+  forkedFromDocId?: string;
+  /** When set, used instead of template seed presentation / layout. */
+  pageLayout?: PenDocManifest['pageLayout'];
+  pageView?: PenDocManifest['pageView'];
+  pagePresentation?: PenDocManifest['pagePresentation'];
+  galleryAspect?: PenDocManifest['galleryAspect'];
+  pageSwipeAxis?: PenDocManifest['pageSwipeAxis'];
+  isSocial?: boolean;
+  licensing?: PenDocManifest['licensing'];
+  classId?: string;
+  docType?: PenDocManifest['docType'];
+  toc?: string[];
 }): Promise<LocalDocBundle> {
   const draftId = randomDraftId();
   const now = new Date().toISOString();
@@ -85,6 +101,12 @@ async function persistBundle(input: {
   mintDocKey(input.docId);
   sessionStorage.setItem(`pen_group_id:${input.docId}`, groupId);
 
+  const toc =
+    input.toc ||
+    (input.sections.length
+      ? input.sections.map((s) => s.slug)
+      : input.template.sections.map((s) => s.slug));
+
   const draft: PenDraftManifest = {
     draftId,
     docId: input.docId,
@@ -92,15 +114,19 @@ async function persistBundle(input: {
     createdAt: now,
     updatedAt: now,
     status: 'unfinished',
-    toc: input.template.sections.map((s) => s.slug)
+    toc
   };
 
-  const parentId = getClass(input.template.classId)?.parentId;
+  const classId = input.classId || input.template.classId;
+  const parentId = getClass(classId)?.parentId;
   const social = parentId === 'social';
   const widget = parentId === 'widgets';
   const pageLayout =
-    input.template.seedPageLayout || (social || widget ? 'flow' : 'letter');
+    input.pageLayout ||
+    input.template.seedPageLayout ||
+    (social || widget ? 'flow' : 'letter');
   const pagePresentation =
+    input.pagePresentation ||
     input.template.seedPagePresentation ||
     (widget
       ? { ...defaultEditorPagePresentation(), backgroundColor: 'transparent' }
@@ -111,20 +137,21 @@ async function persistBundle(input: {
   const manifest: PenDocManifest = {
     docId: input.docId,
     title: input.title || `Untitled ${input.template.title}`,
-    docType: input.template.docType,
-    classId: input.template.classId,
+    docType: input.docType || input.template.docType,
+    classId,
     templateId: input.template.id,
     templateVersion: input.template.version,
     groupId,
-    toc: input.template.sections.map((s) => s.slug),
+    toc,
     createdAt: now,
     updatedAt: now,
     genesisProof: genesis,
     pageLayout,
-    pageView: defaultPageView(pageLayout),
+    pageView: input.pageView || defaultPageView(pageLayout),
     pagePresentation,
-    galleryAspect: input.template.seedGalleryAspect,
+    galleryAspect: input.galleryAspect ?? input.template.seedGalleryAspect,
     pageSwipeAxis:
+      input.pageSwipeAxis ||
       input.template.seedPageSwipeAxis ||
       (input.template.publishContentClass === 'collection' ? 'x' : undefined),
     ownerPnHash,
@@ -133,7 +160,12 @@ async function persistBundle(input: {
     activeDraftId: draftId,
     ...(input.basedOnTemplateId ? { basedOnTemplateId: input.basedOnTemplateId } : {}),
     ...(input.basedOnFileId ? { basedOnFileId: input.basedOnFileId } : {}),
-    licensing: normalizeLicensingRoot(input.template.licensing, ownerPnHash)
+    ...(input.forkedFromDocId ? { forkedFromDocId: input.forkedFromDocId } : {}),
+    ...(input.isSocial !== undefined ? { isSocial: input.isSocial } : {}),
+    licensing: normalizeLicensingRoot(
+      input.licensing || input.template.licensing,
+      ownerPnHash
+    )
   };
 
   const chain: PenHistoryChain = { docId: input.docId, genesis, links: [] };
@@ -160,12 +192,12 @@ export async function createTablePrimitiveDoc(input: {
   title?: string;
 }): Promise<LocalDocBundle> {
   const template = requireTemplate('table.basic.v1');
-  const docId = randomDocId();
+  const docId = randomPenDocId();
   const sections =
     template.seedSections?.length
       ? template.seedSections.map((s) => ({ ...s }))
       : [tableSectionFromPayload('grid', emptyPollTable())];
-  return persistBundle({
+  return bootstrapDocBundle({
     session: input.session,
     template,
     docId,
@@ -186,7 +218,7 @@ export async function createDocFromTemplate(input: {
     input.templates?.find((t) => t.id === input.templateId) ||
     requireTemplate(input.templateId);
 
-  const docId = randomDocId();
+  const docId = randomPenDocId();
   let sections = (template.seedSections?.length
     ? template.seedSections
     : template.sections.map((s) => emptySection(s.slug))
@@ -200,7 +232,7 @@ export async function createDocFromTemplate(input: {
     sections = rewriteSeedTablePlaceholders(sections, table.manifest.docId);
   }
 
-  let bundle = await persistBundle({
+  let bundle = await bootstrapDocBundle({
     session: input.session,
     template,
     docId,

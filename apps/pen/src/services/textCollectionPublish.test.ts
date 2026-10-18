@@ -97,13 +97,91 @@ describe('text collection publish', () => {
     ]);
   });
 
-  it('supersedes prior publishedFileId before indexing a new post', async () => {
+  it('update keeps the same fileId, overwrites the envelope, and sends penPostUpdate', async () => {
     const doc = bundle();
     let n = 0;
-    let deletePrior = false;
+    const deletes: string[] = [];
+    const puts: Array<{ path: string; body: Record<string, unknown> }> = [];
+    let contentOverwrite = false;
     const request = async (method: string, path: string, body?: unknown) => {
-      if (method === 'DELETE' && path.includes('/api/aggregator/metadata-index/prior-post')) {
-        deletePrior = true;
+      if (method === 'GET' && path.includes('/api/aggregator/metadata-index/prior-post')) {
+        return new Response(
+          JSON.stringify({
+            metadata: {
+              collection: { collectionFileIds: ['old-child-1', 'old-child-2'] },
+              companionAudioFileIds: ['old-audio']
+            }
+          }),
+          { status: 200 }
+        );
+      }
+      if (method === 'DELETE' && path.includes('/api/aggregator/metadata-index/')) {
+        deletes.push(path);
+        return new Response('{}', { status: 200 });
+      }
+      if (method === 'PUT' && path.includes('/api/drive/files/prior-post/content')) {
+        contentOverwrite = true;
+        return new Response('{}', { status: 200 });
+      }
+      if (path === '/api/drive/files') {
+        n += 1;
+        return new Response(JSON.stringify({ id: `file-${n}` }), { status: 200 });
+      }
+      if (path.includes('/ensure-public')) {
+        const id = path.includes('prior-post') ? 'prior-post' : `file-${n}`;
+        return new Response(
+          JSON.stringify({
+            publicContentRef: {
+              objectId: id,
+              publicUrl: `https://drive.google.com/uc?export=download&id=${id}`,
+              backend: 'google_drive'
+            }
+          }),
+          { status: 200 }
+        );
+      }
+      if (method === 'PUT' && path.includes('/api/aggregator/metadata-index/')) {
+        puts.push({ path, body: body as Record<string, unknown> });
+        return new Response('{}', { status: 200 });
+      }
+      return new Response('unexpected', { status: 500 });
+    };
+
+    const withPrior = {
+      ...doc,
+      manifest: { ...doc.manifest, publishedFileId: 'prior-post' }
+    } as typeof doc;
+
+    const result = await publishPostToOwnerCloud({
+      bundle: withPrior,
+      feedIds: ['public', 'collections'],
+      pnIdentifier: 'pn',
+      parentFolderId: 'public-folder',
+      membership: false,
+      request,
+      mixed: writeTextCollectionHandoff(withPrior, { canPublishPublicTemplate: false }),
+      target: { kind: 'update', fileId: 'prior-post' }
+    });
+
+    expect(result.fileId).toBe('prior-post');
+    expect(contentOverwrite).toBe(true);
+    const parent = puts.find((p) => p.path.endsWith('/prior-post'))?.body;
+    expect(parent?.penPostUpdate).toBe(true);
+    expect(typeof parent?.penPostUpdatedAt).toBe('string');
+    expect(parent?.uploadDate).toBeUndefined();
+    expect(deletes.some((p) => p.includes('old-child-1'))).toBe(true);
+    expect(deletes.some((p) => p.includes('old-child-2'))).toBe(true);
+    expect(deletes.some((p) => p.includes('old-audio'))).toBe(true);
+    expect(deletes.some((p) => p.endsWith('/prior-post'))).toBe(false);
+  });
+
+  it('a new post never deletes a prior publishedFileId on the source doc', async () => {
+    const doc = bundle();
+    let n = 0;
+    const deletes: string[] = [];
+    const request = async (method: string, path: string, body?: unknown) => {
+      if (method === 'DELETE' && path.includes('/api/aggregator/metadata-index/')) {
+        deletes.push(path);
         return new Response('{}', { status: 200 });
       }
       if (path === '/api/drive/files') {
@@ -141,10 +219,11 @@ describe('text collection publish', () => {
       parentFolderId: 'public-folder',
       membership: false,
       request,
-      mixed: writeTextCollectionHandoff(withPrior, { canPublishPublicTemplate: false })
+      mixed: writeTextCollectionHandoff(withPrior, { canPublishPublicTemplate: false }),
+      target: { kind: 'new' }
     });
 
-    expect(deletePrior).toBe(true);
+    expect(deletes).toEqual([]);
   });
 
   it('collection template still slide uploads image child and collections feedIds', async () => {

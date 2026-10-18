@@ -1514,6 +1514,50 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         const { penIndexFields } = await import('./penIndexFields');
         if (await rejectUnsafePublicLinks(res, penIndexFields(req.body))) return;
       }
+
+      const penPostUpdate = req.body?.penPostUpdate === true;
+      let penPostUpdateClearKeys: string[] | undefined;
+      const supersededPreviewR2Keys: string[] = [];
+      if (penPostUpdate) {
+        if (!current) {
+          return res.status(404).json({
+            error: 'not_found',
+            error_description: 'penPostUpdate requires an existing metadata row'
+          });
+        }
+        const fileOwnerDid =
+          current.metadata.creator?.identifier?.value ||
+          current.metadata.creator?.['@id'] ||
+          current.metadata.author?.did ||
+          current.pnIdentifier;
+        if (fileOwnerDid !== userIdentifier && current.pnIdentifier !== userIdentifier) {
+          return res.status(403).json({
+            error: 'Forbidden',
+            message: 'Only the file owner can update a published Pen post'
+          });
+        }
+        if (typeof (current.metadata as any).penDocId !== 'string' || !(current.metadata as any).penDocId) {
+          return res.status(400).json({
+            error: 'not_pen_post',
+            error_description: 'penPostUpdate requires an existing Pen post (penDocId)'
+          });
+        }
+        const { penPostUpdateClearKeys: computeClearKeys } = await import('./penIndexFields');
+        penPostUpdateClearKeys = computeClearKeys(req.body);
+        for (const field of ['feedPoster', 'feedPreviewSd', 'feedPreviewHd'] as const) {
+          const ref = (current.metadata as any)[field];
+          if (ref && typeof ref === 'object' && typeof ref.r2Key === 'string' && ref.r2Key) {
+            const incoming = req.body?.[field];
+            const incomingKey =
+              incoming && typeof incoming === 'object' && typeof (incoming as any).r2Key === 'string'
+                ? (incoming as any).r2Key
+                : undefined;
+            if (!incomingKey || incomingKey !== ref.r2Key) {
+              supersededPreviewR2Keys.push(ref.r2Key);
+            }
+          }
+        }
+      }
       
       if (!current) {
         // Create new metadata entry - fetch file info from Google Drive
@@ -2660,8 +2704,20 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         ...(normalizedExpiry?.persistOnDiscover !== undefined
           ? { persistOnDiscover: normalizedExpiry.persistOnDiscover }
           : {}),
-        provenance: (await import('./penIndexFields')).penIndexFields(req.body)
+        provenance: (await import('./penIndexFields')).penIndexFields(req.body),
+        ...(penPostUpdateClearKeys ? { clearKeys: penPostUpdateClearKeys } : {})
       });
+
+      if (penPostUpdate && supersededPreviewR2Keys.length) {
+        try {
+          const { feedR2Delete } = await import('./feedPreviewR2');
+          for (const key of supersededPreviewR2Keys) {
+            await feedR2Delete(key).catch(() => undefined);
+          }
+        } catch {
+          /* non-critical — stale R2 keys are evicted later */
+        }
+      }
 
       // Track if we successfully deleted the file (so we can return success even if file no longer exists)
       let fileWasDeleted = false;

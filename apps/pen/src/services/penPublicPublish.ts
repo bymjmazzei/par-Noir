@@ -62,6 +62,24 @@ async function uploadDriveFile(
   return id;
 }
 
+/** Overwrite an existing Drive envelope so the index fileId stays stable across post updates. */
+async function overwriteDriveFile(
+  request: CloudRequest,
+  fileId: string,
+  mimeType: string,
+  base64: string
+): Promise<string> {
+  const res = await request('PUT', `/api/drive/files/${encodeURIComponent(fileId)}/content`, {
+    fileData: base64,
+    mimeType
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`drive_overwrite_failed_${res.status} ${text}`);
+  }
+  return fileId;
+}
+
 /** One CDN preview variant ready to upload (poster / sd / hd). */
 export type FeedPreviewUpload = {
   blob: Blob;
@@ -172,12 +190,18 @@ export async function publishPublicCloudFile(params: {
     allowed?: string[];
     blocked?: string[];
   };
+  /**
+   * When set, overwrite this Drive envelope and PUT the same metadata-index fileId
+   * so engagement on the existing post is preserved.
+   */
+  replaceFileId?: string;
 }): Promise<{ fileId: string }> {
   const request = params.request || defaultCloudRequest();
+  const replaceFileId = params.replaceFileId?.trim() || undefined;
   const generation = await sealPublicShareFromBytes({
     bytes: params.bytes,
     title: params.title,
-    fileIdHint: params.fileName
+    fileIdHint: replaceFileId || params.fileName
   });
   const materialized = await materializePublicShare({
     generation,
@@ -185,13 +209,16 @@ export async function publishPublicCloudFile(params: {
     request,
     envelopeFileName: params.fileName,
     uploadEnvelope: async (blob, fileName) => {
-      const objectId = await uploadDriveFile(
-        request,
-        fileName,
-        'application/json',
-        await blobToBase64(blob),
-        params.parentFolderId
-      );
+      const base64 = await blobToBase64(blob);
+      const objectId = replaceFileId
+        ? await overwriteDriveFile(request, replaceFileId, 'application/json', base64)
+        : await uploadDriveFile(
+            request,
+            fileName,
+            'application/json',
+            base64,
+            params.parentFolderId
+          );
       const pn = loadPenSession()?.pnIdentifier;
       const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
       const publicUrl = cloudToken ? await shareDeviceDriveFile(cloudToken, objectId) : undefined;
@@ -221,6 +248,7 @@ export async function publishPublicCloudFile(params: {
     else videoRefs.feedPreviewHd = ref;
   }
 
+  const isUpdate = Boolean(replaceFileId);
   const put = await request('PUT', `/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`, {
     ...params.metadata,
     name: params.fileName,
@@ -231,7 +259,12 @@ export async function publishPublicCloudFile(params: {
     ...(feedPoster ? { feedPoster } : {}),
     ...videoRefs,
     ...(params.indexingPermissions ? { indexingPermissions: params.indexingPermissions } : {}),
-    uploadDate: new Date().toISOString()
+    ...(isUpdate
+      ? {
+          penPostUpdate: true,
+          penPostUpdatedAt: new Date().toISOString()
+        }
+      : { uploadDate: new Date().toISOString() })
   });
   if (!put.ok) {
     const text = await put.text().catch(() => put.statusText);

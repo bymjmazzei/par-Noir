@@ -17,12 +17,84 @@ import {
   type PublishFeed,
   type ThirdPartyIndexer
 } from '../services/penFeedTargets';
+import { defaultCloudRequest } from '../services/penPublicPublish';
+
+export type ShareToFeedMode = 'share' | 'update' | 'new';
 
 export type ShareToFeedSubmit = {
+  mode: ShareToFeedMode;
   feedIds: string[];
   metadata: PublishMetadataForm;
   indexingPermissions?: IndexingPermissionsInput;
 };
+
+const EMPTY_FORM: PublishMetadataForm = {
+  name: '',
+  description: '',
+  tags: '',
+  genre: '',
+  categories: [],
+  isNSFW: false,
+  locationName: '',
+  locationAddress: '',
+  license: 'all-rights-reserved',
+  expiresAt: null
+};
+
+function formFromIndexMeta(
+  meta: Record<string, unknown> | null | undefined,
+  fallbackTitle: string
+): PublishMetadataForm {
+  if (!meta) {
+    return { ...EMPTY_FORM, name: fallbackTitle };
+  }
+  const tags = Array.isArray(meta.tags)
+    ? meta.tags.filter((t): t is string => typeof t === 'string').join(', ')
+    : Array.isArray(meta.keywords)
+      ? meta.keywords.filter((t): t is string => typeof t === 'string').join(', ')
+      : '';
+  const genre = Array.isArray(meta.genre)
+    ? meta.genre.filter((g): g is string => typeof g === 'string').join(', ')
+    : typeof meta.genre === 'string'
+      ? meta.genre
+      : '';
+  const categories = Array.isArray(meta.feedCategories)
+    ? meta.feedCategories.filter((c): c is string => typeof c === 'string')
+    : Array.isArray(meta.subjects)
+      ? meta.subjects.filter((c): c is string => typeof c === 'string')
+      : [];
+  return {
+    name:
+      (typeof meta.title === 'string' && meta.title) ||
+      (typeof meta.name === 'string' && meta.name) ||
+      fallbackTitle,
+    description: typeof meta.description === 'string' ? meta.description : '',
+    tags,
+    genre,
+    categories: categories as PublishMetadataForm['categories'],
+    isNSFW: meta.isNSFW === true,
+    locationName: '',
+    locationAddress: '',
+    license:
+      typeof meta.license === 'string' ? meta.license : 'all-rights-reserved',
+    expiresAt: typeof meta.expiresAt === 'string' ? meta.expiresAt : null
+  };
+}
+
+function hostedCheckedFromMeta(
+  meta: Record<string, unknown> | null | undefined,
+  hosted: PublishFeed[]
+): Record<string, boolean> {
+  const feedIds = Array.isArray(meta?.feedIds)
+    ? meta!.feedIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  const hostedIds = new Set(hosted.map((f) => f.id));
+  const next: Record<string, boolean> = {};
+  for (const id of feedIds) {
+    if (hostedIds.has(id)) next[id] = true;
+  }
+  return next;
+}
 
 export function ShareToFeedDialog({
   open,
@@ -30,6 +102,7 @@ export function ShareToFeedDialog({
   manifest,
   sections,
   pnIdentifier,
+  mode = 'share',
   onSubmit
 }: {
   open: boolean;
@@ -37,6 +110,7 @@ export function ShareToFeedDialog({
   manifest: PenDocManifest;
   sections: PenSectionContent[];
   pnIdentifier?: string;
+  mode?: ShareToFeedMode;
   onSubmit: (payload: ShareToFeedSubmit) => void;
 }) {
   const contentClass = useMemo(
@@ -61,39 +135,58 @@ export function ShareToFeedDialog({
     ]
   );
 
-  const [form, setForm] = useState<PublishMetadataForm>({
-    name: manifest.title || '',
-    description: '',
-    tags: '',
-    genre: '',
-    categories: [],
-    isNSFW: false,
-    locationName: '',
-    locationAddress: '',
-    license: 'all-rights-reserved',
-    expiresAt: null
-  });
+  const [form, setForm] = useState<PublishMetadataForm>(() => ({
+    ...EMPTY_FORM,
+    name: manifest.title || ''
+  }));
   const [expanded, setExpanded] = useState(false);
   const [hosted, setHosted] = useState<PublishFeed[]>([]);
   const [hostedChecked, setHostedChecked] = useState<Record<string, boolean>>({});
   const [indexers, setIndexers] = useState<ThirdPartyIndexer[]>([]);
   const [indexerToggles, setIndexerToggles] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [prefillMeta, setPrefillMeta] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setForm((prev) => ({
-      ...prev,
-      name: manifest.title || prev.name || ''
-    }));
     setError(null);
-  }, [open, manifest.title]);
+    setExpanded(false);
+    setPrefillMeta(null);
+    if (mode !== 'update' || !manifest.publishedFileId) {
+      setForm({ ...EMPTY_FORM, name: manifest.title || '' });
+      setHostedChecked({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await defaultCloudRequest()(
+          'GET',
+          `/api/aggregator/metadata-index/${encodeURIComponent(manifest.publishedFileId!)}`
+        );
+        if (!res.ok || cancelled) {
+          if (!cancelled) setForm({ ...EMPTY_FORM, name: manifest.title || '' });
+          return;
+        }
+        const data = (await res.json()) as { metadata?: Record<string, unknown> };
+        if (cancelled) return;
+        setForm(formFromIndexMeta(data.metadata, manifest.title || ''));
+        setPrefillMeta(data.metadata || null);
+      } catch {
+        if (!cancelled) setForm({ ...EMPTY_FORM, name: manifest.title || '' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, mode, manifest.publishedFileId, manifest.title]);
 
   useEffect(() => {
     if (!open || !pnIdentifier) return;
     let cancelled = false;
     void listOwnerHostedFeeds(pnIdentifier).then((list) => {
-      if (!cancelled) setHosted(activeHostedFeeds(list));
+      if (cancelled) return;
+      setHosted(activeHostedFeeds(list));
     });
     void listThirdPartyIndexers(pnIdentifier).then((list) => {
       if (cancelled) return;
@@ -106,6 +199,11 @@ export function ShareToFeedDialog({
       cancelled = true;
     };
   }, [open, pnIdentifier]);
+
+  useEffect(() => {
+    if (!open || mode !== 'update' || !prefillMeta || hosted.length === 0) return;
+    setHostedChecked(hostedCheckedFromMeta(prefillMeta, hosted));
+  }, [open, mode, prefillMeta, hosted]);
 
   if (!open) return null;
 
@@ -139,9 +237,13 @@ export function ShareToFeedDialog({
       indexers.map((i) => i.id),
       indexerToggles
     );
-    onSubmit({ feedIds, metadata: form, indexingPermissions });
+    onSubmit({ mode, feedIds, metadata: form, indexingPermissions });
     onClose();
   }
+
+  const title =
+    mode === 'update' ? 'Update shared post' : mode === 'new' ? 'Share as new post' : 'Share to feed';
+  const submitLabel = mode === 'update' ? 'Update post' : 'Share';
 
   return (
     <div
@@ -156,12 +258,22 @@ export function ShareToFeedDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="share-to-feed-title" className="text-base font-semibold text-stone-900">
-          Share to feed
+          {title}
         </h2>
         <p className="mt-1 text-[12px] text-stone-600">
           Post type: <span className="font-medium text-stone-800">{feedContentClassLabel(contentClass)}</span>
           <span className="text-stone-400"> — routed automatically</span>
         </p>
+        {mode === 'new' && (
+          <p className="mt-1 text-[12px] text-stone-600">
+            Creates a separate copy of this doc, then publishes that copy. The existing post stays live.
+          </p>
+        )}
+        {mode === 'update' && (
+          <p className="mt-1 text-[12px] text-stone-600">
+            Replaces the live view of the existing post. Likes, comments, and saves are kept.
+          </p>
+        )}
 
         <div className="mt-3 space-y-3">
           <div>
@@ -284,7 +396,7 @@ export function ShareToFeedDialog({
             className="rounded bg-stone-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-stone-800"
             onClick={handleSubmit}
           >
-            Share
+            {submitLabel}
           </button>
         </div>
       </div>

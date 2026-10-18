@@ -528,6 +528,8 @@ export interface PenDocManifest {
   pollSpreadsheetId?: string;
   /** Aggregator fileId after the post is published — engagement comments key. */
   publishedFileId?: string;
+  /** Source docId when this doc was forked via Share as new post. */
+  forkedFromDocId?: string;
   /** Second public row: reusable template, after the post exists. */
   templatePublishedFileId?: string;
   /** Reuse license captured when the template was published. Separate from `licensing`. */
