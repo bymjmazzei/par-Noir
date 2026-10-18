@@ -8,6 +8,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from './PenMediaPlayer.js';
 import { PenFeedPageStage } from './PenFeedPageStage.js';
+import { DEFAULT_FEED_PLAYBACK, FeedLoopVideo, type FeedPlayback } from './FeedLoopVideo.js';
 
 export type FeedTilePage = {
   title?: string;
@@ -79,6 +80,29 @@ function EngagementRail({ mode }: { mode: 'preview' | 'live' }) {
         </svg>
       </Item>
     </div>
+  );
+}
+
+/** Feed slides get the gapless feed player; the editor preview keeps PenMediaPlayer. */
+function TileVideo({
+  src,
+  fit,
+  playback
+}: {
+  src: string;
+  fit: MediaFit;
+  playback?: FeedPlayback;
+}) {
+  if (!playback) return <PenMediaPlayer src={src} className={videoFitClass(fit)} />;
+  return (
+    <FeedLoopVideo
+      src={src}
+      fit={fit}
+      active={playback.active}
+      paused={playback.paused}
+      muted={playback.muted}
+      onLoop={playback.onLoop}
+    />
   );
 }
 
@@ -162,7 +186,8 @@ function PageSurface({
   onEffect,
   actorId,
   externalClockSec,
-  fit
+  fit,
+  playback
 }: {
   page: FeedTilePage;
   titleFallback: string;
@@ -170,6 +195,8 @@ function PageSurface({
   actorId?: string;
   externalClockSec?: number;
   fit: MediaFit;
+  /** Set in feed layout only. */
+  playback?: FeedPlayback;
 }) {
   const surface: CSSProperties = {
     backgroundColor: page.backgroundColor || '#000000',
@@ -192,6 +219,7 @@ function PageSurface({
         onEffect={onEffect}
         actorId={actorId}
         fit={fit}
+        playback={playback}
       />
     );
   }
@@ -208,7 +236,7 @@ function PageSurface({
       ) : page.mediaSrc ? (
         isVideo ? (
           <div className="absolute inset-0">
-            <PenMediaPlayer src={page.mediaSrc} className={videoFitClass(fit)} />
+            <TileVideo src={page.mediaSrc} fit={fit} playback={playback} />
           </div>
         ) : (
           <img src={page.mediaSrc} alt="" className={imageFitClass(fit)} />
@@ -239,7 +267,8 @@ export function FeedTileSurface({
   layout = 'preview',
   onEffect,
   actorId,
-  externalClockSec
+  externalClockSec,
+  playback
 }: {
   model: FeedTileViewModel;
   mode?: 'preview' | 'live';
@@ -266,6 +295,8 @@ export function FeedTileSurface({
   actorId?: string;
   /** Editor preview: sync overlay motion to timeline scrubber. */
   externalClockSec?: number;
+  /** Feed layout: on-screen, viewer pause, and feed mute for every video page. */
+  playback?: FeedPlayback;
 }) {
   const pages =
     model.pages.length > 0
@@ -301,6 +332,10 @@ export function FeedTileSurface({
 
   const feed = layout === 'feed';
   const fit: MediaFit = feed ? 'contain' : 'cover';
+  const feedPlayback = feed ? playback ?? DEFAULT_FEED_PLAYBACK : undefined;
+  /** One loop signal per tile: the first page (or the shared screen media) drives it. */
+  const playbackForPage = (index: number): FeedPlayback | undefined =>
+    feedPlayback && index > 0 ? { ...feedPlayback, onLoop: undefined } : feedPlayback;
   const ratio = aspectRatio === '16/9' ? '16 / 9' : aspectRatio === '1/1' ? '1 / 1' : '9 / 16';
   const feedSizing: CSSProperties | undefined = feed
     ? { aspectRatio: ratio, width: `min(100cqw, calc(100cqh * ${ratio}))` }
@@ -333,7 +368,7 @@ export function FeedTileSurface({
           {sharedMedia ? (
             pages[0]?.mediaKind === 'video' ? (
               <div className="pointer-events-none absolute inset-0">
-                <PenMediaPlayer src={sharedMedia} className={videoFitClass(fit)} />
+                <TileVideo src={sharedMedia} fit={fit} playback={feedPlayback} />
               </div>
             ) : (
               <img src={sharedMedia} alt="" className={`pointer-events-none ${imageFitClass(fit)}`} />
@@ -352,6 +387,7 @@ export function FeedTileSurface({
                 actorId={actorId}
                 externalClockSec={externalClockSec}
                 fit={fit}
+                playback={sharedMedia ? playbackForPage(1) : playbackForPage(i)}
               />
             </div>
           ))}
@@ -381,6 +417,7 @@ export function FeedTileSurface({
                 actorId={actorId}
                 externalClockSec={externalClockSec}
                 fit={fit}
+                playback={playbackForPage(i)}
               />
             </div>
           ))}
@@ -397,6 +434,7 @@ export function FeedTileSurface({
           actorId={actorId}
           externalClockSec={externalClockSec}
           fit={fit}
+          playback={feedPlayback}
         />
       )}
 

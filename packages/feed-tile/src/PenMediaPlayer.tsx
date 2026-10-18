@@ -15,8 +15,9 @@ import {
 import { paintGradedFrame, type TonalGrade } from './gradeFrame.js';
 import { acquirePenMediaController, type PenMediaController } from './penMediaController.js';
 import { startFramePump } from './framePump.js';
-
-const TAP_SLOP_PX = 8;
+import { SpeakerIcon } from './SpeakerIcon.js';
+import { useTapToggle } from './useTapToggle.js';
+import { FeedPlayGlyph } from './FeedPlaybackChrome.js';
 
 function drawFitted(
   ctx: CanvasRenderingContext2D,
@@ -39,35 +40,6 @@ function drawFitted(
   const dh = scale == null ? height : vh * scale;
   ctx.drawImage(video, (width - dw) / 2, (height - dh) / 2, dw, dh);
   return true;
-}
-
-function SpeakerIcon({ muted }: { muted: boolean }) {
-  if (muted) {
-    return (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-        <path d="M4.5 9v6h3.5l4.5 3.5V5.5L8 9H4.5z" />
-        <path
-          d="M16.5 9.5l4 4m0-4l-4 4"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          fill="none"
-        />
-      </svg>
-    );
-  }
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M4.5 9v6h3.5l4.5 3.5V5.5L8 9H4.5z" />
-      <path
-        d="M15.5 9.5a3.5 3.5 0 010 5M17.5 7a6 6 0 010 10"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        fill="none"
-      />
-    </svg>
-  );
 }
 
 export function PenMediaPlayer({
@@ -108,8 +80,6 @@ export function PenMediaPlayer({
   const barRef = useRef<HTMLDivElement>(null);
   const ctrlRef = useRef<PenMediaController | null>(null);
   const scrubbing = useRef(false);
-  const tapToToggleRef = useRef(tapToToggle);
-  tapToToggleRef.current = tapToToggle;
 
   const [paused, setPaused] = useState(true);
   const [muted, setMuted] = useState(true);
@@ -300,33 +270,10 @@ export function PenMediaPlayer({
     setSeeking(false);
   };
 
-  const onVideoPointerDown = (e: ReactPointerEvent) => {
-    if (e.button !== 0) return;
-    if (!tapToToggleRef.current) return;
-    if (scrubbing.current) return;
-
-    const originX = e.clientX;
-    const originY = e.clientY;
-    let moved = false;
-
-    const onMove = (ev: PointerEvent) => {
-      if (Math.hypot(ev.clientX - originX, ev.clientY - originY) > TAP_SLOP_PX) {
-        moved = true;
-      }
-    };
-    const onUp = () => {
-      document.removeEventListener('pointermove', onMove, true);
-      document.removeEventListener('pointerup', onUp, true);
-      document.removeEventListener('pointercancel', onUp, true);
-      if (moved || scrubbing.current) return;
-      if (!tapToToggleRef.current) return;
-      togglePlay();
-    };
-
-    document.addEventListener('pointermove', onMove, true);
-    document.addEventListener('pointerup', onUp, true);
-    document.addEventListener('pointercancel', onUp, true);
-  };
+  const onVideoPointerDown = useTapToggle(togglePlay, {
+    enabled: tapToToggle,
+    blocked: () => scrubbing.current
+  });
 
   const showControls = hover || seeking;
   const { objectFit: _fit, ...paintStyle } = (videoStyle || {}) as CSSProperties & {
@@ -402,11 +349,7 @@ export function PenMediaPlayer({
           }`}
           tabIndex={-1}
         >
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          </span>
+          <FeedPlayGlyph />
         </button>
       )}
       <div

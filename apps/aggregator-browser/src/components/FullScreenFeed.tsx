@@ -31,7 +31,14 @@ import {
   type FeedPlaybackMetadata,
 } from '../services/feedPreviewPlayback';
 import { isFeedPreviewPlaceholder } from '@par-noir/aggregator-domain';
-import { isPenFeedPlaybackMetadata } from '@par-noir/feed-tile';
+import {
+  FeedLoopVideo,
+  FeedMuteButton,
+  FeedPausedGlyph,
+  isPenFeedPlaybackMetadata,
+  useTapToggle,
+  type FeedPlayback
+} from '@par-noir/feed-tile';
 import { PenFeedTilePlayer } from './PenFeedTilePlayer';
 import {
   buildPenCollectionFeedTileModel,
@@ -102,6 +109,7 @@ function CollectionMemberSlide({
   idx,
   scalingStyles,
   onDimensions,
+  playback,
 }: {
   posterUrl?: string;
   videoUrl?: string;
@@ -111,25 +119,22 @@ function CollectionMemberSlide({
   idx: number;
   scalingStyles: ReturnType<typeof calculateMediaScaling>;
   onDimensions: (key: string, width: number, height: number) => void;
+  /** Parent slide playback; `active` is further gated on this member being in view. */
+  playback: FeedPlayback;
 }) {
   const slideRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [inView, setInView] = useState(false);
 
   useEffect(() => {
     if (!isVideo || !videoUrl) return;
     const slideEl = slideRef.current;
-    const video = videoRef.current;
-    if (!slideEl || !video) return;
+    if (!slideEl) return;
     const scrollRoot = slideEl.parentElement;
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
         if (!entry) return;
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-          void video.play().catch(() => {});
-        } else {
-          video.pause();
-        }
+        setInView(entry.isIntersecting && entry.intersectionRatio >= 0.5);
       },
       { root: scrollRoot, threshold: [0, 0.5, 1] }
     );
@@ -162,20 +167,14 @@ function CollectionMemberSlide({
       ) : null}
       <div className="w-full h-full flex items-center justify-center relative z-10">
         {isVideo && videoUrl ? (
-          <video
-            ref={videoRef}
+          <FeedLoopVideo
             src={videoUrl}
             poster={posterUrl || undefined}
-            className="max-w-full max-h-full object-contain"
-            style={scalingStyles.mainMedia}
-            controls={false}
-            muted
-            loop
-            playsInline
-            onLoadedMetadata={(e) => {
-              const el = e.currentTarget;
-              onDimensions(dimensionKey, el.videoWidth, el.videoHeight);
-            }}
+            fit="contain"
+            active={playback.active && inView}
+            paused={playback.paused}
+            muted={playback.muted}
+            onDimensions={(width, height) => onDimensions(dimensionKey, width, height)}
           />
         ) : posterUrl ? (
           <img
@@ -282,7 +281,6 @@ export function FullScreenFeed({
   });
   const gatingRef = useRef(!isFeedFirstPaintDone());
   const softSkipInFlightRef = useRef(false);
-  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
@@ -469,6 +467,24 @@ export function FullScreenFeed({
     }
   }, [externalVideoBlobs]);
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
+  /** Feed-wide: once unmuted, later posts keep sound until muted again. */
+  const [feedMuted, setFeedMuted] = useState(true);
+  const [userPaused, setUserPaused] = useState(false);
+  const [loopEpoch, setLoopEpoch] = useState(0);
+  useEffect(() => {
+    setUserPaused(false);
+  }, [visibleFileId]);
+  const bumpLoopEpoch = useCallback(() => setLoopEpoch((n) => n + 1), []);
+  const playbackFor = (fileId: string): FeedPlayback => {
+    const active = visibleFileId === fileId;
+    return {
+      active,
+      paused: active && userPaused,
+      muted: feedMuted,
+      onLoop: active ? bumpLoopEpoch : undefined
+    };
+  };
+  const onSlideTapDown = useTapToggle(() => setUserPaused((p) => !p));
   const [mediaDimensions, setMediaDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
   const [showEngagementOverlay, setShowEngagementOverlay] = useState(false);
   const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
@@ -1295,56 +1311,17 @@ export function FullScreenFeed({
   }, [visibleFileId, currentIndex, files, externalThumbnails, collectionDataCache, thumbnails.size]);
 
 
-  // Auto-play video when it becomes visible
-  useEffect(() => {
-    if (!visibleFileId) return;
-
-    const videoElement = videoRefs.current.get(visibleFileId);
-    const indexedFile = files.find(f => f.metadata.fileId === visibleFileId);
-    if (!indexedFile) return;
-
-    const file = indexedFile.metadata;
-    const isVideo = file.fileType === 'video' || 
-                   !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-
-    if (isVideo && videoElement && videoBlobs.has(visibleFileId)) {
-      videoElement.play().catch(err => {
-        console.warn('Failed to auto-play video:', err);
-      });
-    }
-  }, [visibleFileId, files, videoBlobs]);
-
-
-  // Intersection Observer for auto-playing videos
+  // Track the on-screen slide; feed videos play from `active`.
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           const fileId = entry.target.getAttribute('data-file-id');
           if (!fileId) return;
-
-          const videoElement = videoRefs.current.get(fileId);
-          const indexedFile = files.find(f => f.metadata.fileId === fileId);
-          if (!indexedFile) return;
-
-          const file = indexedFile.metadata;
-          const isVideo = file.fileType === 'video' || 
-                         !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-
           if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
             setVisibleFileId(fileId);
-            if (isVideo && videoElement && videoBlobs.has(fileId)) {
-              videoElement.play().catch(err => {
-                console.warn('Failed to auto-play video:', err);
-              });
-            }
-          } else {
-            if (visibleFileId === fileId) {
-              setVisibleFileId(null);
-            }
-            if (videoElement) {
-              videoElement.pause();
-            }
+          } else if (visibleFileId === fileId) {
+            setVisibleFileId(null);
           }
         });
       },
@@ -1571,10 +1548,32 @@ export function FullScreenFeed({
         // Check if this is a me page cover placeholder
         const isMePageCover = (indexedFile.metadata as any).isMePageCover === true;
 
+        const isSlideVisible = visibleFileId === fileId;
+        const slidePlayback = playbackFor(fileId);
+        const hasCompanionAudio = companionAudioFileIdsOf(file).length > 0;
+        const slideMemberIds: string[] | undefined = isCollectionFile
+          ? (collectionData || collectionDataCache.get(fileId))?.collectionFileIds
+          : undefined;
+        const collectionHasVideo =
+          Array.isArray(slideMemberIds) &&
+          slideMemberIds.some((memberId) =>
+            feedMetadataIsVideo(
+              collectionMemberMeta.get(memberId) ||
+                (files.find((f) => f.metadata?.fileId === memberId)?.metadata as
+                  | FeedPlaybackMetadata
+                  | undefined)
+            )
+          );
+        const slideHasVideo =
+          !isConnectionPlaceholder &&
+          ((isVideoFinal && videoBlobs.has(fileId)) || collectionHasVideo);
+        const tapToggleSlide = isSlideVisible && slideHasVideo && !showEngagementOverlay;
+
         return (
           <div
             key={fileId}
             data-file-id={fileId}
+            onPointerDown={tapToggleSlide ? onSlideTapDown : undefined}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
               // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
@@ -1591,8 +1590,13 @@ export function FullScreenFeed({
               zIndex: 0 // Ensure all tiles are on the same z-index level
             }}
           >
-            {visibleFileId === fileId && companionAudioFileIdsOf(file).length > 0 && (
-              <CompanionAudioMix metadata={file} />
+            {isSlideVisible && hasCompanionAudio && (
+              <CompanionAudioMix
+                metadata={file}
+                playing={!slidePlayback.paused}
+                muted={feedMuted}
+                loopEpoch={loopEpoch}
+              />
             )}
             {/* Notes now render as images (thumbnails) - no special rendering needed! */}
             
@@ -1610,6 +1614,7 @@ export function FullScreenFeed({
                   <PenFeedTilePlayer
                     aspectRatio={penTileAspect}
                     model={penModel}
+                    playback={slidePlayback}
                     onEffect={(effect) => {
                       void runFeedPenEffect({
                         effect,
@@ -1628,78 +1633,46 @@ export function FullScreenFeed({
               isVideoFinal &&
               videoBlobs.get(fileId) &&
               (() => {
-              const containerHeight = window.innerHeight - 64; // Account for bottom nav
-              const containerWidth = window.innerWidth;
-              const containerAspect = containerWidth / containerHeight;
-              const dims = mediaDimensions.get(fileId);
-              const videoAspect = dims ? dims.width / dims.height : 16/9; // Default to 16:9
-              
-              // If video is wider than container (widescreen), scale background to fill height
-              // If video is taller than container (portrait), scale background to fill width
-              const isWidescreen = videoAspect > containerAspect;
-              const backgroundStyle: React.CSSProperties = {
-                filter: 'blur(40px)',
-                opacity: 0.6,
-                zIndex: 0,
-                position: 'absolute',
-                inset: 0,
-                ...(isWidescreen 
-                  ? { 
-                      width: 'auto', 
-                      height: '100%',
-                      left: '50%',
-                      transform: 'translateX(-50%) scale(1.1)'
-                    }
-                  : { 
-                      height: 'auto', 
-                      width: '100%',
-                      top: '50%',
-                      transform: 'translateY(-50%) scale(1.1)'
-                    }
-                )
-              };
+              const posterUrl = thumbnails.get(fileId);
+              const scalingStyles = calculateMediaScaling(
+                mediaDimensions.get(fileId),
+                getContainerDimensions(64)
+              );
 
               return (
                 <>
-                  {/* Blurred background video */}
-                  <video
-                    src={videoBlobs.get(fileId)!}
-                    className="absolute"
-                    style={backgroundStyle}
-                    muted
-                    loop
-                    playsInline
-                    autoPlay={visibleFileId === fileId}
-                  />
-                  {/* Main video */}
-                  <video
-                    ref={(el) => {
-                      if (el) {
-                        videoRefs.current.set(fileId, el);
-                        // Track dimensions when loaded
-                        el.addEventListener('loadedmetadata', () => {
-                          setMediaDimensions(prev => {
-                            const newMap = new Map(prev);
-                            newMap.set(fileId, { width: el.videoWidth, height: el.videoHeight });
-                            return newMap;
-                          });
+                  {/* Blurred poster background (no second decoder) */}
+                  {posterUrl ? (
+                    <img
+                      src={posterUrl}
+                      alt=""
+                      className="absolute"
+                      style={scalingStyles.background}
+                      loading="eager"
+                      decoding="async"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <div className="absolute inset-0 z-10">
+                    <FeedLoopVideo
+                      src={videoBlobs.get(fileId)!}
+                      poster={posterUrl}
+                      fit="contain"
+                      active={slidePlayback.active}
+                      paused={slidePlayback.paused}
+                      muted={slidePlayback.muted}
+                      onLoop={slidePlayback.onLoop}
+                      onDimensions={(width, height) => {
+                        setMediaDimensions((prev) => {
+                          const prior = prev.get(fileId);
+                          if (prior?.width === width && prior?.height === height) return prev;
+                          const newMap = new Map(prev);
+                          newMap.set(fileId, { width, height });
+                          return newMap;
                         });
-                      }
-                    }}
-                    src={videoBlobs.get(fileId)!}
-                    className="w-full object-contain relative z-10"
-                    style={{ 
-                      // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
-                      maxHeight: viewportHeightCSS,
-                      height: 'auto',
-                      width: '100%'
-                    }}
-                    controls={false}
-                    muted
-                    loop
-                    playsInline
-                    autoPlay={visibleFileId === fileId}
-                  />
+                      }}
+                    />
+                  </div>
                 </>
               );
             })()}
@@ -1959,6 +1932,7 @@ export function FullScreenFeed({
                   <PenFeedTilePlayer
                     aspectRatio={penTileAspect}
                     model={penModel}
+                    playback={slidePlayback}
                     onEffect={(effect) => {
                       void runFeedPenEffect({
                         effect,
@@ -2017,6 +1991,7 @@ export function FullScreenFeed({
                           fileName={fileName}
                           idx={idx}
                           scalingStyles={scalingStyles}
+                          playback={slidePlayback}
                           onDimensions={(key, width, height) => {
                             setMediaDimensions((prev) => {
                               const newMap = new Map(prev);
@@ -2051,6 +2026,11 @@ export function FullScreenFeed({
                 <h3 className="text-white text-xl font-medium mb-2">{cleanTitle(fileName)}</h3>
                 <p className="text-text-secondary text-sm">{file.fileType || 'File'}</p>
               </div>
+            )}
+
+            {isSlideVisible && slideHasVideo && slidePlayback.paused && <FeedPausedGlyph />}
+            {isSlideVisible && (slideHasVideo || hasCompanionAudio) && (
+              <FeedMuteButton muted={feedMuted} onToggle={() => setFeedMuted((m) => !m)} />
             )}
             
             {/* Engagement Sidebar - Right Side */}
@@ -2134,6 +2114,7 @@ export function FullScreenFeed({
               
               return (
                 <div 
+                  data-no-tap-toggle
                   className={`absolute left-0 right-20 p-4 md:p-6 transition-all duration-300 z-30 ${
                     expandedCaptions.has(fileId) 
                       ? 'bottom-0' 

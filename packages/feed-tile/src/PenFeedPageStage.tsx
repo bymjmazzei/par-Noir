@@ -11,6 +11,7 @@ import {
   type PenViewerState
 } from '@par-noir/pen-protocol';
 import type { CSSProperties } from 'react';
+import { DEFAULT_FEED_PLAYBACK, FeedLoopVideo, type FeedPlayback } from './FeedLoopVideo.js';
 
 function buttonLabel(layer: PenPageLayer, state: PenViewerState): string {
   const face = layer.textDoc ? docToPlainText(layer.textDoc).trim() : '';
@@ -126,7 +127,8 @@ export function PenFeedPageStage({
   externalClockSec,
   onEffect,
   actorId,
-  fit = 'cover'
+  fit = 'cover',
+  playback = DEFAULT_FEED_PLAYBACK
 }: {
   mediaSrc?: string;
   mediaKind?: 'image' | 'video';
@@ -138,8 +140,8 @@ export function PenFeedPageStage({
   /** Hashed viewer id stamped on sheet rows. */
   actorId?: string;
   fit?: 'cover' | 'contain';
+  playback?: FeedPlayback;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [videoTime, setVideoTime] = useState(0);
   const [viewer, setViewer] = useState<PenViewerState>(emptyPenViewerState);
   const viewerRef = useRef(viewer);
@@ -167,16 +169,7 @@ export function PenFeedPageStage({
 
   useEffect(() => {
     if (externalClockSec != null) return;
-    if (mediaKind === 'video') {
-      const video = videoRef.current;
-      if (!video) return;
-      const onTime = () => {
-        const t = video.currentTime;
-        setVideoTime(Number.isFinite(t) ? Math.min(duration, t) : 0);
-      };
-      video.addEventListener('timeupdate', onTime);
-      return () => video.removeEventListener('timeupdate', onTime);
-    }
+    if (mediaKind === 'video') return;
     let raf = 0;
     const start = performance.now();
     const tick = () => {
@@ -206,14 +199,16 @@ export function PenFeedPageStage({
     <div className="relative h-full w-full overflow-hidden bg-black">
       {mediaSrc ? (
         isVideo ? (
-          <video
-            ref={videoRef}
+          <FeedLoopVideo
             src={mediaSrc}
-            className={mediaClass}
-            muted
-            loop
-            playsInline
-            autoPlay
+            fit={fit}
+            active={playback.active}
+            paused={playback.paused}
+            muted={playback.muted}
+            onLoop={playback.onLoop}
+            onTime={(t) => {
+              if (externalClockSec == null) setVideoTime(Math.min(duration, t));
+            }}
           />
         ) : (
           <img src={mediaSrc} alt="" className={mediaClass} />

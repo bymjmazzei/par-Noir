@@ -12,6 +12,14 @@ export {
   type PenFeedCompilePageInput
 } from './penFeedCompile.js';
 export { PenMediaPlayer } from './PenMediaPlayer.js';
+export {
+  FeedLoopVideo,
+  DEFAULT_FEED_PLAYBACK,
+  type FeedPlayback
+} from './FeedLoopVideo.js';
+export { FeedMuteButton, FeedPausedGlyph, FeedPlayGlyph } from './FeedPlaybackChrome.js';
+export { SpeakerIcon } from './SpeakerIcon.js';
+export { useTapToggle, TAP_SLOP_PX } from './useTapToggle.js';
 export { PublishedEngagementBar } from './PublishedEngagementBar.js';
 export {
   engagementRailLayout,

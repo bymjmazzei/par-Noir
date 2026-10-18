@@ -1,15 +1,17 @@
-import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
+import { FeedTileSurface, type FeedPlayback, type FeedTileViewModel } from '@par-noir/feed-tile';
 import type { PenActionEffect } from '@par-noir/pen-protocol';
 
 /** Pen feed tile centered in a feed slide; contain-fits the slide at the post's aspect. */
 export function PenFeedTilePlayer({
   model,
   aspectRatio = '9/16',
-  onEffect
+  onEffect,
+  playback
 }: {
   model: FeedTileViewModel;
   aspectRatio?: '9/16' | '16/9' | '1/1';
   onEffect?: (effect: PenActionEffect) => void;
+  playback?: FeedPlayback;
 }) {
   return (
     <div
@@ -23,6 +25,7 @@ export function PenFeedTilePlayer({
         hideEngagementRail
         aspectRatio={aspectRatio}
         onEffect={onEffect}
+        playback={playback}
       />
     </div>
   );
