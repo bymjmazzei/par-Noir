@@ -14,6 +14,8 @@ describe('ActionLayerMenu', () => {
     expect(src).toMatch(/Add widget/);
     expect(src).toMatch(/pen-gallery-tiles/);
     expect(src).toMatch(/pen-action-layer-overlay/);
+    expect(src).toMatch(/pen-template-preview-overlay/);
+    expect(src).toMatch(/pen-template-preview-nav--prev/);
     expect(src).toMatch(/pen-named-black-tile/);
   });
 });

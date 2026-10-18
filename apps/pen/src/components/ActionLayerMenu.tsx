@@ -24,6 +24,32 @@ import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { resolvePublicMediaSignedUrl } from '../services/penPublicFeedMedia';
 import { curatedWidgetPosterSrc } from '../services/widgetPosters';
 
+type WidgetPickerPreview =
+  | { kind: 'template'; index: number }
+  | { kind: 'giphy'; index: number };
+
+function CloseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d={dir === 'left' ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function sourceLayers(template: PenTemplate): PenPageLayer[] {
   return template.seedSections?.[0]?.layers || [];
 }
@@ -182,6 +208,7 @@ export function ActionLayerMenu({
   const [giphyQuery, setGiphyQuery] = useState('');
   const [giphyHits, setGiphyHits] = useState<GiphyStickerHit[]>([]);
   const [giphyBusy, setGiphyBusy] = useState(false);
+  const [preview, setPreview] = useState<WidgetPickerPreview | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -233,6 +260,36 @@ export function ActionLayerMenu({
 
   const emptyGallery = shownTemplates.length === 0 && shownGiphy.length === 0;
 
+  const previewListLength =
+    preview?.kind === 'template' ? shownTemplates.length : preview?.kind === 'giphy' ? shownGiphy.length : 0;
+  const previewTemplate =
+    preview?.kind === 'template' ? shownTemplates[preview.index] : undefined;
+  const previewGiphy = preview?.kind === 'giphy' ? shownGiphy[preview.index] : undefined;
+
+  function goPreviewRelative(delta: number) {
+    if (!preview || previewListLength < 2) return;
+    const next = preview.index + delta;
+    if (next < 0 || next >= previewListLength) return;
+    setPreview({ kind: preview.kind, index: next });
+  }
+
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        goPreviewRelative(-1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        goPreviewRelative(1);
+      } else if (event.key === 'Escape') {
+        setPreview(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview, previewListLength]);
+
   async function pick(template: PenTemplate) {
     if (!session?.pnIdentifier) {
       setError(`Unlock to add a ${noun}`);
@@ -251,6 +308,7 @@ export function ActionLayerMenu({
         templateId: template.id,
         contentWidthPx
       });
+      setPreview(null);
       onInserted(next.section, next.groupId);
     } catch {
       setError(`Could not add ${noun}`);
@@ -355,13 +413,13 @@ export function ActionLayerMenu({
           )}
           <div className="pen-gallery">
             <div className="pen-gallery-tiles">
-              {shownTemplates.map((template) => (
+              {shownTemplates.map((template, index) => (
                 <div key={template.id} className="pen-gallery-slot">
                   <button
                     type="button"
                     disabled={busy}
                     className="pen-gallery-tile disabled:opacity-50"
-                    onClick={() => void pick(template)}
+                    onClick={() => setPreview({ kind: 'template', index })}
                   >
                     <div className="pen-gallery-tile-title">
                       <span className="pen-gallery-tile-title-text">{template.title}</span>
@@ -377,15 +435,12 @@ export function ActionLayerMenu({
                   </button>
                 </div>
               ))}
-              {shownGiphy.map((hit) => (
+              {shownGiphy.map((hit, index) => (
                 <div key={hit.id} className="pen-gallery-slot">
                   <button
                     type="button"
                     className="pen-gallery-tile"
-                    onClick={() => {
-                      const placed = placeGiphySticker(section, hit);
-                      onInserted(placed.section, placed.layerId);
-                    }}
+                    onClick={() => setPreview({ kind: 'giphy', index })}
                   >
                     <div className="pen-gallery-tile-title">
                       <span className="pen-gallery-tile-title-text">{hit.title || 'Sticker'}</span>
@@ -406,6 +461,110 @@ export function ActionLayerMenu({
           </div>
         </div>
         {error && <p className="border-t border-neutral-100 px-4 py-2 text-red-600">{error}</p>}
+
+        {preview && (previewTemplate || previewGiphy) ? (
+          <div
+            className="pen-template-preview-overlay"
+            role="presentation"
+            onClick={() => setPreview(null)}
+          >
+            {preview.index > 0 ? (
+              <button
+                type="button"
+                className="pen-template-preview-nav pen-template-preview-nav--prev"
+                aria-label={`Previous ${noun}`}
+                title="Previous"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  goPreviewRelative(-1);
+                }}
+              >
+                <ChevronIcon dir="left" />
+              </button>
+            ) : null}
+            {preview.index < previewListLength - 1 ? (
+              <button
+                type="button"
+                className="pen-template-preview-nav pen-template-preview-nav--next"
+                aria-label={`Next ${noun}`}
+                title="Next"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  goPreviewRelative(1);
+                }}
+              >
+                <ChevronIcon dir="right" />
+              </button>
+            ) : null}
+            <div
+              className="pen-template-preview-modal pen-widget-picker-preview-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={
+                previewTemplate?.title || previewGiphy?.title || (sticker ? 'Sticker preview' : 'Widget preview')
+              }
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="pen-template-preview-modal-bar">
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-base font-bold text-black">
+                    {previewTemplate?.title || previewGiphy?.title || noun}
+                  </h2>
+                  {previewTemplate?.description ? (
+                    <p className="mt-1 line-clamp-2 text-xs text-neutral-500">{previewTemplate.description}</p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="pen-template-icon-btn"
+                  aria-label="Close preview"
+                  title="Close"
+                  onClick={() => setPreview(null)}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+              <div className="pen-template-preview-modal-body pen-widget-picker-preview-stage">
+                {previewTemplate ? (
+                  <WidgetTemplateThumb
+                    template={previewTemplate}
+                    pn={pn}
+                    session={session}
+                    posterFileId={posters.get(previewTemplate.id)}
+                  />
+                ) : previewGiphy ? (
+                  <div className="pen-white-media-thumb flex items-center justify-center bg-white p-4">
+                    <img
+                      src={previewGiphy.url}
+                      alt={previewGiphy.title || 'Sticker'}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <div className="pen-template-preview-modal-actions">
+                <button
+                  type="button"
+                  className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => {
+                    if (previewTemplate) {
+                      void pick(previewTemplate);
+                      return;
+                    }
+                    if (previewGiphy) {
+                      const placed = placeGiphySticker(section, previewGiphy);
+                      onInserted(placed.section, placed.layerId);
+                      setPreview(null);
+                    }
+                  }}
+                >
+                  {busy ? 'Adding…' : sticker ? 'Add sticker' : 'Add widget'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
