@@ -8,7 +8,8 @@ import { AggregatorMetadataServiceDB } from './aggregatorMetadataServiceDB';
 import {
   buildLicenseKeyPublicInputs,
   verifyZkProofEnvelopeV2,
-  decodeEnvelopeFromProofString
+  decodeEnvelopeFromProofString,
+  isZkProofEnvelopeV2
 } from '@par-noir/zk-protocol-v2';
 import { hashPnIdentifier } from '@par-noir/pen-protocol';
 
@@ -20,10 +21,10 @@ export async function resolvePaidLicenseOffer(
 ): Promise<{ sellerPn: string; priceCents: number }> {
   const fileId = assetId.trim();
   if (!fileId) throw new Error('asset_required');
-  const svc = new AggregatorMetadataServiceDB();
+  const svc = AggregatorMetadataServiceDB.getInstance();
   const entry = await svc.getFileMetadata(fileId);
   if (!entry?.metadata) throw new Error('asset_not_found');
-  const meta = entry.metadata as Record<string, unknown>;
+  const meta = entry.metadata as unknown as Record<string, unknown>;
   const licensing = meta.licensing as Record<string, unknown> | undefined;
   if (!licensing || licensing.family !== 'unconditionalPaid') {
     throw new Error('asset_not_for_sale');
@@ -105,9 +106,10 @@ export async function attachLicenseGrantProof(
   );
   if (row.rows.length === 0) throw new Error('grant_not_found');
   const g = row.rows[0];
-  const envelope = decodeEnvelopeFromProofString(proof);
-  const ok = verifyZkProofEnvelopeV2(envelope);
+  const ok = verifyZkProofEnvelopeV2(proof);
   if (!ok.ok) throw new Error('proof_invalid');
+  const envelope = decodeEnvelopeFromProofString(proof);
+  if (!isZkProofEnvelopeV2(envelope)) throw new Error('proof_invalid');
   const expected = buildLicenseKeyPublicInputs({
     assetId: String(g.asset_id),
     sellerPnHash: hashPnIdentifier(String(g.seller_pn)),

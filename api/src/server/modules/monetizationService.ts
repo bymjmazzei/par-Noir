@@ -69,6 +69,7 @@ async function creatorPayoutLedgerSnapshot(
   inHoldEarnedCents: number;
   paidOutCents: number;
   processingReservedCents: number;
+  renewalDebitsCents: number;
 }> {
   const days = payoutHoldDays();
   const past = await db.query(

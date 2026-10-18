@@ -1,5 +1,6 @@
 import {
   decodeEnvelopeFromProofString,
+  isZkProofEnvelopeV2,
   openContractPublicInputsFromEnvelope,
   verifyZkProofEnvelopeV2,
   OPEN_CREATOR_CONTRACT_CONTEXT_V1
@@ -16,9 +17,10 @@ export function assertOpenContractProofsOnLicensing(licensing: unknown): string 
     const proofRef = String((c as { grantProofRef?: string }).grantProofRef || '').trim();
     if (!proofRef) continue;
     try {
-      const envelope = decodeEnvelopeFromProofString(proofRef);
-      const verified = verifyZkProofEnvelopeV2(envelope);
+      const verified = verifyZkProofEnvelopeV2(proofRef);
       if (!verified.ok) return 'open_contract_proof_invalid';
+      const envelope = decodeEnvelopeFromProofString(proofRef);
+      if (!isZkProofEnvelopeV2(envelope)) return 'open_contract_proof_invalid';
       if (envelope.context !== OPEN_CREATOR_CONTRACT_CONTEXT_V1) {
         return 'open_contract_proof_context';
       }
