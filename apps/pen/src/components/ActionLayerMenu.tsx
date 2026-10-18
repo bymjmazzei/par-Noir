@@ -150,11 +150,13 @@ export function ActionLayerMenu({
   section,
   onInserted,
   onCancel,
-  classId = 'widgets.widget'
+  classId = 'widgets.widget',
+  contentWidthPx
 }: {
   session?: PenSession | null;
   docId: string;
   section: PenSectionContent;
+  contentWidthPx?: number;
   onInserted: (section: PenSectionContent, groupId: string) => void;
   onCancel: () => void;
   classId?: 'widgets.widget' | 'widgets.sticker';
@@ -230,7 +232,8 @@ export function ActionLayerMenu({
         host: section,
         layers,
         name: template.title,
-        templateId: template.id
+        templateId: template.id,
+        contentWidthPx
       });
       onInserted(next.section, next.groupId);
     } catch {

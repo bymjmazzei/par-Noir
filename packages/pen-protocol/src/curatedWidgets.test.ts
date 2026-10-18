@@ -55,6 +55,22 @@ describe('curated widget starters', () => {
   });
 });
 
+describe('inserting a widget into a narrow page', () => {
+  it('scales the whole widget, faces included, to the page content width', () => {
+    const source = starterSection('widget.poll_writein.v1').layers || [];
+    const target: PenSectionContent = { slug: 'body', doc: { type: 'doc', content: [] }, layers: [] };
+    const { section, groupId } = copyWidgetLayersIntoSection(target, source, 'Poll', undefined, { maxWidth: 280 });
+    const layers = section.layers || [];
+    const group = layers.find((layer) => layer.id === groupId)!;
+    expect(group.w).toBeCloseTo(248);
+    const art = layers.find((layer) => layer.widgetElement === 'html')!;
+    expect(art.w).toBeCloseTo(248);
+    expect(art.contentScale).toBeCloseTo(248 / 360, 3);
+    const wide = copyWidgetLayersIntoSection(target, source, 'Poll', undefined, { maxWidth: 736 });
+    expect(wide.section.layers?.every((layer) => layer.contentScale == null)).toBe(true);
+  });
+});
+
 describe('poll write-in', () => {
   const options = [
     { id: 'a', label: 'A' },

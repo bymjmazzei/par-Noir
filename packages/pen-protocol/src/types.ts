@@ -146,6 +146,8 @@ export interface PenPageLayer {
   allocateTotal?: number;
   /** Corner radius in CSS px. A button drag from the top-left sets this. */
   cornerRadius?: number;
+  /** Face (text, label, art) drawn at this zoom inside the box. Resizing the parent group multiplies it. */
+  contentScale?: number;
   /** Label color. Fill stays backgroundColor. */
   textColor?: string;
   /** Widget template this group was copied from (e.g. widget.v1). */

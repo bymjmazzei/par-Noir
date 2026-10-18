@@ -7,7 +7,7 @@ import {
   type ReactNode
 } from 'react';
 import { snapLayoutToPageCenter, resizeSeKeepAspect, fitAspectInBox, cornerRadiusFromPull } from '@par-noir/pen-protocol';
-import { clampLayoutItem, sortByZ, type LayoutBounds, type LayoutItem } from './types';
+import { clampLayoutItem, scaleGroupItems, sortByZ, type LayoutBounds, type LayoutItem } from './types';
 
 type DragMode = 'move' | 'resize' | 'round';
 
@@ -51,7 +51,7 @@ export function LayoutSurface({
   snapToPageCenter?: boolean;
   /** Guide lines in the same coordinate space as items. */
   snapGuides?: { x: number[]; y: number[] };
-  /** When moving `id`, also move these ids by the same delta. */
+  /** When moving `id`, also move these ids by the same delta. Resizing `id` scales them with it. */
   getLinkedIds?: (id: string) => string[];
   /** Hide resize handle for these ids (e.g. group roots). */
   resizeDisabledIds?: Set<string> | string[];
@@ -112,17 +112,21 @@ export function LayoutSurface({
     };
   }
 
+  function linkedSnapshot(id: string): Record<string, LayoutItem> {
+    const linkedOrig: Record<string, LayoutItem> = {};
+    for (const lid of getLinkedIds?.(id) || []) {
+      const hit = items.find((i) => i.id === lid);
+      if (hit) linkedOrig[lid] = { ...hit };
+    }
+    return linkedOrig;
+  }
+
   const onPointerDownMove = (e: ReactPointerEvent, item: LayoutItem) => {
     e.stopPropagation();
     onSelect?.(item.id);
     if (disabled || item.positionLocked) return;
     // Don't capture / drag yet — let taps reach video play/pause & scrubbers.
-    const linked = getLinkedIds?.(item.id) || [];
-    const linkedOrig: Record<string, LayoutItem> = {};
-    for (const lid of linked) {
-      const hit = items.find((i) => i.id === lid);
-      if (hit) linkedOrig[lid] = { ...hit };
-    }
+    const linkedOrig = linkedSnapshot(item.id);
     pendingMove.current = {
       id: item.id,
       startX: e.clientX,
@@ -146,7 +150,7 @@ export function LayoutSurface({
       startX: e.clientX,
       startY: e.clientY,
       orig: { ...item },
-      linkedOrig: {}
+      linkedOrig: linkedSnapshot(item.id)
     });
     setPreview({ [item.id]: { ...item } });
   };
@@ -221,7 +225,14 @@ export function LayoutSurface({
       setPreview({ [drag.id]: { ...drag.orig, cornerRadius } });
     } else {
       setGuides({ v: false, h: false });
+      const linkedIds = Object.keys(drag.linkedOrig);
       let next: LayoutItem;
+      if (linkedIds.length) {
+        const sized = resizeSeKeepAspect(drag.orig, dx, dy);
+        next = clampLayoutItem({ ...drag.orig, w: sized.w, h: sized.h }, b, freePlacement);
+        setPreview(scaleGroupItems(drag.orig, next, drag.linkedOrig));
+        return;
+      }
       if (lockAspect(drag.id)) {
         const sized = resizeSeKeepAspect(drag.orig, dx, dy);
         const aspect = drag.orig.w / Math.max(1, drag.orig.h);
@@ -326,7 +337,21 @@ export function LayoutSurface({
               e.stopPropagation();
             }}
           >
-            <div className="h-full w-full overflow-hidden">{renderItem(item, selected)}</div>
+            {item.contentScale && item.contentScale !== 1 ? (
+              <div className="h-full w-full overflow-hidden">
+                <div
+                  style={{
+                    zoom: item.contentScale,
+                    width: item.w / item.contentScale,
+                    height: item.h / item.contentScale
+                  }}
+                >
+                  {renderItem(item, selected)}
+                </div>
+              </div>
+            ) : (
+              <div className="h-full w-full overflow-hidden">{renderItem(item, selected)}</div>
+            )}
             {!disabled && !item.positionLocked && selected && !noResize(item.id) && (
               <div
                 className="absolute bottom-0 right-0 z-20 h-3.5 w-3.5 cursor-se-resize bg-sky-500"

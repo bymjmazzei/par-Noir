@@ -2588,7 +2588,7 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-action-layer-gallery.pen-templates-gallery .pen-gallery-tile-preview {
-  padding: 0;
+  padding: 0 8px 8px;
   background: #fff;
 }
 

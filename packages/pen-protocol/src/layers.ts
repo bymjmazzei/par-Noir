@@ -265,11 +265,18 @@ export function createGroupFromSelection(
  * Copy a widget's layers into the host section as one group.
  * New layer ids. Children are not position-locked. The source template is not mutated.
  */
+/** Multiply a layer's face zoom; kept to 3 decimals so repeated resizes stay stable. */
+export function scaledContent(current: number | undefined, factor: number): number {
+  return Math.round((current ?? 1) * factor * 1000) / 1000;
+}
+
+/** `fit.maxWidth` (the page content width) shrinks a wider widget to fit, text and art included. */
 export function copyWidgetLayersIntoSection(
   host: PenSectionContent,
   sourceLayers: PenPageLayer[],
   name: string,
-  widgetTemplateId?: string
+  widgetTemplateId?: string,
+  fit?: { maxWidth?: number }
 ): { section: PenSectionContent; groupId: string } {
   const src = sourceLayers.filter((l) => l.kind !== 'group');
   if (!src.length) {
@@ -295,12 +302,14 @@ export function copyWidgetLayersIntoSection(
   const originY = 16 + stack * 12;
   const dx = originX - minX;
   const dy = originY - minY;
+  const room = fit?.maxWidth ? fit.maxWidth - 2 * originX : 0;
+  const scale = room > 0 && maxR - minX > room ? room / (maxR - minX) : 1;
   const maxZ = (host.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
   const group = createGroupLayer({
     x: originX,
     y: originY,
-    w: Math.max(48, maxR - minX),
-    h: Math.max(48, maxB - minY),
+    w: Math.max(48, (maxR - minX) * scale),
+    h: Math.max(48, (maxB - minY) * scale),
     zIndex: maxZ + src.length + 1,
     name: name.trim() || 'Widget'
   });
@@ -328,8 +337,11 @@ export function copyWidgetLayersIntoSection(
       id: ids.get(layer.id)!,
       parentGroupId: group.id,
       positionLocked: false,
-      x: layer.x + dx,
-      y: layer.y + dy,
+      x: originX + (layer.x - minX) * scale,
+      y: originY + (layer.y - minY) * scale,
+      w: layer.w * scale,
+      h: layer.h * scale,
+      ...(scale !== 1 ? { contentScale: scaledContent(layer.contentScale, scale) } : {}),
       zIndex: maxZ + 1 + i
     });
   });
@@ -725,6 +737,7 @@ export function patchLayerStyle(
       | 'revealLayerId'
       | 'allocateTotal'
       | 'cornerRadius'
+      | 'contentScale'
       | 'textColor'
       | 'widgetTemplateId'
       | 'spreadsheetId'

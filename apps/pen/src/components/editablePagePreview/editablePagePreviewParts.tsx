@@ -179,7 +179,8 @@ export function layerToItem(layer: PenPageLayer): LayoutItem {
     rotate: layer.rotate ?? layer.mediaRotate,
     positionLocked: layer.positionLocked,
     cornerRadius: layer.cornerRadius,
-    roundable: layer.kind === 'interactive'
+    roundable: layer.kind === 'interactive',
+    contentScale: layer.contentScale
   };
 }
 

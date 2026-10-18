@@ -21,12 +21,15 @@ export async function insertWidgetCopy(input: {
   layers: PenPageLayer[];
   name: string;
   templateId?: string;
+  /** Page content width; a wider widget is scaled down to fit. */
+  contentWidthPx?: number;
 }): Promise<{ section: PenSectionContent; groupId: string }> {
   const copied = copyWidgetLayersIntoSection(
     input.host,
     input.layers,
     input.name,
-    input.templateId
+    input.templateId,
+    { maxWidth: input.contentWidthPx }
   );
   if (groupNeedsTrackingSheet(copied.section, copied.groupId)) {
     const structure = structureFromLayers(copied.section, copied.groupId);

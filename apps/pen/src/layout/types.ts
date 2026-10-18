@@ -1,4 +1,5 @@
 /** Shared layout item — rects are CSS px in the content box. */
+import { scaledContent } from '@par-noir/pen-protocol';
 
 export interface LayoutItem {
   id: string;
@@ -14,6 +15,8 @@ export interface LayoutItem {
   roundable?: boolean;
   /** Frame rotation on the page, degrees. */
   rotate?: number;
+  /** Face zoom inside the frame (layer.contentScale). */
+  contentScale?: number;
 }
 
 export type LayoutBounds = { width: number; height: number };
@@ -35,6 +38,32 @@ export function clampLayoutItem(
   const x = Math.min(Math.max(0, contentW - width), Math.max(0, item.x));
   const y = Math.min(Math.max(0, contentH - height), Math.max(0, item.y));
   return { ...item, x, y, w: width, h: height };
+}
+
+/**
+ * Group resize: the group keeps its aspect and every member scales about the group's
+ * top-left, face zoom included, so text and art shrink with the boxes.
+ */
+export function scaleGroupItems(
+  groupOrig: LayoutItem,
+  groupNext: LayoutItem,
+  members: Record<string, LayoutItem>
+): Record<string, LayoutItem> {
+  const s = Math.min(groupNext.w / Math.max(1, groupOrig.w), groupNext.h / Math.max(1, groupOrig.h));
+  const out: Record<string, LayoutItem> = {
+    [groupOrig.id]: { ...groupNext, w: groupOrig.w * s, h: groupOrig.h * s }
+  };
+  for (const [id, item] of Object.entries(members)) {
+    out[id] = {
+      ...item,
+      x: groupNext.x + (item.x - groupOrig.x) * s,
+      y: groupNext.y + (item.y - groupOrig.y) * s,
+      w: item.w * s,
+      h: item.h * s,
+      contentScale: scaledContent(item.contentScale, s)
+    };
+  }
+  return out;
 }
 
 export function bringToFront(items: LayoutItem[], id: string): LayoutItem[] {

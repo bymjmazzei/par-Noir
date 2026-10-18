@@ -95,7 +95,7 @@ function FolderIcon() {
 
 type ListRow =
   | { kind: 'page' }
-  | { kind: 'layer'; layer: PenPageLayer; depth: number };
+  | { kind: 'layer'; layer: PenPageLayer; depth: number; index: number | null; open?: boolean };
 
 export function LayersPopover({
   open,
@@ -142,6 +142,8 @@ export function LayersPopover({
   const [addSection, setAddSection] = useState<LayersAddAccordionSection | null>(null);
   const [renamingLayerId, setRenamingLayerId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
+  /** Groups list as closed folders until opened (or a child is selected). */
+  const [openGroupIds, setOpenGroupIds] = useState<Set<string>>(() => new Set());
 
   const prepared = useMemo(() => normalizeSection(section), [section]);
   const allLayers = prepared.layers || [];
@@ -156,23 +158,41 @@ export function LayersPopover({
    */
   const listRows: ListRow[] = useMemo(() => {
     const rows: ListRow[] = [];
+    let index = 0;
     const top = layersFrontFirst.filter((l) => !l.parentGroupId && !l.bodyWrap);
     for (const layer of top) {
-      rows.push({ kind: 'layer', layer, depth: 0 });
-      if (layer.kind === 'group') {
-        const kids = layersFrontFirst.filter((l) => l.parentGroupId === layer.id);
-        for (const kid of kids) {
-          rows.push({ kind: 'layer', layer: kid, depth: 1 });
-        }
+      if (layer.kind !== 'group') {
+        rows.push({ kind: 'layer', layer, depth: 0, index: ++index });
+        continue;
+      }
+      const kids = layersFrontFirst.filter((l) => l.parentGroupId === layer.id);
+      const open = openGroupIds.has(layer.id) || kids.some((kid) => selectedIds.includes(kid.id));
+      rows.push({ kind: 'layer', layer, depth: 0, index: null, open });
+      for (const kid of kids) {
+        index += 1;
+        if (open) rows.push({ kind: 'layer', layer: kid, depth: 1, index });
       }
     }
     rows.push({ kind: 'page' });
     const wrapped = layersFrontFirst.filter((l) => Boolean(l.bodyWrap) && !l.parentGroupId);
     for (const layer of wrapped) {
-      rows.push({ kind: 'layer', layer, depth: 1 });
+      rows.push({ kind: 'layer', layer, depth: 1, index: ++index });
     }
     return rows;
-  }, [layersFrontFirst]);
+  }, [layersFrontFirst, openGroupIds, selectedIds]);
+
+  function toggleGroupOpen(id: string, open: boolean) {
+    setOpenGroupIds((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    if (!open && selectedIds.some((sid) => allLayers.find((l) => l.id === sid)?.parentGroupId === id)) {
+      onSelectedIdsChange([id]);
+      onSelectLayer(id);
+    }
+  }
 
   const pageSelected = !activeLayerId || activeLayerId === PAGE_LAYER_ID;
   const multiObjectIds = selectedIds.filter((id) => id !== PAGE_LAYER_ID);
@@ -429,8 +449,6 @@ export function LayersPopover({
     commit(distributeLayers(prepared, multiObjectIds, axis));
   }
 
-  let objectIndex = 0;
-
   return (
     <div
       ref={panelRef}
@@ -679,6 +697,7 @@ export function LayersPopover({
           session={session}
           docId={docId}
           section={prepared}
+          contentWidthPx={contentWidthPx}
           onInserted={insertWidget}
           onCancel={() => setWidgetOpen(false)}
         />
@@ -689,6 +708,7 @@ export function LayersPopover({
           session={session}
           docId={docId}
           section={prepared}
+          contentWidthPx={contentWidthPx}
           onInserted={insertWidget}
           onCancel={() => setStickerOpen(false)}
         />
@@ -758,15 +778,14 @@ export function LayersPopover({
             );
           }
 
-          const { layer, depth } = row;
+          const { layer, depth, index, open } = row;
           const selected = selectedIds.includes(layer.id);
           const dropTarget = Boolean(dragId && hoverId === layer.id && dragId !== layer.id);
           const isVisible = layer.visible !== false;
           const isLocked = Boolean(layer.positionLocked);
           const isGroup = layer.kind === 'group';
           const isWrapped = Boolean(layer.bodyWrap);
-          if (!isGroup) objectIndex += 1;
-          const indexLabel = isGroup ? 'G' : String(objectIndex);
+          const indexLabel = isGroup ? 'G' : String(index);
 
           return (
             <li
@@ -787,9 +806,26 @@ export function LayersPopover({
             >
               <span className="w-4 shrink-0 text-[10px] text-neutral-400">{indexLabel}</span>
               {isGroup && (
-                <span className="shrink-0 text-neutral-500">
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-label={open ? 'Collapse group' : 'Expand group'}
+                  title={open ? 'Collapse group' : 'Expand group'}
+                  className="flex shrink-0 items-center gap-0.5 p-0.5 text-neutral-500 hover:text-black"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleGroupOpen(layer.id, !open);
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    className={`inline-block w-2 text-[9px] leading-none transition-transform ${open ? 'rotate-90' : ''}`}
+                  >
+                    ▶
+                  </span>
                   <FolderIcon />
-                </span>
+                </button>
               )}
               <LayerTitleControl
                 label={layerDisplayLabel(layer, allLayers)}

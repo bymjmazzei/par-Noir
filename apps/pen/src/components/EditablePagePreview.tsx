@@ -380,6 +380,12 @@ export function EditablePagePreview({
   function onLayoutChange(nextItems: LayoutItem[]) {
     let next = applyLayoutAtPlayhead(prepared, nextItems, playheadSec);
     next = { ...next, layerGeom: 'px' };
+    for (const item of nextItems) {
+      const layer = next.layers?.find((l) => l.id === item.id);
+      if (layer && item.contentScale != null && item.contentScale !== layer.contentScale) {
+        next = patchLayerStyle(next, item.id, { contentScale: item.contentScale });
+      }
+    }
     const groups = new Set(
       (next.layers || [])
         .filter((l) => l.parentGroupId)
@@ -920,7 +926,6 @@ export function EditablePagePreview({
               snapGuides={snapGuides}
               guideSpan={guideSpan}
               getLinkedIds={getLinkedIds}
-              resizeDisabledIds={groupIds}
               lockAspectRatioIds={mediaAspectLockIds}
               onSelect={(id) => selectLayer(id || PAGE_LAYER_ID)}
               onChange={(next) =>

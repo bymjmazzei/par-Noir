@@ -27,7 +27,14 @@ function displayableSrc(src: string | undefined): string | undefined {
   return /^(https?:|blob:|data:image\/)/i.test(value) ? value : undefined;
 }
 
+/** Face px scaled by the layer's group zoom (tailwind text-sm is 14px, text-xs 12px). */
+function faceFontPx(layer: PenPageLayer, basePx: number): string | undefined {
+  const scale = layer.contentScale ?? 1;
+  return scale === 1 ? undefined : `${basePx * scale}px`;
+}
+
 function layerShellStyle(layer: PenPageLayer, canvas: { w: number; h: number }): CSSProperties {
+  const scale = layer.contentScale ?? 1;
   return {
     position: 'absolute',
     boxSizing: 'border-box',
@@ -40,7 +47,8 @@ function layerShellStyle(layer: PenPageLayer, canvas: { w: number; h: number }):
     color: layer.textColor || undefined,
     opacity: layer.opacity != null ? Math.max(0, Math.min(100, layer.opacity)) / 100 : undefined,
     transform: layer.rotate ? `rotate(${layer.rotate}deg)` : undefined,
-    borderRadius: layer.cornerRadius != null ? `${layer.cornerRadius}px` : undefined
+    borderRadius: layer.cornerRadius != null ? `${layer.cornerRadius * scale}px` : undefined,
+    fontSize: faceFontPx(layer, 14)
   };
 }
 
@@ -58,7 +66,7 @@ function TimeFace({ layer, shell }: { layer: PenPageLayer; shell: CSSProperties 
   return (
     <div
       className="pointer-events-none flex items-center justify-center overflow-hidden whitespace-nowrap text-xs tabular-nums"
-      style={shell}
+      style={{ ...shell, fontSize: faceFontPx(layer, 12) }}
       data-pen-layer={layer.id}
       data-pen-time="1"
     >

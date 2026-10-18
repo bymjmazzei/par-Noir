@@ -95,7 +95,8 @@ export function ScreenLayerStage({
         zIndex: layer.zIndex,
         positionLocked: layer.positionLocked,
         cornerRadius: layer.cornerRadius,
-        roundable: layer.kind === 'interactive'
+        roundable: layer.kind === 'interactive',
+        contentScale: layer.contentScale
       });
     }
   });
@@ -186,6 +187,7 @@ export function ScreenLayerStage({
             );
             moved.zIndex = hit.layout.zIndex;
             if (hit.layout.cornerRadius != null) moved.cornerRadius = hit.layout.cornerRadius;
+            if (hit.layout.contentScale != null) moved.contentScale = hit.layout.contentScale;
             drafts[hit.index].layers = [...(drafts[hit.index].layers || []), moved];
           }
         }

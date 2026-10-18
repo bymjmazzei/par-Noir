@@ -18,4 +18,11 @@ describe('PenFeedPageStage overlay clock', () => {
     expect(src).toMatch(/data-pen-time="1"/);
     expect(src).toMatch(/timeLayerCaption\(layer, now\)/);
   });
+
+  it('a group-scaled widget shrinks its labels and corners in the feed', () => {
+    const src = readFileSync(resolve(root, 'PenFeedPageStage.tsx'), 'utf8');
+    expect(src).toMatch(/fontSize: faceFontPx\(layer, 14\)/);
+    expect(src).toMatch(/fontSize: faceFontPx\(layer, 12\)/);
+    expect(src).toMatch(/layer\.cornerRadius \* scale/);
+  });
 });

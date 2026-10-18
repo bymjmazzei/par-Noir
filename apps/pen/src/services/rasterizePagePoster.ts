@@ -13,6 +13,7 @@ const DEFAULT_MAX_EDGE = 1080;
 const JPEG_QUALITY = 0.85;
 
 const INLINE_STYLE_PROPS = [
+  'zoom',
   'display',
   'float',
   'clear',
@@ -114,7 +115,7 @@ function shouldSkipInlineValue(prop: string, val: string): boolean {
   if (val === '0px' && (prop.startsWith('margin') || prop.startsWith('padding') || prop.startsWith('border'))) {
     return true;
   }
-  if (prop === 'opacity' && val === '1') return true;
+  if ((prop === 'opacity' || prop === 'zoom') && val === '1') return true;
   if (prop === 'z-index' && val === 'auto') return true;
   return false;
 }
@@ -243,9 +244,10 @@ export async function inlineHtmlSnippets(liveRoot: HTMLElement, cloneRoot: HTMLE
   for (let i = 0; i < Math.min(live.length, clones.length); i++) {
     const frame = live[i]!;
     const clone = clones[i]!;
+    // Layout size, not the on-screen rect: a group-scaled frame is zoomed, and the clone zooms the still too.
     const rect = frame.getBoundingClientRect();
-    const w = Math.max(1, Math.round(rect.width || frame.offsetWidth));
-    const h = Math.max(1, Math.round(rect.height || frame.offsetHeight));
+    const w = Math.max(1, Math.round(frame.offsetWidth || rect.width));
+    const h = Math.max(1, Math.round(frame.offsetHeight || rect.height));
     try {
       const img = document.createElement('img');
       img.src = await snippetStillDataUrl(frame.getAttribute('srcdoc') || '', w, h);
