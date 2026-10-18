@@ -34,5 +34,8 @@ module.exports = {
   },
   // `@noble/*` ship ESM only and are pulled in transitively by the crypto packages.
   transformIgnorePatterns: ['/node_modules/(?!(@par-noir|@noble)/)'],
+  moduleNameMapper: {
+    '^\\./starterAssets\\.js$': '<rootDir>/jest.penStarterAssets.cjs',
+  },
   setupFiles: ['<rootDir>/jest.setup.cjs'],
 };

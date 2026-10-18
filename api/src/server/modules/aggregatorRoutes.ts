@@ -352,6 +352,11 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         }
       }
 
+      {
+        const { rejectUnsafePublicLinks } = await import('./publicLinkGuard');
+        if (await rejectUnsafePublicLinks(res, metadata, requestId)) return;
+      }
+
       // Validate metadata (support both legacy and semantic web format)
       const title = metadata.name || metadata.title;
       const authorDid = metadata.creator?.identifier?.value || metadata.creator?.["@id"] || metadata.author?.did;
@@ -1502,6 +1507,12 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
 
       if (tokenPayload.pnIdentifier) {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, tokenPayload.pnIdentifier))) return;
+      }
+
+      {
+        const { rejectUnsafePublicLinks } = await import('./publicLinkGuard');
+        const { penIndexFields } = await import('./penIndexFields');
+        if (await rejectUnsafePublicLinks(res, penIndexFields(req.body))) return;
       }
       
       if (!current) {
