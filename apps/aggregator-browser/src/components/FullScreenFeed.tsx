@@ -37,8 +37,7 @@ import {
   buildPenCollectionFeedTileModel,
   buildPenFeedTileModelForPost
 } from '../utils/penFeedTileModel';
-import type { PenActionMessage } from '@par-noir/pen-protocol';
-import { handleFeedPenAction } from '../services/penFeedActionHandler';
+import { runFeedPenEffect } from '../services/penFeedActionHandler';
 
 function feedPosterUnderlayStyle(
   metadata: IndexedFile['metadata'] | undefined
@@ -1611,14 +1610,12 @@ export function FullScreenFeed({
                   <PenFeedTilePlayer
                     aspectRatio={penTileAspect}
                     model={penModel}
-                    onAction={(message) => {
-                      if (!userState.isUnlocked || !userState.pnIdentifier) return;
-                      void handleFeedPenAction({
-                        message: message as PenActionMessage,
-                        model: penModel,
+                    onEffect={(effect) => {
+                      void runFeedPenEffect({
+                        effect,
                         penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
                         creatorPnIdentifier: creatorId,
-                        userPnIdentifier: userState.pnIdentifier
+                        userPnIdentifier: userState.isUnlocked ? userState.pnIdentifier : undefined
                       });
                     }}
                   />
@@ -1809,14 +1806,12 @@ export function FullScreenFeed({
                   <PenFeedTilePlayer
                     aspectRatio={penTileAspect}
                     model={penModel}
-                    onAction={(message) => {
-                      if (!userState.isUnlocked || !userState.pnIdentifier) return;
-                      void handleFeedPenAction({
-                        message: message as PenActionMessage,
-                        model: penModel,
+                    onEffect={(effect) => {
+                      void runFeedPenEffect({
+                        effect,
                         penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
                         creatorPnIdentifier: creatorId,
-                        userPnIdentifier: userState.pnIdentifier
+                        userPnIdentifier: userState.isUnlocked ? userState.pnIdentifier : undefined
                       });
                     }}
                   />
@@ -1964,14 +1959,12 @@ export function FullScreenFeed({
                   <PenFeedTilePlayer
                     aspectRatio={penTileAspect}
                     model={penModel}
-                    onAction={(message) => {
-                      if (!userState.isUnlocked || !userState.pnIdentifier) return;
-                      void handleFeedPenAction({
-                        message: message as PenActionMessage,
-                        model: penModel,
+                    onEffect={(effect) => {
+                      void runFeedPenEffect({
+                        effect,
                         penDocId: (indexedFile.metadata as { penDocId?: string }).penDocId,
                         creatorPnIdentifier: creatorId,
-                        userPnIdentifier: userState.pnIdentifier
+                        userPnIdentifier: userState.isUnlocked ? userState.pnIdentifier : undefined
                       });
                     }}
                   />

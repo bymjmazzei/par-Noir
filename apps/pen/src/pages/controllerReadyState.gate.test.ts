@@ -14,14 +14,10 @@ describe('controller ready-state wiring', () => {
   it('doc editor return keys are hook bindings; shells only use exported keys', () => {
     const controller = read('docEditor/useDocEditorController.ts');
     const shell = read('docEditor/DocEditorShell.tsx');
-    const social = read('docEditor/DocEditorSocialPreview.tsx');
     const result = checkControllerReadyState({
       controllerSource: controller,
       hookName: 'useDocEditorController',
-      shellSources: [
-        { source: shell, exportName: 'DocEditorShell' },
-        { source: social, exportName: 'DocEditorSocialPreview' }
-      ]
+      shellSources: [{ source: shell, exportName: 'DocEditorShell' }]
     });
     expect(result.orphanReturnKeys, `orphan return keys: ${result.orphanReturnKeys.join(', ')}`).toEqual(
       []

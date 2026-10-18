@@ -2,15 +2,26 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildActionOverlayAtTime,
   docToPlainText,
+  emptyPenViewerState,
+  penViewerButtonFace,
+  pressPenAction,
+  type PenActionEffect,
   type PenFeedPagePayload,
   type PenPageLayer,
-  type PenActionMessage
+  type PenViewerState
 } from '@par-noir/pen-protocol';
 import type { CSSProperties } from 'react';
 
-function buttonLabel(layer: PenPageLayer): string {
+function buttonLabel(layer: PenPageLayer, state: PenViewerState): string {
   const face = layer.textDoc ? docToPlainText(layer.textDoc).trim() : '';
-  return face || layer.label || 'Button';
+  const authored = face || layer.label || 'Button';
+  const live = penViewerButtonFace(layer, state);
+  return live ? `${authored} · ${live}` : authored;
+}
+
+function displayableSrc(src: string | undefined): string | undefined {
+  const value = (src || '').trim();
+  return /^(https?:|blob:|data:image\/)/i.test(value) ? value : undefined;
 }
 
 function layerShellStyle(layer: PenPageLayer, canvas: { w: number; h: number }): CSSProperties {
@@ -33,11 +44,17 @@ function layerShellStyle(layer: PenPageLayer, canvas: { w: number; h: number }):
 function OverlayLayer({
   layer,
   canvas,
-  onAction
+  state,
+  revealed,
+  onPress,
+  onInput
 }: {
   layer: PenPageLayer;
   canvas: { w: number; h: number };
-  onAction?: (message: PenActionMessage) => void;
+  state: PenViewerState;
+  revealed: boolean;
+  onPress: (layerId: string) => void;
+  onInput: (layerId: string, value: string) => void;
 }) {
   const shell = layerShellStyle(layer, canvas);
   if (layer.kind === 'interactive' && layer.behavior) {
@@ -47,24 +64,56 @@ function OverlayLayer({
         className="flex h-full w-full items-center justify-center overflow-hidden px-2 text-sm font-medium"
         style={shell}
         data-pen-layer={layer.id}
-        onClick={() =>
-          onAction?.({
-            type: 'pen-action',
-            layerId: layer.id,
-            behavior: layer.behavior || '',
-            bindRowId: layer.bindRowId || ''
-          })
-        }
+        data-pen-behavior={layer.behavior}
+        onClick={(e) => {
+          e.stopPropagation();
+          onPress(layer.id);
+        }}
       >
-        {buttonLabel(layer)}
+        {buttonLabel(layer, state)}
       </button>
     );
   }
   if (layer.kind === 'interactive') {
     return (
       <button type="button" className="flex h-full w-full items-center justify-center text-sm font-medium" style={shell}>
-        {buttonLabel(layer)}
+        {buttonLabel(layer, state)}
       </button>
+    );
+  }
+  if (layer.widgetElement === 'input') {
+    return (
+      <input
+        type="text"
+        className="h-full w-full px-2 text-sm"
+        style={{ ...shell, color: layer.textColor || '#141414', backgroundColor: layer.backgroundColor || '#ffffff' }}
+        data-pen-layer={layer.id}
+        placeholder={layer.label || layer.name || ''}
+        value={state.inputs[layer.id] || ''}
+        onChange={(e) => onInput(layer.id, e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      />
+    );
+  }
+  if (!revealed) return null;
+  if (layer.kind === 'text' && layer.textDoc) {
+    return (
+      <div
+        className="overflow-hidden whitespace-pre-wrap break-words p-2 text-sm"
+        style={shell}
+        data-pen-layer={layer.id}
+      >
+        {docToPlainText(layer.textDoc)}
+      </div>
+    );
+  }
+  const src = layer.kind === 'image' ? displayableSrc(layer.imageSrc) : undefined;
+  if (src) {
+    return (
+      <div className="overflow-hidden" style={shell} data-pen-layer={layer.id}>
+        <img src={src} alt="" className="h-full w-full object-cover" />
+      </div>
     );
   }
   return null;
@@ -75,7 +124,8 @@ export function PenFeedPageStage({
   mediaKind = 'image',
   penFeedPage,
   externalClockSec,
-  onAction,
+  onEffect,
+  actorId,
   fit = 'cover'
 }: {
   mediaSrc?: string;
@@ -83,11 +133,35 @@ export function PenFeedPageStage({
   penFeedPage: PenFeedPagePayload;
   /** Editor preview: drive overlay from timeline scrubber. */
   externalClockSec?: number;
-  onAction?: (message: PenActionMessage) => void;
+  /** Side effect of a button press (open, vote, sheet row…). Local state stays here. */
+  onEffect?: (effect: PenActionEffect) => void;
+  /** Hashed viewer id stamped on sheet rows. */
+  actorId?: string;
   fit?: 'cover' | 'contain';
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoTime, setVideoTime] = useState(0);
+  const [viewer, setViewer] = useState<PenViewerState>(emptyPenViewerState);
+  const viewerRef = useRef(viewer);
+  viewerRef.current = viewer;
+
+  const press = (layerId: string) => {
+    const result = pressPenAction({
+      layers: penFeedPage.actionSection.layers,
+      layerId,
+      state: viewerRef.current,
+      actorId
+    });
+    viewerRef.current = result.state;
+    setViewer(result.state);
+    if (result.effect.kind !== 'none') onEffect?.(result.effect);
+  };
+
+  const typeInput = (layerId: string, value: string) => {
+    const next = { ...viewerRef.current, inputs: { ...viewerRef.current.inputs, [layerId]: value } };
+    viewerRef.current = next;
+    setViewer(next);
+  };
   const duration = penFeedPage.timelineDurationSec ?? penFeedPage.actionSection.timelineDurationSec ?? 5;
   const canvas = penFeedPage.canvas;
 
@@ -117,9 +191,10 @@ export function PenFeedPageStage({
   const overlayTime = externalClockSec != null ? externalClockSec : videoTime;
 
   const layers = useMemo(
-    () => buildActionOverlayAtTime(penFeedPage.actionSection, overlayTime),
-    [penFeedPage.actionSection, overlayTime]
+    () => buildActionOverlayAtTime(penFeedPage.actionSection, overlayTime, viewer.revealed),
+    [penFeedPage.actionSection, overlayTime, viewer.revealed]
   );
+  const revealed = useMemo(() => new Set(viewer.revealed), [viewer.revealed]);
 
   const isVideo = mediaKind === 'video' && Boolean(mediaSrc);
   const mediaClass =
@@ -147,7 +222,15 @@ export function PenFeedPageStage({
       <div className="pointer-events-none absolute inset-0">
         <div className="pointer-events-auto relative h-full w-full">
           {layers.map((layer) => (
-            <OverlayLayer key={layer.id} layer={layer} canvas={canvas} onAction={onAction} />
+            <OverlayLayer
+              key={layer.id}
+              layer={layer}
+              canvas={canvas}
+              state={viewer}
+              revealed={revealed.has(layer.id)}
+              onPress={press}
+              onInput={typeInput}
+            />
           ))}
         </div>
       </div>

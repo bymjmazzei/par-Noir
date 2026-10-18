@@ -12,7 +12,7 @@ import {
   type CSSProperties,
   type ReactNode
 } from 'react';
-import type { PenDocManifest, PenSectionContent, PenActionMessage } from '@par-noir/pen-protocol';
+import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
@@ -98,7 +98,6 @@ export function SocialFeedPhonePreview({
   large,
   density = 'feed',
   actionOverlay,
-  onAction,
   playheadSec,
   followPlayhead = false
 }: {
@@ -113,7 +112,6 @@ export function SocialFeedPhonePreview({
   density?: 'feed' | 'thumb';
   /** Editor-only layer chrome. Omitted for gallery thumbs and browse. */
   actionOverlay?: ReactNode;
-  onAction?: (message: PenActionMessage) => void;
   playheadSec?: number;
   /** Editor preview: follow the live editor playhead instead of the tile's own clock. */
   followPlayhead?: boolean;
@@ -137,7 +135,6 @@ export function SocialFeedPhonePreview({
       hideEngagementRail
       aspectRatio={feedAspect}
       showWidgets={!actionOverlay}
-      onAction={onAction}
       playheadSec={followPlayhead ? livePlayheadSec : playheadSec}
     />
   );

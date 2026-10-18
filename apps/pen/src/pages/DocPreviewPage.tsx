@@ -5,8 +5,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FeedTileSurface } from '@par-noir/feed-tile';
-import type { PenActionMessage, PenPageLayer } from '@par-noir/pen-protocol';
+import type { PenActionEffect } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
+import { openMessagingWithCorrespondence } from '../services/penCorrespondenceHandoff';
+import { queueWidgetAction } from '../services/widgetAction';
 import { hydrateDocFromCloud } from '../services/penHydrate';
 import { loadDocKey } from '../services/penDocCrypto';
 import { loadLocalDoc, type LocalDocBundle } from '../services/penLocalStore';
@@ -45,40 +47,42 @@ export function DocPreviewPage({
     };
   }, [docId, session]);
 
-  async function onAction(message: PenActionMessage) {
-    if (!bundle || message.behavior !== 'poll.vote') return;
-    let layer: PenPageLayer | undefined;
-    let groupId: string | undefined;
-    for (const section of bundle.sections) {
-      const found = (section.layers || []).find((item) => item.id === message.layerId);
-      if (found) {
-        layer = found;
-        groupId = found.parentGroupId || undefined;
-        break;
-      }
+  async function onEffect(effect: PenActionEffect) {
+    if (!bundle) return;
+    if (effect.kind === 'open') {
+      window.open(effect.url, '_blank', 'noopener,noreferrer');
+      return;
     }
-    if (!layer) return;
-    const group = groupId
-      ? bundle.sections
-          .flatMap((section) => section.layers || [])
-          .find((item) => item.id === groupId)
-      : undefined;
-    const spreadsheetId = group?.spreadsheetId || bundle.manifest.pollSpreadsheetId;
+    if (effect.kind === 'mailto') {
+      window.location.assign(effect.href);
+      return;
+    }
+    if (effect.kind === 'messaging') {
+      openMessagingWithCorrespondence({ title: effect.title, body: effect.body, docId });
+      return;
+    }
+    if (effect.kind !== 'vote' && effect.kind !== 'widget_row') return;
+    const spreadsheetId = effect.spreadsheetId || bundle.manifest.pollSpreadsheetId;
     if (!spreadsheetId) {
-      setStatus('Save the poll before voting.');
+      setStatus('Save the widget before testing it.');
       return;
     }
     try {
-      await castPollVote({
-        session,
-        ownerPnIdentifier: session.pnIdentifier,
-        docId,
-        spreadsheetId,
-        optionId: layer.bindRowId || message.bindRowId || layer.id
-      });
-      setStatus('Vote counted.');
+      if (effect.kind === 'vote') {
+        await castPollVote({
+          session,
+          ownerPnIdentifier: session.pnIdentifier,
+          docId,
+          spreadsheetId,
+          optionId: effect.optionId
+        });
+        setStatus('Vote counted.');
+        return;
+      }
+      await queueWidgetAction({ session, docId, spreadsheetId, row: effect.row });
+      setStatus('Recorded.');
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : 'vote_failed');
+      setStatus(e instanceof Error ? e.message : 'widget_action_failed');
     }
   }
 
@@ -119,7 +123,12 @@ export function DocPreviewPage({
         </Link>
       </div>
       <div className="flex flex-1 items-center justify-center p-4">
-        <FeedTileSurface model={model} mode="live" onAction={(message) => void onAction(message)} />
+        <FeedTileSurface
+          model={model}
+          mode="live"
+          actorId={session.pnIdentifier}
+          onEffect={(effect) => void onEffect(effect)}
+        />
       </div>
       {status ? <p className="px-4 pb-4 text-center text-xs text-neutral-400">{status}</p> : null}
     </div>

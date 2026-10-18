@@ -2,7 +2,7 @@
  * Pen → Messaging correspondence handoff (letter/note deep-link).
  */
 
-export const PEN_CORRESPONDENCE_HASH_PREFIX = 'pen_correspondence_handoff_v1:' as const;
+import { PEN_CORRESPONDENCE_HASH_PREFIX } from '@par-noir/pen-protocol';
 
 export interface PenCorrespondenceHandoff {
   title?: string;

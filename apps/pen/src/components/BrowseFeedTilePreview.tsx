@@ -4,7 +4,6 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
-import type { PenActionMessage } from '@par-noir/pen-protocol';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
 import { ensurePenMediaUrl, isPenMediaSrcRef } from '@par-noir/pen-media';
@@ -70,7 +69,6 @@ export function BrowseFeedTilePreview({
   engagementOverlay,
   aspectRatio,
   showWidgets = true,
-  onAction,
   playheadSec
 }: {
   manifest: PenDocManifest;
@@ -85,7 +83,6 @@ export function BrowseFeedTilePreview({
   aspectRatio?: '9/16' | '16/9' | '1/1';
   /** Voter HTML for placed widgets. The editor overlay paints the author frame instead. */
   showWidgets?: boolean;
-  onAction?: (message: PenActionMessage) => void;
   /** Timeline scrubber — drives motion-synced action overlays in preview. */
   playheadSec?: number;
 }) {
@@ -147,7 +144,6 @@ export function BrowseFeedTilePreview({
       hideEngagementRail={hideEngagementRail}
       engagementOverlay={engagementOverlay}
       aspectRatio={resolvedAspect}
-      onAction={onAction}
       externalClockSec={playheadSec}
     />
   );

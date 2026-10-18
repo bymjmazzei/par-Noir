@@ -6,10 +6,6 @@ const docEditorDir = dirname(fileURLToPath(import.meta.url));
 
 /** Concatenated editor modules for string-based gate tests. */
 export function readDocEditorGateSource(): string {
-  const files = [
-    'useDocEditorController.ts',
-    'DocEditorShell.tsx',
-    'DocEditorSocialPreview.tsx'
-  ];
+  const files = ['useDocEditorController.ts', 'DocEditorShell.tsx'];
   return files.map((f) => readFileSync(resolve(docEditorDir, f), 'utf8')).join('\n\n');
 }

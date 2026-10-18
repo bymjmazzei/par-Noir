@@ -1,9 +1,9 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   buildActionStageDocument,
   readPenActionMessage,
-  type PenActionMessage,
+  type PenActionEffect,
   type PenFeedPagePayload
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from './PenMediaPlayer.js';
@@ -106,17 +106,19 @@ function plainFromHtml(html: string | undefined): string {
     .trim();
 }
 
+/** Legacy iframe overlay. Its press message carries only behavior + row, so only votes map. */
 function PenActionStage({
   mediaSrc,
   mediaKind,
   overlayHtml,
-  onAction
+  onEffect
 }: {
   mediaSrc?: string;
   mediaKind?: 'image' | 'video';
   overlayHtml: string;
-  onAction?: (message: PenActionMessage) => void;
+  onEffect?: (effect: PenActionEffect) => void;
 }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
   const srcDoc = useMemo(
     () =>
       buildActionStageDocument({
@@ -127,16 +129,23 @@ function PenActionStage({
     [mediaSrc, mediaKind, overlayHtml]
   );
   useEffect(() => {
-    if (!onAction) return;
+    if (!onEffect) return;
     const onMessage = (event: MessageEvent) => {
+      if (event.source !== frameRef.current?.contentWindow) return;
       const message = readPenActionMessage(event.data);
-      if (message) onAction(message);
+      if (message?.behavior !== 'poll.vote') return;
+      onEffect({
+        kind: 'vote',
+        layerId: message.layerId,
+        optionId: message.bindRowId || message.layerId
+      });
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [onAction]);
+  }, [onEffect]);
   return (
     <iframe
+      ref={frameRef}
       title="Pen action stage"
       sandbox="allow-scripts"
       className="absolute inset-0 h-full w-full border-0"
@@ -150,13 +159,15 @@ export type MediaFit = 'cover' | 'contain';
 function PageSurface({
   page,
   titleFallback,
-  onAction,
+  onEffect,
+  actorId,
   externalClockSec,
   fit
 }: {
   page: FeedTilePage;
   titleFallback: string;
-  onAction?: (message: PenActionMessage) => void;
+  onEffect?: (effect: PenActionEffect) => void;
+  actorId?: string;
   externalClockSec?: number;
   fit: MediaFit;
 }) {
@@ -178,7 +189,8 @@ function PageSurface({
         mediaKind={page.mediaKind}
         penFeedPage={page.penFeedPage}
         externalClockSec={externalClockSec}
-        onAction={onAction}
+        onEffect={onEffect}
+        actorId={actorId}
         fit={fit}
       />
     );
@@ -191,7 +203,7 @@ function PageSurface({
           mediaSrc={page.mediaSrc}
           mediaKind={page.mediaKind}
           overlayHtml={page.actionStageHtml}
-          onAction={onAction}
+          onEffect={onEffect}
         />
       ) : page.mediaSrc ? (
         isVideo ? (
@@ -225,7 +237,8 @@ export function FeedTileSurface({
   widgetOverlay,
   aspectRatio = '9/16',
   layout = 'preview',
-  onAction,
+  onEffect,
+  actorId,
   externalClockSec
 }: {
   model: FeedTileViewModel;
@@ -247,8 +260,10 @@ export function FeedTileSurface({
    * cropped, and the host draws the caption.
    */
   layout?: 'preview' | 'feed';
-  /** Press from the action-stage iframe. */
-  onAction?: (message: PenActionMessage) => void;
+  /** Side effect of a button press on the action layer. */
+  onEffect?: (effect: PenActionEffect) => void;
+  /** Hashed viewer id stamped on sheet rows. */
+  actorId?: string;
   /** Editor preview: sync overlay motion to timeline scrubber. */
   externalClockSec?: number;
 }) {
@@ -333,7 +348,8 @@ export function FeedTileSurface({
                   mediaSrc: sharedMedia ? undefined : page.mediaSrc
                 }}
                 titleFallback={model.title}
-                onAction={onAction}
+                onEffect={onEffect}
+                actorId={actorId}
                 externalClockSec={externalClockSec}
                 fit={fit}
               />
@@ -361,7 +377,8 @@ export function FeedTileSurface({
               <PageSurface
                 page={page}
                 titleFallback={model.title}
-                onAction={onAction}
+                onEffect={onEffect}
+                actorId={actorId}
                 externalClockSec={externalClockSec}
                 fit={fit}
               />
@@ -376,7 +393,8 @@ export function FeedTileSurface({
             mediaKind: pages[0]?.mediaKind
           }}
           titleFallback={model.title}
-          onAction={onAction}
+          onEffect={onEffect}
+          actorId={actorId}
           externalClockSec={externalClockSec}
           fit={fit}
         />

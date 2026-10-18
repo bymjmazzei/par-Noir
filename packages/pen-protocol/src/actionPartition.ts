@@ -28,7 +28,7 @@ export type LayerActionPartition = {
   overlays: ActionOverlaySpec[];
 };
 
-function trackingSpreadsheetId(
+export function trackingSpreadsheetId(
   layers: PenPageLayer[],
   layer: PenPageLayer
 ): string | undefined {

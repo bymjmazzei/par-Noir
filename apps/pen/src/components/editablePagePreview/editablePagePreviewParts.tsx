@@ -48,7 +48,6 @@ import {
   resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
   timeLayerCaption,
-  revealSibling,
   selectPageSize,
   sanitizeWidgetMarkup,
   updateLayerLayout,
@@ -227,8 +226,6 @@ export function BodyWrapObject({
   docId,
   session,
   onNaturalAspect,
-  onPollVote,
-  onWidgetAction,
   inputValues,
   onInputValue
 }: {
@@ -240,8 +237,6 @@ export function BodyWrapObject({
   contentH: number;
   onSelect: () => void;
   onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
-  onPollVote?: (layer: PenPageLayer) => void;
-  onWidgetAction?: (layer: PenPageLayer) => void;
   inputValues?: Record<string, string>;
   onInputValue?: (layerId: string, value: string) => void;
   docId?: string;
@@ -448,8 +443,6 @@ export function BodyWrapObject({
         title={`${layer.behavior || 'interactive'} → ${layer.bindDocId || ''}`}
         onClick={(e) => {
           e.stopPropagation();
-          if (layer.behavior === 'poll.vote') onPollVote?.(layer);
-          else if (layer.behavior) onWidgetAction?.(layer);
           onSelect();
         }}
       >

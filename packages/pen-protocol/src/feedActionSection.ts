@@ -36,6 +36,13 @@ export function exportActionSectionForFeed(
     want.add(layer.id);
     if (layer.parentGroupId) want.add(layer.parentGroupId);
   }
+  for (const layer of action) {
+    const targetId = layer.behavior === 'widget.reveal' ? layer.revealLayerId : undefined;
+    const target = targetId ? all.find((item) => item.id === targetId) : undefined;
+    if (!target) continue;
+    want.add(target.id);
+    if (target.parentGroupId) want.add(target.parentGroupId);
+  }
   const layers = all.filter((layer) => want.has(layer.id));
   const timelineDurationSec = resolveTimelineDuration({ ...sec, layers }, undefined, ctx);
   return {
@@ -44,15 +51,24 @@ export function exportActionSectionForFeed(
   };
 }
 
-/** Posed action layers at page time `t` (visibility + motion). */
+/**
+ * Posed action layers at page time `t` (visibility + motion).
+ * `revealed` ids are shown even when hidden or inert (Reveal targets).
+ */
 export function buildActionOverlayAtTime(
   actionSection: PenFeedActionSection,
-  timeSec: number
+  timeSec: number,
+  revealed?: readonly string[]
 ): PenPageLayer[] {
+  const shown = new Set(revealed || []);
   const section: PenSectionContent = {
     slug: 'feed-action',
     doc: { type: 'doc', content: [] },
-    layers: actionSection.layers,
+    layers: shown.size
+      ? actionSection.layers.map((layer) =>
+          shown.has(layer.id) ? { ...layer, visible: true } : layer
+        )
+      : actionSection.layers,
     ...(actionSection.timelineDurationSec != null
       ? { timelineDurationSec: actionSection.timelineDurationSec }
       : {})
@@ -60,6 +76,7 @@ export function buildActionOverlayAtTime(
   return sampleSectionLayers(section, timeSec).filter((layer) => {
     if (layer.visible === false) return false;
     if (layer.kind === 'group') return false;
+    if (shown.has(layer.id)) return true;
     const { action } = partitionLayersForCompose([layer]);
     return action.length > 0;
   });

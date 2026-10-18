@@ -1,69 +1,75 @@
-import type { PenActionMessage, PenFeedPagePayload } from '@par-noir/pen-protocol';
-import type { FeedTileViewModel } from '@par-noir/feed-tile';
+import { buildCorrespondenceHandoffHash, type PenActionEffect } from '@par-noir/pen-protocol';
 import { ownerFetch } from './ownerApiFetch';
 
-function spreadsheetIdForLayer(
-  penFeedPage: PenFeedPagePayload | undefined,
-  layerId: string
-): string | undefined {
-  if (!penFeedPage) return undefined;
-  const layer = penFeedPage.actionSection.layers.find((item) => item.id === layerId);
-  if (!layer) return undefined;
-  const own = layer.spreadsheetId?.trim();
-  if (own) return own;
-  if (!layer.parentGroupId) return undefined;
-  const group = penFeedPage.actionSection.layers.find((item) => item.id === layer.parentGroupId);
-  return group?.spreadsheetId?.trim() || undefined;
+const DEFAULT_MESSAGING_ORIGIN = 'https://messaging.parnoir.com';
+
+function messagingOrigin(): string {
+  const env = import.meta.env as ImportMetaEnv & { VITE_MESSAGING_ORIGIN?: string };
+  return (env.VITE_MESSAGING_ORIGIN || DEFAULT_MESSAGING_ORIGIN).replace(/\/$/, '');
 }
 
-function penFeedPageForAction(
-  model: FeedTileViewModel,
-  layerId: string
-): PenFeedPagePayload | undefined {
-  for (const page of model.pages) {
-    if (!page.penFeedPage) continue;
-    if (page.penFeedPage.actionSection.layers.some((layer) => layer.id === layerId)) {
-      return page.penFeedPage;
-    }
-  }
-  return model.pages[0]?.penFeedPage;
-}
-
-/** Handle interactive overlay presses on published Pen feed tiles. */
-export async function handleFeedPenAction(input: {
-  message: PenActionMessage;
-  model: FeedTileViewModel;
+/**
+ * Run the side effect of a press on a published Pen feed tile.
+ * Open / email / Messaging need no unlock. Vote and sheet rows need the viewer's pn.
+ */
+export async function runFeedPenEffect(input: {
+  effect: PenActionEffect;
   penDocId?: string;
   creatorPnIdentifier?: string;
-  userPnIdentifier: string;
+  userPnIdentifier?: string;
 }): Promise<void> {
-  const { message, model, penDocId, creatorPnIdentifier, userPnIdentifier } = input;
-  if (!message.behavior) return;
-  if (message.behavior === 'link.open' && message.bindRowId) {
-    const url = message.bindRowId.trim();
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      window.open(url, '_blank', 'noopener,noreferrer');
+  const { effect, penDocId, creatorPnIdentifier, userPnIdentifier } = input;
+  switch (effect.kind) {
+    case 'open':
+      window.open(effect.url, '_blank', 'noopener,noreferrer');
+      return;
+    case 'mailto':
+      window.location.assign(effect.href);
+      return;
+    case 'messaging': {
+      const hash = buildCorrespondenceHandoffHash({
+        title: effect.title,
+        body: effect.body,
+        ...(penDocId ? { docId: penDocId } : {})
+      });
+      window.open(`${messagingOrigin()}/${hash}`, '_blank', 'noopener,noreferrer');
+      return;
     }
-    return;
+    case 'vote': {
+      if (!userPnIdentifier || !effect.spreadsheetId || !penDocId || !creatorPnIdentifier) return;
+      await ownerFetch(
+        'POST',
+        '/api/pen/polls/vote',
+        {
+          userPnIdentifier,
+          ownerPnIdentifier: creatorPnIdentifier,
+          pollId: effect.spreadsheetId,
+          optionId: effect.optionId,
+          voteId: crypto.randomUUID(),
+          docId: penDocId,
+          createdAt: new Date().toISOString()
+        },
+        { pnIdentifier: userPnIdentifier }
+      );
+      return;
+    }
+    case 'widget_row': {
+      if (!userPnIdentifier || !effect.spreadsheetId || !penDocId || !creatorPnIdentifier) return;
+      await ownerFetch(
+        'POST',
+        '/api/pen/widgets/action',
+        {
+          userPnIdentifier,
+          ownerPnIdentifier: creatorPnIdentifier,
+          spreadsheetId: effect.spreadsheetId,
+          docId: penDocId,
+          row: effect.row
+        },
+        { pnIdentifier: userPnIdentifier }
+      );
+      return;
+    }
+    default:
+      return;
   }
-  if (message.behavior !== 'poll.vote') return;
-  const penFeedPage = penFeedPageForAction(model, message.layerId);
-  const spreadsheetId = spreadsheetIdForLayer(penFeedPage, message.layerId);
-  if (!spreadsheetId || !penDocId || !creatorPnIdentifier) return;
-  const optionId = message.bindRowId?.trim() || message.layerId;
-  const voteId = crypto.randomUUID();
-  await ownerFetch(
-    'POST',
-    '/api/pen/polls/vote',
-    {
-      userPnIdentifier,
-      ownerPnIdentifier: creatorPnIdentifier,
-      pollId: spreadsheetId,
-      optionId,
-      voteId,
-      docId: penDocId,
-      createdAt: new Date().toISOString()
-    },
-    { pnIdentifier: userPnIdentifier }
-  );
 }

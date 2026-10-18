@@ -30,14 +30,10 @@ export function ScreenLayerStage({
   activeLayerId,
   session,
   docId,
-  buttonCaptionById,
-  votedOptionByGroup,
   inputValues,
   onInputValue,
   onSelectLayer,
   onSectionsChange,
-  onPollVote,
-  onWidgetAction,
   snapToPageCenter = false,
   playheadSec: playheadProp,
   freePlacement = false,
@@ -52,14 +48,10 @@ export function ScreenLayerStage({
   activeLayerId: string | null;
   session?: PenSession | null;
   docId?: string;
-  buttonCaptionById?: Record<string, string>;
-  votedOptionByGroup?: Record<string, string>;
   inputValues?: Record<string, string>;
   onInputValue?: (layerId: string, value: string) => void;
   onSelectLayer: (id: string | null) => void;
   onSectionsChange: (next: PenSectionContent[]) => void;
-  onPollVote?: (layer: PenPageLayer) => void;
-  onWidgetAction?: (layer: PenPageLayer) => void;
   snapToPageCenter?: boolean;
   /** Section clock. Sampled for display; drags write keys when the layer has them. */
   playheadSec?: number;
@@ -225,17 +217,10 @@ export function ScreenLayerStage({
             presentation={presentation}
             session={session}
             docId={docId}
-            buttonCaptionById={buttonCaptionById}
-            votedOptionByGroup={votedOptionByGroup}
             inputValues={inputValues}
             onInputValue={onInputValue}
             selected={activeLayerId === layer.id}
             onSelect={() => onSelectLayer(layer.id)}
-            onSectionChange={(next) =>
-              onSectionsChange(sections.map((entry) => (entry.slug === next.slug ? next : entry)))
-            }
-            onPollVote={onPollVote}
-            onWidgetAction={onWidgetAction}
           />
         );
       }}

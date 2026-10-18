@@ -3,16 +3,12 @@
  * Cross-origin: payload rides in the messaging URL hash.
  */
 
-import { docToPlainText, type PenSectionContent } from '@par-noir/pen-protocol';
-
-export const PEN_CORRESPONDENCE_HASH_PREFIX = 'pen_correspondence_handoff_v1:' as const;
-
-export type PenCorrespondenceHandoffPayload = {
-  title: string;
-  body: string;
-  classId?: string;
-  docId?: string;
-};
+import {
+  buildCorrespondenceHandoffHash,
+  docToPlainText,
+  type PenCorrespondenceHandoffPayload,
+  type PenSectionContent
+} from '@par-noir/pen-protocol';
 
 const envMessaging =
   typeof import.meta !== 'undefined'
@@ -35,10 +31,6 @@ export function bodyFromSections(sections: PenSectionContent[]): string {
     .filter(Boolean)
     .join('\n\n')
     .trim();
-}
-
-export function buildCorrespondenceHandoffHash(payload: PenCorrespondenceHandoffPayload): string {
-  return `#${PEN_CORRESPONDENCE_HASH_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
 /** Open Messaging with letter/note title + plain text body in the hash. */

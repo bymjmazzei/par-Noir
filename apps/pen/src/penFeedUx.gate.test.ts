@@ -255,11 +255,17 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/renderSlide\(i,\s*i === activeIndex\)/);
   });
 
-  it('DocEditorPage social live preview uses shared SocialFeedPhonePreview', () => {
-    const src = readFileSync(resolve(root, 'pages/docEditor/DocEditorSocialPreview.tsx'), 'utf8');
-    expect(src).toMatch(/pen-social-live-preview/);
-    expect(src).toMatch(/SocialFeedPhonePreview/);
-    expect(src).not.toMatch(/engagementOverlay/);
+  it('editor button faces select the layer and never run its action', () => {
+    for (const rel of [
+      'components/EditablePagePreview.tsx',
+      'components/PreviewLayerFace.tsx',
+      'components/ScreenLayerStage.tsx',
+      'components/editablePagePreview/editablePagePreviewParts.tsx',
+      'pages/docEditor/DocEditorShell.tsx'
+    ]) {
+      const src = readFileSync(resolve(root, rel), 'utf8');
+      expect(src, rel).not.toMatch(/onWidgetAction|onPollVote|runWidgetAction|revealSibling/);
+    }
   });
 
   it('layers add menu is New text layer, New group, and Browse widgets', () => {
@@ -291,13 +297,14 @@ describe('pen feed UX chrome', () => {
     expect(rail).toMatch(/widgets\.widget/);
   });
 
-  it('DocEditorPage social live preview mounts LayersPopover for action layers', () => {
-    const src = readFileSync(resolve(root, 'pages/docEditor/DocEditorSocialPreview.tsx'), 'utf8');
-    const social = src;
-    expect(social).toMatch(/<LayersPopover/);
-    expect(social).toMatch(/ActionLayerPhoneOverlay/);
-    expect(social).toMatch(/ActionBindStrip/);
-    expect(social).toMatch(/aria-label="Layers"/);
+  it('Preview page runs every button effect through the shared feed tile', () => {
+    const src = readFileSync(resolve(root, 'pages/DocPreviewPage.tsx'), 'utf8');
+    expect(src).toMatch(/onEffect=\{/);
+    expect(src).toMatch(/effect\.kind === 'open'/);
+    expect(src).toMatch(/effect\.kind === 'mailto'/);
+    expect(src).toMatch(/openMessagingWithCorrespondence/);
+    expect(src).toMatch(/castPollVote/);
+    expect(src).toMatch(/queueWidgetAction/);
   });
 
   it('FeedTileSurface caption is browse title+caption without You avatar', () => {

@@ -82,11 +82,9 @@ import {
   inputColumnKeys,
   isSheetTrigger,
   buildActionStageHtml,
-  type PenActionMessage,
   nextAllocatePress,
   nextRankPress,
   rankColumnKeys,
-  revealSibling,
   sectionHasVoteButton,
   structureFromLayers,
   submitFields,
@@ -121,7 +119,6 @@ import { clampEditorPanePx } from '../../components/editorSplit';
 import { pageFrameStyle } from '../../components/LayerObjectToolbar';
 import { SocialFeedPhonePreview } from '../../components/SocialFeedPhonePreview';
 import { LayersPopover } from '../../components/LayersPanel';
-import { ActionLayerPhoneOverlay } from '../../components/ActionLayerPhoneOverlay';
 import { ActionBindStrip } from '../../components/ActionBindStrip';
 import { IconLayers } from '../../components/icons/PenIcons';
 import { MediaEditorPanel } from '../../components/MediaEditorPanel';
@@ -235,13 +232,11 @@ export function DocEditorShell(state: DocEditorReadyState) {
     activeSlugRef,
     activeWritingDoc,
     addComment,
-    amountByGroup,
     applyHistorySnapshot,
     applyingHistoryRef,
     bumpHistoryUi,
     bundle,
     bundleRef,
-    buttonCaptionById,
     canvasSection,
     captureLayers,
     classTrail,
@@ -269,7 +264,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     historyUi,
     hydrating,
     inputValues,
-    inputValuesRef,
     introPlayKey,
     inviteCollaborator,
     invitePn,
@@ -285,7 +279,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     ledgerTimerRef,
     navigate,
     onEditorReady,
-    onStageAction,
     onStoryBlockHeights,
     pageExportRoot,
     pageLayout,
@@ -306,12 +299,10 @@ export function DocEditorShell(state: DocEditorReadyState) {
     publishSocial,
     publishTemplate,
     pushWidgetSheet,
-    rankByGroup,
     redoEdit,
     rejectSuggestion,
     rememberPostFileId,
     rootForSlug,
-    runWidgetAction,
     saveDraft,
     savedTick,
     scheduleLedgerPush,
@@ -353,18 +344,14 @@ export function DocEditorShell(state: DocEditorReadyState) {
     socialLayersBtnRef,
     socialLayersOpen,
     socialSelectedIds,
-    stampAt,
     status,
     suggestions,
     template,
     timelineGroupId,
     timelinePlaying,
     toggleSocial,
-    toggledKeys,
     undoEdit,
     verifiedAuthor,
-    voteOnPoll,
-    votedOptionByGroup,
     waitTwoFrames,
     widgetEditorLayer,
     widgetSheetTimer,
@@ -1488,7 +1475,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
                             onPageView={setPreviewPageView}
                             onToggleViewLock={togglePageViewLock}
                             onToggleEngagementGuide={() => setEngagementGuide((on) => !on)}
-                            buttonCaptionById={buttonCaptionById}
                             session={session}
                             onEnterGroup={(id) => {
                               setTimelineGroupId(id);
@@ -1541,11 +1527,8 @@ export function DocEditorShell(state: DocEditorReadyState) {
                                 }
                               });
                             }}
-                            onPollVote={(layer) => void voteOnPoll(layer)}
-                            onWidgetAction={(layer) => void runWidgetAction(layer)}
                             inputValues={inputValues}
                             onInputValue={setInputValue}
-                            votedOptionByGroup={votedOptionByGroup}
                             playheadSec={active ? undefined : 0}
                             guideSpan={pageGuideSpan}
                             onSectionChange={(next) => {
@@ -1587,8 +1570,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
                     activeLayerId={activeLayerId}
                     session={session}
                     docId={bundle.manifest.docId}
-                    buttonCaptionById={buttonCaptionById}
-                    votedOptionByGroup={votedOptionByGroup}
                     inputValues={inputValues}
                     onInputValue={setInputValue}
                     onSelectLayer={(id) => {
@@ -1607,8 +1588,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
                         manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
                       })
                     }
-                    onPollVote={(layer) => void voteOnPoll(layer)}
-                    onWidgetAction={(layer) => void runWidgetAction(layer)}
                     snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
                     freePlacement={artboard}
                     drawGuides={false}

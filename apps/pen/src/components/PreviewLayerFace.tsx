@@ -6,7 +6,6 @@ import {
   docToPlainText,
   timeLayerCaption,
   getTextLayerDoc,
-  revealSibling,
   sanitizeWidgetMarkup,
   voteFaceForLayer,
   type PenPageLayer,
@@ -27,14 +26,9 @@ export function PreviewLayerFace({
   presentation,
   session,
   docId,
-  buttonCaptionById,
-  votedOptionByGroup,
   inputValues,
   onInputValue,
   onSelect,
-  onSectionChange,
-  onPollVote,
-  onWidgetAction,
   onNaturalAspect,
   selected = false
 }: {
@@ -44,14 +38,9 @@ export function PreviewLayerFace({
   presentation: PenPagePresentation;
   session?: PenSession | null;
   docId?: string;
-  buttonCaptionById?: Record<string, string>;
-  votedOptionByGroup?: Record<string, string>;
   inputValues?: Record<string, string>;
   onInputValue?: (layerId: string, value: string) => void;
   onSelect: () => void;
-  onSectionChange: (next: PenSectionContent) => void;
-  onPollVote?: (layer: PenPageLayer) => void;
-  onWidgetAction?: (layer: PenPageLayer) => void;
   onNaturalAspect?: (aspect: number) => void;
   selected?: boolean;
 }) {
@@ -123,12 +112,9 @@ export function PreviewLayerFace({
     );
   }
   if (layer.kind === 'interactive') {
-    const groupKey = layer.parentGroupId || 'doc';
     const counts = layers.find((item) => item.id === layer.parentGroupId)?.widgetCounts || null;
     const runtime =
-      layer.behavior === 'poll.vote'
-        ? voteFaceForLayer(section, layer, votedOptionByGroup?.[groupKey] || null, counts).text
-        : buttonCaptionById?.[layer.id];
+      layer.behavior === 'poll.vote' ? voteFaceForLayer(section, layer, null, counts).text : '';
     const face = layer.textDoc ? docToPlainText(layer.textDoc) : '';
     const rich = face ? docToHtml(layer.textDoc) : '';
     return (
@@ -139,9 +125,6 @@ export function PreviewLayerFace({
         title={layer.behavior || 'button'}
         onClick={(e) => {
           e.stopPropagation();
-          if (layer.behavior === 'poll.vote') onPollVote?.(layer);
-          else if (layer.behavior === 'widget.reveal') onSectionChange(revealSibling(section, layer.id));
-          else if (layer.behavior) onWidgetAction?.(layer);
           onSelect();
         }}
       >

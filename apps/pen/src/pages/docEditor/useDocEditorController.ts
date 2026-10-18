@@ -74,33 +74,17 @@ import {
   isGooglePenFont,
   remapSectionsForAspect,
   normalizeGalleryAspect,
-  allocateColumnKeys,
-  allocateTotal,
-  buildWidgetActionRow,
-  cellsForAmounts,
-  cellsForInputs,
-  cellsForRanks,
-  formCollectsToSheet,
-  inputColumnKeys,
   isSheetTrigger,
   buildActionStageHtml,
-  type PenActionMessage,
-  nextAllocatePress,
-  nextRankPress,
-  rankColumnKeys,
-  revealSibling,
   sectionHasVoteButton,
   structureFromLayers,
-  submitFields,
-  syncPollLayers,
   type PenDocComment,
   type PenPageLayout,
   type PenDocManifest,
   type PenRole,
   type PenSuggestion,
   type PenTipTapNode,
-  type PenLicensingRoot,
-  type PenPageLayer
+  type PenLicensingRoot
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../../services/penSession';
 import { FormatRibbon, PageCanvas } from '../../components/PageCanvas';
@@ -123,7 +107,6 @@ import { clampEditorPanePx } from '../../components/editorSplit';
 import { pageFrameStyle } from '../../components/LayerObjectToolbar';
 import { SocialFeedPhonePreview } from '../../components/SocialFeedPhonePreview';
 import { LayersPopover } from '../../components/LayersPanel';
-import { ActionLayerPhoneOverlay } from '../../components/ActionLayerPhoneOverlay';
 import { ActionBindStrip } from '../../components/ActionBindStrip';
 import { IconLayers } from '../../components/icons/PenIcons';
 import { MediaEditorPanel } from '../../components/MediaEditorPanel';
@@ -167,9 +150,8 @@ import {
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
 import { requestNotaryStamp, fetchMonetizationConnectReady } from '../../services/penApi';
-import { castPollVote, createPollSheet, putPollStructure } from '../../services/pollCloud';
+import { createPollSheet, putPollStructure } from '../../services/pollCloud';
 import { ensureBundleTrackingSheets } from '../../services/widgetTracking';
-import { queueWidgetAction } from '../../services/widgetAction';
 import { resolveSigningKeys } from '../../services/penKeys';
 import {
   actorCan,
@@ -309,14 +291,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   dirtyRef.current = dirty;
   activeSlugRef.current = activeSlug;
   const [error, setError] = useState<string | null>(null);
-  const [votedOptionByGroup, setVotedOptionByGroup] = useState<Record<string, string>>({});
-  const [toggledKeys, setToggledKeys] = useState<Set<string>>(() => new Set());
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const inputValuesRef = useRef(inputValues);
-  inputValuesRef.current = inputValues;
-  const [stampAt, setStampAt] = useState<Record<string, string>>({});
-  const [rankByGroup, setRankByGroup] = useState<Record<string, Record<string, number>>>({});
-  const [amountByGroup, setAmountByGroup] = useState<Record<string, Record<string, number>>>({});
   const widgetSheetTimer = useRef<number | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
@@ -565,30 +540,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     }
     return null;
   }, [section, activeLayerId]);
-
-  const buttonCaptionById = useMemo(() => {
-    const map: Record<string, string> = {};
-    if (!section) return map;
-    for (const layer of section.layers || []) {
-      const groupKey = layer.parentGroupId || 'doc';
-      if (layer.behavior === 'widget.toggle') {
-        const key = `${groupKey}:${session.pnIdentifier}`;
-        if (toggledKeys.has(key)) map[layer.id] = `${layer.label || 'Button'} On`;
-      } else if (layer.behavior === 'widget.stamp' && stampAt[layer.id]) {
-        map[layer.id] = new Date(stampAt[layer.id]).toLocaleString();
-      } else if (layer.behavior === 'widget.rank') {
-        const rank = rankByGroup[groupKey]?.[layer.id];
-        if (rank) map[layer.id] = String(rank);
-      } else if (layer.behavior === 'widget.allocate') {
-        const amounts = amountByGroup[groupKey] || {};
-        const spent = Object.values(amounts).reduce((sum, value) => sum + value, 0);
-        const left = Math.max(0, allocateTotal(section, layer.parentGroupId || null) - spent);
-        const amount = amounts[layer.id] || 0;
-        if (amount || spent) map[layer.id] = `${amount} · ${left} left`;
-      }
-    }
-    return map;
-  }, [section, session.pnIdentifier, toggledKeys, stampAt, rankByGroup, amountByGroup]);
 
   const widgetStripLayer = useMemo(() => {
     if (!section || isPageLayerId(activeLayerId)) return null;
@@ -889,57 +840,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     });
   }, [docId, session]);
 
-  function onStageAction(message: PenActionMessage) {
-    if (!bundle) return;
-    for (const sec of bundle.sections) {
-      const layer = (sec.layers || []).find((item) => item.id === message.layerId);
-      if (!layer) continue;
-      setActiveLayerId(layer.id);
-      setSocialSelectedIds([layer.id]);
-      if (message.behavior === 'poll.vote') {
-        void voteOnPoll({ ...layer, bindRowId: layer.bindRowId || message.bindRowId || layer.id });
-      } else if (message.behavior) {
-        void runWidgetAction(layer);
-      }
-      return;
-    }
-  }
-
-  async function voteOnPoll(layer: PenPageLayer) {
-    if (!bundle || !section || layer.behavior !== 'poll.vote' || !layer.bindRowId) return;
-    const group = layer.parentGroupId
-      ? section.layers?.find((item) => item.id === layer.parentGroupId)
-      : undefined;
-    const spreadsheetId = group?.spreadsheetId || bundle.manifest.pollSpreadsheetId;
-    if (!spreadsheetId) {
-      setError('Save the poll before voting.');
-      return;
-    }
-    try {
-      const result = await castPollVote({
-        session,
-        ownerPnIdentifier: session.pnIdentifier,
-        docId: bundle.manifest.docId,
-        spreadsheetId,
-        optionId: layer.bindRowId
-      });
-      const structure = structureFromLayers(section, group?.id || null);
-      const next = syncPollLayers(section, group?.id || null, structure, result.counts);
-      persist({
-        ...bundle,
-        sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-        manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-      });
-      if (!result.enqueued) {
-        setError('Vote counted. It will reach the sheet after the owner unlocks.');
-      }
-      const optionId = layer.bindRowId || layer.id;
-      setVotedOptionByGroup((prev) => ({ ...prev, [group?.id || 'doc']: optionId }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'vote_failed');
-    }
-  }
-
   function persist(next: NonNullable<typeof bundle>, opts?: { draft?: boolean }) {
     const stamped = {
       ...next,
@@ -993,125 +893,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
 
   function setInputValue(layerId: string, value: string) {
     setInputValues((prev) => (prev[layerId] === value ? prev : { ...prev, [layerId]: value }));
-  }
-
-  async function runWidgetAction(layer: PenPageLayer) {
-    if (!bundle || !section || !layer.behavior) return;
-    const groupId = layer.parentGroupId || null;
-    const groupKey = groupId || 'doc';
-    if (layer.behavior === 'cta.open') {
-      const url = (layer.openUrl || '').trim();
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    if (layer.behavior === 'widget.reveal') {
-      persistSection(revealSibling(section, layer.id));
-      return;
-    }
-    if (layer.behavior === 'widget.submit') {
-      const values = inputValuesRef.current;
-      const fields = submitFields(section, groupId, values);
-      const body = Object.entries(fields)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join('\n');
-      const to = (layer.submitTo || '').trim();
-      if (to) {
-        if (to.includes('@')) {
-          window.location.assign(
-            `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(layer.label || 'Widget')}&body=${encodeURIComponent(body)}`
-          );
-        } else {
-          openMessagingWithCorrespondence({
-            title: layer.label || 'Widget',
-            body,
-            docId: bundle.manifest.docId
-          });
-        }
-        return;
-      }
-      if (!formCollectsToSheet(section, groupId)) {
-        openMessagingWithCorrespondence({
-          title: layer.label || 'Widget',
-          body,
-          docId: bundle.manifest.docId
-        });
-        return;
-      }
-      const headers = inputColumnKeys(section, groupId);
-      const cells = cellsForInputs(section, groupId, values);
-      const built = buildWidgetActionRow({
-        trigger: 'widget.submit',
-        actorId: session.pnIdentifier,
-        actionId: crypto.randomUUID(),
-        headers,
-        cells,
-        fields
-      });
-      try {
-        const spreadsheetId = await ensureWidgetSpreadsheet(section, groupId);
-        await queueWidgetAction({
-          session,
-          docId: bundle.manifest.docId,
-          spreadsheetId,
-          row: built.row
-        });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'widget_action_failed');
-      }
-      return;
-    }
-    if (!isSheetTrigger(layer.behavior)) return;
-    const actorId = session.pnIdentifier;
-    const actionId = crypto.randomUUID();
-    const trigger = layer.behavior;
-    let present: boolean | undefined;
-    let headers: string[] | undefined;
-    let cells: string[] | undefined;
-    let createdAt: string | undefined;
-    if (trigger === 'widget.toggle') {
-      const key = `${groupKey}:${actorId}`;
-      present = !toggledKeys.has(key);
-      setToggledKeys((prev) => {
-        const next = new Set(prev);
-        if (present) next.add(key);
-        else next.delete(key);
-        return next;
-      });
-    } else if (trigger === 'widget.stamp') {
-      createdAt = new Date().toISOString();
-      setStampAt((prev) => ({ ...prev, [layer.id]: createdAt! }));
-    } else if (trigger === 'widget.rank') {
-      const next = nextRankPress(rankByGroup[groupKey] || {}, layer.id);
-      setRankByGroup((prev) => ({ ...prev, [groupKey]: next }));
-      headers = rankColumnKeys(section, groupId);
-      cells = cellsForRanks(section, groupId, next);
-    } else if (trigger === 'widget.allocate') {
-      const step = nextAllocatePress(amountByGroup[groupKey] || {}, layer.id, allocateTotal(section, groupId));
-      setAmountByGroup((prev) => ({ ...prev, [groupKey]: step.amounts }));
-      if (!step.complete) return;
-      headers = allocateColumnKeys(section, groupId);
-      cells = cellsForAmounts(section, groupId, step.amounts);
-    }
-    const built = buildWidgetActionRow({
-      trigger,
-      actorId,
-      actionId,
-      createdAt,
-      present,
-      headers,
-      cells
-    });
-    try {
-      const spreadsheetId = await ensureWidgetSpreadsheet(section, groupId);
-      await queueWidgetAction({
-        session,
-        docId: bundle.manifest.docId,
-        spreadsheetId,
-        row: built.row
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'widget_action_failed');
-    }
   }
 
   function sectionNeedsSheet(next: NonNullable<typeof section>): boolean {
@@ -2223,13 +2004,11 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     activeSlugRef,
     activeWritingDoc,
     addComment,
-    amountByGroup,
     applyHistorySnapshot,
     applyingHistoryRef,
     bumpHistoryUi,
     bundle,
     bundleRef,
-    buttonCaptionById,
     canvasSection,
     captureLayers,
     classTrail,
@@ -2257,7 +2036,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     historyUi,
     hydrating,
     inputValues,
-    inputValuesRef,
     introPlayKey,
     inviteCollaborator,
     invitePn,
@@ -2274,7 +2052,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     ledgerTimerRef,
     navigate,
     onEditorReady,
-    onStageAction,
     onStoryBlockHeights,
     pageExportRoot,
     pageLayout,
@@ -2295,12 +2072,10 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     publishSocial,
     publishTemplate,
     pushWidgetSheet,
-    rankByGroup,
     redoEdit,
     rejectSuggestion,
     rememberPostFileId,
     rootForSlug,
-    runWidgetAction,
     saveDraft,
     savedTick,
     scheduleLedgerPush,
@@ -2343,18 +2118,14 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     socialLayersOpen,
     setSocialLayersOpen,
     socialSelectedIds,
-    stampAt,
     status,
     suggestions,
     template,
     timelineGroupId,
     timelinePlaying,
     toggleSocial,
-    toggledKeys,
     undoEdit,
     verifiedAuthor,
-    voteOnPoll,
-    votedOptionByGroup,
     waitTwoFrames,
     widgetEditorLayer,
     widgetSheetTimer,

@@ -16,7 +16,8 @@ describe('pen feed playback gate', () => {
     expect(src).toMatch(/buildPenFeedTileModelForPost/);
     expect(src).toMatch(/buildPenCollectionFeedTileModel/);
     expect(src).toMatch(/!isPenFeedPost/);
-    expect(src).toMatch(/handleFeedPenAction/);
+    expect(src).toMatch(/runFeedPenEffect/);
+    expect(src).not.toMatch(/if \(!userState\.isUnlocked \|\| !userState\.pnIdentifier\) return;\s*void runFeedPenEffect/);
   });
 
   it('FullScreenFeed requests the hd variant first for video', () => {

@@ -48,7 +48,6 @@ import {
   resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
   timeLayerCaption,
-  revealSibling,
   selectPageSize,
   sanitizeWidgetMarkup,
   updateLayerLayout,
@@ -108,14 +107,10 @@ export function EditablePagePreview({
   onPresentationChange,
   onSnapChange,
   session,
-  onPollVote,
-  onWidgetAction,
   inputValues,
   onInputValue,
-  votedOptionByGroup,
   hideActionBind,
   hideObjectTools,
-  buttonCaptionById,
   showToolbar = true,
   clearChrome = false,
   toolbarHost = null,
@@ -139,15 +134,11 @@ export function EditablePagePreview({
   activeLayerId: string | null;
   onSelectLayer: (id: string | null) => void;
   onSectionChange: (next: PenSectionContent) => void;
-  onPollVote?: (layer: PenPageLayer) => void;
-  onWidgetAction?: (layer: PenPageLayer) => void;
   inputValues?: Record<string, string>;
   onInputValue?: (layerId: string, value: string) => void;
-  votedOptionByGroup?: Record<string, string>;
   /** Widget trigger lives in the side pane. Do not repeat it on this toolbar. */
   hideActionBind?: boolean;
   hideObjectTools?: boolean;
-  buttonCaptionById?: Record<string, string>;
   /** Inactive pages in a multi-page strip hide the object toolbar. */
   showToolbar?: boolean;
   /** When set, the toolbar is drawn here instead of on this page. */
@@ -863,8 +854,6 @@ export function EditablePagePreview({
                 contentW={box.width}
                 contentH={box.height}
                 onSelect={() => selectLayer(layer.id)}
-                onPollVote={onPollVote}
-                onWidgetAction={onWidgetAction}
                 inputValues={inputValues}
                 onInputValue={onInputValue}
                 onCommit={(patch) => onWrapCommit(layer.id, patch)}
@@ -1022,18 +1011,12 @@ export function EditablePagePreview({
                   );
                 }
                 if (layer.kind === 'interactive') {
-                  const groupKey = layer.parentGroupId || 'doc';
                   const counts =
                     layers.find((item) => item.id === layer.parentGroupId)?.widgetCounts || null;
                   const runtime =
                     layer.behavior === 'poll.vote'
-                      ? voteFaceForLayer(
-                          prepared,
-                          layer,
-                          votedOptionByGroup?.[groupKey] || null,
-                          counts
-                        ).text
-                      : buttonCaptionById?.[layer.id];
+                      ? voteFaceForLayer(prepared, layer, null, counts).text
+                      : '';
                   const face = layer.textDoc ? docToPlainText(layer.textDoc) : '';
                   const rich = face ? docToHtml(layer.textDoc) : '';
                   return (
@@ -1044,10 +1027,6 @@ export function EditablePagePreview({
                       title={layer.behavior || 'button'}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (layer.behavior === 'poll.vote') onPollVote?.(layer);
-                        else if (layer.behavior === 'widget.reveal') {
-                          onSectionChange(revealSibling(prepared, layer.id));
-                        } else if (layer.behavior) onWidgetAction?.(layer);
                         selectLayer(layer.id);
                       }}
                     >
