@@ -31,16 +31,12 @@ cd par-Noir
 
 2. **Install Dependencies**
 ```bash
-npm install
-cd apps/id-dashboard && npm install
-cd ../../core/identity-core && npm install
-cd ../../sdk/identity-sdk && npm install
+npm ci
 ```
 
 3. **Start Development Server**
 ```bash
-cd apps/id-dashboard
-npm run dev
+npm run dev:dashboard
 ```
 
 4. **Run Tests**

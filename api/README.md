@@ -326,8 +326,8 @@ Operator setup: connect Google Drive for the registry pN on production API, set 
 ## 📚 **Documentation**
 
 - [pN OAuth for integrators](../docs/developer/PN_OAUTH_INTEGRATION.md)
-- [Military-Grade Implementation Guide](../core/identity-core/MILITARY_GRADE_QUANTUM_RESISTANT_SUMMARY.md)
-- [Zero-Knowledge Proofs Documentation](../core/identity-core/TRUE_ZERO_KNOWLEDGE_PROOFS_SUMMARY.md)
+- [Identity PQC decisions](../docs/security/IDENTITY_PQC_DECISIONS.md)
+- [ZK standards](../docs/standards/ZK_PROOF_V2.md) (v2 issuance; v1 verification in `@par-noir/zk-protocol-v1`)
 - [Security Audit Guide](../docs/security/SECURITY_AUDIT_GUIDE.md)
 
 ## 🔐 **Security**

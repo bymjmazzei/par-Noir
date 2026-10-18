@@ -22,8 +22,9 @@ apps/desktop-dashboard/resources/veracrypt/
 apps/pen/src/assets/
 
 # Stale / non-runtime docs (still in git; not for agent retrieval)
-docs/legal/
 docs/archive/
+docs/history/
+docs-inventory.csv
 docs/DIAGNOSTIC_*.md
 docs/BROWSER_REDESIGN_PLAN.md
 docs/ops/PRODUCTION_READINESS_PLAN.md

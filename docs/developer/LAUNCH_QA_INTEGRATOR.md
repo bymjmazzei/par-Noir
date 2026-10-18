@@ -49,4 +49,4 @@ Run before treating the integrator SDK as launch-ready. Operator approval: [OAUT
 
 - [ ] Publish leaf packages then oauth-ui then identity-sdk per [PUBLISHING.md](../../sdk/identity-sdk/PUBLISHING.md)
 
-See also [GOOGLE_DRIVE_INITIALIZATION_DIAGNOSIS.md](../../GOOGLE_DRIVE_INITIALIZATION_DIAGNOSIS.md).
+See also [GOOGLE_DRIVE_INITIALIZATION_DIAGNOSIS.md](./GOOGLE_DRIVE_INITIALIZATION_DIAGNOSIS.md).

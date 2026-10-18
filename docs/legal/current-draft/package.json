@@ -1,9 +1,0 @@
-{
-  "name": "current-draft",
-  "version": "1.0.0",
-  "private": true,
-  "license": "UNLICENSED",
-  "dependencies": {
-    "@resvg/resvg-js": "^2.6.2"
-  }
-}

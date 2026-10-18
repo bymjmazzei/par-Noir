@@ -1,6 +1,6 @@
 # Current Status: par Noir Ecosystem
 
-**Last updated:** 2026-06-07
+**Last updated:** 2026-03-18 (layer summary; live surface detail in [LIVE_APPS_STATUS.md](./LIVE_APPS_STATUS.md))
 
 ## Layer 4 — Aggregator Browser (`browse.parnoir.com`, `messaging.parnoir.com`)
 

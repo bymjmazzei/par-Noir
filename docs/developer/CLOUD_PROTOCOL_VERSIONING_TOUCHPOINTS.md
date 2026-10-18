@@ -56,7 +56,7 @@ Under **device cloud custody**, the API cannot silently push layout changes. Upg
 | Folder helpers | `api/src/server/modules/pnDriveLayout.ts` | `findOrCreateFolderUnderParent` (TOCTOU duplicate risk if concurrent) |
 | Portable tables | `api/src/server/modules/storage/storageInitService.ts` | `PORTABLE_TABLES`, `initializePortableStorage` |
 | Provider migrate catalog | `packages/storage-migration/src/migrationCatalog.ts` | Social-cloud / file moves — **not** layout version bumps |
-| Docs | `docs/developer/USER_STORAGE_LAYOUT.md`, `GOOGLE_DRIVE_STRUCTURE.md`, `docs/DRIVE_INDEX.md` | Layout contracts |
+| Docs | `docs/developer/USER_STORAGE_LAYOUT.md`, `docs/developer/GOOGLE_DRIVE_STRUCTURE.md`, `docs/DRIVE_INDEX.md` | Layout contracts |
 
 **`PnDriveIndex` fields (schemaVersion 1):** `pnFolderId`, `metadataFolderId`, `integratorsRootId`, `messagesFolderId`, `inboxSheetId`, optional `zkpDocsFolderId`, `sheetIds`, `conversationSheets`.
 

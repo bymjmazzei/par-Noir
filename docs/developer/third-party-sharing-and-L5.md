@@ -10,7 +10,7 @@ This document aligns **user-authorized third-party access** with existing API be
 | **App-specific blobs** (not in pN catalog) | `integrators/{client_id}/` under the user’s pN root folder | **Drive proxy** — `/api/drive/*` with `cloud:app` scope; server confines I/O to that silo |
 | **Permission grants** | `_metadata/third-party-permissions.xlsx` | Updated on OAuth token exchange; may include `integratorFolderId` |
 
-See [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) for the full folder tree.
+See [GOOGLE_DRIVE_STRUCTURE.md](./GOOGLE_DRIVE_STRUCTURE.md) for the full folder tree.
 
 ## Principles
 
