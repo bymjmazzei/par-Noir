@@ -4,6 +4,7 @@ import { IconSave } from './icons/PenIcons';
 /** Save actions menu with draft status and transient status overlay. */
 export function SaveMenu({
   canCommit,
+  canSuggest,
   dirty,
   lastDraftAt,
   busy,
@@ -14,6 +15,7 @@ export function SaveMenu({
   onSuggest
 }: {
   canCommit: boolean;
+  canSuggest: boolean;
   dirty: boolean;
   lastDraftAt: string | null;
   busy?: boolean;
@@ -94,7 +96,7 @@ export function SaveMenu({
             >
               Commit to current version
             </button>
-          ) : (
+          ) : canSuggest ? (
             <button
               type="button"
               className="block w-full px-3 py-1.5 text-left text-[12px] font-bold text-black hover:bg-neutral-50"
@@ -105,8 +107,8 @@ export function SaveMenu({
             >
               Suggest
             </button>
-          )}
-          {canCommit && (
+          ) : null}
+          {canCommit && canSuggest && (
             <button
               type="button"
               className="block w-full px-3 py-1.5 text-left text-[12px] text-neutral-600 hover:bg-neutral-50 hover:text-black"

@@ -7,11 +7,14 @@ export interface PenRoleAssignment {
   /** Hash of member pn (never store raw pn in plain text on disk when avoidable). */
   pnHash: string;
   role: PenRole;
+  /** Member ML-DSA public key (base64); peers verify live edit batch signatures against it. */
+  mlDsaPublicKey?: string;
 }
 
 export type PenAclAction =
   | 'read'
   | 'edit_draft'
+  | 'live_edit'
   | 'submit_suggestion'
   | 'comment'
   | 'invite'
@@ -24,6 +27,7 @@ const ROLE_ACTIONS: Record<PenRole, ReadonlySet<PenAclAction>> = {
   owner: new Set([
     'read',
     'edit_draft',
+    'live_edit',
     'submit_suggestion',
     'comment',
     'invite',
@@ -35,13 +39,14 @@ const ROLE_ACTIONS: Record<PenRole, ReadonlySet<PenAclAction>> = {
   collaborator: new Set([
     'read',
     'edit_draft',
+    'live_edit',
     'submit_suggestion',
     'comment',
     'invite',
     'accept_suggestion',
     'publish'
   ]),
-  commentor: new Set(['read', 'edit_draft', 'submit_suggestion', 'comment']),
+  commentor: new Set(['read', 'comment']),
   viewer: new Set(['read'])
 };
 
@@ -86,15 +91,40 @@ export function applyRoleChange(
     if (nextRole !== 'owner' && nextRole !== null) return null;
     if (nextRole === null) return null;
   }
+  const prior = assignments.find((a) => a.pnHash === targetPnHash);
   const without = assignments.filter((a) => a.pnHash !== targetPnHash);
   if (nextRole == null) return without;
-  return [...without, { pnHash: targetPnHash, role: nextRole }];
+  return [
+    ...without,
+    {
+      pnHash: targetPnHash,
+      role: nextRole,
+      ...(prior?.mlDsaPublicKey ? { mlDsaPublicKey: prior.mlDsaPublicKey } : {})
+    }
+  ];
 }
 
 export function ensureOwnerAssignment(
   assignments: PenRoleAssignment[] | undefined,
   ownerPnHash: string
 ): PenRoleAssignment[] {
+  const prior = (assignments || []).find((a) => a.pnHash === ownerPnHash);
   const base = (assignments || []).filter((a) => a.pnHash !== ownerPnHash);
-  return [{ pnHash: ownerPnHash, role: 'owner' }, ...base];
+  return [
+    {
+      pnHash: ownerPnHash,
+      role: 'owner',
+      ...(prior?.mlDsaPublicKey ? { mlDsaPublicKey: prior.mlDsaPublicKey } : {})
+    },
+    ...base
+  ];
+}
+
+/** Attach or replace a member's ML-DSA verification key without changing their role. */
+export function withMemberSigningKey(
+  assignments: PenRoleAssignment[],
+  pnHash: string,
+  mlDsaPublicKey: string
+): PenRoleAssignment[] {
+  return assignments.map((a) => (a.pnHash === pnHash ? { ...a, mlDsaPublicKey } : a));
 }

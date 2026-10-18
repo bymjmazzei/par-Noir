@@ -1910,6 +1910,17 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
 
   async function proposeSuggestion() {
     if (!section || !bundle) return;
+    if (
+      !actorCan(
+        bundle.manifest.roles,
+        bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+        session.pnIdentifier,
+        'submit_suggestion'
+      )
+    ) {
+      setError('Your role cannot suggest changes on this document.');
+      return;
+    }
     const suggestion = makeSuggestion({
       docId,
       sectionSlug: section.slug,

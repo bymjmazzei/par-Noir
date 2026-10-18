@@ -17,8 +17,10 @@ import {
 } from '@par-noir/pen-protocol';
 
 describe('Pen MVP gates', () => {
-  it('commentor can suggest but not invite or accept', () => {
-    expect(canPenRole('commentor', 'submit_suggestion')).toBe(true);
+  it('commentor can comment only: no edit, suggest, invite or accept', () => {
+    expect(canPenRole('commentor', 'comment')).toBe(true);
+    expect(canPenRole('commentor', 'submit_suggestion')).toBe(false);
+    expect(canPenRole('commentor', 'live_edit')).toBe(false);
     expect(canPenRole('commentor', 'invite')).toBe(false);
     expect(canPenRole('commentor', 'accept_suggestion')).toBe(false);
   });

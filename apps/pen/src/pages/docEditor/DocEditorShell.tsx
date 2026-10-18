@@ -760,6 +760,12 @@ export function DocEditorShell(state: DocEditorReadyState) {
     session.pnIdentifier,
     'accept_suggestion'
   );
+  const canSuggest = actorCan(
+    bundle.manifest.roles,
+    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    session.pnIdentifier,
+    'submit_suggestion'
+  );
   void savedTick;
   void canAccept;
 
@@ -821,6 +827,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
         <div className="flex shrink-0 items-center gap-1">
           <SaveMenu
             canCommit={canCommit}
+            canSuggest={canSuggest}
             dirty={dirty}
             lastDraftAt={lastDraftAt}
             statusMessage={status}

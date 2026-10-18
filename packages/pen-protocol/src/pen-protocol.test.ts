@@ -15,6 +15,7 @@ import {
   resolvePenRole,
   applyRoleChange,
   ensureOwnerAssignment,
+  withMemberSigningKey,
   listStarterTemplates,
   requireTemplate,
   copyWidgetLayersIntoSection,
@@ -150,9 +151,35 @@ describe('pen roles', () => {
     expect(canPenRole('owner', 'revoke')).toBe(true);
     expect(canPenRole('collaborator', 'invite')).toBe(true);
     expect(canPenRole('collaborator', 'accept_suggestion')).toBe(true);
-    expect(canPenRole('commentor', 'submit_suggestion')).toBe(true);
+    expect(canPenRole('commentor', 'comment')).toBe(true);
+    expect(canPenRole('commentor', 'submit_suggestion')).toBe(false);
+    expect(canPenRole('commentor', 'edit_draft')).toBe(false);
+    expect(canPenRole('commentor', 'live_edit')).toBe(false);
     expect(canPenRole('commentor', 'invite')).toBe(false);
     expect(canPenRole('viewer', 'comment')).toBe(false);
+    expect(canPenRole('viewer', 'live_edit')).toBe(false);
+    expect(canPenRole('owner', 'live_edit')).toBe(true);
+    expect(canPenRole('collaborator', 'live_edit')).toBe(true);
+  });
+
+  it('keeps member signing keys across role changes', () => {
+    const owner = 'ownerhash';
+    const roles = withMemberSigningKey(
+      ensureOwnerAssignment([{ pnHash: 'peer', role: 'collaborator' }], owner),
+      'peer',
+      'pk-peer'
+    );
+    const next = applyRoleChange(roles, owner, 'peer', 'viewer', 'owner');
+    expect(next?.find((r) => r.pnHash === 'peer')).toEqual({
+      pnHash: 'peer',
+      role: 'viewer',
+      mlDsaPublicKey: 'pk-peer'
+    });
+    const owned = ensureOwnerAssignment(
+      [{ pnHash: owner, role: 'owner', mlDsaPublicKey: 'pk-owner' }],
+      owner
+    );
+    expect(owned[0]?.mlDsaPublicKey).toBe('pk-owner');
   });
 
   it('owner is unrevokable', () => {

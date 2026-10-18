@@ -549,6 +549,11 @@ export interface PenDocManifest {
   ownerPnHash?: string;
   /** Access control list (includes owner). */
   roles?: PenRoleAssignment[];
+  /**
+   * Doc key generation. Bumped when a member is removed and the doc is re-keyed;
+   * live batches and snapshots from any other epoch are rejected. Omitted = 0.
+   */
+  keyEpoch?: number;
   /** Whether current/ has been published at least once. */
   lifecycle?: PenDocLifecycle;
   /** Optional My Library notebook id (Pen UI view metadata). */
@@ -718,4 +723,43 @@ export interface PenFontUpsertPayload {
   family: string;
   /** Base64 of opaque .penfont envelope (AES-GCM under docKey). */
   fontCiphertextB64: string;
+}
+
+/**
+ * One signed, encrypted batch of Yjs updates on the live relay.
+ * `ciphertext` is a docKey envelope; `signature` is ML-DSA (base64) over
+ * `penLiveSigningBytes(batch)` by the author named in the doc roles.
+ */
+export interface PenLiveBatch {
+  docId: string;
+  keyEpoch: number;
+  authorPnHash: string;
+  /** Per-author monotonically increasing counter for replay rejection. */
+  seq: number;
+  /** `update` = incremental edit; `sync1` = state vector request; `sync2` = diff reply. */
+  type: 'update' | 'sync1' | 'sync2';
+  ciphertext: string;
+  signature: string;
+}
+
+/** Presence: encrypted with docKey like batches, never stored. */
+export interface PenLiveAwareness {
+  docId: string;
+  keyEpoch: number;
+  authorPnHash: string;
+  ciphertext: string;
+}
+
+/** Decrypted awareness state broadcast by one member. */
+export interface PenLiveAwarenessState {
+  pnHash: string;
+  displayName: string;
+  color: string;
+  activeSectionSlug?: string;
+  /** ProseMirror selection in the active section body. */
+  cursor?: { anchor: number; head: number } | null;
+  /** Selected overlay layer ids. */
+  selectedLayerIds?: string[];
+  online: boolean;
+  updatedAt: number;
 }
