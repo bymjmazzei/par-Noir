@@ -40,12 +40,20 @@ export function trackingSpreadsheetId(
   return id || undefined;
 }
 
-function isActionLayer(layer: PenPageLayer): boolean {
-  if (layer.visible === false) return false;
+function isRevealTarget(layer: PenPageLayer, layers: PenPageLayer[]): boolean {
+  return layers.some((item) => item.revealLayerId === layer.id);
+}
+
+function isActionLayer(layer: PenPageLayer, layers: PenPageLayer[]): boolean {
+  if (layer.widgetElement === 'score') return true;
+  if (layer.stepFrame != null) return true;
+  if (isRevealTarget(layer, layers)) return true;
+  if (layer.visible === false && isRevealTarget(layer, layers)) return true;
   // HTML snippets are static art (no scripts), so they compose with the inert layers in z-order.
   if (layer.widgetElement === 'time' || layer.widgetElement === 'input') {
     return true;
   }
+  if (layer.visible === false) return false;
   if (layer.kind !== 'interactive') return false;
   return true;
 }
@@ -58,7 +66,7 @@ export function partitionLayersForCompose(
   const action: PenPageLayer[] = [];
   const overlays: ActionOverlaySpec[] = [];
   for (const layer of layers || []) {
-    if (isActionLayer(layer)) {
+    if (isActionLayer(layer, layers || [])) {
       action.push(layer);
       if (layer.kind === 'interactive' && layer.behavior) {
         const spreadsheetId = trackingSpreadsheetId(layers || [], layer);

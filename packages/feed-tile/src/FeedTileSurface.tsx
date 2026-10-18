@@ -8,9 +8,12 @@ import {
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from './PenMediaPlayer.js';
 import { PenFeedPageStage } from './PenFeedPageStage.js';
+import { resolveNavigatePageIndex, saveIcsFile } from './penNavigate.js';
 import { DEFAULT_FEED_PLAYBACK, FeedLoopVideo, type FeedPlayback } from './FeedLoopVideo.js';
 
 export type FeedTilePage = {
+  /** Section slug for `page.go` slug: targets. */
+  slug?: string;
   title?: string;
   bodyHtml?: string;
   /** Plain body for single-block text posters (preferred over stacking title+html). */
@@ -352,6 +355,34 @@ export function FeedTileSurface({
   const showCaption =
     Boolean(captionText) && captionText!.toLowerCase() !== titleText.toLowerCase();
 
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const pageSlugs = pages.map((page) => page.slug || '');
+  const scrollToPage = (targetIndex: number) => {
+    const root = carouselRef.current;
+    if (!root || targetIndex < 0 || targetIndex >= pages.length) return;
+    const child = root.children[targetIndex] as HTMLElement | undefined;
+    if (!child) return;
+    child.scrollIntoView({
+      behavior: 'smooth',
+      inline: axis === 'y' ? 'nearest' : 'start',
+      block: axis === 'y' ? 'start' : 'nearest'
+    });
+  };
+  const pageEffect =
+    (pageIndex: number) =>
+    (effect: PenActionEffect) => {
+      if (effect.kind === 'navigate') {
+        const next = resolveNavigatePageIndex(effect.goTo, pageIndex, pages.length, pageSlugs);
+        if (next != null) scrollToPage(next);
+        return;
+      }
+      if (effect.kind === 'calendar') {
+        saveIcsFile(effect);
+        return;
+      }
+      onEffect?.(effect);
+    };
+
   return (
     <div
       data-pen-compose-export-root="feed"
@@ -389,7 +420,7 @@ export function FeedTileSurface({
                   mediaSrc: sharedMedia ? undefined : page.mediaSrc
                 }}
                 titleFallback={model.title}
-                onEffect={onEffect}
+                onEffect={pageEffect(i)}
                 onReportLink={onReportLink}
                 actorId={actorId}
                 externalClockSec={externalClockSec}
@@ -401,6 +432,7 @@ export function FeedTileSurface({
         </div>
       ) : multi ? (
         <div
+          ref={carouselRef}
           className={
             axis === 'y'
               ? 'pen-feed-carousel flex h-full w-full flex-col overflow-x-hidden overflow-y-auto'
@@ -420,7 +452,7 @@ export function FeedTileSurface({
               <PageSurface
                 page={page}
                 titleFallback={model.title}
-                onEffect={onEffect}
+                onEffect={pageEffect(i)}
                 onReportLink={onReportLink}
                 actorId={actorId}
                 externalClockSec={externalClockSec}
@@ -438,7 +470,7 @@ export function FeedTileSurface({
             mediaKind: pages[0]?.mediaKind
           }}
           titleFallback={model.title}
-          onEffect={onEffect}
+          onEffect={pageEffect(0)}
           onReportLink={onReportLink}
           actorId={actorId}
           externalClockSec={externalClockSec}

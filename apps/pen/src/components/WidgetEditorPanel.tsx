@@ -7,6 +7,7 @@ import {
   checkLink,
   docToPlainText,
   duplicateButton,
+  frameCountForGroup,
   getTextLayerDoc,
   LINK_BLOCK_MESSAGES,
   LINK_WARNING_MESSAGES,
@@ -41,7 +42,8 @@ const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'image', label: 'Image' },
   { element: 'button', label: 'Button' },
   { element: 'time', label: 'Time' },
-  { element: 'html', label: 'HTML snippet' }
+  { element: 'html', label: 'HTML snippet' },
+  { element: 'score', label: 'Score' }
 ];
 
 function WidgetTextEditor({
@@ -135,7 +137,11 @@ const TRIGGERS: Array<{ id: PenInteractiveBehavior; label: string }> = [
   { id: 'widget.stamp', label: 'Stamp' },
   { id: 'widget.rank', label: 'Rank' },
   { id: 'widget.allocate', label: 'Allocate' },
-  { id: 'widget.reveal', label: 'Reveal' }
+  { id: 'widget.reveal', label: 'Reveal' },
+  { id: 'widget.step', label: 'Step' },
+  { id: 'quiz.answer', label: 'Answer' },
+  { id: 'page.go', label: 'Go to page' },
+  { id: 'cta.calendar', label: 'Add to calendar' }
 ];
 
 export function WidgetEditorPanel({
@@ -156,6 +162,8 @@ export function WidgetEditorPanel({
   session,
   scopeGroupId = null,
   onEnterGroup,
+  previewFrame = 0,
+  onPreviewFrameChange,
   hideTriggers = false
 }: {
   layer: PenPageLayer | null;
@@ -175,9 +183,12 @@ export function WidgetEditorPanel({
   session?: PenSession | null;
   scopeGroupId?: string | null;
   onEnterGroup?: (id: string | null) => void;
+  previewFrame?: number;
+  onPreviewFrameChange?: (frame: number) => void;
   /** Sticker docs keep SVG, image, and text. Buttons and sheet writes stay hidden. */
   hideTriggers?: boolean;
 }) {
+  const frameCount = scopeGroupId ? frameCountForGroup(section.layers || [], scopeGroupId) : 1;
   const fileRef = useRef<HTMLInputElement>(null);
   const tools = hideTriggers
     ? [
@@ -213,6 +224,30 @@ export function WidgetEditorPanel({
           </button>
         ))}
       </div>
+      {frameCount > 1 && onPreviewFrameChange ? (
+        <div className="flex items-center gap-2 border-b border-stone-200 px-3 py-2 text-[12px]">
+          <span className="text-stone-500">Preview frame</span>
+          <button
+            type="button"
+            className="rounded border border-stone-300 px-2 py-0.5"
+            disabled={previewFrame <= 0}
+            onClick={() => onPreviewFrameChange(Math.max(0, previewFrame - 1))}
+          >
+            Prev
+          </button>
+          <span>
+            Frame {previewFrame + 1} of {frameCount}
+          </span>
+          <button
+            type="button"
+            className="rounded border border-stone-300 px-2 py-0.5"
+            disabled={previewFrame >= frameCount - 1}
+            onClick={() => onPreviewFrameChange(Math.min(frameCount - 1, previewFrame + 1))}
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
       {layer?.kind === 'interactive' && (
         <div className="border-b border-stone-200 px-3 py-2">
           <div className="flex flex-col gap-1">
@@ -379,6 +414,29 @@ export function WidgetEditorPanel({
               {layer.behavior === 'widget.reveal' && (
                 <label className="flex flex-col gap-1">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                    Reveal mode
+                  </span>
+                  <select
+                    aria-label="Reveal mode"
+                    className="border border-stone-300 bg-white px-2 py-1"
+                    value={layer.revealMode || 'show'}
+                    onChange={(event) =>
+                      onSectionChange(
+                        patchLayerStyle(section, layer.id, {
+                          revealMode: event.target.value as 'show' | 'toggle' | 'tab'
+                        })
+                      )
+                    }
+                  >
+                    <option value="show">Show</option>
+                    <option value="toggle">Toggle</option>
+                    <option value="tab">Tab</option>
+                  </select>
+                </label>
+              )}
+              {layer.behavior === 'widget.reveal' && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
                     Reveal target
                   </span>
                   <select
@@ -400,6 +458,84 @@ export function WidgetEditorPanel({
                   </select>
                 </label>
               )}
+              {layer.behavior === 'page.go' && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Go to</span>
+                  <input
+                    aria-label="Go to page"
+                    className="border border-stone-300 px-2 py-1"
+                    placeholder="next, page:0, slug:home"
+                    value={layer.goTo || ''}
+                    onChange={(event) =>
+                      onSectionChange(patchLayerStyle(section, layer.id, { goTo: event.target.value as never }))
+                    }
+                  />
+                </label>
+              )}
+              {layer.behavior === 'widget.step' && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Step</span>
+                  <select
+                    aria-label="Step direction"
+                    className="border border-stone-300 bg-white px-2 py-1"
+                    value={layer.stepDir || 'next'}
+                    onChange={(event) =>
+                      onSectionChange(
+                        patchLayerStyle(section, layer.id, {
+                          stepDir: event.target.value as 'next' | 'prev' | 'restart'
+                        })
+                      )
+                    }
+                  >
+                    <option value="next">Next</option>
+                    <option value="prev">Previous</option>
+                    <option value="restart">Restart</option>
+                  </select>
+                </label>
+              )}
+              {layer.behavior === 'cta.calendar' && (
+                <>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Event title</span>
+                    <input
+                      aria-label="Event title"
+                      className="border border-stone-300 px-2 py-1"
+                      value={layer.eventTitle || ''}
+                      onChange={(event) =>
+                        onSectionChange(patchLayerStyle(section, layer.id, { eventTitle: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Starts (ISO)</span>
+                    <input
+                      aria-label="Event start"
+                      className="border border-stone-300 px-2 py-1"
+                      value={layer.eventStart || ''}
+                      onChange={(event) =>
+                        onSectionChange(patchLayerStyle(section, layer.id, { eventStart: event.target.value }))
+                      }
+                    />
+                  </label>
+                </>
+              )}
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Frame</span>
+                <input
+                  aria-label="Frame index"
+                  type="number"
+                  min={0}
+                  className="border border-stone-300 px-2 py-1"
+                  value={layer.stepFrame ?? ''}
+                  onChange={(event) =>
+                    onSectionChange(
+                      patchLayerStyle(section, layer.id, {
+                        stepFrame: event.target.value === '' ? undefined : Number(event.target.value)
+                      })
+                    )
+                  }
+                />
+              </label>
               <button
                 type="button"
                 className="self-start text-teal-800"

@@ -31,6 +31,9 @@ import {
   isGooglePenFont,
   isPageLayerId,
   applyLayoutAtPlayhead,
+  emptyPenViewerState,
+  frameCountForGroup,
+  layerVisibleInViewer,
   sampleSectionLayers,
   mergePagePresentation,
   migrateSectionLayerGeomToPx,
@@ -127,7 +130,9 @@ export function EditablePagePreview({
   onToggleEngagementGuide,
   playheadSec: playheadProp,
   onEnterGroup,
-  guideSpan
+  guideSpan,
+  widgetPreviewGroupId = null,
+  widgetPreviewFrame = 0
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -169,6 +174,8 @@ export function EditablePagePreview({
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSnapChange?: (enabled: boolean) => void;
   session?: PenSession | null;
+  widgetPreviewGroupId?: string | null;
+  widgetPreviewFrame?: number;
 }) {
   const livePlayheadSec = usePlayheadSec(playheadProp === undefined);
   const playheadSec = playheadProp ?? livePlayheadSec;
@@ -226,10 +233,19 @@ export function EditablePagePreview({
     () => migrateSectionLayerGeomToPx(normalizeSection(section), pad),
     [section, pad]
   );
-  const layers = useMemo(
-    () => sampleSectionLayers(prepared, playheadSec),
-    [prepared, playheadSec]
-  );
+  const layers = useMemo(() => {
+    const sampled = sampleSectionLayers(prepared, playheadSec);
+    if (!widgetPreviewGroupId || frameCountForGroup(sampled, widgetPreviewGroupId) <= 1) {
+      return sampled;
+    }
+    const viewer = {
+      ...emptyPenViewerState(),
+      steps: { [widgetPreviewGroupId]: widgetPreviewFrame }
+    };
+    return sampled.filter(
+      (layer) => layer.kind === 'group' || layerVisibleInViewer(layer, sampled, viewer)
+    );
+  }, [prepared, playheadSec, widgetPreviewFrame, widgetPreviewGroupId]);
   const wrapLayers = useMemo(
     () => layers.filter((l) => l.visible !== false && Boolean(l.bodyWrap)),
     [layers]

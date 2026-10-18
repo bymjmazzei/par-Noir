@@ -19,6 +19,17 @@ function starterSection(id: string): PenSectionContent {
 }
 
 describe('curated widget starters', () => {
+  it('ids are unique and every starter has a category', () => {
+    const ids = new Set<string>();
+    for (const id of CURATED_WIDGET_IDS) {
+      expect(ids.has(id)).toBe(false);
+      ids.add(id);
+      const t = getTemplate(id);
+      expect(t?.widgetCategory).toBeTruthy();
+    }
+    expect(CURATED_WIDGET_IDS.length).toBe(72);
+  });
+
   it('each starter draws HTML art and carries real action layers', () => {
     for (const id of CURATED_WIDGET_IDS) {
       const layers = starterSection(id).layers || [];

@@ -16,7 +16,7 @@ describe('PenFeedPageStage press path', () => {
 
   it('paints inputs and revealed targets', () => {
     expect(stage).toMatch(/widgetElement === 'input'/);
-    expect(stage).toMatch(/buildActionOverlayAtTime\(penFeedPage\.actionSection, overlayTime, viewer\.revealed\)/);
+    expect(stage).toMatch(/buildActionOverlayAtTime\(\s*penFeedPage\.actionSection,\s*overlayTime,/);
   });
 
   it('surface exposes onEffect, not the raw message', () => {

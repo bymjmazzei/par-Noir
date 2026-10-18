@@ -4,7 +4,9 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
+  CURATED_WIDGET_CATEGORIES,
   listStarterTemplates,
+  type CuratedWidgetCategory,
   type PenPageLayer,
   type PenSectionContent,
   type PenTemplate
@@ -173,6 +175,7 @@ export function ActionLayerMenu({
   const [remote, setRemote] = useState<PenTemplate[]>([]);
   const [posters, setPosters] = useState<Map<string, string>>(() => new Map());
   const [tab, setTab] = useState<'mine' | 'all'>('all');
+  const [category, setCategory] = useState<'all' | CuratedWidgetCategory>('all');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -203,10 +206,23 @@ export function ActionLayerMenu({
 
   const shownTemplates = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const rows = tab === 'mine' ? yours : [...starters, ...remote];
+    let rows = tab === 'mine' ? yours : [...starters, ...remote];
+    if (!sticker && category !== 'all') {
+      rows = rows.filter((template) => template.widgetCategory === category);
+    }
     if (!q) return rows;
-    return rows.filter((template) => template.title.toLowerCase().includes(q));
-  }, [query, remote, starters, tab, yours]);
+    const categoryLabels = new Map(CURATED_WIDGET_CATEGORIES.map((c) => [c.id, c.label.toLowerCase()]));
+    return rows.filter((template) => {
+      const catLabel = template.widgetCategory
+        ? categoryLabels.get(template.widgetCategory as CuratedWidgetCategory) || ''
+        : '';
+      return (
+        template.title.toLowerCase().includes(q) ||
+        template.description.toLowerCase().includes(q) ||
+        catLabel.includes(q)
+      );
+    });
+  }, [category, query, remote, starters, sticker, tab, yours]);
 
   const shownGiphy = useMemo(() => {
     if (!sticker) return [];
@@ -284,6 +300,27 @@ export function ActionLayerMenu({
             Close
           </button>
         </div>
+        {!sticker && tab === 'all' ? (
+          <div className="flex flex-wrap gap-1 border-b border-neutral-200 px-4 py-2">
+            <button
+              type="button"
+              className={`rounded px-2 py-0.5 text-[11px] ${category === 'all' ? 'bg-teal-800 text-white' : 'bg-neutral-100'}`}
+              onClick={() => setCategory('all')}
+            >
+              All
+            </button>
+            {CURATED_WIDGET_CATEGORIES.map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                className={`rounded px-2 py-0.5 text-[11px] ${category === chip.id ? 'bg-teal-800 text-white' : 'bg-neutral-100'}`}
+                onClick={() => setCategory(chip.id)}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {sticker && (
           <form

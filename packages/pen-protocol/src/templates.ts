@@ -3,16 +3,9 @@
 import type { PenPageLayout, PenPagePresentation, PenSectionContent } from './types.js';
 import type { PenLicensingRoot } from './licensing.js';
 import { emptySection } from './richDoc.js';
-import {
-  seedAnimationPreset,
-  seedLinkCardWidget,
-  seedPollWriteInWidget,
-  seedQuizWidget,
-  seedRsvpWidget,
-  seedTextPreset,
-  seedTransitionPreset,
-  seedWidget
-} from './widgetElements.js';
+import { curatedWidgetTemplates } from './curated/index.js';
+import { seedWebsiteDoc } from './curated/websiteDoc.js';
+import { seedAnimationPreset, seedTextPreset, seedTransitionPreset, seedWidget } from './widgetElements.js';
 import {
   seedAssetKey,
   seedAudio,
@@ -94,6 +87,8 @@ export interface PenTemplate {
   seedPageSwipeAxis?: 'x' | 'y';
   /** Featured in Pen Mini (~3 per form). */
   browseFeatured?: boolean;
+  /** Curated widget picker category (widgets.widget starters). */
+  widgetCategory?: string;
   /** Optional CDN-backed public template preview. */
   previewFileId?: string;
   /** Work license + open creator contracts (optional on platform starters). */
@@ -196,34 +191,7 @@ function widgetStarters(): PenTemplate[] {
       'Arrange layers by dragging them. A button does nothing until its trigger is set.',
       seedWidget()
     ),
-    widgetStarter(
-      'widget.poll_writein.v1',
-      'Poll with write-in',
-      'Three options, a typed Other answer, and a countdown on a drawn card.',
-      'Keep the vote buttons and the write-in field in one group. Edit the question, options, and art.',
-      seedPollWriteInWidget()
-    ),
-    widgetStarter(
-      'widget.quiz.v1',
-      'Quiz',
-      'Three answers with one marked correct, and a button that reveals the explanation.',
-      'Mark one answer correct. The Reveal button shows the hidden explanation layer.',
-      seedQuizWidget()
-    ),
-    widgetStarter(
-      'widget.rsvp.v1',
-      'RSVP',
-      'Invitation art, event details, a countdown, and Going / Maybe / Can\'t go.',
-      'Edit the event title, details, countdown end, and art.',
-      seedRsvpWidget()
-    ),
-    widgetStarter(
-      'widget.link_card.v1',
-      'Link card',
-      'A drawn card with a headline and an Open button.',
-      'Set the headline, the subline, and the Open button link.',
-      seedLinkCardWidget()
-    ),
+    ...curatedWidgetTemplates(),
     withSeed(
       {
         id: 'sticker.v1',
@@ -632,6 +600,31 @@ const STARTER: PenTemplate[] = [
         })
       },
       seedCollectionStory()
+    ),
+  withSeed(
+      {
+        id: 'website.v1',
+        classId: 'social.note',
+        docType: 'note',
+        version: '1',
+        title: 'Website',
+        description: 'Home, About, and Contact pages with a nav bar (vertical swipe).',
+        sections: [
+          { slug: 'home', title: 'Home', required: true },
+          { slug: 'about', title: 'About', required: true },
+          { slug: 'contact', title: 'Contact', required: true }
+        ],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedPageSwipeAxis: 'y',
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Website',
+          focus:
+            'Fill home, about, and contact. Keep the nav buttons on each page pointed at page:0, page:1, and page:2.'
+        })
+      },
+      seedWebsiteDoc()
     ),
   withSeed(
       {

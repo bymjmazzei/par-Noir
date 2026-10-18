@@ -28,7 +28,7 @@ describe('Pen v1 acceptance (hermetic)', () => {
     expect(ids.some((id) => id.includes('carousel'))).toBe(false);
     expect(ids.some((id) => id.includes('note'))).toBe(true);
     expect(ids.some((id) => id.includes('set'))).toBe(true);
-    expect(ids.some((id) => id.includes('feed'))).toBe(false);
+    expect(ids.some((id) => id.includes('self_hosted_feed') || id.startsWith('feed.'))).toBe(false);
     expect(ids.every((id) => !id.startsWith('landing.') && !id.startsWith('journal.'))).toBe(
       true
     );

@@ -4,6 +4,13 @@
  */
 
 import { trackingSpreadsheetId } from './actionPartition.js';
+import { icsForEvent } from './icsForEvent.js';
+import {
+  frameCountForGroup,
+  frameKey,
+  penViewerGroupKey,
+  type PenViewerState
+} from './penViewerOverlay.js';
 import {
   allocateColumnKeys,
   allocateTotal,
@@ -23,22 +30,10 @@ import {
 import { checkLink, type LinkWarning } from './linkSafety.js';
 import { normalizeWriteIn } from './pollSheet.js';
 import { docToPlainText } from './richDoc.js';
-import type { PenPageLayer, PenSectionContent } from './types.js';
+import type { PenGoTo, PenPageLayer, PenSectionContent } from './types.js';
 
-export type PenViewerState = {
-  /** Layer ids shown by Reveal presses. */
-  revealed: string[];
-  /** Input layer id → typed value. */
-  inputs: Record<string, string>;
-  /** Group keys this viewer has toggled on. */
-  toggled: string[];
-  /** Group key → button id → rank. */
-  ranks: Record<string, Record<string, number>>;
-  /** Group key → button id → amount. */
-  amounts: Record<string, Record<string, number>>;
-  /** Group key → voted option id. */
-  voted: Record<string, string>;
-};
+export type { PenViewerState } from './penViewerOverlay.js';
+export { penViewerGroupKey } from './penViewerOverlay.js';
 
 export type PenActionEffect =
   | { kind: 'open'; url: string; host: string; warnings: LinkWarning[] }
@@ -46,15 +41,22 @@ export type PenActionEffect =
   | { kind: 'messaging'; title: string; body: string; to: string }
   | { kind: 'vote'; layerId: string; optionId: string; spreadsheetId?: string; writeIn?: string }
   | { kind: 'widget_row'; spreadsheetId?: string; row: WidgetActionRow }
+  | { kind: 'navigate'; goTo: PenGoTo }
+  | { kind: 'calendar'; ics: string; filename: string }
   | { kind: 'none' };
 
 export function emptyPenViewerState(): PenViewerState {
-  return { revealed: [], inputs: {}, toggled: [], ranks: {}, amounts: {}, voted: {} };
-}
-
-/** Group key used for per-group viewer state. */
-export function penViewerGroupKey(layer: Pick<PenPageLayer, 'parentGroupId'>): string {
-  return layer.parentGroupId || 'doc';
+  return {
+    revealed: [],
+    hidden: [],
+    inputs: {},
+    toggled: [],
+    ranks: {},
+    amounts: {},
+    voted: {},
+    steps: {},
+    answers: {}
+  };
 }
 
 function newActionId(): string {
@@ -99,10 +101,84 @@ export function pressPenAction(input: {
         effect: { kind: 'open', url: link.url, host: link.host, warnings: link.warnings }
       };
     }
+    case 'page.go': {
+      const goTo = layer.goTo;
+      if (!goTo) return none;
+      return { state, effect: { kind: 'navigate', goTo } };
+    }
+    case 'cta.calendar': {
+      const time = layers.find(
+        (item) => (item.parentGroupId || null) === groupId && item.widgetElement === 'time'
+      );
+      const startIso = (layer.eventStart || '').trim() || (time?.closesAt || '').trim();
+      if (!startIso) return none;
+      const title =
+        (layer.eventTitle || '').trim() ||
+        docToPlainText(layer.textDoc).trim() ||
+        layer.label ||
+        'Event';
+      const { ics, filename } = icsForEvent({
+        title,
+        location: layer.eventLocation,
+        startIso,
+        durationMin: layer.eventDurationMin
+      });
+      return { state, effect: { kind: 'calendar', ics, filename } };
+    }
     case 'widget.reveal': {
       const target = layer.revealLayerId;
-      if (!target || state.revealed.includes(target)) return none;
-      return { state: { ...state, revealed: [...state.revealed, target] }, effect: { kind: 'none' } };
+      if (!target) return none;
+      const mode = layer.revealMode || 'show';
+      let revealed = [...state.revealed];
+      let hidden = [...state.hidden];
+      if (mode === 'toggle') {
+        if (revealed.includes(target) && !hidden.includes(target)) {
+          hidden = [...hidden, target];
+        } else {
+          if (!revealed.includes(target)) revealed = [...revealed, target];
+          hidden = hidden.filter((id) => id !== target);
+        }
+      } else if (mode === 'tab') {
+        const tabTargets = layers
+          .filter(
+            (item) =>
+              (item.parentGroupId || null) === groupId &&
+              item.behavior === 'widget.reveal' &&
+              item.revealLayerId
+          )
+          .map((item) => item.revealLayerId!);
+        for (const id of tabTargets) {
+          if (id === target) {
+            if (!revealed.includes(id)) revealed = [...revealed, id];
+            hidden = hidden.filter((h) => h !== id);
+          } else if (!hidden.includes(id)) {
+            hidden = [...hidden, id];
+          }
+        }
+      } else {
+        if (revealed.includes(target)) return none;
+        revealed = [...revealed, target];
+        hidden = hidden.filter((id) => id !== target);
+      }
+      return { state: { ...state, revealed, hidden }, effect: { kind: 'none' } };
+    }
+    case 'widget.step': {
+      const count = frameCountForGroup(layers, groupId);
+      let frame = state.steps[groupKey] ?? 0;
+      const dir = layer.stepDir || 'next';
+      if (dir === 'restart') frame = 0;
+      else if (dir === 'prev') frame = Math.max(0, frame - 1);
+      else frame = Math.min(count - 1, frame + 1);
+      return { state: { ...state, steps: { ...state.steps, [groupKey]: frame } }, effect: { kind: 'none' } };
+    }
+    case 'quiz.answer': {
+      const frame = layer.stepFrame ?? 0;
+      const key = frameKey(groupKey, frame);
+      if (state.answers[key]) return none;
+      return {
+        state: { ...state, answers: { ...state.answers, [key]: layer.id } },
+        effect: { kind: 'none' }
+      };
     }
     case 'poll.vote': {
       const optionId = layer.bindRowId || layer.id;
@@ -127,7 +203,7 @@ export function pressPenAction(input: {
     }
     case 'widget.submit': {
       if (secretPromptLayers(section, groupId).length) return none;
-      const fields = submitFields(section, groupId, state.inputs);
+      const fields = submitFields(section, groupId, state.inputs, layers, state);
       const body = Object.entries(fields)
         .map(([key, value]) => `${key}: ${value}`)
         .join('\n');
@@ -225,6 +301,12 @@ export function penViewerButtonFace(layer: PenPageLayer, state: PenViewerState):
   }
   if (layer.behavior === 'widget.toggle') {
     return state.toggled.includes(key) ? 'On' : '';
+  }
+  if (layer.behavior === 'quiz.answer') {
+    const frame = layer.stepFrame ?? 0;
+    const answerKey = frameKey(key, frame);
+    if (state.answers[answerKey] !== layer.id) return '';
+    return layer.correct ? 'Correct' : 'Incorrect';
   }
   return '';
 }

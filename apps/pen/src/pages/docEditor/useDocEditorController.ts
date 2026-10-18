@@ -298,6 +298,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineGroupId, setTimelineGroupId] = useState<string | null>(null);
+  const [widgetPreviewFrame, setWidgetPreviewFrame] = useState(0);
   const [socialLayersOpen, setSocialLayersOpen] = useState(false);
   const [socialSelectedIds, setSocialSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const socialLayersBtnRef = useRef<HTMLButtonElement>(null);
@@ -2157,6 +2158,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     widgetEditorLayer,
     widgetSheetTimer,
     widgetStripLayer,
+    widgetPreviewFrame,
+    setWidgetPreviewFrame,
     writingEnabled,
     writingLabel,
   });

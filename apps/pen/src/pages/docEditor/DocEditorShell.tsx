@@ -358,6 +358,8 @@ export function DocEditorShell(state: DocEditorReadyState) {
     widgetEditorLayer,
     widgetSheetTimer,
     widgetStripLayer,
+    widgetPreviewFrame,
+    setWidgetPreviewFrame,
     writingEnabled,
     writingLabel,
   } = state;
@@ -1188,6 +1190,8 @@ export function DocEditorShell(state: DocEditorReadyState) {
                 setSocialSelectedIds([id]);
               }}
               scopeGroupId={timelineGroupId}
+              previewFrame={widgetPreviewFrame}
+              onPreviewFrameChange={setWidgetPreviewFrame}
               onEnterGroup={(id) => {
                 setTimelineGroupId(id);
                 if (id) {
@@ -1467,6 +1471,8 @@ export function DocEditorShell(state: DocEditorReadyState) {
                           <EditablePagePreview
                             manifest={pageManifest}
                             section={pageSection}
+                            widgetPreviewGroupId={timelineGroupId}
+                            widgetPreviewFrame={widgetPreviewFrame}
                             activeLayerId={active ? activeLayerId : PAGE_LAYER_ID}
                             hideActionBind={isWidgetDoc || Boolean(widgetEditorLayer)}
                             hideObjectTools={isWidgetDoc}

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildActionOverlayAtTime,
+  docToHtml,
   docToPlainText,
+  scoreCaption,
   emptyPenViewerState,
   penViewerButtonFace,
   pressPenAction,
@@ -79,14 +81,14 @@ function OverlayLayer({
   layer,
   canvas,
   state,
-  revealed,
+  allLayers,
   onPress,
   onInput
 }: {
   layer: PenPageLayer;
   canvas: { w: number; h: number };
   state: PenViewerState;
-  revealed: boolean;
+  allLayers: PenPageLayer[];
   onPress: (layerId: string) => void;
   onInput: (layerId: string, value: string) => void;
 }) {
@@ -133,16 +135,29 @@ function OverlayLayer({
       />
     );
   }
-  if (!revealed) return null;
-  if (layer.kind === 'text' && layer.textDoc) {
+  if (layer.widgetElement === 'score') {
+    const text = scoreCaption(allLayers, state, layer.parentGroupId || null);
+    if (!text) return null;
     return (
       <div
-        className="overflow-hidden whitespace-pre-wrap break-words p-2 text-sm"
+        className="flex h-full w-full items-center justify-center text-sm font-semibold tabular-nums"
         style={shell}
         data-pen-layer={layer.id}
+        data-pen-score="1"
       >
-        {docToPlainText(layer.textDoc)}
+        {text}
       </div>
+    );
+  }
+  if (layer.kind === 'text' && layer.textDoc) {
+    const html = docToHtml(layer.textDoc);
+    return (
+      <div
+        className="pen-rich-html overflow-hidden p-2 text-sm"
+        style={shell}
+        data-pen-layer={layer.id}
+        dangerouslySetInnerHTML={{ __html: html || docToPlainText(layer.textDoc) }}
+      />
     );
   }
   const src = layer.kind === 'image' ? displayableSrc(layer.imageSrc) : undefined;
@@ -232,10 +247,15 @@ export function PenFeedPageStage({
   const overlayTime = externalClockSec != null ? externalClockSec : videoTime;
 
   const layers = useMemo(
-    () => buildActionOverlayAtTime(penFeedPage.actionSection, overlayTime, viewer.revealed),
-    [penFeedPage.actionSection, overlayTime, viewer.revealed]
+    () =>
+      buildActionOverlayAtTime(
+        penFeedPage.actionSection,
+        overlayTime,
+        { revealed: viewer.revealed, hidden: viewer.hidden, steps: viewer.steps },
+        viewer
+      ),
+    [penFeedPage.actionSection, overlayTime, viewer]
   );
-  const revealed = useMemo(() => new Set(viewer.revealed), [viewer.revealed]);
 
   const isVideo = mediaKind === 'video' && Boolean(mediaSrc);
   const mediaClass =
@@ -270,7 +290,7 @@ export function PenFeedPageStage({
               layer={layer}
               canvas={canvas}
               state={viewer}
-              revealed={revealed.has(layer.id)}
+              allLayers={penFeedPage.actionSection.layers}
               onPress={press}
               onInput={typeInput}
             />

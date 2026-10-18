@@ -85,6 +85,24 @@ describe('runFeedPenEffect', () => {
     expect(ownerFetch.mock.calls[0][2]).not.toHaveProperty('writeIn');
   });
 
+  it('downloads calendar ics without unlock', async () => {
+    const feedTile = await import('@par-noir/feed-tile');
+    const save = vi.spyOn(feedTile, 'saveIcsFile').mockImplementation(() => undefined);
+    await runFeedPenEffect({
+      effect: {
+        kind: 'calendar',
+        ics: 'BEGIN:VCALENDAR',
+        filename: 'event.ics'
+      }
+    });
+    expect(save).toHaveBeenCalledWith({
+      kind: 'calendar',
+      ics: 'BEGIN:VCALENDAR',
+      filename: 'event.ics'
+    });
+    save.mockRestore();
+  });
+
   it('forwards a write-in answer with the vote', async () => {
     await runFeedPenEffect({
       effect: { kind: 'vote', layerId: 'b', optionId: 'other', spreadsheetId: 'sheet-1', writeIn: 'Dark mode' },

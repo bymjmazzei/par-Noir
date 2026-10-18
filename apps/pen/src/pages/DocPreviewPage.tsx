@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FeedTileSurface } from '@par-noir/feed-tile';
+import { FeedTileSurface, saveIcsFile } from '@par-noir/feed-tile';
 import type { PenActionEffect } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { openMessagingWithCorrespondence } from '../services/penCorrespondenceHandoff';
@@ -59,6 +59,14 @@ export function DocPreviewPage({
     }
     if (effect.kind === 'messaging') {
       openMessagingWithCorrespondence({ title: effect.title, body: effect.body, docId });
+      return;
+    }
+    if (effect.kind === 'calendar') {
+      saveIcsFile(effect);
+      return;
+    }
+    if (effect.kind === 'navigate') {
+      setStatus('Page navigation works in the published feed preview.');
       return;
     }
     if (effect.kind !== 'vote' && effect.kind !== 'widget_row') return;

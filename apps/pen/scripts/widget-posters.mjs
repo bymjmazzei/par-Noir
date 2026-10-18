@@ -26,7 +26,7 @@ const base = (server.resolvedUrls?.local?.[0] || 'http://localhost:5199/').repla
 let browser;
 try {
   const protocol = await server.ssrLoadModule(
-    path.resolve(root, '../../packages/pen-protocol/src/widgetElements.ts')
+    path.resolve(root, '../../packages/pen-protocol/src/curated/index.ts')
   );
   const ids = protocol.CURATED_WIDGET_IDS;
   await mkdir(outDir, { recursive: true });

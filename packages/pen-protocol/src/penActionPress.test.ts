@@ -210,7 +210,13 @@ describe('reveal targets in feed export', () => {
       layers: [button('b', { behavior: 'widget.reveal', revealLayerId: 't' }), target]
     });
     expect(exported.layers.map((l) => l.id).sort()).toEqual(['b', 't']);
-    expect(buildActionOverlayAtTime(exported, 0).map((l) => l.id)).toEqual(['b']);
-    expect(buildActionOverlayAtTime(exported, 0, ['t']).map((l) => l.id).sort()).toEqual(['b', 't']);
+    expect(
+      buildActionOverlayAtTime(exported, 0, { revealed: [], hidden: [], steps: {} }).map((l) => l.id)
+    ).toEqual(['b']);
+    expect(
+      buildActionOverlayAtTime(exported, 0, { revealed: ['t'], hidden: [], steps: {} })
+        .map((l) => l.id)
+        .sort()
+    ).toEqual(['b', 't']);
   });
 });

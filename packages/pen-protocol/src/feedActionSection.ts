@@ -9,6 +9,7 @@ import {
   type PenTimelineContext
 } from './layerMotion.js';
 import { partitionLayersForCompose } from './actionPartition.js';
+import { layerVisibleInViewer, revealTargetIds, type PenViewerState } from './penViewerOverlay.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
 
 export type PenFeedActionSection = {
@@ -43,6 +44,13 @@ export function exportActionSectionForFeed(
     want.add(target.id);
     if (target.parentGroupId) want.add(target.parentGroupId);
   }
+  for (const id of revealTargetIds(all)) want.add(id);
+  for (const layer of all) {
+    if (layer.stepFrame != null || layer.widgetElement === 'score') {
+      want.add(layer.id);
+      if (layer.parentGroupId) want.add(layer.parentGroupId);
+    }
+  }
   const layers = all.filter((layer) => want.has(layer.id));
   const timelineDurationSec = resolveTimelineDuration({ ...sec, layers }, undefined, ctx);
   return {
@@ -51,16 +59,30 @@ export function exportActionSectionForFeed(
   };
 }
 
+export type PenViewerOverlaySlice = Pick<PenViewerState, 'revealed' | 'hidden' | 'steps'>;
+
 /**
  * Posed action layers at page time `t` (visibility + motion).
- * `revealed` ids are shown even when hidden or inert (Reveal targets).
+ * Viewer state controls reveal, tabs, and step frames.
  */
 export function buildActionOverlayAtTime(
   actionSection: PenFeedActionSection,
   timeSec: number,
-  revealed?: readonly string[]
+  viewer?: PenViewerOverlaySlice,
+  fullViewer?: PenViewerState
 ): PenPageLayer[] {
-  const shown = new Set(revealed || []);
+  const state: PenViewerState = {
+    revealed: viewer?.revealed || [],
+    hidden: viewer?.hidden || [],
+    steps: viewer?.steps || {},
+    inputs: fullViewer?.inputs || {},
+    toggled: fullViewer?.toggled || [],
+    ranks: fullViewer?.ranks || {},
+    amounts: fullViewer?.amounts || {},
+    voted: fullViewer?.voted || {},
+    answers: fullViewer?.answers || {}
+  };
+  const shown = new Set(state.revealed);
   const section: PenSectionContent = {
     slug: 'feed-action',
     doc: { type: 'doc', content: [] },
@@ -73,11 +95,13 @@ export function buildActionOverlayAtTime(
       ? { timelineDurationSec: actionSection.timelineDurationSec }
       : {})
   };
-  return sampleSectionLayers(section, timeSec).filter((layer) => {
-    if (layer.visible === false) return false;
+  const sampled = sampleSectionLayers(section, timeSec);
+  const all = actionSection.layers;
+  return sampled.filter((layer) => {
     if (layer.kind === 'group') return false;
-    if (shown.has(layer.id)) return true;
+    if (!layerVisibleInViewer(layer, all, state)) return false;
     const { action } = partitionLayersForCompose([layer]);
-    return action.length > 0;
+    if (action.length > 0) return true;
+    return shown.has(layer.id);
   });
 }

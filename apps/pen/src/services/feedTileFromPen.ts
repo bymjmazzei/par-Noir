@@ -47,6 +47,7 @@ export function sectionsToFeedPages(
     const plain = docToPlainText(s.doc).trim();
     const media = primaryMediaLayer(s.layers);
     const page: FeedTilePage = {
+      slug: s.slug,
       title: plain.slice(0, 80) || titleFallback,
       bodyText: plain || titleFallback,
       bodyHtml: docToHtml(s.doc),

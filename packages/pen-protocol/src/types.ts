@@ -74,15 +74,32 @@ export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 
 export type PenInteractiveBehavior =
   | 'poll.vote'
   | 'cta.open'
+  | 'cta.calendar'
+  | 'page.go'
   | 'widget.submit'
   | 'widget.toggle'
   | 'widget.stamp'
   | 'widget.rank'
   | 'widget.allocate'
-  | 'widget.reveal';
+  | 'widget.reveal'
+  | 'widget.step'
+  | 'quiz.answer';
 
 /** Optional role of a layer the user placed. It does not wrap the group. */
-export type PenWidgetElement = 'svg' | 'text' | 'button' | 'time' | 'html' | 'input';
+export type PenWidgetElement = 'svg' | 'text' | 'button' | 'time' | 'html' | 'input' | 'score';
+
+/** Page navigation target for `page.go`. */
+export type PenGoTo =
+  | 'next'
+  | 'prev'
+  | 'first'
+  | 'last'
+  | `page:${number}`
+  | `slug:${string}`;
+
+export type PenRevealMode = 'show' | 'toggle' | 'tab';
+
+export type PenStepDir = 'next' | 'prev' | 'restart';
 
 export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
 export type PenStrokeAlign = 'inside' | 'outside' | 'center';
@@ -142,6 +159,20 @@ export interface PenPageLayer {
   submitTo?: string;
   /** Layer id shown by a Reveal button. */
   revealLayerId?: string;
+  /** How Reveal affects the target layer. */
+  revealMode?: PenRevealMode;
+  /** Multipage navigation target for `page.go`. */
+  goTo?: PenGoTo;
+  /** Frame index for step widgets (0-based). Omitted layers show on every frame. */
+  stepFrame?: number;
+  /** Step button direction. */
+  stepDir?: PenStepDir;
+  /** Calendar event fields for `cta.calendar`. */
+  eventTitle?: string;
+  eventLocation?: string;
+  /** ISO start; falls back to group countdown `closesAt` when empty. */
+  eventStart?: string;
+  eventDurationMin?: number;
   /** Fixed amount shared by Allocate buttons in the group. Default 100. */
   allocateTotal?: number;
   /** Corner radius in CSS px. A button drag from the top-left sets this. */

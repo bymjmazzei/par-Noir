@@ -1,3 +1,4 @@
+import { saveIcsFile } from '@par-noir/feed-tile';
 import { buildCorrespondenceHandoffHash, type PenActionEffect } from '@par-noir/pen-protocol';
 import { ownerFetch } from './ownerApiFetch';
 
@@ -54,6 +55,11 @@ export async function runFeedPenEffect(input: {
       );
       return;
     }
+    case 'calendar':
+      saveIcsFile(effect);
+      return;
+    case 'navigate':
+      return;
     case 'widget_row': {
       if (!userPnIdentifier || !effect.spreadsheetId || !penDocId || !creatorPnIdentifier) return;
       await ownerFetch(
