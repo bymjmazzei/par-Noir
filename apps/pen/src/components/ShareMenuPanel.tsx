@@ -23,6 +23,10 @@ export type ShareMenuPanelProps = {
   onCreateJoinLink: () => void;
   onCopyJoinLink: () => void;
   showHeading?: boolean;
+  /** Current members (not the owner); replaces the pending-invite list when set. */
+  members?: Array<{ pnHash: string; role: PenRole; label: string }>;
+  /** Owner only: remove a member and rotate the doc key. */
+  onRemoveMember?: (pnHash: string) => void;
 };
 
 /** Collaborate panel: connections, join link, invite by pN. */
@@ -43,9 +47,12 @@ export function ShareMenuPanel({
   joinLinkLoading,
   onCreateJoinLink,
   onCopyJoinLink,
-  showHeading = true
+  showHeading = true,
+  members,
+  onRemoveMember
 }: ShareMenuPanelProps) {
   const [tab, setTab] = useState<ShareTab>('connections');
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const invites = listPendingInvites(docId);
 
   const roleSelect = (
@@ -186,7 +193,37 @@ export function ShareMenuPanel({
         </div>
       )}
 
-      {invites.length > 0 && (
+      {members ? (
+        members.length > 0 && (
+          <ul className="mt-3 space-y-1 border-t border-neutral-100 pt-2">
+            {members.map((m) => (
+              <li key={m.pnHash} className="flex items-center gap-2 text-[12px] text-black">
+                <span className="min-w-0 flex-1 truncate">{m.label}</span>
+                <span className="text-neutral-600">{m.role}</span>
+                {onRemoveMember && (
+                  <button
+                    type="button"
+                    className={`shrink-0 px-1 font-bold hover:opacity-60 ${
+                      confirmRemove === m.pnHash ? 'text-red-700' : 'text-neutral-600'
+                    }`}
+                    title="Removes access and rotates the doc key for everyone else"
+                    onClick={() => {
+                      if (confirmRemove !== m.pnHash) {
+                        setConfirmRemove(m.pnHash);
+                        return;
+                      }
+                      setConfirmRemove(null);
+                      onRemoveMember(m.pnHash);
+                    }}
+                  >
+                    {confirmRemove === m.pnHash ? 'Confirm remove' : 'Remove'}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )
+      ) : invites.length > 0 && (
         <ul className="mt-3 space-y-1 border-t border-neutral-100 pt-2">
           {invites.map((pn) => (
             <li key={pn} className="truncate text-[12px] text-black">

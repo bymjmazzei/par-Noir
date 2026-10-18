@@ -156,6 +156,9 @@ import { resolveSigningKeys } from '../../services/penKeys';
 import {
   actorCan,
   invitePenCollaborator,
+  knownMemberPns,
+  rekeyPenDoc,
+  resolvePeerKemPublicKey,
   applyPenCommentInbound,
   applyPenSuggestionInbound,
   fetchGroupRoster,
@@ -172,7 +175,6 @@ import {
   docRequiresGalleryVideoCompose,
   withGalleryPreview
 } from '../../services/penGalleryPreview';
-import { ownerGet } from '../../services/penOwnerFetch';
 import type { Connection } from '@par-noir/social-connections';
 import { getPenConnections } from '../../services/penConnections';
 import { createPenDocInvite } from '../../services/penDocInvite';
@@ -206,7 +208,7 @@ import {
 import { hydrateDocFromCloud } from '../../services/penHydrate';
 import { isDocBootstrapPending } from '../../services/penSyncQueue';
 import { ensureOwnerDocGroup } from '../../services/penCollab';
-import { loadDocKey } from '../../services/penDocCrypto';
+import { loadDocKey, saveDocKey } from '../../services/penDocCrypto';
 
 import { useNavigate } from 'react-router-dom';
 import type { PenSession } from '../../services/penSession';
@@ -214,13 +216,15 @@ import { peerRoutes } from './peerRoutes';
 import { penControllerReady } from '../penControllerReady';
 import {
   PEN_DRAFT_UPSERT_KIND,
+  applyRoleChange,
   withMemberSigningKey,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
-import type {
-  PenLiveDocState,
-  PenLiveRemoteChange,
-  PenLiveSealedSnapshot
+import {
+  signRekey,
+  type PenLiveDocState,
+  type PenLiveRemoteChange,
+  type PenLiveSealedSnapshot
 } from '@par-noir/pen-live';
 import { queuePenOutbox } from '../../services/penCollab';
 import { saveDriveLiveSnapshot, saveLocalLiveSnapshot } from '../../services/penLiveStore';
@@ -416,6 +420,25 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     onAttest: onLiveAttest,
     onClosed: (sealed, rolesUpdate) => {
       void fanoutLiveSnapshot(sealed, rolesUpdate).catch(() => undefined);
+    },
+    onRekey: ({ keyEpoch, roles }) => {
+      const current = bundleRef.current;
+      if (!current || (current.manifest.keyEpoch ?? 0) >= keyEpoch) return;
+      persist(
+        {
+          ...current,
+          manifest: { ...current.manifest, keyEpoch, roles, updatedAt: new Date().toISOString() }
+        },
+        { draft: false }
+      );
+    },
+    onRemoved: (stillMember) => {
+      setStatus(null);
+      setError(
+        stillMember
+          ? 'The owner rotated this doc’s key and could not reach yours. Ask them to share it again.'
+          : 'The owner removed you from this doc.'
+      );
     }
   });
   const liveActive = live.status === 'live';
@@ -722,6 +745,33 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveActive, live.canEdit, canvasSection?.slug, activeLayerId, writingEnabled, live.bindFragment]);
   const livePeers = live.peers;
+
+  const [memberPns, setMemberPns] = useState<Record<string, string>>({});
+  const memberGroupId = bundle?.manifest.groupId || '';
+  const memberRolesJson = JSON.stringify(bundle?.manifest.roles || []);
+  useEffect(() => {
+    if (!memberGroupId) return;
+    let cancelled = false;
+    void knownMemberPns({ session, docId, groupId: memberGroupId })
+      .then((pns) => {
+        if (!cancelled) setMemberPns(pns);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [docId, memberGroupId, memberRolesJson, session]);
+  const shareMembers = useMemo(
+    () =>
+      (JSON.parse(memberRolesJson) as Array<{ pnHash: string; role: PenRole }>)
+        .filter((r) => r.role !== 'owner')
+        .map((r) => ({
+          pnHash: r.pnHash,
+          role: r.role,
+          label: memberPns[r.pnHash] || `Member ${r.pnHash.slice(0, 8)}`
+        })),
+    [memberRolesJson, memberPns]
+  );
 
   useEffect(() => {
     live.setPresence({
@@ -1568,29 +1618,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       const groupId = bundle.manifest.groupId || sessionStorage.getItem(`pen_group_id:${docId}`) || '';
       if (!groupId) throw new Error('group_id_required');
 
-      let peerPk = sessionStorage.getItem(`pen_peer_kem:${pn}`) || '';
-      if (!peerPk) {
-        const lookup = await ownerGet(`/api/profile/${encodeURIComponent(pn)}`, {
-          pnIdentifier: session.pnIdentifier
-        });
-        if (!lookup.ok) {
-          throw new Error(
-            lookup.status === 404
-              ? 'peer_profile_not_found'
-              : `peer_profile_lookup_failed_${lookup.status}`
-          );
-        }
-        const data = (await lookup.json().catch(() => ({}))) as {
-          mlKemPublicKey?: string | null;
-        };
-        peerPk = (data.mlKemPublicKey || '').trim();
-      }
-      if (!peerPk) {
-        throw new Error(
-          'peer_messaging_key_unpublished — ask them to unlock browse or messaging once so their ML-KEM public key is on their profile'
-        );
-      }
-      sessionStorage.setItem(`pen_peer_kem:${pn}`, peerPk);
+      const peerPk = await resolvePeerKemPublicKey(session, pn);
 
       const granted = roleOverride || inviteRole;
       await invitePenCollaborator({
@@ -1616,6 +1644,89 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       if (!peerPnOverride) setInvitePn('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'invite_failed');
+      setStatus(null);
+    }
+  }
+
+  /**
+   * Owner removes a member: drop their role, rotate the docKey to a new epoch,
+   * and hand the new key to everyone else (live notice, mailbox, group rows).
+   */
+  async function removeMember(pnHash: string) {
+    const current = bundleRef.current;
+    if (!current) return;
+    const ownerHash = hashPnIdentifier(session.pnIdentifier);
+    const ownerPnHash = current.manifest.ownerPnHash || ownerHash;
+    if (ownerHash !== ownerPnHash || !actorCan(current.manifest.roles, ownerPnHash, session.pnIdentifier, 'revoke')) {
+      setError('no_revoke_permission');
+      return;
+    }
+    const groupId = current.manifest.groupId || sessionStorage.getItem(`pen_group_id:${docId}`) || '';
+    if (!groupId) {
+      setError('group_id_required');
+      return;
+    }
+    const roles = applyRoleChange(current.manifest.roles || [], ownerPnHash, pnHash, null, 'owner');
+    if (!roles) {
+      setError('cannot_remove_member');
+      return;
+    }
+    setStatus('Removing member and rotating the doc key…');
+    setError(null);
+    try {
+      const keyEpoch = (current.manifest.keyEpoch ?? 0) + 1;
+      const knownPns = await knownMemberPns({ session, docId, groupId });
+      const { docKey: nextDocKey, keys, unreachable } = await rekeyPenDoc({
+        session,
+        docId,
+        groupId,
+        title: current.manifest.title,
+        keyEpoch,
+        roles,
+        knownPns
+      });
+      const signing = resolveSigningKeys(session);
+      const rekey = signRekey({
+        docId,
+        keyEpoch,
+        roles,
+        keys,
+        owner: { pnHash: ownerHash, mlDsaSecretKey: signing.secretKey }
+      });
+      const sealed = await liveRef.current.announceRekey(rekey, nextDocKey);
+      saveDocKey(docId, nextDocKey);
+      if (sealed) void saveDriveLiveSnapshot(session.pnIdentifier, docId, sealed).catch(() => undefined);
+
+      const peerRouteKeys = await peerRoutes(session, groupId);
+      if (peerRouteKeys.length) {
+        const fitsMailbox = sealed && sealed.ciphertext.length <= LIVE_FANOUT_MAX_CHARS;
+        await queuePenOutbox({
+          session,
+          kind: PEN_DRAFT_UPSERT_KIND,
+          outboxId: `pen_rekey_${crypto.randomUUID()}`,
+          payload: { docId, groupId, liveRekey: rekey, ...(fitsMailbox ? { liveSnapshot: sealed } : {}) },
+          peerRouteKeys,
+          ownCloudApplied: true
+        });
+        void promotePenOutboxAndFanout(session);
+      }
+
+      const latest = bundleRef.current || current;
+      persist(
+        {
+          ...latest,
+          manifest: { ...latest.manifest, roles, keyEpoch, updatedAt: new Date().toISOString() }
+        },
+        { draft: false }
+      );
+      setStatus(
+        unreachable.length
+          ? `Removed. ${unreachable.length} member(s) could not get the new key; share with them again.`
+          : 'Removed. The doc key was rotated.'
+      );
+      window.setTimeout(() => setStatus(null), 4000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'remove_member_failed');
       setStatus(null);
     }
   }
@@ -2364,6 +2475,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     redoEdit,
     rejectSuggestion,
     rememberPostFileId,
+    removeMember,
     rootForSlug,
     saveDraft,
     savedTick,
@@ -2398,6 +2510,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setTimelinePlaying,
     shareConnections,
     shareConnectionsLoading,
+    shareMembers,
     showComments,
     showHistory,
     showPreview,

@@ -15,50 +15,102 @@ import { listDeviceGroups } from '@par-noir/device-cloud-credentials';
 import { penSessionDrive } from './penDriveLibrary';
 import { loadLiveClaimSecret, saveLiveClaimSecret } from './penLiveStore';
 
-/** Open this member's group row: owner wrap, or sealed peer invite (docKey + live claim secret). */
+type OpenedGroupRow = { docKey: string; liveClaimSecret: string | null; keyEpoch: number | null };
+
+async function openWrappedKey(
+  wrapped: string,
+  mlKemSecretKey: string,
+  groupId: string
+): Promise<OpenedGroupRow | null> {
+  if (!wrapped) return null;
+  try {
+    const parsed = JSON.parse(wrapped) as unknown;
+    if (isSocialEnvelope(parsed)) {
+      const opened = await openSocialEnvelope<{
+        docKey?: string;
+        liveClaimSecret?: string;
+        keyEpoch?: number;
+      }>(parsed, mlKemSecretKey, groupId);
+      return opened.docKey
+        ? {
+            docKey: opened.docKey,
+            liveClaimSecret: opened.liveClaimSecret || null,
+            keyEpoch: Number.isInteger(opened.keyEpoch) ? (opened.keyEpoch as number) : null
+          }
+        : null;
+    }
+  } catch {
+    /* not a social envelope — try owner wrap */
+  }
+  try {
+    return {
+      docKey: await unwrapChatKeyForOwner(wrapped, mlKemSecretKey, groupId),
+      liveClaimSecret: null,
+      keyEpoch: null
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every group row this member can open (owner wrap or sealed peer invite), newest first.
+ * A re-key appends rows, so the first entry carries the current docKey.
+ */
+async function openGroupRows(params: { session: PenSession; groupId: string }): Promise<OpenedGroupRow[]> {
+  const secret = params.session.mlKemSecretKey;
+  if (!secret) return [];
+  try {
+    const drive = await penSessionDrive(params.session.pnIdentifier);
+    const sheetId = drive.index.sheetIds.groups;
+    if (!sheetId) return [];
+    const rows = (await listDeviceGroups(drive.accessToken, sheetId))
+      .filter((g) => g.groupId === params.groupId)
+      .reverse();
+    const out: OpenedGroupRow[] = [];
+    for (const row of rows) {
+      const opened = await openWrappedKey(row.wrappedChatKey || '', secret, params.groupId);
+      if (opened && !out.some((o) => o.docKey === opened.docKey)) out.push(opened);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 async function openGroupRow(params: {
   session: PenSession;
   groupId: string;
 }): Promise<{ docKey: string | null; liveClaimSecret: string | null }> {
-  const none = { docKey: null, liveClaimSecret: null };
-  if (!params.session.mlKemSecretKey) return none;
-  try {
-    const drive = await penSessionDrive(params.session.pnIdentifier);
-    const sheetId = drive.index.sheetIds.groups;
-    if (!sheetId) return none;
-    const groups = await listDeviceGroups(drive.accessToken, sheetId);
-    const row = groups.find((g) => g.groupId === params.groupId);
-    const wrapped = row?.wrappedChatKey || '';
-    if (!wrapped) return none;
+  const [newest] = await openGroupRows(params);
+  return newest || { docKey: null, liveClaimSecret: null };
+}
 
-    try {
-      const parsed = JSON.parse(wrapped) as unknown;
-      if (isSocialEnvelope(parsed)) {
-        const opened = await openSocialEnvelope<{
-          docKey?: string;
-          docId?: string;
-          liveClaimSecret?: string;
-        }>(parsed, params.session.mlKemSecretKey, params.groupId);
-        if (opened.docKey) {
-          return { docKey: opened.docKey, liveClaimSecret: opened.liveClaimSecret || null };
-        }
-      }
-    } catch {
-      /* not a social envelope — try owner wrap */
-    }
-    try {
-      const docKey = await unwrapChatKeyForOwner(
-        wrapped,
-        params.session.mlKemSecretKey,
-        params.groupId
-      );
-      return { docKey, liveClaimSecret: null };
-    } catch {
-      return none;
-    }
-  } catch {
-    return none;
-  }
+/**
+ * Member missed a re-key notice: adopt a newer-epoch key sealed to them in a
+ * group row. Returns the new epoch, or null when nothing newer exists.
+ */
+export async function adoptNewerGroupKey(params: {
+  session: PenSession;
+  docId: string;
+  groupId: string;
+  keyEpoch: number;
+}): Promise<number | null> {
+  const newer = (await openGroupRows(params)).find(
+    (r) => r.keyEpoch !== null && r.keyEpoch > params.keyEpoch
+  );
+  if (!newer || newer.keyEpoch === null) return null;
+  saveDocKey(params.docId, newer.docKey);
+  if (newer.liveClaimSecret) saveLiveClaimSecret(params.docId, newer.liveClaimSecret);
+  return newer.keyEpoch;
+}
+
+/** Older docKeys from earlier key epochs; Drive files written before a re-key stay sealed with them. */
+export async function docKeyHistoryFromGroup(params: {
+  session: PenSession;
+  groupId: string;
+}): Promise<string[]> {
+  return (await openGroupRows(params)).map((r) => r.docKey);
 }
 
 /** Try to recover docKey from group membership (owner wrap or sealed peer invite). */
@@ -115,8 +167,16 @@ export async function hydrateDocFromCloud(params: {
   try {
     cloud = await decryptCloudDoc({ raw, docKey });
   } catch {
-    // Missing/wrong docKey — keep local buffer rather than wipe the editor.
-    return local;
+    try {
+      const fallbackKeys = raw.manifest.groupId
+        ? await docKeyHistoryFromGroup({ session: params.session, groupId: raw.manifest.groupId })
+        : [];
+      if (!fallbackKeys.length) return local;
+      cloud = await decryptCloudDoc({ raw, docKey: docKey || fallbackKeys[0], fallbackKeys });
+    } catch {
+      // Missing/wrong docKey — keep local buffer rather than wipe the editor.
+      return local;
+    }
   }
 
   if (!cloud.manifest || !cloud.chain) return local;

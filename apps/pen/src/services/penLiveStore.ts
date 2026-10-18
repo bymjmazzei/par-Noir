@@ -17,6 +17,9 @@ import { penSessionDrive, readLiveSnapshotFile, writeLiveSnapshotFile } from './
 /** Window event: a peer snapshot arrived by mailbox; detail `{ docId, sealed }`. */
 export const PEN_LIVE_SNAPSHOT_EVENT = 'pen-live-snapshot';
 
+/** Window event: an owner re-key was applied from the mailbox; detail `{ docId, keyEpoch, roles }`. */
+export const PEN_LIVE_REKEY_EVENT = 'pen-live-rekey';
+
 const snapKey = (pn: string, docId: string) => `pen_live_v1:${pn}:${docId}`;
 const rolesKey = (pn: string, docId: string) => `pen_live_roles_v1:${pn}:${docId}`;
 const claimKey = (docId: string) => `pen_live_claim:${docId}`;
@@ -39,7 +42,10 @@ export function loadLocalLiveSnapshot(pn: string, docId: string): PenLiveSealedS
   }
 }
 
+/** Never replaces a snapshot from a newer key epoch (a closing pre-rekey session must not win). */
 export function saveLocalLiveSnapshot(pn: string, docId: string, sealed: PenLiveSealedSnapshot): void {
+  const prev = loadLocalLiveSnapshot(pn, docId);
+  if (prev && prev.keyEpoch > sealed.keyEpoch) return;
   try {
     localStorage.setItem(snapKey(pn, docId), JSON.stringify(sealed));
   } catch {
@@ -135,6 +141,7 @@ export function loadLiveRolesUpdate(pn: string, docId: string): PenLiveRolesUpda
 /** Keep the newest update; callers verify the owner signature before trusting it. */
 export function saveLiveRolesUpdate(pn: string, docId: string, update: PenLiveRolesUpdate): void {
   const prev = loadLiveRolesUpdate(pn, docId);
+  if (prev && prev.keyEpoch > update.keyEpoch) return;
   if (prev && prev.keyEpoch === update.keyEpoch && prev.issuedAt >= update.issuedAt) return;
   try {
     localStorage.setItem(rolesKey(pn, docId), JSON.stringify(update));

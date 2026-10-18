@@ -178,4 +178,56 @@ export function verifyRolesUpdate(update: PenLiveRolesUpdate, anchor: PenLiveTru
   return verifySig(signature, rolesBytes(unsigned), anchor.ownerMlDsaPublicKey);
 }
 
-export type PenLiveControl = PenLiveKeyClaim | PenLiveRolesUpdate;
+/**
+ * Owner-signed key rotation. `keys` maps each remaining member's pnHash to the
+ * new docKey sealed to that member; a removed member finds no entry.
+ */
+export interface PenLiveRekey {
+  t: 'rekey';
+  docId: string;
+  keyEpoch: number;
+  issuedAt: number;
+  roles: PenRoleAssignment[];
+  keys: Record<string, string>;
+  signature: string;
+}
+
+function rekeyBytes(u: Omit<PenLiveRekey, 'signature'>): Uint8Array {
+  const keys = Object.keys(u.keys)
+    .sort()
+    .map((k) => [k, u.keys[k]]);
+  return utf8(
+    `pen-live-rekey/v1|${u.docId}|${u.keyEpoch}|${u.issuedAt}|${JSON.stringify(u.roles)}|${JSON.stringify(keys)}`
+  );
+}
+
+export function signRekey(params: {
+  docId: string;
+  keyEpoch: number;
+  roles: PenRoleAssignment[];
+  keys: Record<string, string>;
+  owner: PenLiveSigner;
+  issuedAt?: number;
+}): PenLiveRekey {
+  const unsigned = {
+    t: 'rekey' as const,
+    docId: params.docId,
+    keyEpoch: params.keyEpoch,
+    issuedAt: params.issuedAt ?? Date.now(),
+    roles: params.roles,
+    keys: params.keys
+  };
+  return {
+    ...unsigned,
+    signature: bytesToBase64(mlDsa65Sign(rekeyBytes(unsigned), params.owner.mlDsaSecretKey))
+  };
+}
+
+export function verifyRekey(rekey: PenLiveRekey, anchor: PenLiveTrustAnchor): boolean {
+  if (rekey?.t !== 'rekey' || rekey.docId !== anchor.docId) return false;
+  if (!rekey.keys || typeof rekey.keys !== 'object' || !Number.isInteger(rekey.keyEpoch)) return false;
+  const { signature, ...unsigned } = rekey;
+  return verifySig(signature, rekeyBytes(unsigned), anchor.ownerMlDsaPublicKey);
+}
+
+export type PenLiveControl = PenLiveKeyClaim | PenLiveRolesUpdate | PenLiveRekey;

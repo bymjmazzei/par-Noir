@@ -108,5 +108,18 @@ describe('pen live store', () => {
     expect(loadLiveRolesUpdate(pn, docId)?.issuedAt).toBe(20);
     saveLiveRolesUpdate(pn, docId, update(30));
     expect(loadLiveRolesUpdate(pn, docId)?.issuedAt).toBe(30);
+    saveLiveRolesUpdate(pn, docId, { ...update(5), keyEpoch: 1 });
+    saveLiveRolesUpdate(pn, docId, update(99));
+    expect(loadLiveRolesUpdate(pn, docId)?.keyEpoch).toBe(1);
+  });
+
+  it('a session closing on the old epoch does not overwrite the re-keyed snapshot', async () => {
+    const nextKey = generateChatKey();
+    saveLocalLiveSnapshot(pn, docId, await sealPenLiveSnapshot(docWith({ body: 'Re-keyed' }), nextKey, 1));
+    saveLocalLiveSnapshot(pn, docId, await sealPenLiveSnapshot(docWith({ body: 'Closing' }), docKey, 0));
+    const local = loadLocalLiveSnapshot(pn, docId);
+    expect(local?.keyEpoch).toBe(1);
+    const ydoc = new Y.Doc();
+    expect(await applyLiveSnapshots(ydoc, [local], nextKey, 1, null)).toBe(1);
   });
 });

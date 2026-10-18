@@ -34,6 +34,7 @@ import {
   type PenPromoteLink,
   type PenSuggestion,
   type PenRole,
+  type PenRoleAssignment,
   canPenRole,
   resolvePenRole,
   hashPnIdentifier
@@ -47,14 +48,20 @@ import {
 import {
   deriveKeyClaimSecret,
   isPenLiveSealedSnapshot,
-  type PenLiveRolesUpdate
+  verifyRekey,
+  type PenLiveRekey,
+  type PenLiveRolesUpdate,
+  type PenLiveTrustAnchor
 } from '@par-noir/pen-live';
-import { loadDocKey } from './penDocCrypto';
+import { loadDocKey, saveDocKey } from './penDocCrypto';
 import {
+  PEN_LIVE_REKEY_EVENT,
   PEN_LIVE_SNAPSHOT_EVENT,
   mergeLiveSnapshotIntoLocal,
+  saveLiveClaimSecret,
   saveLiveRolesUpdate
 } from './penLiveStore';
+import { loadLocalDoc, saveLocalDoc } from './penLocalStore';
 import { API_ENDPOINT } from '../config/api';
 import { appendDeviceGroupRow, listDeviceGroups } from '@par-noir/device-cloud-credentials';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
@@ -214,6 +221,140 @@ export async function invitePenCollaborator(params: {
     `pen_share:${params.docId}:${params.peerPnIdentifier}`,
     JSON.stringify({ docId: params.docId, role: params.role, accessRole })
   );
+}
+
+/** Peer ML-KEM public key from their profile (cached for the session). */
+export async function resolvePeerKemPublicKey(session: PenSession, pn: string): Promise<string> {
+  let peerPk = sessionStorage.getItem(`pen_peer_kem:${pn}`) || '';
+  if (!peerPk) {
+    const lookup = await ownerGet(`/api/profile/${encodeURIComponent(pn)}`, {
+      pnIdentifier: session.pnIdentifier
+    });
+    if (!lookup.ok) {
+      throw new Error(
+        lookup.status === 404 ? 'peer_profile_not_found' : `peer_profile_lookup_failed_${lookup.status}`
+      );
+    }
+    const data = (await lookup.json().catch(() => ({}))) as { mlKemPublicKey?: string | null };
+    peerPk = (data.mlKemPublicKey || '').trim();
+  }
+  if (!peerPk) {
+    throw new Error(
+      'peer_messaging_key_unpublished — ask them to unlock browse or messaging once so their ML-KEM public key is on their profile'
+    );
+  }
+  sessionStorage.setItem(`pen_peer_kem:${pn}`, peerPk);
+  return peerPk;
+}
+
+/**
+ * Owner removes members: mint a new docKey for `keyEpoch`, seal it to each
+ * remaining member, and append group rows so cold opens find the new key.
+ * Removed members get nothing. Returns the new key and per-member envelopes
+ * (pnHash → sealed JSON) for the signed live/mailbox rekey notice.
+ */
+export async function rekeyPenDoc(params: {
+  session: PenSession;
+  docId: string;
+  groupId: string;
+  title: string;
+  keyEpoch: number;
+  roles: PenRoleAssignment[];
+  /** pnHash → pn for members the owner knows by name (roster + pending invites). */
+  knownPns: Record<string, string>;
+}): Promise<{ docKey: string; keys: Record<string, string>; unreachable: string[] }> {
+  const secret = params.session.mlKemSecretKey;
+  if (!secret) throw new Error('messaging_keys_required');
+  const ownerHash = hashPnIdentifier(params.session.pnIdentifier);
+  const docKey = generateChatKey();
+  const keys: Record<string, string> = {};
+  const unreachable: string[] = [];
+  const members: Array<{ memberPnIdentifier: string; wrappedChatKey: string; accessRole: 'readWrite' | 'readOnly' }> = [
+    {
+      memberPnIdentifier: params.session.pnIdentifier,
+      wrappedChatKey: await wrapChatKeyForOwner(docKey, secret, params.groupId),
+      accessRole: 'readWrite'
+    }
+  ];
+  for (const r of params.roles) {
+    if (r.pnHash === ownerHash) continue;
+    const pn = params.knownPns[r.pnHash];
+    let peerPk = '';
+    try {
+      peerPk = pn ? await resolvePeerKemPublicKey(params.session, pn) : '';
+    } catch {
+      peerPk = '';
+    }
+    if (!pn || !peerPk) {
+      unreachable.push(r.pnHash);
+      continue;
+    }
+    const sealed = JSON.stringify(
+      await sealSocialEnvelope(peerPk, params.groupId, {
+        docKey,
+        docId: params.docId,
+        role: r.role,
+        keyEpoch: params.keyEpoch,
+        liveClaimSecret: deriveKeyClaimSecret(secret, params.docId, r.pnHash)
+      })
+    );
+    keys[r.pnHash] = sealed;
+    members.push({
+      memberPnIdentifier: pn,
+      wrappedChatKey: sealed,
+      accessRole: r.role === 'viewer' || r.role === 'commentor' ? 'readOnly' : 'readWrite'
+    });
+  }
+  await createPenGroup({
+    ownerPnIdentifier: params.session.pnIdentifier,
+    groupId: params.groupId,
+    title: params.title,
+    members
+  });
+  return { docKey, keys, unreachable };
+}
+
+/** pnHash → pn for every member named in the owner's group rows or pending invites. */
+export async function knownMemberPns(params: {
+  session: PenSession;
+  docId: string;
+  groupId: string;
+}): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const roster = await fetchGroupRoster({ groupId: params.groupId, ownerPnIdentifier: params.session.pnIdentifier });
+  for (const pn of [...roster.map((r) => r.memberPnIdentifier), ...listPendingInvites(params.docId)]) {
+    if (pn) out[hashPnIdentifier(pn)] = pn;
+  }
+  return out;
+}
+
+/**
+ * Member side of an owner re-key: verify the owner's signature, open this
+ * member's envelope, and store the new docKey and claim secret.
+ * Null when the notice is forged, stale, or carries no key for this member.
+ */
+export async function applyPenLiveRekey(params: {
+  session: PenSession;
+  groupId: string;
+  rekey: PenLiveRekey;
+  anchor: PenLiveTrustAnchor;
+  currentEpoch: number;
+}): Promise<{ docKey: string; keyEpoch: number; roles: PenRoleAssignment[] } | null> {
+  const { session, rekey, anchor } = params;
+  if (!session.mlKemSecretKey || !verifyRekey(rekey, anchor)) return null;
+  if (rekey.keyEpoch <= params.currentEpoch) return null;
+  const mine = rekey.keys[hashPnIdentifier(session.pnIdentifier)];
+  if (!mine) return null;
+  let opened: { docKey?: string; liveClaimSecret?: string };
+  try {
+    opened = await openSocialEnvelope(JSON.parse(mine), session.mlKemSecretKey, params.groupId);
+  } catch {
+    return null;
+  }
+  if (!opened.docKey) return null;
+  saveDocKey(rekey.docId, opened.docKey);
+  if (opened.liveClaimSecret) saveLiveClaimSecret(rekey.docId, opened.liveClaimSecret);
+  return { docKey: opened.docKey, keyEpoch: rekey.keyEpoch, roles: rekey.roles };
 }
 
 export async function fetchGroupRoster(params: {
@@ -443,10 +584,13 @@ async function applyPenLiveSnapshotFromMailbox(
     );
   }
   const sealed = payload.liveSnapshot;
-  if (!isPenLiveSealedSnapshot(sealed)) return false;
+  const rekey = payload.liveRekey as PenLiveRekey | undefined;
+  if (!isPenLiveSealedSnapshot(sealed) && rekey?.t !== 'rekey') return false;
   const docId = String(payload.docId || '');
   const groupId = String(payload.groupId || '');
   if (!docId) return false;
+  if (rekey?.t === 'rekey' && groupId) await applyMailboxRekey(session, docId, groupId, rekey);
+  if (!isPenLiveSealedSnapshot(sealed)) return true;
   const { ensureDocKeyFromGroup } = await import('./penHydrate');
   const docKey =
     loadDocKey(docId) || (groupId ? await ensureDocKeyFromGroup({ session, docId, groupId }) : null);
@@ -462,6 +606,40 @@ async function applyPenLiveSnapshotFromMailbox(
     /* non-browser */
   }
   return true;
+}
+
+/** Offline member catching up on a re-key: trust it only against the local copy's genesis key. */
+async function applyMailboxRekey(
+  session: PenSession,
+  docId: string,
+  groupId: string,
+  rekey: PenLiveRekey
+): Promise<void> {
+  const local = loadLocalDoc(session.pnIdentifier, docId);
+  const ownerPnHash = local?.manifest.ownerPnHash || local?.chain.genesis.authorPnHash || '';
+  const ownerKey = local?.chain.genesis.publicKey || '';
+  if (!local || !ownerPnHash || !ownerKey) return;
+  const applied = await applyPenLiveRekey({
+    session,
+    groupId,
+    rekey,
+    anchor: { docId, ownerPnHash, ownerMlDsaPublicKey: ownerKey },
+    currentEpoch: local.manifest.keyEpoch ?? 0
+  });
+  if (!applied) return;
+  saveLocalDoc(session.pnIdentifier, {
+    ...local,
+    manifest: { ...local.manifest, keyEpoch: applied.keyEpoch, roles: applied.roles }
+  });
+  try {
+    window.dispatchEvent(
+      new CustomEvent(PEN_LIVE_REKEY_EVENT, {
+        detail: { docId, keyEpoch: applied.keyEpoch, roles: applied.roles }
+      })
+    );
+  } catch {
+    /* non-browser */
+  }
 }
 
 /** Drain mailbox and apply pen.* jobs into this user's Drive. */

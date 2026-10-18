@@ -21,9 +21,11 @@ import {
   bytesToBase64,
   deriveKeyClaimSecret,
   makeKeyClaim,
+  signRekey,
   signRolesUpdate,
   trustedLiveRoles,
   verifyKeyClaim,
+  verifyRekey,
   verifyRolesUpdate,
   openPenLiveBatch,
   openPenLiveSnapshot,
@@ -499,6 +501,21 @@ describe('member key attestation', () => {
       owner: { pnHash: 'owner', mlDsaSecretKey: intruder.secret }
     });
     expect(verifyRolesUpdate(byIntruder, anchor)).toBe(false);
+  });
+
+  it('verifies owner-signed re-keys and refuses tampered key maps', () => {
+    const rekey = signRekey({
+      docId: 'd1',
+      keyEpoch: 1,
+      roles: [{ pnHash: 'member', role: 'collaborator' }],
+      keys: { member: 'sealed-for-member' },
+      owner: { pnHash: 'owner', mlDsaSecretKey: owner.secret }
+    });
+    expect(verifyRekey(rekey, anchor)).toBe(true);
+    expect(verifyRekey({ ...rekey, keys: { ...rekey.keys, removed: 'sealed-for-removed' } }, anchor)).toBe(false);
+    expect(verifyRekey({ ...rekey, keyEpoch: 2 }, anchor)).toBe(false);
+    expect(verifyRekey({ ...rekey, roles: [] }, anchor)).toBe(false);
+    expect(verifyRekey(rekey, { ...anchor, ownerMlDsaPublicKey: intruder.pub })).toBe(false);
   });
 });
 

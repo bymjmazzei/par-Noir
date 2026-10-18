@@ -7,7 +7,7 @@
  * hears peers through `onRemote` / `onAdopt`.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import {
   PEN_LIVE_LOCAL,
@@ -31,9 +31,11 @@ import {
   signRolesUpdate,
   trustedLiveRoles,
   verifyKeyClaim,
+  verifyRekey,
   verifyRolesUpdate,
   type PenLiveControl,
   type PenLiveDocState,
+  type PenLiveRekey,
   type PenLiveRemoteChange,
   type PenLiveRolesUpdate,
   type PenLiveSealedSnapshot,
@@ -49,10 +51,12 @@ import type { PenSession } from '../../services/penSession';
 import type { LocalDocBundle } from '../../services/penLocalStore';
 import { resolveSigningKeys } from '../../services/penKeys';
 import { loadDocKey } from '../../services/penDocCrypto';
-import { ensureLiveClaimSecret } from '../../services/penHydrate';
+import { adoptNewerGroupKey, ensureLiveClaimSecret } from '../../services/penHydrate';
+import { applyPenLiveRekey } from '../../services/penCollab';
 import { penEditorSchema } from '../../services/penEditorExtensions';
 import { createPenLiveTransport } from '../../services/penLiveSocket';
 import {
+  PEN_LIVE_REKEY_EVENT,
   PEN_LIVE_SNAPSHOT_EVENT,
   applyLiveSnapshots,
   loadDriveLiveSnapshot,
@@ -91,6 +95,11 @@ export interface PenLiveHandle {
   /** Awareness + local user for editor cursors while live. */
   cursor(): { awareness: Awareness; user: PenLivePresenceUser } | null;
   sealSnapshot(): Promise<PenLiveSealedSnapshot | null>;
+  /**
+   * Owner: send a signed re-key over the current (old-epoch) room, then seal
+   * the live state under the new key. Null when not live.
+   */
+  announceRekey(rekey: PenLiveRekey, nextDocKey: string): Promise<PenLiveSealedSnapshot | null>;
   /** Latest owner-signed roles update this device holds (for durable fanout). */
   rolesUpdate(): PenLiveRolesUpdate | null;
   session(): PenLiveSession | null;
@@ -143,6 +152,10 @@ export function usePenLive(params: {
   onAttest: (pnHash: string, mlDsaPublicKey: string, attestation: { by: string; signature: string }) => void;
   /** Session ended while live (doc closed or re-keyed): final sealed state for durable fanout. */
   onClosed?: (sealed: PenLiveSealedSnapshot, rolesUpdate: PenLiveRolesUpdate | null) => void;
+  /** Member: the owner rotated the docKey (new key already stored); adopt the new epoch and roles. */
+  onRekey?: (next: { keyEpoch: number; roles: PenRoleAssignment[] }) => void;
+  /** Member: a verified re-key left this member without a key. */
+  onRemoved?: (stillMember: boolean) => void;
 }): PenLiveHandle {
   const { session, docId, bundle } = params;
   const [status, setStatus] = useState<PenLiveStatus>('off');
@@ -164,13 +177,15 @@ export function usePenLive(params: {
   const ownerPnHash = manifest?.ownerPnHash || bundle?.chain.genesis.authorPnHash || '';
   const ownerKey = bundle?.chain.genesis.publicKey || '';
   const shared = (manifest?.roles?.length ?? 0) > 1;
-  const [docKey, setDocKey] = useState(() => loadDocKey(docId));
+  const [keyTick, setKeyTick] = useState(0);
+  // A re-key stores the new docKey before bumping keyEpoch, so the epoch change re-reads it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const docKey = useMemo(() => loadDocKey(docId), [docId, keyEpoch, keyTick]);
 
   useEffect(() => {
     if (docKey || !groupId) return;
     const t = window.setInterval(() => {
-      const k = loadDocKey(docId);
-      if (k) setDocKey(k);
+      if (loadDocKey(docId)) setKeyTick((n) => n + 1);
     }, 1000);
     return () => window.clearInterval(t);
   }, [docId, docKey, groupId]);
@@ -264,6 +279,35 @@ export function usePenLive(params: {
         liveSession.setRoles(trusted);
         setCanEdit(liveSession.canEdit);
         if (!wasTrusted && myKeyTrusted(trusted)) liveSession.requestSync();
+        return;
+      }
+      if (msg.t === 'rekey' && !isOwner && msg.keyEpoch > keyEpoch && verifyRekey(msg, anchor)) {
+        void (async () => {
+          const applied = await applyPenLiveRekey({
+            session,
+            groupId,
+            rekey: msg,
+            anchor,
+            currentEpoch: keyEpoch
+          }).catch(() => null);
+          if (disposed) return;
+          if (!applied) {
+            // Verified notice with no key for us: the owner removed us (or could not reach our key).
+            const stillMember = msg.roles.some((r) => r.pnHash === signer.pnHash);
+            await liveSession.stop().catch(() => undefined);
+            setLiveStatus('off');
+            setCanEdit(false);
+            callbacks.current.onRemoved?.(stillMember);
+            return;
+          }
+          // Carry this replica's state into the new epoch so the restart has it locally.
+          saveLocalLiveSnapshot(
+            session.pnIdentifier,
+            docId,
+            await sealPenLiveSnapshot(ydoc, applied.docKey, applied.keyEpoch)
+          );
+          callbacks.current.onRekey?.({ keyEpoch: applied.keyEpoch, roles: applied.roles });
+        })();
       }
     };
 
@@ -373,6 +417,11 @@ export function usePenLive(params: {
           window.setTimeout(() => {
             if (disposed || statusRef.current !== 'connecting') return;
             setLiveStatus('off');
+            void adoptNewerGroupKey({ session, docId, groupId, keyEpoch }).then((next) => {
+              if (next !== null && !disposed) {
+                callbacks.current.onRekey?.({ keyEpoch: next, roles: bundleRef.current?.manifest.roles || [] });
+              }
+            });
           }, MEMBER_WAIT_MS)
         );
       }
@@ -409,6 +458,18 @@ export function usePenLive(params: {
     // Roles changes go through setRoles below; a new epoch or key restarts the session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shared, groupId, docKey, keyEpoch, ownerPnHash, ownerKey, docId, session.pnIdentifier, session.accessToken]);
+
+  useEffect(() => {
+    const onRekeyEvent = (e: Event) => {
+      const detail = (e as CustomEvent<{ docId?: string; keyEpoch?: number; roles?: PenRoleAssignment[] }>)
+        .detail;
+      const current = bundleRef.current?.manifest.keyEpoch ?? 0;
+      if (detail?.docId !== docId || typeof detail.keyEpoch !== 'number' || detail.keyEpoch <= current) return;
+      callbacks.current.onRekey?.({ keyEpoch: detail.keyEpoch, roles: detail.roles || [] });
+    };
+    window.addEventListener(PEN_LIVE_REKEY_EVENT, onRekeyEvent);
+    return () => window.removeEventListener(PEN_LIVE_REKEY_EVENT, onRekeyEvent);
+  }, [docId]);
 
   const rolesJson = JSON.stringify(manifest?.roles || []);
   useEffect(() => {
@@ -481,6 +542,17 @@ export function usePenLive(params: {
     return sealPenLiveSnapshot(rt.ydoc, rt.docKey, rt.keyEpoch);
   }, []);
 
+  const announceRekey = useCallback(async (rekey: PenLiveRekey, nextDocKey: string) => {
+    const rt = runtimeRef.current;
+    if (!rt || !rt.isOwner) return null;
+    rt.session.sendControl(rekey);
+    await rt.session.drain();
+    if (statusRef.current !== 'live') return null;
+    const sealed = await sealPenLiveSnapshot(rt.ydoc, nextDocKey, rekey.keyEpoch);
+    saveLocalLiveSnapshot(session.pnIdentifier, docId, sealed);
+    return sealed;
+  }, [docId, session.pnIdentifier]);
+
   return {
     status,
     canEdit,
@@ -494,6 +566,7 @@ export function usePenLive(params: {
     setPresence,
     cursor,
     sealSnapshot,
+    announceRekey,
     rolesUpdate: () => rolesUpdateRef.current,
     session: () => runtimeRef.current?.session ?? null
   };

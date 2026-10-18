@@ -307,6 +307,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     redoEdit,
     rejectSuggestion,
     rememberPostFileId,
+    removeMember,
     rootForSlug,
     saveDraft,
     savedTick,
@@ -341,6 +342,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     setTimelinePlaying,
     shareConnections,
     shareConnectionsLoading,
+    shareMembers,
     showComments,
     showHistory,
     showPreview,
@@ -758,6 +760,12 @@ export function DocEditorShell(state: DocEditorReadyState) {
     session.pnIdentifier,
     'invite'
   );
+  const canRemoveMembers = actorCan(
+    bundle.manifest.roles,
+    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    session.pnIdentifier,
+    'revoke'
+  );
   const canAccept = actorCan(
     bundle.manifest.roles,
     bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
@@ -917,6 +925,14 @@ export function DocEditorShell(state: DocEditorReadyState) {
               void createDocJoinLink();
             }}
             onCopyJoinLink={copyDocJoinLink}
+            members={shareMembers}
+            onRemoveMember={
+              canRemoveMembers
+                ? (pnHash) => {
+                    void removeMember(pnHash);
+                  }
+                : undefined
+            }
             projectEnabled={projectEnabled}
             correspondenceEnabled={correspondenceEnabled}
             canPublishPublicTemplate={verifiedAuthor}

@@ -41,7 +41,9 @@ export function DocShareHubMenu({
     joinLink: rest.joinLink,
     joinLinkLoading: rest.joinLinkLoading,
     onCreateJoinLink: rest.onCreateJoinLink,
-    onCopyJoinLink: rest.onCopyJoinLink
+    onCopyJoinLink: rest.onCopyJoinLink,
+    members: rest.members,
+    onRemoveMember: rest.onRemoveMember
   };
 
   const publishProps: PublishMenuPanelProps = {

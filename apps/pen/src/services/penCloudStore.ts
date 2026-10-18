@@ -295,16 +295,37 @@ export type CloudDocRaw = {
   }>;
 };
 
+async function decryptWithAnyKey(
+  payload: string,
+  docKey: string | null,
+  fallbackKeys: string[]
+): Promise<PenSectionContent> {
+  try {
+    return await decryptSectionPayload(payload, docKey);
+  } catch (err) {
+    for (const key of fallbackKeys) {
+      if (key === docKey) continue;
+      try {
+        return await decryptSectionPayload(payload, key);
+      } catch {
+        /* try the next epoch's key */
+      }
+    }
+    throw err;
+  }
+}
+
 async function decodeCloudSections(
   list: CloudSectionPayload[] | PenSectionContent[] | undefined,
-  docKey: string | null
+  docKey: string | null,
+  fallbackKeys: string[] = []
 ): Promise<PenSectionContent[]> {
   if (!list?.length) return [];
   const out: PenSectionContent[] = [];
   for (const item of list) {
     if (item && typeof item === 'object' && 'ciphertext' in item && 'slug' in item) {
       const payload = String((item as CloudSectionPayload).ciphertext || '');
-      out.push(await decryptSectionPayload(payload, docKey));
+      out.push(await decryptWithAnyKey(payload, docKey, fallbackKeys));
     } else if (item && typeof item === 'object' && 'slug' in item) {
       // Legacy API returned parsed JSON sections
       out.push(item as PenSectionContent);
@@ -344,22 +365,24 @@ export async function fetchDocFromDrive(params: {
 export async function decryptCloudDoc(params: {
   raw: CloudDocRaw;
   docKey: string | null;
+  /** Keys from earlier key epochs (files written before a re-key). */
+  fallbackKeys?: string[];
 }): Promise<{
   manifest: PenDocManifest | null;
   chain: PenHistoryChain | null;
   currentSections: PenSectionContent[];
   drafts: Array<{ draft: PenDraftManifest; sections: PenSectionContent[] }>;
 }> {
-  const { raw, docKey } = params;
+  const { raw, docKey, fallbackKeys = [] } = params;
   if (!raw.manifest || !raw.chain) {
     return { manifest: null, chain: null, currentSections: [], drafts: [] };
   }
-  const currentSections = await decodeCloudSections(raw.currentSections, docKey);
+  const currentSections = await decodeCloudSections(raw.currentSections, docKey, fallbackKeys);
   const drafts: Array<{ draft: PenDraftManifest; sections: PenSectionContent[] }> = [];
   for (const d of raw.drafts || []) {
     drafts.push({
       draft: d.draft,
-      sections: await decodeCloudSections(d.sections, docKey)
+      sections: await decodeCloudSections(d.sections, docKey, fallbackKeys)
     });
   }
   return {
