@@ -23,11 +23,18 @@ function press(layers: PenPageLayer[], layerId: string, state: PenViewerState = 
 }
 
 describe('pressPenAction', () => {
-  it('cta.open opens http(s) only', () => {
+  it('cta.open opens checked https links only', () => {
     const ok = press([button('b', { behavior: 'cta.open', openUrl: 'https://example.com' })], 'b');
-    expect(ok.effect).toEqual({ kind: 'open', url: 'https://example.com/' });
+    expect(ok.effect).toEqual({ kind: 'open', url: 'https://example.com/', host: 'example.com', warnings: [] });
     const bad = press([button('b', { behavior: 'cta.open', openUrl: 'javascript:alert(1)' })], 'b');
     expect(bad.effect.kind).toBe('none');
+    const http = press([button('b', { behavior: 'cta.open', openUrl: 'http://example.com' })], 'b');
+    expect(http.effect.kind).toBe('none');
+    const lure = press(
+      [button('b', { behavior: 'cta.open', openUrl: 'https://evil.example', label: 'Log in to par Noir' })],
+      'b'
+    );
+    expect(lure.effect).toMatchObject({ kind: 'open', warnings: ['label_mismatch'] });
     const empty = press([button('b', { behavior: 'cta.open' })], 'b');
     expect(empty.effect.kind).toBe('none');
   });
@@ -109,13 +116,45 @@ describe('pressPenAction', () => {
     expect(mail.effect.kind).toBe('mailto');
     expect((mail.effect as { href: string }).href).toContain('Email%3A%20me%40x.com');
     const pn = press([group, input, button('s', { behavior: 'widget.submit', parentGroupId: 'g', submitTo: 'friend' })], 's', state);
-    expect(pn.effect).toMatchObject({ kind: 'messaging', body: 'Email: me@x.com' });
+    expect(mail.effect).toMatchObject({ to: 'a@b.com' });
+    expect(pn.effect).toMatchObject({ kind: 'messaging', body: 'Email: me@x.com', to: 'friend' });
     const sheet = press([group, input, button('s', { behavior: 'widget.submit', parentGroupId: 'g' })], 's', state);
     expect(sheet.effect).toMatchObject({
       kind: 'widget_row',
       spreadsheetId: 'sheet-1',
       row: { trigger: 'widget.submit', headers: ['Email'], cells: ['me@x.com'], fields: { Email: 'me@x.com' } }
     });
+  });
+
+  it('widget.submit never sends a form that asks for a secret', () => {
+    const secret: PenPageLayer = {
+      id: 'in',
+      kind: 'text',
+      widgetElement: 'input',
+      name: 'Your passcode',
+      parentGroupId: 'g',
+      x: 0,
+      y: 0,
+      w: 40,
+      h: 20,
+      zIndex: 2
+    };
+    const send = button('s', { behavior: 'widget.submit', parentGroupId: 'g', submitTo: 'a@b.com' });
+    expect(press([group, secret, send], 's').effect.kind).toBe('none');
+
+    const field: PenPageLayer = { ...secret, name: 'Field 1' };
+    const prompt: PenPageLayer = {
+      id: 'p',
+      kind: 'text',
+      parentGroupId: 'g',
+      x: 0,
+      y: 0,
+      w: 40,
+      h: 20,
+      zIndex: 2,
+      textDoc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Enter your seed phrase' }] }] }
+    };
+    expect(press([group, field, prompt, send], 's').effect.kind).toBe('none');
   });
 
   it('ignores unknown layers and non-buttons', () => {

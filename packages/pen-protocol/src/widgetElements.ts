@@ -13,6 +13,7 @@ import {
   upsertUserRow,
   type PollCounts
 } from './pollSheet.js';
+import { docToPlainText } from './richDoc.js';
 import { socialPresentation, type SeedBundle } from './starterSeeds.js';
 import type {
   PenInteractiveBehavior,
@@ -702,6 +703,29 @@ export function inputLayers(
   groupId?: string | null
 ): PenPageLayer[] {
   return pollLayers(section, groupId).filter((layer) => layer.widgetElement === 'input');
+}
+
+const SECRET_PROMPT =
+  /\b(pass\s*code|password|pass\s*phrase|seed(\s*phrase)?|recovery|private\s*key|pin|2fa|otp|one[-\s]?time\s*code|verification\s*code|security\s*code|cvv|card\s*number|ssn|social\s*security)\b/i;
+
+/**
+ * Inputs, or text beside them, that ask a viewer for a secret. A form like this never submits.
+ */
+export function secretPromptLayers(
+  section: PenSectionContent,
+  groupId?: string | null
+): PenPageLayer[] {
+  const inputs = inputLayers(section, groupId);
+  if (!inputs.length) return [];
+  return pollLayers(section, groupId).filter((layer) => {
+    if (layer.widgetElement === 'input') {
+      return SECRET_PROMPT.test(`${layer.name || ''} ${layer.label || ''}`);
+    }
+    if (layer.kind === 'text') {
+      return SECRET_PROMPT.test(`${layer.label || ''} ${docToPlainText(layer.textDoc)}`);
+    }
+    return false;
+  });
 }
 
 /**

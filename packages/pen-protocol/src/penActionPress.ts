@@ -16,9 +16,11 @@ import {
   nextAllocatePress,
   nextRankPress,
   rankColumnKeys,
+  secretPromptLayers,
   submitFields,
   type WidgetActionRow
 } from './widgetElements.js';
+import { checkLink, type LinkWarning } from './linkSafety.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
 
 export type PenViewerState = {
@@ -37,9 +39,9 @@ export type PenViewerState = {
 };
 
 export type PenActionEffect =
-  | { kind: 'open'; url: string }
-  | { kind: 'mailto'; href: string }
-  | { kind: 'messaging'; title: string; body: string }
+  | { kind: 'open'; url: string; host: string; warnings: LinkWarning[] }
+  | { kind: 'mailto'; href: string; to: string }
+  | { kind: 'messaging'; title: string; body: string; to: string }
   | { kind: 'vote'; layerId: string; optionId: string; spreadsheetId?: string }
   | { kind: 'widget_row'; spreadsheetId?: string; row: WidgetActionRow }
   | { kind: 'none' };
@@ -51,18 +53,6 @@ export function emptyPenViewerState(): PenViewerState {
 /** Group key used for per-group viewer state. */
 export function penViewerGroupKey(layer: Pick<PenPageLayer, 'parentGroupId'>): string {
   return layer.parentGroupId || 'doc';
-}
-
-/** Only http(s) destinations open. */
-export function safeOpenUrl(raw: string | undefined): string | null {
-  const value = (raw || '').trim();
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 function newActionId(): string {
@@ -99,8 +89,12 @@ export function pressPenAction(input: {
 
   switch (layer.behavior) {
     case 'cta.open': {
-      const url = safeOpenUrl(layer.openUrl);
-      return url ? { state, effect: { kind: 'open', url } } : none;
+      const link = checkLink(layer.openUrl, layer.label);
+      if (!link.ok) return none;
+      return {
+        state,
+        effect: { kind: 'open', url: link.url, host: link.host, warnings: link.warnings }
+      };
     }
     case 'widget.reveal': {
       const target = layer.revealLayerId;
@@ -120,6 +114,7 @@ export function pressPenAction(input: {
       };
     }
     case 'widget.submit': {
+      if (secretPromptLayers(section, groupId).length) return none;
       const fields = submitFields(section, groupId, state.inputs);
       const body = Object.entries(fields)
         .map(([key, value]) => `${key}: ${value}`)
@@ -128,10 +123,10 @@ export function pressPenAction(input: {
       const to = (layer.submitTo || '').trim();
       if (to.includes('@')) {
         const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-        return { state, effect: { kind: 'mailto', href } };
+        return { state, effect: { kind: 'mailto', href, to } };
       }
       if (to || !formCollectsToSheet(section, groupId)) {
-        return { state, effect: { kind: 'messaging', title, body } };
+        return { state, effect: { kind: 'messaging', title, body, to } };
       }
       const built = buildWidgetActionRow({
         trigger: 'widget.submit',
