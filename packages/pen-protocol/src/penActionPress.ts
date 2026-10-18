@@ -21,6 +21,7 @@ import {
   type WidgetActionRow
 } from './widgetElements.js';
 import { checkLink, type LinkWarning } from './linkSafety.js';
+import { docToPlainText } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
 
 export type PenViewerState = {
@@ -89,7 +90,8 @@ export function pressPenAction(input: {
 
   switch (layer.behavior) {
     case 'cta.open': {
-      const link = checkLink(layer.openUrl, layer.label);
+      const face = `${docToPlainText(layer.textDoc)} ${layer.label || ''}`;
+      const link = checkLink(layer.openUrl, face);
       if (!link.ok) return none;
       return {
         state,

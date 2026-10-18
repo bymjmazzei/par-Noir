@@ -35,6 +35,17 @@ describe('pressPenAction', () => {
       'b'
     );
     expect(lure.effect).toMatchObject({ kind: 'open', warnings: ['label_mismatch'] });
+    const face = press(
+      [
+        button('b', {
+          behavior: 'cta.open',
+          openUrl: 'https://evil.example',
+          textDoc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'paypal.com' }] }] }
+        })
+      ],
+      'b'
+    );
+    expect(face.effect).toMatchObject({ kind: 'open', warnings: ['label_mismatch'] });
     const empty = press([button('b', { behavior: 'cta.open' })], 'b');
     expect(empty.effect.kind).toBe('none');
   });
