@@ -9,6 +9,7 @@ import {
   normalizeWriteIn,
   parseWidgetId,
   POLL_WRITE_IN_MAX,
+  structureRejectsVote,
   type PollStructure,
   type WidgetBackendKind,
   type WidgetRevealPolicy
@@ -25,7 +26,6 @@ import {
   insertWidgetResponse,
   pollCountsFromResponses,
   readWidgetStructure,
-  structureRejectsVote,
   upsertWidgetStructure
 } from './widgetCache';
 

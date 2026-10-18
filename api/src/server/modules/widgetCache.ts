@@ -9,7 +9,6 @@ import {
   hashPnIdentifier,
   pollIsClosed,
   pollResultsFromCounts,
-  structureRejectsVote,
   widgetViewPhase,
   type WidgetBackendKind,
   type WidgetRevealPolicy,
@@ -238,5 +237,4 @@ export async function buildWidgetView(input: {
   return base;
 }
 
-export { structureRejectsVote, pollIsClosed };
 export type { PollOption };

@@ -109,6 +109,16 @@ export function pollIsClosed(closesAt: string | null | undefined, now = Date.now
   return now >= t;
 }
 
+export function structureRejectsVote(
+  structure: PollStructure,
+  optionId: string,
+  now = Date.now()
+): 'poll_closed' | 'unknown_option' | null {
+  if (pollIsClosed(structure.closesAt, now)) return 'poll_closed';
+  if (!structure.options.some((option) => option.id === optionId)) return 'unknown_option';
+  return null;
+}
+
 export function structureToSheetRows(structure: PollStructure): string[][] {
   const rows: string[][] = [['question', '', structure.question]];
   for (const option of structure.options) {
