@@ -80,6 +80,7 @@ Layers: **eye** = visibility (omit from preview/compile); **lock** = position lo
 - Starred / created templates under `par-noir-pen/templates/{templateId}/` (IR SoT for Yours / Mini).
 - Section versioning = fixed current filename; supersede moves to `past/` with **date in the title**.
 - Updates use messaging-style **outbox** fanout — do not invent a second sync bus.
+- Live co-editing (`packages/pen-live` + `api` `penLiveRelay`) is a **non-durable** path: the relay forwards only docKey-encrypted, ML-DSA-signed Yjs batches, sync messages, presence and owner control notices, and stores nothing. The outbox stays the only durable sync bus; a live doc's durable state is its sealed snapshot (local, own Drive `live.ysnap`, outbox fanout). Removing a member rotates the docKey to a new `keyEpoch`.
 - No shared single Drive folder as multi-writer SoT.
 
 ## Naming
