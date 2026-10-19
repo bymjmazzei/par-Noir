@@ -1,22 +1,17 @@
 /**
- * Widget and platform post template art as a screenshot (shipped poster, committed still).
- * Their art is HTML layers, so feed-tile previews that read doc text and media render them blank.
+ * Widget template art as a screenshot (shipped poster, committed still).
+ * Widgets are layer-only, so page previews that read doc text render them blank.
  */
 import { useEffect, useState } from 'react';
 import { categoryIdForClass, type PenTemplate } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import type { GalleryMedia } from '../services/penGalleryPreview';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
-import { catalogPosterSrc } from '../services/widgetPosters';
+import { curatedWidgetPosterSrc } from '../services/widgetPosters';
 import { previewBundleFromTemplate } from './TemplateGalleryThumb';
 
 export function isWidgetTemplateClass(classId: string | undefined): boolean {
   return Boolean(classId) && categoryIdForClass(classId!) === 'widgets';
-}
-
-/** Widgets and platform post templates show their poster on /templates, never a live render. */
-export function usesCatalogPoster(template: Pick<PenTemplate, 'id' | 'classId'>): boolean {
-  return isWidgetTemplateClass(template.classId) || Boolean(catalogPosterSrc(template.id));
 }
 
 export function NamedBlackTile({ name }: { name: string }) {
@@ -88,7 +83,7 @@ export function WidgetTemplateThumb({
   pn?: string;
   session?: PenSession | null;
 }) {
-  const curated = catalogPosterSrc(template.id);
+  const curated = curatedWidgetPosterSrc(template.id);
   if (curated) return <PosterImage src={curated} title={template.title} />;
   const manifest = previewBundleFromTemplate(pn, template)?.manifest;
   const still = manifest?.galleryPreviewPosterRef || manifest?.galleryPreviewRef;

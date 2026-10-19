@@ -28,7 +28,6 @@ describe('buildSocialTemplateRailItems', () => {
       'collection',
       'profile',
       'comparison',
-      'set',
       'widget'
     ]);
     expect(items.some((i) => i.id === 'widgets.widget')).toBe(true);

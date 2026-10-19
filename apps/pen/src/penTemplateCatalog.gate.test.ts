@@ -31,11 +31,11 @@ describe('template catalog building blocks', () => {
       'social.collection',
       'social.profile',
       'social.comparison',
-      'social.set',
       'widgets.widget'
     ]);
     const labels = buildSocialTemplateRailItems().map((item) => item.label);
     expect(labels).toContain('widget');
+    expect(labels).not.toContain('set');
     expect(labels).not.toContain('sticker');
     expect(labels).not.toContain('animation');
   });

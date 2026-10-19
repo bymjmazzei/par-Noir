@@ -289,7 +289,7 @@ function Locked() {
               saveBrowseDensity('_locked', d);
             }}
             title="Templates"
-            subtitle="Building blocks — note, audio, media, collection, set, projects. Feed is a view of this catalog."
+            subtitle="Building blocks — note, media, collection, profile, comparison, widget. Feed is a view of this catalog."
             onBack={() => {
               setLockedView('home');
               navigate('/');
@@ -632,7 +632,7 @@ function AuthenticatedApp({
                   saveBrowseDensity(session.pnIdentifier, d);
                 }}
                 title="Templates"
-                subtitle="Building blocks — note, audio, media, collection, set, projects. Feed is a view of this catalog."
+                subtitle="Building blocks — note, media, collection, profile, comparison, widget. Feed is a view of this catalog."
                 onBack={() => navigate('/')}
                 backLabel="My Library"
               >

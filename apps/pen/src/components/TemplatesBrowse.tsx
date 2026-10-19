@@ -6,7 +6,8 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { categoryIdForClass, getClass, type PenTemplate } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
 import { DocGalleryPreview } from './DocGalleryPreview';
-import { WidgetTemplateThumb, isWidgetTemplateClass, usesCatalogPoster } from './WidgetTemplateThumb';
+import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
+import { platformTemplatePagePosters } from '../services/widgetPosters';
 import {
   TemplateGalleryThumb,
   previewBundleFromTemplate
@@ -228,10 +229,10 @@ export function TemplatesBrowse({
   const previewIsSocial =
     preview?.manifest?.classId != null &&
     categoryIdForClass(String(preview.manifest.classId)) === 'social';
-  const previewPosterRow = useMemo(() => {
+  const previewWidget = useMemo(() => {
     if (!previewId) return null;
     const row = catalog.find((t) => t.id === previewId);
-    return row && usesCatalogPoster(row) ? row : null;
+    return row && isWidgetTemplateClass(row.classId) ? row : null;
   }, [catalog, previewId]);
 
   const rail: ReactNode = (
@@ -394,9 +395,9 @@ export function TemplatesBrowse({
             </div>
             <div className="pen-template-preview-modal-body pen-template-preview-modal-body--with-rail">
               <div className="pen-template-preview-modal-stage">
-                {previewPosterRow ? (
+                {previewWidget ? (
                   <WidgetTemplateThumb
-                    template={previewPosterRow}
+                    template={previewWidget}
                     pn={session?.pnIdentifier}
                     session={session}
                   />
@@ -409,6 +410,7 @@ export function TemplatesBrowse({
                     templateId={previewId}
                     authorLabel={preview.authorDisplayName}
                     phoneActiveFeedId="pen-templates"
+                    pagePosters={platformTemplatePagePosters(previewId) ?? undefined}
                   />
                 ) : (
                   <DocGalleryPreview

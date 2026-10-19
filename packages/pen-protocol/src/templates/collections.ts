@@ -235,7 +235,7 @@ function tripRecap(): PenTemplate {
   const dayPage = (d: (typeof days)[number]): { slug: string; layers: PenPageLayer[] } => ({
     slug: `day-${d.n}`,
     layers: [
-      pageArt(`tr${d.n}_art`, artHtml('#1c1917', `<div class="r" style="left:24px;top:600px;width:${d.n * 40}px;height:4px;background:${d.sky}"></div>`), f),
+      pageArt(`tr${d.n}_art`, artHtml('#1c1917', `<div class="r" style="left:24px;top:618px;width:${d.n * 40}px;height:4px;border-radius:2px;background:${d.sky}"></div>`), f),
       slotLayer(
         `tr${d.n}_photo`,
         box(0, 0, 360, 380, 2),

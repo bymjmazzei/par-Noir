@@ -14,7 +14,8 @@ import {
 import type { PenSession } from '../services/penSession';
 import { DocGalleryPreview } from './DocGalleryPreview';
 import { SocialFeedPhonePreview } from './SocialFeedPhonePreview';
-import { WidgetTemplateThumb, usesCatalogPoster } from './WidgetTemplateThumb';
+import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
+import { platformTemplatePagePosters } from '../services/widgetPosters';
 
 export function templatePreviewBundle(pn: string | undefined, templateId: string) {
   if (pn && isPersonalTemplateId(templateId)) {
@@ -120,9 +121,8 @@ export function TemplateGalleryThumb({
   session?: PenSession | null;
   phoneActiveFeedId?: 'discovery' | 'public' | 'media' | 'notes' | 'collections' | 'pen-templates';
 }) {
-  const posterRow = template || getTemplate(templateId);
-  if (posterRow && usesCatalogPoster(posterRow)) {
-    return <WidgetTemplateThumb template={posterRow} pn={pn} session={session} />;
+  if (template && isWidgetTemplateClass(template.classId)) {
+    return <WidgetTemplateThumb template={template} pn={pn} session={session} />;
   }
   const preview = template
     ? previewBundleFromTemplate(pn, template)
@@ -144,6 +144,7 @@ export function TemplateGalleryThumb({
         templateId={templateId}
         authorLabel={preview.authorDisplayName}
         phoneActiveFeedId={phoneActiveFeedId}
+        pagePosters={platformTemplatePagePosters(template?.id ?? templateId) ?? undefined}
       />
     );
   }

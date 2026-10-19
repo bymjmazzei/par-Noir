@@ -99,7 +99,8 @@ export function SocialFeedPhonePreview({
   density = 'feed',
   actionOverlay,
   playheadSec,
-  followPlayhead = false
+  followPlayhead = false,
+  pagePosters
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -115,6 +116,8 @@ export function SocialFeedPhonePreview({
   playheadSec?: number;
   /** Editor preview: follow the live editor playhead instead of the tile's own clock. */
   followPlayhead?: boolean;
+  /** Template catalog: shipped poster per page instead of live layers. */
+  pagePosters?: string[];
 }) {
   const livePlayheadSec = usePlayheadSec(followPlayhead);
   const phoneAspectCss = resolvePhoneFrameAspect(manifest);
@@ -136,6 +139,7 @@ export function SocialFeedPhonePreview({
       aspectRatio={feedAspect}
       showWidgets={!actionOverlay}
       playheadSec={followPlayhead ? livePlayheadSec : playheadSec}
+      pagePosters={pagePosters}
     />
   );
   const showActions = Boolean(actionOverlay) && density !== 'thumb';

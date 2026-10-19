@@ -10,7 +10,7 @@ describe('ActionLayerMenu', () => {
     expect(src).not.toMatch(/onPlaceElement|SectionLayersThumb|resolveGalleryMedia/);
     expect(src).toMatch(/sourceLayers\(t\)\.length > 0/);
     expect(src).toMatch(/import \{ WidgetTemplateThumb \} from '\.\/WidgetTemplateThumb'/);
-    expect(thumb).toMatch(/catalogPosterSrc/);
+    expect(thumb).toMatch(/curatedWidgetPosterSrc/);
     expect(thumb).toMatch(/pen-named-black-tile/);
     expect(src).toMatch(/Add widget/);
     expect(src).toMatch(/pen-gallery-tiles/);

@@ -2,8 +2,9 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CURATED_WIDGET_IDS, PLATFORM_POST_TEMPLATE_IDS } from '@par-noir/pen-protocol';
-import { catalogPosterSrc, curatedWidgetPosterSrc, platformTemplatePosterSrc } from './widgetPosters';
+import { CURATED_WIDGET_IDS, PLATFORM_POST_TEMPLATE_IDS, getTemplate } from '@par-noir/pen-protocol';
+import { bundleToFeedTileModel } from './feedTileFromPen';
+import { curatedWidgetPosterSrc, platformTemplatePagePosters } from './widgetPosters';
 
 const penRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (rel: string) => readFileSync(resolve(penRoot, rel), 'utf8');
@@ -20,26 +21,41 @@ describe('curated widget posters', () => {
     expect(curatedWidgetPosterSrc('widget.v1')).toBeNull();
   });
 
-  it('every platform post template ships a committed screenshot under 200KB', () => {
+  it('every page of every platform post template ships a committed screenshot under 200KB', () => {
     expect(PLATFORM_POST_TEMPLATE_IDS).toHaveLength(25);
     for (const id of PLATFORM_POST_TEMPLATE_IDS) {
-      const src = platformTemplatePosterSrc(id);
-      expect(src).toBe(`/template-posters/${id}.jpg`);
-      expect(catalogPosterSrc(id)).toBe(src);
-      const file = resolve(penRoot, 'public', src!.slice(1));
-      expect(existsSync(file), id).toBe(true);
-      expect(statSync(file).size).toBeLessThanOrEqual(200 * 1024);
+      const slugs = getTemplate(id)!.seedSections!.map((s) => s.slug);
+      const posters = platformTemplatePagePosters(id);
+      expect(posters).toEqual(slugs.map((slug) => `/template-posters/${id}/${slug}.jpg`));
+      for (const src of posters!) {
+        const file = resolve(penRoot, 'public', src.slice(1));
+        expect(existsSync(file), src).toBe(true);
+        expect(statSync(file).size).toBeLessThanOrEqual(200 * 1024);
+      }
     }
-    expect(platformTemplatePosterSrc('website.v1')).toBeNull();
+    expect(platformTemplatePagePosters('website.v1')).toBeNull();
   });
 
-  it('/templates shows the poster for platform templates instead of a live render', () => {
+  it('a collection becomes one swipeable poster page per section', () => {
+    const t = getTemplate('collection.how_to.v1')!;
+    const model = bundleToFeedTileModel({
+      title: t.title,
+      sections: t.seedSections!,
+      pageSwipeAxis: t.seedPageSwipeAxis,
+      pagePosters: platformTemplatePagePosters(t.id)!
+    });
+    expect(model.pages.map((p) => p.slug)).toEqual(['cover', 'step-1', 'step-2', 'step-3', 'recap']);
+    expect(model.pages.every((p) => p.mediaKind === 'image' && p.mediaSrc && !p.penFeedPage)).toBe(true);
+    expect(model.pageSwipeAxis).toBe('x');
+  });
+
+  it('/templates shows platform posters inside the phone feed frame', () => {
     const thumb = read('src/components/TemplateGalleryThumb.tsx');
-    expect(thumb.indexOf('usesCatalogPoster(posterRow)')).toBeGreaterThan(-1);
-    expect(thumb.indexOf('usesCatalogPoster(posterRow)')).toBeLessThan(thumb.indexOf('<SocialFeedPhonePreview'));
-    expect(read('src/components/WidgetTemplateThumb.tsx')).toMatch(/catalogPosterSrc\(template\.id\)/);
-    expect(read('src/components/TemplatesBrowse.tsx')).toMatch(/usesCatalogPoster\(row\)/);
-    expect(read('src/components/TemplatesFeedScroller.tsx')).toMatch(/usesCatalogPoster\(t\)/);
+    expect(thumb).toMatch(/<SocialFeedPhonePreview[\s\S]*?pagePosters=\{platformTemplatePagePosters\(/);
+    expect(read('src/components/TemplatesBrowse.tsx')).toMatch(/pagePosters=\{platformTemplatePagePosters\(previewId\)/);
+    expect(read('src/components/TemplatesFeedScroller.tsx')).toMatch(/pagePosters=\{platformTemplatePagePosters\(t\.id\)/);
+    expect(read('src/components/PenFeedSlideStage.tsx')).toMatch(/pagePosters=\{pagePosters\}/);
+    expect(read('src/components/SocialFeedPhonePreview.tsx')).toMatch(/pagePosters=\{pagePosters\}/);
   });
 
   it('the poster stage page stays out of the production build', () => {

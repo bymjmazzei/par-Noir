@@ -69,7 +69,8 @@ export function BrowseFeedTilePreview({
   engagementOverlay,
   aspectRatio,
   showWidgets = true,
-  playheadSec
+  playheadSec,
+  pagePosters
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -85,27 +86,11 @@ export function BrowseFeedTilePreview({
   showWidgets?: boolean;
   /** Timeline scrubber — drives motion-synced action overlays in preview. */
   playheadSec?: number;
+  /** Template catalog: shipped poster per page instead of live layers. */
+  pagePosters?: string[];
 }) {
-  const base = bundleToFeedTileModel({
-    title: manifest.title || 'Untitled',
-    sections,
-    pagePresentation: manifest.pagePresentation,
-    contentClass: manifest.docType,
-    pageSwipeAxis: manifest.pageSwipeAxis,
-    pageView: manifest.pageView,
-    galleryPreviewRef: manifest.galleryPreviewRef,
-    galleryPreviewKind: manifest.galleryPreviewKind,
-    galleryPreviewPosterRef: manifest.galleryPreviewPosterRef,
-    galleryAspect: manifest.galleryAspect,
-    fileId: manifest.docId,
-    penFeedMediaBySlug: manifest.penFeedMediaBySlug
-  });
-  // Never paint unresolved penmedia:/penlocal: on first render.
-  const [model, setModel] = useState(() => scrubUnresolvedMedia(base));
-
-  useEffect(() => {
-    let cancelled = false;
-    const next = bundleToFeedTileModel({
+  const buildModel = () =>
+    bundleToFeedTileModel({
       title: manifest.title || 'Untitled',
       sections,
       pagePresentation: manifest.pagePresentation,
@@ -117,8 +102,16 @@ export function BrowseFeedTilePreview({
       galleryPreviewPosterRef: manifest.galleryPreviewPosterRef,
       galleryAspect: manifest.galleryAspect,
       fileId: manifest.docId,
-      penFeedMediaBySlug: manifest.penFeedMediaBySlug
+      penFeedMediaBySlug: manifest.penFeedMediaBySlug,
+      pagePosters
     });
+  // Never paint unresolved penmedia:/penlocal: on first render.
+  const [model, setModel] = useState(() => scrubUnresolvedMedia(buildModel()));
+  const postersKey = pagePosters?.join('|') ?? '';
+
+  useEffect(() => {
+    let cancelled = false;
+    const next = buildModel();
     setModel(scrubUnresolvedMedia(next));
     void resolveTileMedia(next, manifest.docId, session).then((resolved) => {
       if (!cancelled) setModel(resolved);
@@ -126,7 +119,8 @@ export function BrowseFeedTilePreview({
     return () => {
       cancelled = true;
     };
-  }, [manifest, sections, session?.pnIdentifier]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- posters compared by value
+  }, [manifest, sections, session?.pnIdentifier, postersKey]);
 
   const resolvedAspect =
     aspectRatio ||

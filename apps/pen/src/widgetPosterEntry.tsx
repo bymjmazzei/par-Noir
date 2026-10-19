@@ -1,6 +1,7 @@
 /**
  * Dev-only stage for scripts/widget-posters.mjs, with no session.
- * A starter widget sits on a page sized to its art. A platform post template shows its first page at full frame, intros settled.
+ * A starter widget sits on a page sized to its art. A platform post template shows one page (`?page=` slug,
+ * default first) at full frame, intros settled.
  */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -15,10 +16,11 @@ import './index.css';
 const STAGE_PAD_PX = 40;
 
 function PosterStage() {
-  const id = new URLSearchParams(window.location.search).get('id') || '';
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('id') || '';
   const template = getTemplate(id);
   const bundle = template ? previewBundleFromTemplate(undefined, template) : null;
-  const section = bundle?.sections[0];
+  const section = bundle?.sections.find((s) => s.slug === params.get('page')) ?? bundle?.sections[0];
   if (!template || !bundle || !section) return <p data-poster-missing="1">Unknown template {id}</p>;
   const isPost = PLATFORM_POST_TEMPLATE_IDS.includes(id);
   const art = section.layers?.find((layer) => layer.widgetElement === 'html');

@@ -20,7 +20,6 @@ export const SOCIAL_TEMPLATE_RAIL_FORMS = [
   'social.collection',
   'social.profile',
   'social.comparison',
-  'social.set',
   'widgets.widget'
 ] as const;
 
@@ -32,7 +31,6 @@ export const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, strin
   'social.collection': 'collection',
   'social.profile': 'profile',
   'social.comparison': 'comparison',
-  'social.set': 'set',
   'widgets.widget': 'widget'
 };
 
@@ -52,7 +50,7 @@ export function isSocialCategoryClass(classId: string | undefined): boolean {
   return getClass(classId)?.parentId === 'social';
 }
 
-/** Templates rail chip allowlist (note/post/collection/profile/comparison/set). */
+/** Templates rail chip allowlist (note/post/collection/profile/comparison/widget). */
 export function isSocialTemplateRailClass(classId: string | undefined): boolean {
   if (!classId) return false;
   return SOCIAL_TEMPLATE_RAIL_SET.has(classId);

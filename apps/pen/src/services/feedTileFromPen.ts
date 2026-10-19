@@ -92,13 +92,22 @@ export function bundleToFeedTileModel(input: {
   galleryPreviewPosterRef?: string;
   galleryAspect?: PenDocManifest['galleryAspect'];
   penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
+  /** Catalog posters, one per section; each replaces that page's live layers. */
+  pagePosters?: string[];
 }): FeedTileViewModel {
-  const pages = sectionsToFeedPages(input.sections, input.title, {
-    pagePresentation: input.pagePresentation,
-    galleryAspect: input.galleryAspect,
-    docId: input.fileId,
-    penFeedMediaBySlug: input.penFeedMediaBySlug
-  });
+  const pages: FeedTilePage[] = input.pagePosters?.length
+    ? input.pagePosters.map((src, index) => ({
+        slug: input.sections[index]?.slug,
+        title: input.title,
+        mediaSrc: src,
+        mediaKind: 'image'
+      }))
+    : sectionsToFeedPages(input.sections, input.title, {
+        pagePresentation: input.pagePresentation,
+        galleryAspect: input.galleryAspect,
+        docId: input.fileId,
+        penFeedMediaBySlug: input.penFeedMediaBySlug
+      });
   if (input.galleryPreviewRef && pages[0]) {
     pages[0] = {
       ...pages[0],
