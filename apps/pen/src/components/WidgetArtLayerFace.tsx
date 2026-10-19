@@ -70,7 +70,7 @@ export function WidgetArtLayerFace({
       title={layer.name || 'Art'}
       sandbox=""
       data-pen-html-snippet="1"
-      className="pointer-events-none h-full w-full border-0 bg-white"
+      className="pointer-events-none h-full w-full border-0 bg-transparent"
       srcDoc={layer.htmlSource || ''}
     />
   );

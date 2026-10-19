@@ -29,6 +29,7 @@ function openQuestion(): PenTemplate {
     featured: true,
     focus:
       'Write a short headline that says what you are deciding, one line on why their vote matters, and the poll question. Keep three answer options under four words each.',
+    feedCaption: { title: 'Help pick our Q3 build', body: 'Voting closes Friday. Results go up Monday.' },
     seed: pageSeed(f, [
       {
         slug: 'body',
@@ -42,14 +43,13 @@ function openQuestion(): PenTemplate {
             ),
             f
           ),
-          chipLayer('oq_kicker', box(24, 40, 132, 26, 2), 'ROADMAP · Q3', '#fde68a', '#022c22'),
+          chipLayer('oq_kicker', box(24, 48, 132, 26, 2), 'ROADMAP · Q3', '#fde68a', '#022c22'),
           motion(
-            textLayer('oq_head', box(24, 82, 312, 96, 3), 'We are planning Q3 and want your vote.', { family: 'serif', size: 28, color: '#ecfdf5', bold: true }),
+            textLayer('oq_head', box(24, 88, 296, 72, 3), 'We are planning Q3 and want your vote.', { family: 'serif', size: 26, color: '#ecfdf5', bold: true }),
             { in: 'rise' }
           ),
-          textLayer('oq_sub', box(24, 186, 312, 60, 4), 'Pick the one you would use every week, or tell us what we missed.', { size: 14, color: muted }),
-          ...embedWidget('oq_poll', 'widget.poll_writein.v1', 'Poll', seedPollWriteInWidget, { x: 18, y: 270, scale: 0.9, z: 10 }),
-          textLayer('oq_foot', box(24, 606, 312, 20, 30), 'Voting closes Friday. Results go up Monday.', { size: 11, color: muted })
+          textLayer('oq_sub', box(24, 164, 296, 40, 4), 'Pick the one you would use every week, or tell us what we missed.', { size: 13, color: muted }),
+          ...embedWidget('oq_poll', 'widget.poll_writein.v1', 'Poll', seedPollWriteInWidget, { x: 18, y: 212, scale: 0.88, z: 10 })
         ]
       }
     ])
@@ -68,6 +68,7 @@ function hotTake(): PenTemplate {
     featured: true,
     focus:
       'Write one opinion in a single sentence under 14 words, a byline with name and role, and a two-sentence reason that appears when readers tap Why.',
+    feedCaption: { title: 'No agenda, no meeting', body: 'Dana Okafor on protecting six calendars at once.' },
     seed: pageSeed(
       f,
       [
@@ -85,20 +86,20 @@ function hotTake(): PenTemplate {
             ),
             chipLayer('ht_kicker', box(24, 24, 150, 24, 2), 'UNPOPULAR OPINION', ink, '#facc15'),
             motion(
-              textLayer('ht_quote', box(24, 64, 312, 132, 3), 'Meetings without an agenda should be declined on sight.', { family: 'serif', size: 26, color: ink, bold: true }),
+              textLayer('ht_quote', box(24, 64, 296, 132, 3), 'Meetings without an agenda should be declined on sight.', { family: 'serif', size: 26, color: ink, bold: true }),
               { in: 'pop' }
             ),
-            textLayer('ht_by', box(24, 204, 312, 20, 4), 'Dana Okafor, ops lead', { size: 12, color: '#3f3f46' }),
+            textLayer('ht_by', box(24, 204, 296, 20, 4), 'Dana Okafor, ops lead', { size: 12, color: '#3f3f46' }),
             panelLayer(
               'ht_why',
-              box(24, 232, 312, 72, 5),
+              box(24, 232, 296, 72, 5),
               ink,
               'An agenda is the cheapest way to respect six calendars. No agenda, no meeting.',
               { size: 13, color: '#facc15' },
               { name: 'Why', visible: false }
             ),
-            buttonLayer('ht_agree', box(24, 312, 150, 36, 6), 'Agree', { fill: ink, color: '#facc15' }, { behavior: 'widget.stamp', label: 'Agreed' }),
-            buttonLayer('ht_why_btn', box(186, 312, 150, 36, 7), 'Why?', { fill: 'rgba(11,11,12,0.12)', color: ink }, { behavior: 'widget.reveal', revealLayerId: 'ht_why', revealMode: 'toggle' })
+            buttonLayer('ht_agree', box(24, 312, 142, 36, 6), 'Agree', { fill: ink, color: '#facc15' }, { behavior: 'widget.stamp', label: 'Agreed' }),
+            buttonLayer('ht_why_btn', box(178, 312, 142, 36, 7), 'Why?', { fill: 'rgba(11,11,12,0.12)', color: ink }, { behavior: 'widget.reveal', revealLayerId: 'ht_why', revealMode: 'toggle' })
           ]
         }
       ],
@@ -126,6 +127,7 @@ function lessonList(): PenTemplate {
     featured: true,
     focus:
       'Write a headline that promises a numbered list, then exactly five lessons of one sentence each. Each lesson should be concrete advice, not a slogan.',
+    feedCaption: { title: 'Five lessons from my first job', body: '@mara.writes · notes from year one' },
     seed: pageSeed(
       f,
       [
@@ -141,17 +143,16 @@ function lessonList(): PenTemplate {
               ),
               f
             ),
-            chipLayer('ls_kicker', box(60, 40, 150, 26, 2), 'FIRST-JOB NOTES', t.ink, t.bg),
+            chipLayer('ls_kicker', box(60, 48, 150, 26, 2), 'FIRST-JOB NOTES', t.ink, t.bg),
             motion(
-              textLayer('ls_head', box(60, 80, 276, 96, 3), 'Five things I wish I knew on day one', { family: 'serif', size: 28, color: t.ink, bold: true }),
+              textLayer('ls_head', box(60, 88, 260, 64, 3), 'Five things I wish I knew on day one', { family: 'serif', size: 24, color: t.ink, bold: true }),
               { in: 'rise' }
             ),
             ...lessons.flatMap((lesson, i) => [
-              textLayer(`ls_n${i + 1}`, box(60, 196 + i * 72, 32, 32, 4 + i * 2), `0${i + 1}`, { family: 'serif', size: 22, color: t.accent, bold: true }),
-              textLayer(`ls_t${i + 1}`, box(100, 196 + i * 72, 236, 60, 5 + i * 2), lesson, { size: 14, color: t.ink })
+              textLayer(`ls_n${i + 1}`, box(60, 164 + i * 64, 28, 28, 4 + i * 2), `0${i + 1}`, { family: 'serif', size: 20, color: t.accent, bold: true }),
+              textLayer(`ls_t${i + 1}`, box(96, 164 + i * 64, 224, 56, 5 + i * 2), lesson, { size: 13, color: t.ink })
             ]),
-            buttonLayer('ls_save', box(60, 568, 160, 40, 20), 'Save this', t.primary, { behavior: 'widget.stamp', label: 'Saved' }),
-            textLayer('ls_by', box(232, 578, 104, 20, 21), '@mara.writes', { size: 11, color: t.muted })
+            buttonLayer('ls_save', box(60, 482, 160, 36, 20), 'Save this', t.primary, { behavior: 'widget.stamp', label: 'Saved' })
           ]
         }
       ],
@@ -171,6 +172,7 @@ function announcement(): PenTemplate {
     aspect: 'portrait',
     focus:
       'Write the news as a headline, one or two sentences with the date and place, and three short lines on what changes for the reader. Set the calendar event to the same date.',
+    feedCaption: { title: 'We are moving to Lisbon', body: 'Doors open 1 September at Rua das Flores 28.' },
     seed: pageSeed(f, [
       {
         slug: 'body',
@@ -186,21 +188,21 @@ function announcement(): PenTemplate {
           ),
           chipLayer('an_kicker', box(24, 48, 128, 26, 2), 'STUDIO NEWS', t.ink, '#7c2d12'),
           motion(
-            textLayer('an_head', box(24, 90, 312, 110, 3), 'Fieldwork Studio is moving to Lisbon', { family: 'serif', size: 32, color: t.ink, bold: true }),
+            textLayer('an_head', box(24, 88, 296, 112, 3), 'Fieldwork Studio is moving to Lisbon', { family: 'serif', size: 30, color: t.ink, bold: true }),
             { in: 'drop' }
           ),
-          textLayer('an_sub', box(24, 208, 312, 64, 4), 'New light, new street, same team. Doors open at Rua das Flores 28 on 1 September.', { size: 14, color: t.muted }),
+          textLayer('an_sub', box(24, 206, 296, 60, 4), 'New light, new street, same team. Doors open at Rua das Flores 28 on 1 September.', { size: 14, color: t.muted }),
           panelLayer(
             'an_changes',
-            box(24, 290, 312, 150, 5),
+            box(24, 280, 296, 140, 5),
             'rgba(255,247,237,0.12)',
             ['What changes for you', 'Same email, same phone, same hours.', 'Visits by appointment for the first month.', 'Orders ship from Lisbon from 1 September.'],
             { size: 13, color: t.ink },
             { name: 'What changes' }
           ),
-          textLayer('an_cd_label', box(24, 462, 140, 20, 6), 'Opening in', { size: 12, color: t.muted }),
-          countdownLayer('an_cd', box(22, 486, 120, 32, 7), t.accent, 30),
-          buttonLayer('an_cal', box(24, 548, 312, 48, 8), 'Add opening day to calendar', t.primary, {
+          textLayer('an_cd_label', box(24, 436, 120, 20, 6), 'Opening in', { size: 12, color: t.muted }),
+          countdownLayer('an_cd', box(22, 460, 120, 32, 7), t.accent, 30),
+          buttonLayer('an_cal', box(160, 448, 160, 44, 8), 'Add to calendar', t.primary, {
             behavior: 'cta.calendar',
             eventTitle: 'Fieldwork Studio opening',
             eventLocation: 'Rua das Flores 28, Lisbon',
@@ -224,6 +226,7 @@ function devTip(): PenTemplate {
     aspect: 'landscape',
     focus:
       'Write a tip headline that names the result, two sentences explaining why it works, and a snippet of at most six lines in the Code panel. Link to official documentation.',
+    feedCaption: { title: 'Dedupe with a Set', body: '@devon.codes · new tip every Friday' },
     seed: pageSeed(f, [
       {
         slug: 'body',
@@ -237,7 +240,7 @@ function devTip(): PenTemplate {
             ),
             f
           ),
-          chipLayer('dt_kicker', box(32, 28, 110, 24, 2), 'JS TIP #14', '#facc15', '#0d1117'),
+          chipLayer('dt_kicker', box(32, 34, 110, 24, 2), 'JS TIP #14', '#facc15', '#0d1117'),
           motion(
             textLayer('dt_head', box(32, 64, 260, 100, 3), 'Dedupe an array in one line', { family: 'serif', size: 28, color: '#e6edf3', bold: true }),
             { in: 'slideRight' }
@@ -261,8 +264,7 @@ function devTip(): PenTemplate {
             'MDN docs',
             { fill: 'rgba(255,255,255,0.08)', color: '#e6edf3' },
             { behavior: 'cta.open', openUrl: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set' }
-          ),
-          textLayer('dt_by', box(32, 300, 260, 20, 8), '@devon.codes · new tip every Friday', { size: 11, color: muted })
+          )
         ]
       }
     ])

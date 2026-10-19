@@ -15,6 +15,8 @@ const BROWSE_RAIL_TABS = [
   { id: 'pen-templates', label: 'TEMPLATES' }
 ] as const;
 
+export type PhoneCaption = { title: string; body?: string };
+
 function PnLogoMark() {
   return (
     <svg
@@ -52,12 +54,16 @@ function PnLogoMark() {
 
 export function PenPhoneBrowseChrome({
   activeFeedId = 'public',
+  caption,
   engagement
 }: {
   /** Browse feed id to highlight — 'pen-templates' on Templates, 'public' (pN) elsewhere. */
   activeFeedId?: 'discovery' | 'public' | 'media' | 'notes' | 'collections' | 'pen-templates';
+  /** Post title and caption, painted under the page the way browse shows them. */
+  caption: PhoneCaption;
   engagement?: ReactNode;
 }) {
+  const body = caption.body?.trim();
   return (
     <>
       <div className="pen-phone-feed-rail" aria-hidden>
@@ -81,10 +87,8 @@ export function PenPhoneBrowseChrome({
       </div>
       {engagement}
       <div className="pen-phone-caption" data-pen-phone-caption="" aria-hidden>
-        <p className="pen-phone-caption-title">Morning light</p>
-        <p className="pen-phone-caption-body">
-          A quiet frame from the feed, the way it will read once this post is live.
-        </p>
+        <p className="pen-phone-caption-title">{caption.title}</p>
+        {body ? <p className="pen-phone-caption-body">{body}</p> : null}
       </div>
       <div className="pen-phone-bottom-nav" aria-hidden>
         <span className="pen-phone-bottom-nav-item is-active" title="Home">

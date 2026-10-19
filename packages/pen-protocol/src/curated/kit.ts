@@ -32,6 +32,52 @@ export const FRAMES = {
   square: { w: 360, h: 360 }
 } as const satisfies Record<string, Frame>;
 
+/**
+ * Browse chrome painted over a social page, as fractions of the phone screen.
+ * Must match apps/pen index.css (`.pen-phone-*`) and feed-tile `engagementRailLayout`.
+ */
+export const FEED_CHROME = {
+  topRail: 0.06,
+  bottomNav: 0.08,
+  caption: { left: 0.03, right: 0.18, bottom: 0.08, height: 0.1 },
+  /** Rail sits `bottom` up from the screen edge and never rises past `top`; icons scale with screen height. */
+  rail: { right: 0.02, top: 0.5, bottom: 0.2, iconOfHeight: (0.9 * 0.3) / (6 + 5 * 0.28), countOverhang: 0.12 }
+} as const;
+
+export type ChromeZone = { name: 'feed rail' | 'bottom nav' | 'caption' | 'engagement rail'; x: number; y: number; w: number; h: number };
+
+/**
+ * Where browse chrome covers a page, in page pixels. Portrait and square pages sit in a 9:16 phone
+ * (square letterboxed on center); landscape fills a 16:9 phone.
+ */
+export function feedChromeZones(frame: Frame): ChromeZone[] {
+  const W = frame.w;
+  const H = frame.w > frame.h ? frame.h : (frame.w * 16) / 9;
+  const top = (H - frame.h) / 2;
+  const { caption, rail } = FEED_CHROME;
+  const railIcon = H * rail.iconOfHeight;
+  const railLeft = W * (1 - rail.right) - railIcon * (1 + rail.countOverhang);
+  const zones: ChromeZone[] = [
+    { name: 'feed rail', x: 0, y: 0, w: W, h: H * FEED_CHROME.topRail },
+    { name: 'bottom nav', x: 0, y: H * (1 - FEED_CHROME.bottomNav), w: W, h: H * FEED_CHROME.bottomNav },
+    {
+      name: 'caption',
+      x: W * caption.left,
+      y: H * (1 - caption.bottom - caption.height),
+      w: W * (1 - caption.left - caption.right),
+      h: H * caption.height
+    },
+    { name: 'engagement rail', x: railLeft, y: H * rail.top, w: W - railLeft, h: H * (1 - rail.top - rail.bottom) }
+  ];
+  return zones
+    .map((zone) => {
+      const y0 = Math.max(0, zone.y - top);
+      const y1 = Math.min(frame.h, zone.y + zone.h - top);
+      return { ...zone, y: y0, h: y1 - y0 };
+    })
+    .filter((zone) => zone.h > 0);
+}
+
 export type Theme = {
   bg: string;
   ink: string;

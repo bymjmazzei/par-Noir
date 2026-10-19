@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import { categoryIdForClass } from '@par-noir/pen-protocol';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
 import { SocialFeedPhonePreview } from './SocialFeedPhonePreview';
+import type { PhoneCaption } from './PenPhoneBrowseChrome';
 import { DocGalleryPreview } from './DocGalleryPreview';
 import type { PenSession } from '../services/penSession';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
@@ -25,7 +26,8 @@ export function PenFeedSlideStage({
   /** Browse feed highlight inside phone — Templates use pen-templates; Library uses pN. */
   phoneActiveFeedId = 'public',
   previewOverride,
-  pagePosters
+  pagePosters,
+  caption
 }: {
   classId?: string;
   manifest: PenDocManifest;
@@ -42,6 +44,8 @@ export function PenFeedSlideStage({
   previewOverride?: ReactNode;
   /** Template catalog: shipped poster per page inside the phone. */
   pagePosters?: string[];
+  /** Feed title and caption under the phone page. Defaults to the doc title. */
+  caption?: PhoneCaption;
 }) {
   const social = categoryIdForClass(classId || manifest.classId || '') === 'social';
   const unlocked = Boolean(session?.pnIdentifier);
@@ -59,6 +63,7 @@ export function PenFeedSlideStage({
       authorLabel={authorLabel}
       phoneActiveFeedId={phoneActiveFeedId}
       pagePosters={pagePosters}
+      caption={caption}
     />
   ) : (
     <div className="pen-feed-page-slot">

@@ -27,7 +27,7 @@ function creatorIntro(): PenTemplate {
   const ink = '#3b0764';
   const muted = '#7e22ce';
   const stat = (id: string, x: number, value: string, label: string, z: number) =>
-    panelLayer(id, box(x, 290, 96, 64, z), '#ffffff', [value, label], { size: 13, color: ink, bold: true, align: 'center' }, { name: 'Stat' });
+    panelLayer(id, box(x, 262, 92, 60, z), '#ffffff', [value, label], { size: 13, color: ink, bold: true, align: 'center' }, { name: 'Stat' });
   return postTemplate({
     id: 'profile.creator_intro.v1',
     classId: 'social.profile',
@@ -37,6 +37,7 @@ function creatorIntro(): PenTemplate {
     featured: true,
     focus:
       'Write the creator name, a role line with what they make, three stats with real numbers, a two-sentence bio in first person, and two link buttons for where people can buy or hire.',
+    feedCaption: { title: 'Hi, I am Theo', body: '@theo.draws · picture books and editorial' },
     seed: pageSeed(
       f,
       [
@@ -52,19 +53,18 @@ function creatorIntro(): PenTemplate {
               f
             ),
             motion(
-              slotLayer('ci_avatar', box(120, 70, 120, 120, 2), 'Avatar', portraitArt('#c4b5fd', '#fcd9b6', '#3b0764', '#a855f7'), { cornerRadius: 60 }),
+              slotLayer('ci_avatar', box(120, 56, 120, 120, 2), 'Avatar', portraitArt('#c4b5fd', '#fcd9b6', '#3b0764', '#a855f7'), { cornerRadius: 60 }),
               { in: 'zoom' }
             ),
-            textLayer('ci_name', box(24, 206, 312, 40, 3), 'Theo Marsh', { family: 'serif', size: 30, color: ink, bold: true, align: 'center' }, { name: 'Name' }),
-            textLayer('ci_role', box(24, 250, 312, 20, 4), 'Illustrator · picture books and editorial', { size: 13, color: muted, align: 'center' }),
-            stat('ci_s1', 24, '48', 'books', 5),
+            textLayer('ci_name', box(24, 186, 312, 40, 3), 'Theo Marsh', { family: 'serif', size: 30, color: ink, bold: true, align: 'center' }, { name: 'Name' }),
+            textLayer('ci_role', box(24, 230, 312, 20, 4), 'Illustrator · picture books and editorial', { size: 13, color: muted, align: 'center' }),
+            stat('ci_s1', 30, '48', 'books', 5),
             stat('ci_s2', 132, '1.2k', 'prints sold', 6),
-            stat('ci_s3', 240, '9 yrs', 'drawing', 7),
-            textLayer('ci_bio', box(24, 372, 312, 64, 8), 'I draw small animals with big feelings. Right now I am illustrating my fifth picture book.', { size: 14, color: ink, align: 'center' }),
-            buttonLayer('ci_follow', box(24, 452, 312, 48, 9), 'Follow', { fill: '#7e22ce', color: '#ffffff' }, { behavior: 'widget.stamp', label: 'Following' }),
-            buttonLayer('ci_shop', box(24, 512, 150, 40, 10), 'Print shop', { fill: '#ffffff', color: ink }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/theo/shop' }, { stroke: '#e9d5ff' }),
-            buttonLayer('ci_hire', box(186, 512, 150, 40, 11), 'Commissions', { fill: '#ffffff', color: ink }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/theo/commissions' }, { stroke: '#e9d5ff' }),
-            textLayer('ci_handle', box(24, 580, 312, 20, 12), '@theo.draws', { size: 12, color: muted, align: 'center' })
+            stat('ci_s3', 234, '9 yrs', 'drawing', 7),
+            textLayer('ci_bio', box(30, 334, 296, 56, 8), 'I draw small animals with big feelings. Right now I am illustrating my fifth picture book.', { size: 13, color: ink, align: 'center' }),
+            buttonLayer('ci_follow', box(30, 400, 296, 44, 9), 'Follow', { fill: '#7e22ce', color: '#ffffff' }, { behavior: 'widget.stamp', label: 'Following' }),
+            buttonLayer('ci_shop', box(30, 456, 142, 40, 10), 'Print shop', { fill: '#ffffff', color: ink }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/theo/shop' }, { stroke: '#e9d5ff' }),
+            buttonLayer('ci_hire', box(184, 456, 142, 40, 11), 'Commissions', { fill: '#ffffff', color: ink }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/theo/commissions' }, { stroke: '#e9d5ff' })
           ]
         }
       ],
@@ -85,6 +85,7 @@ function teamSpotlight(): PenTemplate {
     featured: true,
     focus:
       'Write the teammate name, role with start year and city, one sentence quote in their own voice about how they work, and a playful fun fact. Set Say hi to their work email.',
+    feedCaption: { title: 'Meet Priya, our support lead', body: 'Fernway · we are hiring, too' },
     seed: pageSeed(
       f,
       [
@@ -100,11 +101,10 @@ function teamSpotlight(): PenTemplate {
             motion(slotLayer('ts_avatar', box(24, 58, 96, 96, 3), 'Avatar', portraitArt('#38bdf8', '#c08457', '#0f172a', '#facc15'), { cornerRadius: 48 }), { in: 'pop' }),
             textLayer('ts_name', box(136, 62, 200, 32, 4), 'Priya Natarajan', { family: 'serif', size: 22, color: ink, bold: true }, { name: 'Name' }),
             textLayer('ts_role', box(136, 98, 200, 40, 5), 'Support lead · joined 2023 · Bengaluru', { size: 12, color: 'rgba(241,245,249,0.7)' }),
-            panelLayer('ts_quote', box(24, 168, 312, 88, 6), 'rgba(241,245,249,0.08)', '“The best support answer is the one that makes the next question unnecessary.”', { family: 'serif', size: 15, color: ink, italic: true }, { name: 'Quote' }),
-            panelLayer('ts_fact', box(24, 168, 312, 88, 7), '#facc15', ['FUN FACT', 'Priya has run a marathon on every continent except Antarctica. It is booked for 2027.'], { size: 13, color: '#0f172a' }, { name: 'Fun fact', visible: false }),
-            buttonLayer('ts_fact_btn', box(24, 270, 150, 40, 8), 'Fun fact', { fill: 'rgba(241,245,249,0.12)', color: ink }, { behavior: 'widget.reveal', revealLayerId: 'ts_fact', revealMode: 'toggle' }),
-            buttonLayer('ts_hi', box(186, 270, 150, 40, 9), 'Say hi', { fill: '#38bdf8', color: '#0f172a' }, { behavior: 'cta.open', openUrl: 'mailto:priya@fernway.com' }),
-            textLayer('ts_foot', box(24, 324, 312, 20, 10), 'Fernway · we are hiring, too', { size: 11, color: 'rgba(241,245,249,0.6)' })
+            panelLayer('ts_quote', box(24, 168, 296, 88, 6), 'rgba(241,245,249,0.08)', '“The best support answer is the one that makes the next question unnecessary.”', { family: 'serif', size: 15, color: ink, italic: true }, { name: 'Quote' }),
+            panelLayer('ts_fact', box(24, 168, 296, 88, 7), '#facc15', ['FUN FACT', 'Priya has run a marathon on every continent except Antarctica. It is booked for 2027.'], { size: 13, color: '#0f172a' }, { name: 'Fun fact', visible: false }),
+            buttonLayer('ts_fact_btn', box(24, 270, 142, 40, 8), 'Fun fact', { fill: 'rgba(241,245,249,0.12)', color: ink }, { behavior: 'widget.reveal', revealLayerId: 'ts_fact', revealMode: 'toggle' }),
+            buttonLayer('ts_hi', box(178, 270, 142, 40, 9), 'Say hi', { fill: '#38bdf8', color: '#0f172a' }, { behavior: 'cta.open', openUrl: 'mailto:priya@fernway.com' })
           ]
         }
       ],
@@ -127,6 +127,7 @@ function hiring(): PenTemplate {
     featured: true,
     focus:
       'Write the company name and what it does, the role title, location, salary range, and contract type, three perks, and three lines about the role. Link Apply to the job posting.',
+    feedCaption: { title: 'Fernway is hiring a designer', body: 'Applications close 30 November.' },
     seed: pageSeed(
       f,
       [
@@ -151,23 +152,22 @@ function hiring(): PenTemplate {
             ),
             textLayer('hr_name', box(108, 56, 228, 28, 3), 'Fernway', { size: 20, color: ink, bold: true }, { name: 'Name' }),
             textLayer('hr_what', box(108, 88, 228, 20, 4), 'Checkout for independent shops', { size: 12, color: muted }),
-            chipLayer('hr_chip', box(24, 150, 124, 26, 5), 'NOW HIRING', '#a5b4fc', '#1e1b4b'),
-            motion(textLayer('hr_role', box(24, 188, 312, 80, 6), 'Senior Product Designer', { family: 'serif', size: 32, color: ink, bold: true }), { in: 'rise' }),
-            textLayer('hr_meta', box(24, 274, 312, 20, 7), 'Remote, Europe · €75k to €90k · full time', { size: 13, color: '#a5b4fc', bold: true }),
+            chipLayer('hr_chip', box(24, 136, 124, 26, 5), 'NOW HIRING', '#a5b4fc', '#1e1b4b'),
+            motion(textLayer('hr_role', box(24, 172, 312, 72, 6), 'Senior Product Designer', { family: 'serif', size: 30, color: ink, bold: true }), { in: 'rise' }),
+            textLayer('hr_meta', box(24, 250, 312, 20, 7), 'Remote, Europe · €75k to €90k · full time', { size: 13, color: '#a5b4fc', bold: true }),
             ...perks.map((perk, i) =>
-              panelLayer(`hr_perk${i + 1}`, box(24, 310 + i * 48, 312, 40, 8 + i), 'rgba(238,242,255,0.08)', perk, { size: 13, color: ink }, { name: 'Perk' })
+              panelLayer(`hr_perk${i + 1}`, box(24, 282 + i * 44, 296, 38, 8 + i), 'rgba(238,242,255,0.08)', perk, { size: 13, color: ink }, { name: 'Perk' })
             ),
             panelLayer(
               'hr_details',
-              box(24, 310, 312, 136, 12),
+              box(24, 282, 296, 126, 12),
               '#312e81',
               ['The role', 'Own checkout and onboarding end to end.', 'Work with three engineers and a PM.', 'Portfolio required, no take-home task.'],
               { size: 13, color: ink },
               { name: 'The role', visible: false }
             ),
-            buttonLayer('hr_more', box(24, 470, 312, 44, 13), 'About the role', { fill: 'rgba(238,242,255,0.12)', color: ink }, { behavior: 'widget.reveal', revealLayerId: 'hr_details', revealMode: 'toggle' }),
-            buttonLayer('hr_apply', box(24, 526, 312, 48, 14), 'Apply', { fill: '#a5b4fc', color: '#1e1b4b' }, { behavior: 'cta.open', openUrl: 'https://fernway.com/jobs/senior-product-designer' }),
-            textLayer('hr_close', box(24, 590, 312, 20, 15), 'Applications close 30 November', { size: 11, color: muted })
+            buttonLayer('hr_more', box(24, 420, 296, 40, 13), 'About the role', { fill: 'rgba(238,242,255,0.12)', color: ink }, { behavior: 'widget.reveal', revealLayerId: 'hr_details', revealMode: 'toggle' }),
+            buttonLayer('hr_apply', box(24, 470, 296, 44, 14), 'Apply', { fill: '#a5b4fc', color: '#1e1b4b' }, { behavior: 'cta.open', openUrl: 'https://fernway.com/jobs/senior-product-designer' })
           ]
         }
       ],
@@ -192,7 +192,8 @@ function services(): PenTemplate {
     description: 'A freelancer card with three priced services, booking, and a quick inquiry form.',
     aspect: 'portrait',
     focus:
-      'Write the freelancer name, craft and city, three services each with a price and one line of what is included, and a reply-time promise. Link booking to their calendar page.',
+      'Write the freelancer name, craft and city, and three services each with a price and one line of what is included. Put the reply-time promise in the feed caption. Link booking to their calendar page.',
+    feedCaption: { title: 'Now booking 2027 weddings', body: 'Lena Ortiz replies within a day.' },
     seed: pageSeed(
       f,
       [
@@ -215,13 +216,12 @@ function services(): PenTemplate {
             textLayer('sv_role', box(120, 84, 216, 36, 4), 'Wedding and portrait photographer · Porto', { size: 12, color: muted }),
             textLayer('sv_kicker', box(24, 140, 200, 20, 5), 'SERVICES', { size: 11, color: '#fbbf24', bold: true }),
             ...rows.map(([title, detail], i) => {
-              const row = panelLayer(`sv_row${i + 1}`, box(24, 168 + i * 76, 312, 64, 6 + i), 'rgba(250,250,249,0.06)', [title!, detail!], { size: 13, color: ink }, { name: 'Service', strokeColor: 'rgba(251,191,36,0.3)', strokeWidth: 1 });
+              const row = panelLayer(`sv_row${i + 1}`, box(24, 168 + i * 76, 296, 64, 6 + i), 'rgba(250,250,249,0.06)', [title!, detail!], { size: 13, color: ink }, { name: 'Service', strokeColor: 'rgba(251,191,36,0.3)', strokeWidth: 1 });
               return i === 0 ? motion(row, { in: 'rise' }) : row;
             }),
-            buttonLayer('sv_book', box(24, 404, 312, 48, 9), 'Check dates and book', { fill: '#fbbf24', color: '#1c1917' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/lena/book' }),
-            inputLayer('sv_field', box(24, 476, 216, 44, 10), 'Your date and email…', { fill: '#fafaf9', color: '#1c1917' }, { name: 'Inquiry' }),
-            buttonLayer('sv_send', box(248, 476, 88, 44, 11), 'Ask', { fill: 'rgba(250,250,249,0.14)', color: ink }, { behavior: 'widget.submit', label: 'Quick inquiry' }),
-            textLayer('sv_reply', box(24, 540, 312, 40, 12), 'Replies within a day. Now booking 2027.', { size: 12, color: muted })
+            buttonLayer('sv_book', box(24, 400, 296, 44, 9), 'Check dates and book', { fill: '#fbbf24', color: '#1c1917' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/lena/book' }),
+            inputLayer('sv_field', box(24, 460, 200, 44, 10), 'Your date and email…', { fill: '#fafaf9', color: '#1c1917' }, { name: 'Inquiry' }),
+            buttonLayer('sv_send', box(232, 460, 88, 44, 11), 'Ask', { fill: 'rgba(250,250,249,0.14)', color: ink }, { behavior: 'widget.submit', label: 'Quick inquiry' })
           ]
         }
       ],
@@ -242,6 +242,7 @@ function artist(): PenTemplate {
     aspect: 'landscape',
     focus:
       'Write the artist name, genre and home cities, the new release title with a one-line hook, and up to four tour dates with city. Link Listen to the release page.',
+    feedCaption: { title: 'Slow Water is out now', body: '@juneokafor · 2.1M monthly listeners' },
     seed: pageSeed(
       f,
       [
@@ -269,21 +270,20 @@ function artist(): PenTemplate {
               ),
               { cornerRadius: 10 }
             ),
-            textLayer('ar_kicker', box(208, 150, 200, 20, 6), 'NEW SINGLE', { size: 11, color: '#f9a8d4', bold: true }),
-            motion(textLayer('ar_single', box(208, 172, 220, 36, 7), 'Slow Water', { family: 'serif', size: 24, color: ink, bold: true }), { in: 'slideLeft' }),
-            textLayer('ar_hook', box(208, 210, 220, 40, 8), 'Out now everywhere you listen.', { size: 12, color: muted }),
-            buttonLayer('ar_listen', box(208, 260, 120, 40, 9), 'Listen', { fill: '#f472b6', color: '#2e1065' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/juneokafor/slow-water' }),
-            buttonLayer('ar_follow', box(340, 260, 100, 40, 10), 'Follow', { fill: 'rgba(250,245,255,0.14)', color: ink }, { behavior: 'widget.stamp', label: 'Following' }),
+            textLayer('ar_kicker', box(208, 140, 200, 20, 6), 'NEW SINGLE', { size: 11, color: '#f9a8d4', bold: true }),
+            motion(textLayer('ar_single', box(208, 162, 220, 36, 7), 'Slow Water', { family: 'serif', size: 24, color: ink, bold: true }), { in: 'slideLeft' }),
+            textLayer('ar_hook', box(208, 200, 220, 36, 8), 'Out now everywhere you listen.', { size: 12, color: muted }),
+            buttonLayer('ar_listen', box(208, 244, 120, 40, 9), 'Listen', { fill: '#f472b6', color: '#2e1065' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/juneokafor/slow-water' }),
+            buttonLayer('ar_follow', box(340, 244, 100, 40, 10), 'Follow', { fill: 'rgba(250,245,255,0.14)', color: ink }, { behavior: 'widget.stamp', label: 'Following' }),
             panelLayer(
               'ar_tour',
-              box(460, 32, 156, 216, 11),
+              box(460, 32, 148, 200, 11),
               'rgba(46,16,101,0.9)',
               ['ON TOUR', '12 Mar · Lagos', '19 Mar · Accra', '2 Apr · London', '9 Apr · Paris'],
               { size: 13, color: ink },
               { name: 'Tour dates', visible: false }
             ),
-            buttonLayer('ar_tour_btn', box(460, 260, 156, 40, 12), 'Tour dates', { fill: 'rgba(250,245,255,0.14)', color: ink }, { behavior: 'widget.reveal', revealLayerId: 'ar_tour', revealMode: 'toggle' }),
-            textLayer('ar_handle', box(32, 316, 400, 20, 13), '@juneokafor · 2.1M monthly listeners', { size: 11, color: muted })
+            buttonLayer('ar_tour_btn', box(460, 244, 148, 40, 12), 'Tour dates', { fill: 'rgba(250,245,255,0.14)', color: ink }, { behavior: 'widget.reveal', revealLayerId: 'ar_tour', revealMode: 'toggle' })
           ]
         }
       ],

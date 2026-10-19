@@ -40,11 +40,22 @@ describe('engagementRailLayout', () => {
 });
 
 describe('phone caption chrome', () => {
-  it('renders mock title and caption outside the compose root', () => {
-    const html = renderToStaticMarkup(<PenPhoneBrowseChrome />);
-    expect(html).toContain('Morning light');
-    expect(html).toContain('A quiet frame from the feed, the way it will read once this post is live.');
+  it('renders the post title and caption outside the compose root', () => {
+    const html = renderToStaticMarkup(
+      <PenPhoneBrowseChrome caption={{ title: 'Lemon garlic orzo', body: 'One pan, no draining.' }} />
+    );
+    expect(html).toContain('Lemon garlic orzo');
+    expect(html).toContain('One pan, no draining.');
     expect(html).toContain('data-pen-phone-caption');
+    expect(html).not.toContain('Morning light');
+    const titleOnly = renderToStaticMarkup(<PenPhoneBrowseChrome caption={{ title: 'Untitled' }} />);
+    expect(titleOnly).not.toContain('pen-phone-caption-body');
+
+    const preview = readFileSync(resolve(__dirname, 'SocialFeedPhonePreview.tsx'), 'utf8');
+    expect(preview).toMatch(/caption=\{caption \?\? \{ title: manifest\.title/);
+    for (const surface of ['TemplateGalleryThumb.tsx', 'TemplatesBrowse.tsx', 'TemplatesFeedScroller.tsx']) {
+      expect(readFileSync(resolve(__dirname, surface), 'utf8'), surface).toMatch(/feedCaption/);
+    }
 
     const tile = readFileSync(
       resolve(__dirname, '../../../../packages/feed-tile/src/FeedTileSurface.tsx'),

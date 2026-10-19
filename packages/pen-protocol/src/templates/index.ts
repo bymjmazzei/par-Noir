@@ -11,3 +11,4 @@ export function platformPostTemplates(): PenTemplate[] {
 }
 
 export { frameOf } from './shared.js';
+export { FEED_CHROME, feedChromeZones, type ChromeZone } from '../curated/kit.js';

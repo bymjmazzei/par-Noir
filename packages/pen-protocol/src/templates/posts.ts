@@ -29,14 +29,15 @@ function productDrop(): PenTemplate {
     featured: true,
     focus:
       'Write the batch line for the photo, then the product name, a one-sentence description with material and size, the price, and shipping time. Point Buy now at the real shop page.',
+    feedCaption: { title: 'Amber mug, batch 04', body: 'Sixty made, glazed by hand. Drops this week.' },
     seed: pageSeed(f, [
       {
         slug: 'body',
         layers: [
-          pageArt('pd_art', artHtml('#efe6d6', '<div class="r" style="left:0;right:0;top:276px;height:4px;background:#d6c7a8"></div>'), f),
+          pageArt('pd_art', artHtml('#efe6d6', '<div class="r" style="left:0;right:0;top:258px;height:4px;background:#d6c7a8"></div>'), f),
           slotLayer(
             'pd_photo',
-            box(0, 0, 360, 280, 2),
+            box(0, 0, 360, 260, 2),
             'Photo',
             artHtml(
               'linear-gradient(160deg,#fde68a 0%,#f59e0b 55%,#b45309 100%)',
@@ -44,10 +45,10 @@ function productDrop(): PenTemplate {
               '.body{left:130px;top:96px;width:100px;height:130px;border-radius:10px 10px 26px 26px;background:#fff7ed;box-shadow:inset -18px 0 0 rgba(180,83,9,.18)}.rim{left:130px;top:96px;width:100px;height:16px;border-radius:10px 10px 0 0;background:#92400e}.handle{left:222px;top:124px;width:36px;height:56px;border:12px solid #fff7ed;border-left:none;border-radius:0 30px 30px 0;box-sizing:border-box}'
             )
           ),
-          chipLayer('pd_drop', box(16, 16, 96, 26, 3), 'DROPS IN', '#1c1917', '#f6f1e7'),
-          countdownLayer('pd_cd', box(118, 15, 110, 28, 4), '#1c1917', 3, 'rgba(246,241,231,0.92)'),
-          motion(textLayer('pd_batch', box(16, 240, 220, 24, 5), 'BATCH 04 · 60 MADE', { size: 11, color: '#ffffff', bold: true }), { in: 'fade' }),
-          ...embedWidget('pd_card', 'widget.creator_product.v1', 'Product', seedCreatorProduct, { x: 0, y: 280, z: 10 })
+          chipLayer('pd_drop', box(16, 48, 96, 26, 3), 'DROPS IN', '#1c1917', '#f6f1e7'),
+          countdownLayer('pd_cd', box(118, 47, 110, 28, 4), '#1c1917', 3, 'rgba(246,241,231,0.92)'),
+          motion(textLayer('pd_batch', box(16, 224, 220, 24, 5), 'BATCH 04 · 60 MADE', { size: 11, color: '#ffffff', bold: true }), { in: 'fade' }),
+          ...embedWidget('pd_card', 'widget.creator_product.v1', 'Product', seedCreatorProduct, { x: 36, y: 260, scale: 0.8, z: 10 })
         ]
       }
     ])
@@ -56,7 +57,6 @@ function productDrop(): PenTemplate {
 
 function recipeReel(): PenTemplate {
   const f = FRAMES.portrait;
-  const muted = 'rgba(255,255,255,0.78)';
   return postTemplate({
     id: 'post.recipe_reel.v1',
     classId: 'social.post',
@@ -65,7 +65,8 @@ function recipeReel(): PenTemplate {
     aspect: 'portrait',
     featured: true,
     focus:
-      'Write the dish name, one line that sells how easy it is, the cook time and servings, and up to six ingredients separated by dots. Link Full recipe to the written method.',
+      'Put the dish name and one line that sells how easy it is in the feed caption. On the page, set the cook time and servings, and up to six ingredients separated by dots. Link Full recipe to the written method.',
+    feedCaption: { title: 'Lemon garlic orzo', body: 'One pan, no draining, done before pasta water would boil.' },
     seed: pageSeed(f, [
       {
         slug: 'body',
@@ -81,14 +82,15 @@ function recipeReel(): PenTemplate {
               '.pan{left:60px;top:110px;width:240px;height:240px;background:#1c1917;box-shadow:0 0 0 10px #292524}.food{left:78px;top:128px;width:204px;height:204px;background:radial-gradient(circle,#fef3c7 0 2px,transparent 3px) 0 0/12px 12px,#fde68a}.bar{left:0;top:636px;width:140px;height:4px;background:#fef08a}'
             )
           ),
-          scrimLayer('rr_scrim', box(0, 380, 360, 260, 3), BOTTOM_SCRIM),
-          chipLayer('rr_time', box(16, 20, 92, 26, 4), '15 MIN', '#fef08a', '#1c1917'),
-          chipLayer('rr_serves', box(114, 20, 92, 26, 5), 'SERVES 2', 'rgba(255,255,255,0.18)', '#ffffff'),
-          motion(textLayer('rr_title', box(20, 430, 320, 44, 6), 'Lemon garlic orzo', { family: 'serif', size: 30, color: '#ffffff', bold: true }), { in: 'rise' }),
-          textLayer('rr_line', box(20, 478, 320, 40, 7), 'One pan, no draining, done before pasta water would boil.', { size: 13, color: muted }),
-          panelLayer('rr_ingredients', box(20, 526, 320, 40, 8), 'rgba(255,255,255,0.12)', 'Orzo · lemon · garlic · parmesan · peas · butter', { size: 12, color: '#ffffff', align: 'center' }, { name: 'Ingredients' }),
-          buttonLayer('rr_full', box(20, 580, 200, 40, 9), 'Full recipe', { fill: '#fef08a', color: '#1c1917' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/recipes/lemon-garlic-orzo' }),
-          buttonLayer('rr_save', box(232, 580, 108, 40, 10), 'Save', { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' }, { behavior: 'widget.stamp', label: 'Saved' })
+          scrimLayer('rr_scrim', box(0, 360, 360, 280, 3), BOTTOM_SCRIM),
+          chipLayer('rr_time', box(16, 48, 92, 26, 4), '15 MIN', '#fef08a', '#1c1917'),
+          chipLayer('rr_serves', box(114, 48, 92, 26, 5), 'SERVES 2', 'rgba(255,255,255,0.18)', '#ffffff'),
+          motion(
+            panelLayer('rr_ingredients', box(20, 408, 300, 44, 8), 'rgba(255,255,255,0.12)', 'Orzo · lemon · garlic · parmesan · peas · butter', { size: 12, color: '#ffffff', align: 'center' }, { name: 'Ingredients' }),
+            { in: 'rise' }
+          ),
+          buttonLayer('rr_full', box(20, 464, 180, 40, 9), 'Full recipe', { fill: '#fef08a', color: '#1c1917' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/recipes/lemon-garlic-orzo' }),
+          buttonLayer('rr_save', box(212, 464, 108, 40, 10), 'Save', { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' }, { behavior: 'widget.stamp', label: 'Saved' })
         ]
       }
     ])
@@ -106,6 +108,7 @@ function eventRecap(): PenTemplate {
     featured: true,
     focus:
       'Write the event name with its edition, the date in the date badge, and one sentence with two or three real numbers from the day. Link See all photos to the full album.',
+    feedCaption: { title: 'Thank you, Night Market', body: 'The full album from Saturday is up.' },
     seed: pageSeed(f, [
       {
         slug: 'body',
@@ -122,13 +125,13 @@ function eventRecap(): PenTemplate {
             )
           ),
           motion(
-            panelLayer('er_date', box(424, 28, 72, 72, 3), '#f472b6', ['SAT', '14 JUN'], { size: 13, color: '#0f0a1e', bold: true, align: 'center' }, { name: 'Date', cornerRadius: 14 }),
+            panelLayer('er_date', box(424, 32, 64, 64, 3), '#f472b6', ['SAT', '14 JUN'], { size: 12, color: '#0f0a1e', bold: true, align: 'center' }, { name: 'Date', cornerRadius: 14 }),
             { in: 'pop' }
           ),
-          textLayer('er_kicker', box(424, 116, 192, 20, 4), 'RECAP', { size: 11, color: '#f9a8d4', bold: true }),
-          motion(textLayer('er_title', box(424, 138, 192, 72, 5), 'Night Market, year three', { family: 'serif', size: 24, color: '#ffffff', bold: true }), { in: 'slideLeft' }),
-          textLayer('er_stats', box(424, 214, 192, 60, 6), '2,400 visitors, 61 stalls, and one very long dumpling queue.', { size: 12, color: 'rgba(255,255,255,0.72)' }),
-          buttonLayer('er_all', box(424, 290, 192, 40, 7), 'See all photos', { fill: '#f472b6', color: '#0f0a1e' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/nightmarket/2026' })
+          textLayer('er_kicker', box(424, 106, 180, 18, 4), 'RECAP', { size: 11, color: '#f9a8d4', bold: true }),
+          motion(textLayer('er_title', box(424, 128, 180, 60, 5), 'Night Market, year three', { family: 'serif', size: 22, color: '#ffffff', bold: true }), { in: 'slideLeft' }),
+          textLayer('er_stats', box(424, 194, 180, 50, 6), '2,400 visitors, 61 stalls, and one very long dumpling queue.', { size: 12, color: 'rgba(255,255,255,0.72)' }),
+          buttonLayer('er_all', box(424, 250, 180, 38, 7), 'See all photos', { fill: '#f472b6', color: '#0f0a1e' }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/nightmarket/2026' })
         ]
       }
     ])
@@ -145,6 +148,7 @@ function beforeAfter(): PenTemplate {
     aspect: 'square',
     focus:
       'Name the project in the kicker, write a short title about the effort, and one line with cost or time. Attach the after photo to Photo after and the original to Photo before.',
+    feedCaption: { title: 'Kitchen, six weekends later', body: 'Tap Before to see where it started.' },
     seed: pageSeed(f, [
       {
         slug: 'body',
@@ -171,7 +175,7 @@ function beforeAfter(): PenTemplate {
           ),
           chipLayer('bf_kicker', box(16, 16, 120, 26, 4), 'KITCHEN REDO', '#1c1917', '#fde68a'),
           motion(textLayer('bf_title', box(16, 272, 216, 28, 5), 'Six weekends later', { family: 'serif', size: 20, color: '#fafaf9', bold: true }), { in: 'rise' }),
-          textLayer('bf_cost', box(248, 272, 96, 72, 6), '$2,100, two sanders, zero regrets.', { size: 11, color: 'rgba(250,250,249,0.7)' }),
+          textLayer('bf_cost', box(244, 272, 80, 72, 6), '$2,100, two sanders, zero regrets.', { size: 11, color: 'rgba(250,250,249,0.7)' }),
           buttonLayer('bf_b', box(16, 310, 104, 36, 7), 'Before', { fill: 'rgba(255,255,255,0.12)', color: '#fafaf9' }, { behavior: 'widget.reveal', revealLayerId: 'bf_before', revealMode: 'tab' }),
           buttonLayer('bf_a', box(128, 310, 104, 36, 8), 'After', { fill: '#fde68a', color: '#1c1917' }, { behavior: 'widget.reveal', revealLayerId: 'bf_after', revealMode: 'tab' })
         ]
@@ -189,7 +193,8 @@ function btsClip(): PenTemplate {
     description: 'A full-frame set clip with an ON SET tag and the story behind a tap.',
     aspect: 'portrait',
     focus:
-      'Write a title about one moment from the shoot, one line with the project and day, and two short lines on what went wrong that appear behind the reveal button.',
+      'Put a title about one moment from the shoot and one line with the project and day in the feed caption. On the page, write two short lines on what went wrong that appear behind the reveal button.',
+    feedCaption: { title: 'The shot that took nine takes', body: 'Day 12 of the Harbor Coffee spot. Take nine made the final cut.' },
     seed: pageSeed(f, [
       {
         slug: 'body',
@@ -205,21 +210,22 @@ function btsClip(): PenTemplate {
               '.box{left:60px;top:110px;width:80px;height:60px;border-radius:4px;background:#fafafa;box-shadow:0 0 40px rgba(255,255,255,.5)}.cone{position:absolute;left:100px;top:160px;width:0;height:0;border-left:40px solid transparent;border-right:220px solid transparent;border-top:340px solid rgba(254,240,138,.12)}'
             )
           ),
-          scrimLayer('bt_scrim', box(0, 400, 360, 240, 3), BOTTOM_SCRIM),
-          chipLayer('bt_onset', box(16, 20, 84, 26, 4), 'ON SET', '#fafafa', '#0a0a0a'),
-          motion(chipLayer('bt_rec', box(268, 20, 76, 26, 5), '● REC', '#dc2626', '#ffffff'), { in: 'fade' }),
+          scrimLayer('bt_scrim', box(0, 360, 360, 280, 3), BOTTOM_SCRIM),
+          chipLayer('bt_onset', box(16, 48, 84, 26, 4), 'ON SET', '#fafafa', '#0a0a0a'),
+          motion(chipLayer('bt_rec', box(268, 48, 76, 26, 5), '● REC', '#dc2626', '#ffffff'), { in: 'fade' }),
           panelLayer(
             'bt_wrong',
-            box(20, 300, 320, 120, 6),
+            box(20, 330, 300, 120, 6),
             'rgba(10,10,10,0.85)',
             ['What went wrong', 'Takes 1 to 4: the steam would not show on camera.', 'Takes 5 to 8: a bus parked in the window.'],
             { size: 13, color: '#fafafa' },
             { name: 'What went wrong', visible: false }
           ),
-          motion(textLayer('bt_title', box(20, 440, 320, 72, 7), 'The shot that took nine takes', { family: 'serif', size: 28, color: '#ffffff', bold: true }), { in: 'rise' }),
-          textLayer('bt_line', box(20, 516, 320, 40, 8), 'Day 12 of the Harbor Coffee spot. Take nine made the final cut.', { size: 13, color: 'rgba(255,255,255,0.75)' }),
-          buttonLayer('bt_reveal', box(20, 576, 200, 40, 9), 'What went wrong?', { fill: '#fafafa', color: '#0a0a0a' }, { behavior: 'widget.reveal', revealLayerId: 'bt_wrong', revealMode: 'toggle' }),
-          buttonLayer('bt_follow', box(232, 576, 108, 40, 10), 'Follow', { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' }, { behavior: 'widget.stamp', label: 'Following' })
+          motion(
+            buttonLayer('bt_reveal', box(20, 466, 180, 40, 9), 'What went wrong?', { fill: '#fafafa', color: '#0a0a0a' }, { behavior: 'widget.reveal', revealLayerId: 'bt_wrong', revealMode: 'toggle' }),
+            { in: 'rise' }
+          ),
+          buttonLayer('bt_follow', box(212, 466, 108, 40, 10), 'Follow', { fill: 'rgba(255,255,255,0.16)', color: '#ffffff' }, { behavior: 'widget.stamp', label: 'Following' })
         ]
       }
     ])

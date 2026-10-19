@@ -66,6 +66,7 @@ export function TemplatesFeedScroller({
               ) : undefined
             }
             pagePosters={platformTemplatePagePosters(t.id) ?? undefined}
+            caption={t.feedCaption}
             buildSlot={
               <button
                 type="button"

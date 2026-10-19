@@ -411,6 +411,7 @@ export function TemplatesBrowse({
                     authorLabel={preview.authorDisplayName}
                     phoneActiveFeedId="pen-templates"
                     pagePosters={platformTemplatePagePosters(previewId) ?? undefined}
+                    caption={catalog.find((t) => t.id === previewId)?.feedCaption}
                   />
                 ) : (
                   <DocGalleryPreview

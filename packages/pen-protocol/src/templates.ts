@@ -69,6 +69,8 @@ export interface PenTemplate {
   seedPageSwipeAxis?: 'x' | 'y';
   /** Featured in Pen Mini (~3 per form). */
   browseFeatured?: boolean;
+  /** Feed title and caption the phone chrome paints under the page. */
+  feedCaption?: { title: string; body?: string };
   /** Curated widget picker category (widgets.widget starters). */
   widgetCategory?: string;
   /** Optional CDN-backed public template preview. */
@@ -233,7 +235,7 @@ const PLATFORM_POSTS = platformPostTemplates();
 /** The social post templates; each ships a screenshot poster in the Pen app. */
 export const PLATFORM_POST_TEMPLATE_IDS: readonly string[] = PLATFORM_POSTS.map((t) => t.id);
 
-export { frameOf } from './templates/index.js';
+export { frameOf, FEED_CHROME, feedChromeZones, type ChromeZone } from './templates/index.js';
 
 const STARTER: PenTemplate[] = [
   ...PLATFORM_POSTS,

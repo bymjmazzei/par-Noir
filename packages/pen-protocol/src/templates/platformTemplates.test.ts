@@ -9,7 +9,7 @@ import {
   structureFromLayers,
   templateForDoc
 } from '../index.js';
-import { frameOf, platformPostTemplates } from './index.js';
+import { feedChromeZones, frameOf, platformPostTemplates } from './index.js';
 
 const FORMS = ['social.note', 'social.post', 'social.collection', 'social.profile', 'social.comparison'] as const;
 const templates = platformPostTemplates();
@@ -23,6 +23,12 @@ const copyOf = (l: PenPageLayer) => [l.textDoc ? docToPlainText(l.textDoc) : '',
 
 function overlaps(a: PenPageLayer, b: PenPageLayer): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+/** Seeded text boxes carry 8px of editor padding around the words. */
+function inkBox(l: PenPageLayer) {
+  const pad = l.widgetElement === 'text' && l.backgroundColor === 'transparent' ? 8 : 0;
+  return { x: l.x + pad, y: l.y + pad, w: l.w - 2 * pad, h: l.h - 2 * pad };
 }
 
 function each(fn: (t: PenTemplate) => void) {
@@ -80,6 +86,33 @@ describe('platform post templates', () => {
         expect(layer.x + layer.w, id).toBeLessThanOrEqual(f.w + 0.5);
         expect(layer.y + layer.h, id).toBeLessThanOrEqual(f.h + 0.5);
       }
+    });
+  });
+
+  it('keeps text and controls out of feed chrome', () => {
+    const covered: string[] = [];
+    each((t) => {
+      const zones = feedChromeZones(frameOf(t));
+      for (const page of pages(t)) {
+        for (const layer of page.layers ?? []) {
+          if (layer.kind === 'group' || layer.widgetElement === 'html' || layer.visible === false) continue;
+          const ink = inkBox(layer);
+          for (const zone of zones) {
+            const hit = ink.x < zone.x + zone.w && zone.x < ink.x + ink.w && ink.y < zone.y + zone.h && zone.y < ink.y + ink.h;
+            if (hit) covered.push(`${t.id}/${page.slug}: ${layer.id} under the ${zone.name}`);
+          }
+        }
+      }
+    });
+    expect(covered).toEqual([]);
+  });
+
+  it('hands title and caption to the feed', () => {
+    each((t) => {
+      const caption = t.feedCaption;
+      expect(caption?.title.trim(), t.id).toBeTruthy();
+      expect(caption!.title.toLowerCase(), t.id).not.toBe(t.title.toLowerCase());
+      expect(`${caption!.title}\n${caption!.body ?? ''}`, t.id).not.toMatch(/lorem|ipsum|placeholder|caption here|title here/i);
     });
   });
 

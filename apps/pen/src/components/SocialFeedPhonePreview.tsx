@@ -14,7 +14,7 @@ import {
 } from 'react';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
-import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
+import { PenPhoneBrowseChrome, type PhoneCaption } from './PenPhoneBrowseChrome';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
 import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
 import {
@@ -100,7 +100,8 @@ export function SocialFeedPhonePreview({
   actionOverlay,
   playheadSec,
   followPlayhead = false,
-  pagePosters
+  pagePosters,
+  caption
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -118,6 +119,8 @@ export function SocialFeedPhonePreview({
   followPlayhead?: boolean;
   /** Template catalog: shipped poster per page instead of live layers. */
   pagePosters?: string[];
+  /** Feed title and caption under the page. Defaults to the doc title. */
+  caption?: PhoneCaption;
 }) {
   const livePlayheadSec = usePlayheadSec(followPlayhead);
   const phoneAspectCss = resolvePhoneFrameAspect(manifest);
@@ -151,6 +154,7 @@ export function SocialFeedPhonePreview({
       chrome={
         <PenPhoneBrowseChrome
           activeFeedId={phoneActiveFeedId}
+          caption={caption ?? { title: manifest.title || 'Untitled' }}
           engagement={
             <TemplateEngagementRail
               templateId={templateId}

@@ -13,7 +13,8 @@ import {
   resolvePageAspect,
   resolvePhoneFrameAspect
 } from './components/DocGalleryPreview';
-import type { PenDocManifest } from '@par-noir/pen-protocol';
+import { FEED_CHROME, type PenDocManifest } from '@par-noir/pen-protocol';
+import { engagementRailLayout, PHONE_OVERLAY_BOTTOM_FRACTION } from '@par-noir/feed-tile';
 
 const root = resolve(__dirname);
 
@@ -76,6 +77,20 @@ describe('pen feed UX chrome', () => {
     expect(css).toMatch(/\.pen-phone-feed-rail\s*\{[\s\S]*?height:\s*6cqh/);
     expect(css).toMatch(/\.pen-phone-bottom-nav\s*\{[\s\S]*?height:\s*8cqh/);
     expect(css).toMatch(/\.pen-feed-tile-body-safe/);
+    // Template safe zones (FEED_CHROME) mirror the painted chrome
+    const pct = (n: number) => `${Math.round(n * 100)}`;
+    expect(css).toMatch(new RegExp(`\\.pen-phone-feed-rail\\s*\\{[\\s\\S]*?height:\\s*${pct(FEED_CHROME.topRail)}cqh`));
+    expect(css).toMatch(new RegExp(`\\.pen-phone-bottom-nav\\s*\\{[\\s\\S]*?height:\\s*${pct(FEED_CHROME.bottomNav)}cqh`));
+    const caption = css.match(/\.pen-phone-caption\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(caption).toMatch(new RegExp(`left:\\s*${pct(FEED_CHROME.caption.left)}cqw`));
+    expect(caption).toMatch(new RegExp(`right:\\s*${pct(FEED_CHROME.caption.right)}cqw`));
+    expect(caption).toMatch(new RegExp(`bottom:\\s*${pct(FEED_CHROME.caption.bottom)}cqh`));
+    expect(caption).toMatch(new RegExp(`max-height:\\s*${pct(FEED_CHROME.caption.height)}cqh`));
+    expect(css).toMatch(new RegExp(`\\.pen-template-engagement-rail--overlay\\s*\\{[\\s\\S]*?right:\\s*${pct(FEED_CHROME.rail.right)}cqw`));
+    expect(PHONE_OVERLAY_BOTTOM_FRACTION).toBe(FEED_CHROME.rail.bottom);
+    const rail = engagementRailLayout(1000, 1000 * FEED_CHROME.rail.bottom);
+    expect(rail.iconPx).toBeCloseTo(1000 * FEED_CHROME.rail.iconOfHeight, 3);
+    expect(1000 - rail.bottomPx - rail.stackPx).toBeGreaterThanOrEqual(1000 * FEED_CHROME.rail.top);
     // Feed phones are height-driven (true 9:16)
     expect(css).toMatch(
       /\.pen-feed-phone\.pen-gallery-phone\s*\{[\s\S]*?height:\s*100%[\s\S]*?width:\s*auto/

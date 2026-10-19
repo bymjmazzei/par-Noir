@@ -145,6 +145,7 @@ export function TemplateGalleryThumb({
         authorLabel={preview.authorDisplayName}
         phoneActiveFeedId={phoneActiveFeedId}
         pagePosters={platformTemplatePagePosters(template?.id ?? templateId) ?? undefined}
+        caption={(template ?? getTemplate(templateId))?.feedCaption}
       />
     );
   }

@@ -38,6 +38,8 @@ export function postTemplate(input: {
   featured?: boolean;
   /** Agent brief: what this post is for and what to write where. */
   focus: string;
+  /** Post title and caption painted by the feed under the page, never inside it. */
+  feedCaption: NonNullable<PenTemplate['feedCaption']>;
   /** Collections list one section per page; single posts default to `body`. */
   sections?: PenTemplateSection[];
   seed: SeedBundle;
@@ -56,6 +58,7 @@ export function postTemplate(input: {
       ...(input.featured ? { browseFeatured: true } : {}),
       ...(collection ? { seedPageSwipeAxis: 'x' as const } : {}),
       seedGalleryAspect: GALLERY[input.aspect],
+      feedCaption: input.feedCaption,
       agentStarter: proseStarter({ title: input.title, focus: input.focus })
     },
     input.seed
