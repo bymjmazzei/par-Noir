@@ -661,6 +661,17 @@ export async function initializeDatabase(): Promise<void> {
     `);
 
     await db.query(`
+      CREATE TABLE IF NOT EXISTS file_page_views (
+        file_id TEXT NOT NULL,
+        page_slug TEXT NOT NULL,
+        viewer_hash TEXT NOT NULL,
+        view_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        viewed_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (file_id, page_slug, viewer_hash, view_date)
+      )
+    `);
+
+    await db.query(`
       CREATE INDEX IF NOT EXISTS idx_engagement_type
       ON engagement(type)
     `);

@@ -40,6 +40,7 @@ import {
   type FeedPlayback
 } from '@par-noir/feed-tile';
 import { PenFeedTilePlayer } from './PenFeedTilePlayer';
+import { PAGE_VIEW_DWELL_MS, type FeedPagePosition } from '../utils/feedPageViews';
 import {
   buildPenCollectionFeedTileModel,
   buildPenFeedTileModelForPost
@@ -714,6 +715,12 @@ export function FullScreenFeed({
   
   // Track viewing behavior for bot detection
   const viewStartTimeRef = useRef<Map<string, number>>(new Map());
+  const [feedPages, setFeedPages] = useState<Record<string, FeedPagePosition>>({});
+  const feedPageReporter = (fileId: string, count: number) =>
+    count > 1
+      ? (index: number, slug: string) => setFeedPages((prev) => ({ ...prev, [fileId]: { index, slug, count } }))
+      : undefined;
+  const visiblePageSlug = (visibleFileId && feedPages[visibleFileId]?.slug) || '';
   
   // Handle scroll events to detect user scrolling vs programmatic scrolling
   useEffect(() => {
@@ -839,6 +846,23 @@ export function FullScreenFeed({
       viewStartTimeRef.current.delete(visibleFileId);
     };
   }, [visibleFileId, userState.isUnlocked, userState.pnIdentifier]);
+
+  // Multipage posts: count the page once the viewer stays on it (server dedupes per day)
+  useEffect(() => {
+    if (!visibleFileId || !visiblePageSlug || !userState.isUnlocked || !userState.pnIdentifier) return;
+    const timer = setTimeout(() => {
+      fetch(`${API_ENDPOINT}/api/file-views/page`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileId: visibleFileId,
+          pageSlug: visiblePageSlug,
+          userPnIdentifier: userState.pnIdentifier
+        })
+      }).catch(() => undefined);
+    }, PAGE_VIEW_DWELL_MS);
+    return () => clearTimeout(timer);
+  }, [visibleFileId, visiblePageSlug, userState.isUnlocked, userState.pnIdentifier]);
 
   // Rotate comments every 2 seconds with fade transitions
   useEffect(() => {
@@ -1618,6 +1642,7 @@ export function FullScreenFeed({
                     penDocId={(indexedFile.metadata as { penDocId?: string }).penDocId}
                     creatorPnIdentifier={creatorId}
                     userPnIdentifier={userState.isUnlocked ? userState.pnIdentifier : undefined}
+                    onPageChange={feedPageReporter(indexedFile.metadata.fileId, penModel.pages.length)}
                   />
                 );
               })()}
@@ -1778,6 +1803,7 @@ export function FullScreenFeed({
                     penDocId={(indexedFile.metadata as { penDocId?: string }).penDocId}
                     creatorPnIdentifier={creatorId}
                     userPnIdentifier={userState.isUnlocked ? userState.pnIdentifier : undefined}
+                    onPageChange={feedPageReporter(indexedFile.metadata.fileId, penModel.pages.length)}
                   />
                 );
               })()}
@@ -1928,6 +1954,7 @@ export function FullScreenFeed({
                     penDocId={(indexedFile.metadata as { penDocId?: string }).penDocId}
                     creatorPnIdentifier={creatorId}
                     userPnIdentifier={userState.isUnlocked ? userState.pnIdentifier : undefined}
+                    onPageChange={feedPageReporter(indexedFile.metadata.fileId, penModel.pages.length)}
                   />
                 );
               })()}
@@ -2038,6 +2065,7 @@ export function FullScreenFeed({
                 }
               }}
               isLiked={isLiked(fileId)}
+              feedPage={feedPages[fileId]}
               onLike={isMePageCover ? () => {} : () => {
                 if (visibleFileId === fileId && showEngagementOverlay) {
                   setShowEngagementOverlay(false);

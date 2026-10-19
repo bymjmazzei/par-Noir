@@ -24,6 +24,8 @@ export interface EngagementMetrics {
   comments: number;
   shares: number;
   saves?: number;
+  /** Multipage posts: daily-unique views per page, keyed by page slug. */
+  pageViews?: Record<string, number>;
   lastUpdated: string;
   /** Top-level comment previews for the live feed strip (cap 10). */
   topComments?: EngagementTopComment[];

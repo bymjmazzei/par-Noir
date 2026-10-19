@@ -188,6 +188,8 @@ function PenActionStage({
 
 export type MediaFit = 'cover' | 'contain';
 
+const PAGE_SETTLE_MS = 150;
+
 function PageSurface({
   page,
   titleFallback,
@@ -294,7 +296,8 @@ export function FeedTileSurface({
   onReportLink,
   actorId,
   externalClockSec,
-  playback
+  playback,
+  onPageChange
 }: {
   model: FeedTileViewModel;
   mode?: 'preview' | 'live';
@@ -329,6 +332,8 @@ export function FeedTileSurface({
   externalClockSec?: number;
   /** Feed layout: on-screen, viewer pause, and feed mute for every video page. */
   playback?: FeedPlayback;
+  /** Multipage carousel: the page the viewer settled on (on mount, then after each swipe or jump). */
+  onPageChange?: (index: number, slug: string) => void;
 }) {
   const pages =
     model.pages.length > 0
@@ -380,6 +385,35 @@ export function FeedTileSurface({
 
   const carouselRef = useRef<HTMLDivElement>(null);
   const pageSlugs = pages.map((page) => page.slug || '');
+  const pageChangeRef = useRef(onPageChange);
+  pageChangeRef.current = onPageChange;
+  const slugKey = pageSlugs.join('|');
+  const carousel = multi && !screen;
+  useEffect(() => {
+    const root = carouselRef.current;
+    if (!carousel || !root) return;
+    const slugs = slugKey.split('|');
+    let last = -1;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settle = () => {
+      const span = axis === 'y' ? root.clientHeight : root.clientWidth;
+      const offset = axis === 'y' ? root.scrollTop : root.scrollLeft;
+      const index = span > 0 ? Math.min(slugs.length - 1, Math.max(0, Math.round(offset / span))) : 0;
+      if (index === last) return;
+      last = index;
+      pageChangeRef.current?.(index, slugs[index] || '');
+    };
+    const onScroll = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(settle, PAGE_SETTLE_MS);
+    };
+    settle();
+    root.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      if (timer) clearTimeout(timer);
+      root.removeEventListener('scroll', onScroll);
+    };
+  }, [axis, carousel, slugKey]);
   const scrollToPage = (targetIndex: number) => {
     const root = carouselRef.current;
     if (!root || targetIndex < 0 || targetIndex >= pages.length) return;

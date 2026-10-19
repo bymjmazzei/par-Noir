@@ -16,6 +16,7 @@ import { uploadQueueService } from '../services/uploadQueueService';
 import { API_ENDPOINT } from '../config/api';
 import { shareContent } from '../utils/nativeShare';
 import { LikersListModal } from './LikersListModal';
+import { viewsForFeedPage, type FeedPagePosition } from '../utils/feedPageViews';
 
 interface FeedEngagementSidebarProps {
   file: IndexedFile;
@@ -32,6 +33,8 @@ interface FeedEngagementSidebarProps {
   onMessage?: (creatorId: string) => void;
   indexedFiles?: IndexedFile[]; // For loading profile images
   onReportCopyright?: () => void;
+  /** Multipage posts: the page on screen, so VIEWS shows that page's count. */
+  feedPage?: FeedPagePosition;
 }
 
 // Format numbers: full numbers up to 999, then one decimal place (e.g., 20.1K, 5.1M)
@@ -58,6 +61,7 @@ export function FeedEngagementSidebar({
   onMessage,
   indexedFiles = [],
   onReportCopyright,
+  feedPage,
 }: FeedEngagementSidebarProps) {
   const { userState } = useUserState();
   const { success, error } = useToast();
@@ -66,7 +70,7 @@ export function FeedEngagementSidebar({
   const comments = engagement?.comments || 0;
   const shares = engagement?.shares || 0;
   const saves = engagement?.saves || 0;
-  const views = engagement?.views || 0;
+  const { count: views, position: pagePosition } = viewsForFeedPage(engagement, feedPage);
   const [isSaved, setIsSaved] = useState(false);
   const [isCheckingSaved, setIsCheckingSaved] = useState(false);
   const [showLikers, setShowLikers] = useState(false);
@@ -478,8 +482,9 @@ export function FeedEngagementSidebar({
             transform: 'scaleX(0.9)',
             transformOrigin: 'center'
           }}
+          data-feed-views-page={pagePosition}
         >
-          VIEWS
+          {pagePosition ? `VIEWS · ${pagePosition}` : 'VIEWS'}
         </span>
       </div>
     </div>

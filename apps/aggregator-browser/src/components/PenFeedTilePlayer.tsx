@@ -18,7 +18,8 @@ export function PenFeedTilePlayer({
   onPressBlocked,
   onEffect,
   onReportLink,
-  playback
+  playback,
+  onPageChange
 }: {
   model: FeedTileViewModel;
   aspectRatio?: '9/16' | '16/9' | '1/1';
@@ -29,6 +30,7 @@ export function PenFeedTilePlayer({
   onEffect?: (effect: PenActionEffect) => void;
   onReportLink?: (url: string) => void;
   playback?: FeedPlayback;
+  onPageChange?: (index: number, slug: string) => void;
 }) {
   const docId = penDocId || model.penDocId || '';
   const [widgetViews, setWidgetViews] = useState<Record<string, WidgetViewPayload>>({});
@@ -105,6 +107,7 @@ export function PenFeedTilePlayer({
         onPressBlocked={onPressBlocked}
         onReportLink={onReportLink}
         playback={playback}
+        onPageChange={onPageChange}
       />
     </div>
   );

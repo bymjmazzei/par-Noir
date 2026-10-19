@@ -2086,6 +2086,31 @@ export class AggregatorMetadataServiceDB {
     }
   }
 
+  /** Bump engagement.pageViews[slug] for a multipage post. No history row: page views are counts only. */
+  async incrementPageView(fileId: string, pageSlug: string): Promise<void> {
+    const db = getDatabasePool();
+    const current = await this.getFileMetadata(fileId);
+    if (!current) return;
+    const metadata = current.metadata;
+    const engagement = metadata.engagement || {
+      views: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      lastUpdated: new Date().toISOString()
+    };
+    const pageViews = { ...(engagement.pageViews || {}) };
+    pageViews[pageSlug] = (pageViews[pageSlug] || 0) + 1;
+    const updated: PublicMetadata = { ...metadata, engagement: { ...engagement, pageViews } };
+    for (const table of this.getAllContentTypeTables()) {
+      const result = await db.query(
+        `UPDATE ${table} SET metadata = $1, updated_at = NOW() WHERE file_id = $2`,
+        [JSON.stringify(updated), fileId]
+      );
+      if ((result.rowCount ?? 0) > 0) return;
+    }
+  }
+
   /**
    * Recompute engagement.topComments (and optionally sync comment count) on aggregator metadata.
    * SoT for comment bodies remains the engagement table.
