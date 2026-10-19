@@ -224,6 +224,15 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/getTemplateUseCount/);
     expect(src).toMatch(/toggleLikePublic/);
     expect(src).toMatch(/recordSharePublic/);
+    expect(src).not.toMatch(/fetchViewerLiked/);
+    expect(src).toMatch(/accessToken/);
+    expect(src).toMatch(/readViewerLiked/);
+    // Read-only rail must not hide the focusable Build slot from assistive tech
+    expect(src).not.toMatch(/aria-hidden=\{placement === 'overlay' \|\| !live/);
+    const client = readFileSync(resolve(root, 'services/penEngagementClient.ts'), 'utf8');
+    expect(client).toMatch(/Authorization: `Bearer \$\{accessToken\}`/);
+    expect(client).toMatch(/userPnIdentifier, liked/);
+    expect(client).not.toMatch(/fetchViewerLiked/);
     expect(src).toMatch(/placement === 'overlay'/);
     expect(src).toMatch(/pen-template-engagement-icon-wrap/);
     // Build slot above engagement stack

@@ -26,9 +26,14 @@ function row(id: string, basedOn: string, title: string, extra?: Partial<Persona
 }
 
 const mirror = row('personal_mirror1', 'widget.social_milestone.v1', 'Milestone');
-const saved = row('personal_saved1', 'widget.social_milestone.v1', 'Launch day');
+/** Composer-era mirror whose starter was later retitled "Trivia quiz". */
+const renamedMirror = row('personal_mirror2', 'widget.quiz.v1', 'Quiz');
+const saved = row('personal_saved1', 'widget.social_milestone.v1', 'Milestone', {
+  savedFromDocId: 'doc_launch'
+});
 const savedWithStill = row('personal_saved2', 'note.basic.portrait.v1', 'Note (Portrait)', {
-  galleryPreviewRef: 'penmedia:still'
+  galleryPreviewRef: 'penmedia:still',
+  galleryPreviewDocId: 'doc_portrait'
 });
 
 function blob(list: PersonalTemplate[]): PenPrefsBlob {
@@ -46,25 +51,25 @@ describe('starter mirror purge', () => {
     });
   });
 
-  it('flags only frozen starter copies', () => {
+  it('flags rows without a source doc, regardless of title', () => {
     expect(isStarterMirror(mirror)).toBe(true);
+    expect(isStarterMirror(renamedMirror)).toBe(true);
     expect(isStarterMirror(saved)).toBe(false);
     expect(isStarterMirror(savedWithStill)).toBe(false);
-    expect(isStarterMirror(row('personal_blank', 'blank.social.note', 'Blank'))).toBe(false);
   });
 
   it('drops mirror rows from local storage and keeps saved templates', () => {
     localStorage.setItem(
       `pen_personal_templates_v1:${pn}`,
-      JSON.stringify([mirror, saved, savedWithStill])
+      JSON.stringify([mirror, renamedMirror, saved, savedWithStill])
     );
-    expect(purgeStarterMirrors(pn)).toBe(1);
+    expect(purgeStarterMirrors(pn)).toBe(2);
     expect(listPersonalTemplates(pn).map((t) => t.id)).toEqual([saved.id, savedWithStill.id]);
     expect(purgeStarterMirrors(pn)).toBe(0);
   });
 
   it('cloud merge never brings mirror rows back', () => {
-    const merged = mergePrefsBlob(blob([saved]), blob([mirror, savedWithStill]));
+    const merged = mergePrefsBlob(blob([saved, renamedMirror]), blob([mirror, savedWithStill]));
     expect(merged.personalTemplates.map((t) => t.id).sort()).toEqual(
       [saved.id, savedWithStill.id].sort()
     );

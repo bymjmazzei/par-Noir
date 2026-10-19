@@ -84,6 +84,7 @@ export function PenFeedSlideStage({
           fileId={fileId ?? null}
           authorLabel={authorLabel}
           userPnIdentifier={session?.pnIdentifier}
+          accessToken={session?.accessToken}
           unlocked={unlocked}
           readOnly={!live}
           placement="aside"

@@ -29,6 +29,8 @@ export interface PersonalTemplate {
   galleryPreviewPosterRef?: string;
   /** Source docId for Drive hydrate of gallery penmedia (docKey). */
   galleryPreviewDocId?: string;
+  /** Doc this template was saved from; rows without it are retired starter mirror copies. */
+  savedFromDocId?: string;
 }
 
 export function listPersonalTemplates(pn: string): PersonalTemplate[] {
@@ -89,6 +91,7 @@ export function savePersonalTemplateFromDoc(
     sections,
     seedSections,
     createdAt: now,
+    savedFromDocId: bundle.manifest.docId,
     ...(bundle.manifest.galleryPreviewRef
       ? {
           galleryPreviewRef: bundle.manifest.galleryPreviewRef,
@@ -138,15 +141,12 @@ export function loadPersonalTemplate(pn: string, id: string): PersonalTemplate |
 }
 
 /**
- * Frozen copy of a platform starter written by the retired starter mirror:
- * same title as its starter and no gallery still of its own.
+ * Frozen copy of a platform starter written by the retired starter mirror.
+ * Doc saves always record their source doc; mirror rows never did, and their
+ * titles can predate a starter rename (Composer "Quiz" vs Grok "Trivia quiz").
  */
 export function isStarterMirror(t: PersonalTemplate): boolean {
-  const basedOn = t.basedOnTemplateId?.trim();
-  if (!basedOn || basedOn.startsWith('blank.') || isPersonalTemplateId(basedOn)) return false;
-  const starter = getTemplate(basedOn);
-  if (!starter) return false;
-  return t.title === starter.title && !t.galleryPreviewRef;
+  return !t.savedFromDocId && !t.galleryPreviewDocId;
 }
 
 /** Drop starter mirror rows (and their IR buffers); push the cleaned list to cloud prefs. */

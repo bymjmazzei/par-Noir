@@ -12,9 +12,10 @@ import {
 } from '@par-noir/feed-tile';
 import {
   fetchEngagementStats,
-  fetchViewerLiked,
+  readViewerLiked,
   recordSharePublic,
   toggleLikePublic,
+  writeViewerLiked,
   type PenEngagementStats
 } from '../services/penEngagementClient';
 import { getTemplateUseCount } from '../services/penClassPrefs';
@@ -83,6 +84,7 @@ export function TemplateEngagementRail({
   fileId,
   authorLabel = 'par Noir',
   userPnIdentifier,
+  accessToken,
   unlocked,
   readOnly = true,
   placement = 'aside',
@@ -92,13 +94,16 @@ export function TemplateEngagementRail({
   fileId?: string | null;
   authorLabel?: string;
   userPnIdentifier?: string | null;
+  /** First-party session token; like/share POSTs are Bearer-gated. */
+  accessToken?: string | null;
   unlocked: boolean;
   readOnly?: boolean;
   /** aside = outside phone (feed/modal); overlay = inside phone chrome. */
   placement?: 'aside' | 'overlay';
   buildSlot?: ReactNode;
 }) {
-  const live = placement === 'aside' && !readOnly && Boolean(fileId) && unlocked;
+  const live =
+    placement === 'aside' && !readOnly && Boolean(fileId) && unlocked && Boolean(accessToken);
   const railRef = useRef<HTMLDivElement>(null);
   const frameHeight = useFeedFrameHeight(railRef);
   const overlay = placement === 'overlay';
@@ -135,49 +140,44 @@ export function TemplateEngagementRail({
         if (!cancelled) setStats(s);
       })
       .catch(() => undefined);
-    if (userPnIdentifier) {
-      void fetchViewerLiked(fileId, userPnIdentifier)
-        .then((v) => {
-          if (!cancelled) setLiked(v);
-        })
-        .catch(() => undefined);
-    } else {
-      setLiked(false);
-    }
+    setLiked(userPnIdentifier ? readViewerLiked(userPnIdentifier, fileId) : false);
     return () => {
       cancelled = true;
     };
   }, [fileId, placement, userPnIdentifier]);
 
   const onLike = useCallback(async () => {
-    if (!live || !fileId || !userPnIdentifier || busy) return;
+    if (!live || !fileId || !userPnIdentifier || !accessToken || busy) return;
     setBusy(true);
     try {
-      const result = await toggleLikePublic(fileId, userPnIdentifier);
+      const result = await toggleLikePublic(fileId, userPnIdentifier, !liked, accessToken);
+      writeViewerLiked(userPnIdentifier, fileId, result.liked);
       setLiked(result.liked);
-      setStats((prev) => ({
-        ...prev,
-        likes: Math.max(0, prev.likes + (result.liked ? 1 : -1))
-      }));
+      if (result.liked !== liked) {
+        setStats((prev) => ({
+          ...prev,
+          likes: Math.max(0, prev.likes + (result.liked ? 1 : -1))
+        }));
+      }
     } catch {
       /* keep prior */
     } finally {
       setBusy(false);
     }
-  }, [live, fileId, userPnIdentifier, busy]);
+  }, [live, fileId, userPnIdentifier, accessToken, liked, busy]);
 
   const onShare = useCallback(async () => {
-    if (!live || !fileId || !userPnIdentifier || busy) return;
+    if (!live || !fileId || !userPnIdentifier || !accessToken || busy) return;
     setBusy(true);
     try {
-      await recordSharePublic(fileId, userPnIdentifier);
+      await recordSharePublic(fileId, userPnIdentifier, accessToken);
       setStats((prev) => ({ ...prev, shares: prev.shares + 1 }));
     } catch {
       /* keep prior */
     } finally {
       setBusy(false);
     }
-  }, [live, fileId, userPnIdentifier, busy]);
+  }, [live, fileId, userPnIdentifier, accessToken, busy]);
 
   const rootClass =
     placement === 'overlay'
@@ -187,14 +187,9 @@ export function TemplateEngagementRail({
         : 'pen-template-engagement-rail pen-template-engagement-rail--aside pen-template-engagement-rail--readonly';
 
   return (
-    <div
-      ref={railRef}
-      className={rootClass}
-      style={overlayStyle}
-      aria-hidden={placement === 'overlay' || !live ? true : undefined}
-    >
+    <div ref={railRef} className={rootClass} style={overlayStyle}>
       {buildSlot ? <div className="pen-template-engagement-build-slot">{buildSlot}</div> : null}
-      <div className="pen-template-engagement-creator" title={authorLabel}>
+      <div className="pen-template-engagement-creator" title={authorLabel} aria-hidden>
         <span className="pen-template-engagement-avatar">{creatorInitials(authorLabel)}</span>
       </div>
       <StatIcon
@@ -230,7 +225,7 @@ export function TemplateEngagementRail({
           <path d="M0,90.56c2.45-9.18,8.97-10.47,16.68-13.68C82.51,49.42,150.89,27.58,216.79.2c3.35-.69,7.2.32,7.08,4.26l-69.12,188.52c-4.53,6.91-14.09,7.87-21.04,4.25-20.64-14.84-41-30.05-61.77-44.72-.7-.5-1.69.21-1.23-1.72L207.08,15.94,52.13,137.23,4.07,102.91l-4.07-7.38v-4.98Z" />
         </svg>
       </StatIcon>
-      <div className="pen-template-engagement-builds">
+      <div className="pen-template-engagement-builds" aria-hidden>
         <span className="pen-template-engagement-count">{formatCount(builds)}</span>
         <span className="pen-template-engagement-builds-label">BUILDS</span>
       </div>

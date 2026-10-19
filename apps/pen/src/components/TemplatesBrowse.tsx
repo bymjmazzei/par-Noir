@@ -424,6 +424,7 @@ export function TemplatesBrowse({
                 fileId={previewFileId}
                 authorLabel={preview.authorDisplayName}
                 userPnIdentifier={session?.pnIdentifier}
+                accessToken={session?.accessToken}
                 unlocked={Boolean(session?.pnIdentifier)}
                 readOnly={!previewLive}
                 placement="aside"
