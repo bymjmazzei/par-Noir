@@ -3,6 +3,7 @@
  * Screenshot catalog posters with headless Chromium on the dev-only widget-posters.html stage.
  * npm run widget-posters    curated starter widgets into public/widget-posters/<id>.jpg (art layer)
  * npm run template-posters  platform post templates into public/template-posters/<id>/<page>.jpg (every page, full frame)
+ * npm run template-posters -- --only=<id>,<id>  re-render just those templates, leaving the rest in place
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,6 +13,7 @@ import { chromium } from '@playwright/test';
 
 const MAX_BYTES = 200 * 1024;
 const templates = process.argv.includes('--templates');
+const only = (process.argv.find((a) => a.startsWith('--only='))?.slice(7) || '').split(',').filter(Boolean);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'public', templates ? 'template-posters' : 'widget-posters');
 
@@ -41,7 +43,8 @@ async function posterJobs() {
     return curated.CURATED_WIDGET_IDS.map((id) => ({ query: `id=${encodeURIComponent(id)}`, file: `${id}.jpg` }));
   }
   const registry = await server.ssrLoadModule(path.resolve(root, '../../packages/pen-protocol/src/templates.ts'));
-  return registry.PLATFORM_POST_TEMPLATE_IDS.flatMap((id) =>
+  const ids = only.length ? registry.PLATFORM_POST_TEMPLATE_IDS.filter((id) => only.includes(id)) : registry.PLATFORM_POST_TEMPLATE_IDS;
+  return ids.flatMap((id) =>
     registry.getTemplate(id).seedSections.map((section) => ({
       query: `id=${encodeURIComponent(id)}&page=${encodeURIComponent(section.slug)}`,
       file: path.join(id, `${section.slug}.jpg`)
@@ -52,7 +55,8 @@ async function posterJobs() {
 let browser;
 try {
   const jobs = await posterJobs();
-  if (templates) await rm(outDir, { recursive: true, force: true });
+  if (templates && !only.length) await rm(outDir, { recursive: true, force: true });
+  if (templates) for (const id of only) await rm(path.join(outDir, id), { recursive: true, force: true });
   browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 900, height: 1000 }, deviceScaleFactor: 2 });
   for (const job of jobs) {

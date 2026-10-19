@@ -36,9 +36,9 @@ function each(fn: (t: PenTemplate) => void) {
 }
 
 describe('platform post templates', () => {
-  it('ships five per form, registered ahead of the kit', () => {
+  it('ships five per form plus two navigable collections, registered ahead of the kit', () => {
     for (const form of FORMS) {
-      expect(templates.filter((t) => t.classId === form).length, form).toBe(5);
+      expect(templates.filter((t) => t.classId === form).length, form).toBe(form === 'social.collection' ? 7 : 5);
     }
     expect(new Set(templates.map((t) => t.id)).size).toBe(templates.length);
     const registered = listStarterTemplates().map((t) => t.id);
@@ -245,6 +245,19 @@ describe('each form does its job', () => {
       expect(t.publishContentClass, t.id).toBe('collection');
       expect(ps.some((p) => (p.layers ?? []).some(isSlot)), t.id).toBe(true);
       expect(ps.some((p) => !(p.layers ?? []).some(isSlot)), t.id).toBe(true);
+    }
+  });
+
+  it('collection page links land on a real page, and navigable ones reach every page', () => {
+    for (const t of byForm('social.collection')) {
+      const slugs = new Set(pages(t).map((p) => p.slug));
+      const targets = layersOf(t).flatMap((l) => (l.goTo?.startsWith('slug:') ? [l.goTo.slice(5)] : []));
+      for (const slug of targets) expect(slugs.has(slug), `${t.id} → ${slug}`).toBe(true);
+    }
+    for (const id of ['collection.promo_hub.v1', 'collection.pick_path.v1']) {
+      const t = templates.find((x) => x.id === id)!;
+      const targets = new Set(layersOf(t).flatMap((l) => (l.goTo?.startsWith('slug:') ? [l.goTo.slice(5)] : [])));
+      for (const p of pages(t).slice(1)) expect(targets.has(p.slug), `${id} reaches ${p.slug}`).toBe(true);
     }
   });
 

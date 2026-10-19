@@ -22,7 +22,7 @@ describe('curated widget posters', () => {
   });
 
   it('every page of every platform post template ships a committed screenshot under 200KB', () => {
-    expect(PLATFORM_POST_TEMPLATE_IDS).toHaveLength(25);
+    expect(PLATFORM_POST_TEMPLATE_IDS).toHaveLength(27);
     for (const id of PLATFORM_POST_TEMPLATE_IDS) {
       const slugs = getTemplate(id)!.seedSections!.map((s) => s.slug);
       const posters = platformTemplatePagePosters(id);

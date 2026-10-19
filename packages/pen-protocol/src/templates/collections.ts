@@ -508,6 +508,219 @@ function recipeCards(): PenTemplate {
   });
 }
 
+function promoHub(): PenTemplate {
+  const cream = '#fdf6ec';
+  const ink = '#2b1a12';
+  const muted = 'rgba(253,246,236,0.74)';
+  const shop: Look = { fill: '#f59e0b', color: ink };
+  const back: Look = { fill: 'rgba(253,246,236,0.12)', color: cream };
+  const roasts = [
+    { slug: 'roast-ember', name: 'Ember', notes: 'Dark chocolate, toasted pecan, a long smoky finish.', origin: 'Huila, Colombia', price: '£11 · 250 g', bean: '#7c2d12', glow: '#f97316' },
+    { slug: 'roast-orchard', name: 'Orchard', notes: 'Baked apple, honey, and a soft black tea body.', origin: 'Sidamo, Ethiopia', price: '£12 · 250 g', bean: '#9a3412', glow: '#facc15' },
+    { slug: 'roast-midnight', name: 'Midnight', notes: 'Molasses, cherry, and enough body for milk.', origin: 'Cerrado, Brazil', price: '£10 · 250 g', bean: '#1c1917', glow: '#a855f7' }
+  ];
+  const roastPage = (r: (typeof roasts)[number], i: number): { slug: string; layers: PenPageLayer[] } => ({
+    slug: r.slug,
+    layers: [
+      pageArt(`ph${i}_art`, artHtml(ink, `<div class="r" style="left:0;right:0;top:300px;height:3px;background:${r.glow}"></div>`), f),
+      slotLayer(
+        `ph${i}_photo`,
+        box(0, 0, 360, 300, 2),
+        'Photo',
+        artHtml(
+          `radial-gradient(circle at 50% 60%,${r.glow} 0%,${r.bean} 70%)`,
+          `<div class="r bag"></div><div class="r label"></div><div class="s" style="left:${60 + i * 70}px;top:230px;width:26px;height:18px;background:${r.bean}"></div><div class="s" style="left:${110 + i * 50}px;top:250px;width:26px;height:18px;background:${r.bean}"></div>`,
+          `.bag{left:120px;top:60px;width:120px;height:170px;border-radius:10px 10px 4px 4px;background:${cream}}.label{left:138px;top:110px;width:84px;height:60px;border-radius:6px;background:${r.bean}}`
+        )
+      ),
+      motion(chipLayer(`ph${i}_name`, box(24, 322, 180, 26, 3), `${r.name.toUpperCase()} · ${r.price}`, r.glow, ink), { in: 'pop' }),
+      textLayer(`ph${i}_origin`, box(24, 356, 296, 30, 4), r.origin, { family: 'serif', size: 20, color: cream, bold: true }),
+      textLayer(`ph${i}_notes`, box(24, 388, 296, 40, 5), r.notes, { size: 13, color: muted }),
+      buttonLayer(`ph${i}_shop`, box(24, 440, 140, 44, 6), `Shop ${r.name}`, shop, { behavior: 'cta.open', openUrl: `https://parnoir.com/shop/${r.slug}` }),
+      buttonLayer(`ph${i}_back`, box(176, 440, 144, 44, 7), 'Back to menu', back, { behavior: 'page.go', goTo: 'slug:menu' })
+    ]
+  });
+  return postTemplate({
+    id: 'collection.promo_hub.v1',
+    classId: 'social.collection',
+    title: 'Promo hub',
+    description: 'A launch cover, a menu that jumps to each product, product pages with a shop link, and an offer page.',
+    aspect: 'portrait',
+    focus:
+      'Write a launch cover with the offer in one line, a menu page that names each product, one page per product with its origin or key fact, one sentence of what makes it good, and the price, then an offer page with the code and when it ends. Every product page links to its shop page and back to the menu.',
+    feedCaption: { title: 'Three autumn roasts, 20% off', body: '@northbeanroasters · tap a roast to jump straight to it' },
+    sections: pagesOf([
+      ['cover', 'Cover'],
+      ['menu', 'Menu'],
+      ...roasts.map((r): [string, string] => [r.slug, r.name]),
+      ['offer', 'Offer']
+    ]),
+    seed: pageSeed(
+      f,
+      [
+        {
+          slug: 'cover',
+          layers: [
+            pageArt(
+              'phc_art',
+              artHtml(
+                `linear-gradient(165deg,#451a03 0%,${ink} 70%)`,
+                roasts.map((r, i) => `<div class="s" style="left:${40 + i * 100}px;top:${330 - i * 30}px;width:90px;height:60px;background:${r.glow};opacity:.5"></div>`).join(''),
+                '.s{filter:blur(2px)}'
+              ),
+              f
+            ),
+            chipLayer('phc_kicker', box(24, 56, 170, 26, 2), 'AUTUMN DROP · 3 ROASTS', '#f59e0b', ink),
+            motion(textLayer('phc_title', box(24, 100, 312, 130, 3), 'Three new roasts, one week at 20% off', { family: 'serif', size: 34, color: cream, bold: true }), { in: 'rise' }),
+            textLayer('phc_sub', box(24, 240, 312, 44, 4), 'Small batches from three farms we visit every year.', { size: 14, color: muted }),
+            buttonLayer('phc_go', box(24, 476, 180, 40, 5), 'See the roasts', shop, { behavior: 'page.go', goTo: 'slug:menu' })
+          ]
+        },
+        {
+          slug: 'menu',
+          layers: [
+            pageArt('phm_art', artHtml(cream, '<div class="r" style="left:0;top:0;bottom:0;width:10px;background:#f59e0b"></div>'), f),
+            motion(textLayer('phm_title', box(24, 56, 312, 44, 2), 'Pick a roast', { family: 'serif', size: 30, color: ink, bold: true }), { in: 'rise' }),
+            textLayer('phm_sub', box(24, 100, 312, 30, 3), 'Each one opens its own page.', { size: 13, color: '#78350f' }),
+            ...roasts.map((r, i) =>
+              buttonLayer(
+                `phm_${r.slug}`,
+                box(24, 146 + i * 96, 296, 80, 4 + i),
+                `${r.name} — ${r.origin}`,
+                { fill: r.bean, color: cream },
+                { behavior: 'page.go', goTo: `slug:${r.slug}` },
+                { radius: 14, size: 16 }
+              )
+            ),
+            buttonLayer('phm_offer', box(24, 476, 180, 40, 8), 'Skip to the offer', { fill: ink, color: cream }, { behavior: 'page.go', goTo: 'slug:offer' })
+          ]
+        },
+        ...roasts.map(roastPage),
+        {
+          slug: 'offer',
+          layers: [
+            pageArt('pho_art', artHtml('linear-gradient(180deg,#f59e0b 0%,#b45309 100%)', '<div class="s" style="right:-60px;top:-60px;width:220px;height:220px;background:rgba(253,246,236,.25)"></div>'), f),
+            chipLayer('pho_kicker', box(24, 56, 130, 26, 2), 'THIS WEEK ONLY', ink, cream),
+            motion(textLayer('pho_title', box(24, 100, 312, 120, 3), '20% off every bag until Sunday', { family: 'serif', size: 34, color: ink, bold: true }), { in: 'drop' }),
+            panelLayer('pho_code', box(24, 236, 296, 100, 4), cream, ['CODE', 'AUTUMN20'], { family: 'mono', size: 22, color: ink, bold: true, align: 'center' }, { name: 'Code' }),
+            buttonLayer('pho_shop', box(24, 400, 296, 48, 5), 'Shop the autumn drop', { fill: ink, color: cream }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/shop/autumn-drop' }),
+            buttonLayer('pho_menu', box(24, 462, 180, 40, 6), 'Back to menu', { fill: 'rgba(43,26,18,0.15)', color: ink }, { behavior: 'page.go', goTo: 'slug:menu' })
+          ]
+        }
+      ],
+      { backgroundColor: ink }
+    )
+  });
+}
+
+function pickPath(): PenTemplate {
+  const night = '#0f172a';
+  const chalk = '#f8fafc';
+  const muted = 'rgba(248,250,252,0.72)';
+  const lime: Look = { fill: '#a3e635', color: night };
+  const ghost: Look = { fill: 'rgba(248,250,252,0.1)', color: chalk };
+  const paths = [
+    { slug: 'path-new', label: 'I am just starting', kicker: 'NEW RUNNER', title: 'Start with walk-run', body: 'Run one minute, walk two, eight times. Three days a week. Your lungs catch up before your legs do.', week: 'Week 1 · 3 × 24 minutes', accent: '#a3e635', photo: true },
+    { slug: 'path-back', label: 'I am coming back', kicker: 'RETURNING', title: 'Rebuild before you push', body: 'Half your old weekly distance, all of it easy. Add ten percent a week and skip the speed work for a month.', week: 'Week 1 · 4 easy runs', accent: '#38bdf8', photo: false },
+    { slug: 'path-race', label: 'I have a race booked', kicker: 'RACE BLOCK', title: 'Train backwards from race day', body: 'One long run, one session of intervals, everything else easy. Taper the last ten days.', week: 'Week 1 · long run 8 km', accent: '#f472b6', photo: true }
+  ];
+  const pathPage = (p: (typeof paths)[number], i: number): { slug: string; layers: PenPageLayer[] } => ({
+    slug: p.slug,
+    layers: [
+      pageArt(`pp${i}_art`, artHtml(night, `<div class="s" style="left:${-40 + i * 120}px;top:${p.photo ? 300 : -60}px;width:180px;height:180px;background:${p.accent};opacity:.18"></div>`), f),
+      ...(p.photo
+        ? [
+            slotLayer(
+              `pp${i}_photo`,
+              box(0, 0, 360, 280, 2),
+              'Photo',
+              artHtml(
+                `linear-gradient(180deg,${p.accent} 0%,${night} 100%)`,
+                `<div class="r" style="left:0;right:0;top:210px;height:70px;background:rgba(15,23,42,.6)"></div><div class="s" style="left:${150 + i * 10}px;top:70px;width:40px;height:40px;background:${chalk}"></div><div class="r" style="left:${162 + i * 10}px;top:112px;width:16px;height:70px;border-radius:8px;background:${chalk}"></div>`
+              )
+            )
+          ]
+        : []),
+      motion(chipLayer(`pp${i}_kicker`, box(24, p.photo ? 300 : 56, 120, 26, 3), p.kicker, p.accent, night), { in: 'pop' }),
+      textLayer(`pp${i}_title`, box(24, p.photo ? 334 : 96, 296, 40, 4), p.title, { family: 'serif', size: 24, color: chalk, bold: true }),
+      textLayer(`pp${i}_body`, box(24, p.photo ? 374 : 144, 296, p.photo ? 50 : 90, 5), p.body, { size: 13, color: muted }),
+      ...(p.photo ? [] : [panelLayer(`pp${i}_week`, box(24, 252, 296, 64, 6), 'rgba(248,250,252,0.08)', p.week, { size: 15, color: chalk, bold: true }, { name: 'Week one', strokeColor: 'rgba(248,250,252,0.2)', strokeWidth: 1 })]),
+      buttonLayer(`pp${i}_plan`, box(24, 440, 140, 44, 7), 'Get my plan', lime, { behavior: 'page.go', goTo: 'slug:plan' }),
+      buttonLayer(`pp${i}_again`, box(176, 440, 144, 44, 8), 'Pick again', ghost, { behavior: 'page.go', goTo: 'slug:choose' })
+    ]
+  });
+  return postTemplate({
+    id: 'collection.pick_path.v1',
+    classId: 'social.collection',
+    title: 'Pick your path',
+    description: 'A question page that sends each reader to their own page, then one shared call to action.',
+    aspect: 'portrait',
+    focus:
+      'Write a cover question, then a page with two or three honest answers. Give each answer its own page with a short title, two sentences of advice for that reader, and what their first week looks like. End on one shared page with the call to action.',
+    feedCaption: { title: 'Which runner are you?', body: 'Coach Imani · tap your answer for a plan that fits' },
+    sections: pagesOf([
+      ['cover', 'Cover'],
+      ['choose', 'Choose'],
+      ...paths.map((p): [string, string] => [p.slug, p.kicker.charAt(0) + p.kicker.slice(1).toLowerCase()]),
+      ['plan', 'Your plan']
+    ]),
+    seed: pageSeed(
+      f,
+      [
+        {
+          slug: 'cover',
+          layers: [
+            pageArt(
+              'ppc_art',
+              artHtml(
+                `linear-gradient(200deg,#1e293b 0%,${night} 80%)`,
+                '<svg width="360" height="640" style="position:absolute;inset:0"><path d="M30 520 C 120 420, 60 330, 180 300 S 300 200, 330 120" fill="none" stroke="#a3e635" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 14"/><circle cx="330" cy="120" r="12" fill="#a3e635"/></svg>'
+              ),
+              f
+            ),
+            chipLayer('ppc_kicker', box(24, 56, 140, 26, 2), 'FIND YOUR PLAN', '#a3e635', night),
+            motion(textLayer('ppc_title', box(24, 100, 300, 130, 3), 'Which kind of runner are you right now?', { family: 'serif', size: 32, color: chalk, bold: true }), { in: 'rise' }),
+            textLayer('ppc_sub', box(24, 240, 280, 44, 4), 'Answer one question. Get the plan that fits.', { size: 14, color: muted }),
+            buttonLayer('ppc_start', box(24, 476, 160, 40, 5), 'Answer it', lime, { behavior: 'page.go', goTo: 'slug:choose' })
+          ]
+        },
+        {
+          slug: 'choose',
+          layers: [
+            pageArt('ppq_art', artHtml(chalk, '<div class="r" style="left:24px;right:24px;top:132px;height:2px;background:#cbd5e1"></div>'), f),
+            motion(textLayer('ppq_title', box(24, 56, 312, 72, 2), 'Be honest. Where are you starting from?', { family: 'serif', size: 26, color: night, bold: true }), { in: 'rise' }),
+            ...paths.map((p, i) =>
+              buttonLayer(
+                `ppq_${p.slug}`,
+                box(24, 156 + i * 88, 296, 72, 3 + i),
+                p.label,
+                { fill: night, color: chalk },
+                { behavior: 'page.go', goTo: `slug:${p.slug}` },
+                { radius: 14, size: 16, stroke: p.accent }
+              )
+            ),
+            textLayer('ppq_note', box(24, 432, 296, 40, 6), 'You can come back and choose again.', { size: 13, color: '#475569' })
+          ]
+        },
+        ...paths.map(pathPage),
+        {
+          slug: 'plan',
+          layers: [
+            pageArt('ppp_art', artHtml('linear-gradient(180deg,#a3e635 0%,#65a30d 100%)', '<div class="s" style="left:-70px;bottom:-70px;width:240px;height:240px;background:rgba(15,23,42,.15)"></div>'), f),
+            chipLayer('ppp_kicker', box(24, 56, 110, 26, 2), 'FREE · 8 WEEKS', night, '#a3e635'),
+            motion(textLayer('ppp_title', box(24, 100, 312, 90, 3), 'Your plan, one run at a time', { family: 'serif', size: 32, color: night, bold: true }), { in: 'drop' }),
+            textLayer('ppp_body', box(24, 200, 296, 70, 4), 'Every session written out, a check-in each Sunday, and a coach who answers questions.', { size: 14, color: '#1a2e05' }),
+            buttonLayer('ppp_get', box(24, 300, 296, 48, 5), 'Get the free plan', { fill: night, color: chalk }, { behavior: 'cta.open', openUrl: 'https://parnoir.com/coach/eight-week-plan' }),
+            buttonLayer('ppp_in', box(24, 360, 296, 44, 6), 'Count me in', { fill: 'rgba(15,23,42,0.12)', color: night }, { behavior: 'widget.stamp', label: 'Joined' }),
+            buttonLayer('ppp_restart', box(24, 476, 160, 40, 7), 'Start over', { fill: 'rgba(15,23,42,0.12)', color: night }, { behavior: 'page.go', goTo: 'first' })
+          ]
+        }
+      ],
+      { backgroundColor: night }
+    )
+  });
+}
+
 export function collectionTemplates(): PenTemplate[] {
-  return [howTo(), topFive(), tripRecap(), caseStudy(), recipeCards()];
+  return [howTo(), topFive(), tripRecap(), caseStudy(), recipeCards(), promoHub(), pickPath()];
 }
