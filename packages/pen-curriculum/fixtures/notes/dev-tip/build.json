@@ -1,0 +1,10 @@
+{
+  "templateId": "note.dev_tip.v1",
+  "title": "Center anything",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "Center anything in two lines\nGrid with place-items centers both axes at once.\n.box { display: grid; place-items: center; }"
+    }
+  ]
+}

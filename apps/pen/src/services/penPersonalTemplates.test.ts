@@ -31,7 +31,7 @@ const renamedMirror = row('personal_mirror2', 'widget.quiz.v1', 'Quiz');
 const saved = row('personal_saved1', 'widget.social_milestone.v1', 'Milestone', {
   savedFromDocId: 'doc_launch'
 });
-const savedWithStill = row('personal_saved2', 'note.basic.portrait.v1', 'Note (Portrait)', {
+const savedWithStill = row('personal_saved2', 'note.hot_take.v1', 'Hot take', {
   galleryPreviewRef: 'penmedia:still',
   galleryPreviewDocId: 'doc_portrait'
 });

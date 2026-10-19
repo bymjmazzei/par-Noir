@@ -134,7 +134,7 @@ describe('Pen owner-cloud publish', () => {
         title: 'Hello',
         docType: 'note',
         classId: 'social.note',
-        templateId: 'note.basic.portrait.v1',
+        templateId: 'note.hot_take.v1',
         templateVersion: '1',
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdAt: '2026-01-01T00:00:00.000Z',

@@ -1,0 +1,10 @@
+{
+  "templateId": "profile.creator_intro.v1",
+  "title": "Hi, I am Noor",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "Noor Haddad\nCeramicist · mugs and weekend classes\n300 mugs sold · 40 students · 6 years\nI throw small-batch stoneware in Leeds and teach beginners on Saturdays."
+    }
+  ]
+}

@@ -1,7 +1,8 @@
-/** Shared layer builders for curated widget starters. */
+/** Shared layer builders for curated widget starters and platform post templates. */
 import { socialPresentation, type SeedBundle } from '../starterSeeds.js';
 import { plainDoc } from '../widgetElements.js';
-import type { PenPageLayer, PenTipTapNode } from '../types.js';
+import type { PenLayerAnimation, PenPageLayer, PenPagePresentation, PenTipTapNode } from '../types.js';
+import { scaledContent } from '../layers.js';
 
 export const CURATED_SANS = 'Montserrat, Helvetica, sans-serif';
 export const CURATED_SERIF = 'Source Serif 4, Georgia, serif';
@@ -21,6 +22,15 @@ export type Font = {
 export function box(x: number, y: number, w: number, h: number, z: number): Box {
   return { x, y, w, h, z };
 }
+
+export type Frame = { w: number; h: number };
+
+/** Social page sizes; each matches a gallery aspect. */
+export const FRAMES = {
+  portrait: { w: 360, h: 640 },
+  landscape: { w: 640, h: 360 },
+  square: { w: 360, h: 360 }
+} as const satisfies Record<string, Frame>;
 
 export type Theme = {
   bg: string;
@@ -135,12 +145,13 @@ export function richDoc(content: string | string[], font: Font): PenTipTapNode {
 /** Editor text layers pad their content by 8px; authored boxes are the visible text area. */
 const TEXT_PAD_PX = 8;
 
-function padTextLayers(layers: PenPageLayer[]): PenPageLayer[] {
+function padTextLayers(layers: PenPageLayer[], frame?: Frame, skip?: (layer: PenPageLayer) => boolean): PenPageLayer[] {
   const art = layers.find((layer) => layer.widgetElement === 'html');
-  const frameW = art?.w ?? 360;
-  const frameH = art?.h ?? 360;
+  const frameW = frame?.w ?? art?.w ?? 360;
+  const frameH = frame?.h ?? art?.h ?? 360;
   return layers.map((layer) => {
     if (layer.widgetElement !== 'text' || layer.backgroundColor !== 'transparent') return layer;
+    if (skip?.(layer)) return layer;
     const x = Math.max(0, layer.x - TEXT_PAD_PX);
     const y = Math.max(0, layer.y - TEXT_PAD_PX);
     const right = Math.min(frameW, layer.x + layer.w + TEXT_PAD_PX);
@@ -171,8 +182,142 @@ export function curatedCardSeed(layers: PenPageLayer[]): SeedBundle {
 }
 
 /** The art layer defines the poster frame: 360 wide, 360 / 640 / 120 tall. */
-export function artLayer(id: string, htmlSource: string, h = 360): PenPageLayer {
-  return { id, kind: 'text', widgetElement: 'html', name: 'Art', x: 0, y: 0, w: 360, h, zIndex: 1, positionLocked: false, htmlSource };
+export function artLayer(id: string, htmlSource: string, h = 360, w = 360): PenPageLayer {
+  return { id, kind: 'text', widgetElement: 'html', name: 'Art', x: 0, y: 0, w, h, zIndex: 1, positionLocked: false, htmlSource };
+}
+
+/** Full-page background art sized to the page frame. */
+export function pageArt(id: string, htmlSource: string, frame: Frame): PenPageLayer {
+  return artLayer(id, htmlSource, frame.h, frame.w);
+}
+
+/**
+ * A media spot drawn as art. Attach on the layer swaps in the author's photo or clip.
+ * Names start with Photo, Clip, Avatar, or Track.
+ */
+export function slotLayer(id: string, b: Box, name: string, htmlSource: string, extra: Partial<PenPageLayer> = {}): PenPageLayer {
+  return { id, kind: 'text', widgetElement: 'html', name, x: b.x, y: b.y, w: b.w, h: b.h, zIndex: b.z, positionLocked: false, htmlSource, ...extra };
+}
+
+/** Intro (and optional outro) animation sampled at playback. */
+export function motion(layer: PenPageLayer, animation: PenLayerAnimation): PenPageLayer {
+  return { ...layer, motion: { keys: [], animation: { durationSec: 0.5, ...animation } } };
+}
+
+/** Folds `children` into one group folder; bounds are recomputed when the page is sealed. */
+export function groupLayers(id: string, name: string, children: PenPageLayer[]): PenPageLayer[] {
+  const z = Math.max(...children.map((layer) => layer.zIndex)) + 1;
+  const group: PenPageLayer = { id, kind: 'group', name, x: 0, y: 0, w: 0, h: 0, zIndex: z, backgroundColor: 'transparent' };
+  return [group, ...children.map((layer) => ({ ...layer, parentGroupId: id }))];
+}
+
+/**
+ * Places a curated widget seed on a page as one group, scaled from `at`.
+ * Ids are prefixed so several widgets can share a page.
+ */
+export function embedWidget(
+  prefix: string,
+  widgetTemplateId: string,
+  name: string,
+  seed: () => SeedBundle,
+  at: { x: number; y: number; scale?: number; z: number }
+): PenPageLayer[] {
+  const scale = at.scale ?? 1;
+  const layers = seed().seedSections[0]?.layers ?? [];
+  const reId = (id: string) => `${prefix}_${id}`;
+  const children = layers.map((layer) => ({
+    ...layer,
+    id: reId(layer.id),
+    parentGroupId: prefix,
+    x: at.x + layer.x * scale,
+    y: at.y + layer.y * scale,
+    w: layer.w * scale,
+    h: layer.h * scale,
+    zIndex: at.z + layer.zIndex,
+    ...(scale !== 1 ? { contentScale: scaledContent(layer.contentScale, scale) } : {}),
+    ...(layer.revealLayerId ? { revealLayerId: reId(layer.revealLayerId) } : {}),
+    ...(layer.bindRowId ? { bindRowId: reId(layer.bindRowId) } : {})
+  }));
+  const group: PenPageLayer = {
+    id: prefix,
+    kind: 'group',
+    name,
+    widgetTemplateId,
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    zIndex: Math.max(...children.map((layer) => layer.zIndex)) + 1,
+    backgroundColor: 'transparent'
+  };
+  return [group, ...children];
+}
+
+function sealGroups(layers: PenPageLayer[]): PenPageLayer[] {
+  return layers.map((layer) => {
+    if (layer.kind !== 'group') return layer;
+    const members = layers.filter((member) => member.parentGroupId === layer.id);
+    if (!members.length) return layer;
+    const x = Math.min(...members.map((m) => m.x));
+    const y = Math.min(...members.map((m) => m.y));
+    const w = Math.max(...members.map((m) => m.x + m.w)) - x;
+    const h = Math.max(...members.map((m) => m.y + m.h)) - y;
+    return { ...layer, x, y, w, h };
+  });
+}
+
+/**
+ * A finished social page set: each entry is one swipeable page at `frame` size.
+ * Embedded widgets arrive padded already, so only authored text is padded here.
+ */
+export function pageSeed(
+  frame: Frame,
+  pages: Array<{ slug: string; layers: PenPageLayer[] }>,
+  presentation: Partial<PenPagePresentation> = {}
+): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#0b0b0c',
+      fontFamily: CURATED_SERIF,
+      fontSize: 28,
+      textAlign: 'left',
+      textColor: '#f5f5f4',
+      padding: 0,
+      dropShadowBlur: 0,
+      dropShadowOffsetX: 0,
+      dropShadowOffsetY: 0,
+      ...presentation
+    }),
+    seedSections: pages.map((page) => {
+      const embedded = new Set(page.layers.filter((l) => l.kind === 'group' && l.widgetTemplateId).map((l) => l.id));
+      const padded = padTextLayers(page.layers, frame, (layer) => Boolean(layer.parentGroupId && embedded.has(layer.parentGroupId)));
+      return { slug: page.slug, doc: plainDoc(''), layers: sealGroups(padded) };
+    })
+  };
+}
+
+/** Stacks section seeds top to bottom, prefixing ids so each page stays unique. */
+export function stackSections(page: string, sections: Array<() => SeedBundle>): PenPageLayer[] {
+  const out: PenPageLayer[] = [];
+  let top = 0;
+  sections.forEach((seed, index) => {
+    const layers = seed().seedSections[0]?.layers ?? [];
+    const reId = (id: string) => `${page}_${index}_${id}`;
+    let height = 0;
+    for (const layer of layers) {
+      if (layer.widgetElement === 'html') height = Math.max(height, layer.h);
+      out.push({
+        ...layer,
+        id: reId(layer.id),
+        y: layer.y + top,
+        ...(layer.revealLayerId ? { revealLayerId: reId(layer.revealLayerId) } : {}),
+        ...(layer.bindRowId ? { bindRowId: reId(layer.bindRowId) } : {})
+      });
+    }
+    top += height;
+  });
+  return out;
 }
 
 /** `.s` is an absolute circle, `.r` an absolute block; `css` adds per-widget rules. */

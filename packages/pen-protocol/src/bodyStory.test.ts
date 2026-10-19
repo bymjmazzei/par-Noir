@@ -112,7 +112,7 @@ describe('bodyStory', () => {
     );
 
     const compiled = compileDocumentToNote({
-      templateId: 'note.basic.portrait.v1',
+      templateId: 'note.hot_take.v1',
       title: 'Letter',
       sections: [anchor, frame]
     });

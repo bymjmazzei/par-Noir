@@ -368,7 +368,7 @@ describe('template engagement fileId map', () => {
           uploadDate: '',
           fileType: 'image/jpeg',
           isPublic: true,
-          templateId: 'note.basic.portrait.v1'
+          templateId: 'note.hot_take.v1'
         } as never
       },
       {
@@ -386,7 +386,7 @@ describe('template engagement fileId map', () => {
         } as never
       }
     ]);
-    expect(map.get('note.basic.portrait.v1')).toBe('cdn-1');
+    expect(map.get('note.hot_take.v1')).toBe('cdn-1');
     expect(map.get('social.post.portrait.v1')).toBe('cdn-2');
     expect(map.get('doc-xyz')).toBe('cdn-2');
   });
@@ -408,7 +408,7 @@ describe('resolvePageAspect social SoT', () => {
     title: 't',
     docType: 'note' as const,
     classId: 'social.note',
-    templateId: 'note.basic.portrait.v1',
+    templateId: 'note.hot_take.v1',
     templateVersion: '1',
     groupId: 'g',
     toc: [] as string[],

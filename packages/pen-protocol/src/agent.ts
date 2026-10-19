@@ -443,7 +443,7 @@ export function penAgentBuildJsonSchema(): Record<string, unknown> {
     required: ['templateId', 'title'],
     additionalProperties: false,
     properties: {
-      templateId: { type: 'string', description: 'Starter template id, e.g. note.basic.portrait.v1' },
+      templateId: { type: 'string', description: 'Starter template id, e.g. note.hot_take.v1' },
       title: { type: 'string', minLength: 1 },
       sections: {
         type: 'array',

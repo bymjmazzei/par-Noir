@@ -28,7 +28,7 @@ describe('pen curriculum eval', () => {
       expect(out.files.length).toBeGreaterThan(1);
       if (fix.asCurrent) {
         expect(out.files.some((f) => f.path.includes('/current/'))).toBe(true);
-        if (fix.build.templateId === 'note.basic.portrait.v1') {
+        if (fix.build.templateId.startsWith('note.')) {
           expect(
             out.files.some((f) => f.path === currentSectionPath(out.docId, 'body'))
           ).toBe(true);
@@ -44,11 +44,19 @@ describe('pen curriculum eval', () => {
     }
   });
 
-  it('composeAgentPrompt embeds fixture intents for note templates', () => {
-    const fix = GOLDEN_FIXTURES.find((f) => f.id === 'note-autumn-rain')!;
+  it('composeAgentPrompt embeds fixture intents and each template brief', () => {
+    const fix = GOLDEN_FIXTURES.find((f) => f.id === 'note-hot-take')!;
     const prompt = composeAgentPrompt(fix.expectedTemplateId, fix.intent);
     expect(prompt).toContain(fix.intent);
-    expect(prompt).toContain('note.basic.portrait.v1');
+    expect(prompt).toContain('note.hot_take.v1');
+    expect(prompt).toContain('opinion');
+    const howTo = composeAgentPrompt('collection.how_to.v1', 'Clean cast iron');
+    expect(howTo).toContain('cover (required)');
+    expect(howTo).toContain('three steps');
+  });
+
+  it('every golden fixture targets a live template', () => {
+    expect(GOLDEN_FIXTURES.some((f) => f.build.templateId.startsWith('note.basic'))).toBe(false);
   });
 
   it('rejects synthetic bad builds', () => {

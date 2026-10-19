@@ -40,20 +40,10 @@ function formTitle(classId: string): string {
       return 'Collection';
     case 'social.set':
       return 'Set';
-    case 'social.quote':
-      return 'Quote';
-    case 'social.link':
-      return 'Link';
-    case 'social.metric':
-      return 'Metric';
-    case 'social.code':
-      return 'Code';
     case 'social.profile':
       return 'Profile';
-    case 'social.audio':
-      return 'Audio';
-    case 'social.frame':
-      return 'Frame';
+    case 'social.comparison':
+      return 'Comparison';
     case 'community.feed':
       return 'Feed';
     case 'community.feed_embed':
@@ -138,32 +128,6 @@ function iconFor(classId: string, className: string) {
           <path d="M10.5 10.5l3 3" />
         </svg>
       );
-    case 'social.quote':
-      return (
-        <svg {...props}>
-          <path d="M7 11h4v6H5v-4a4 4 0 014-4" />
-          <path d="M17 11h4v6h-6v-4a4 4 0 014-4" />
-        </svg>
-      );
-    case 'social.link':
-      return (
-        <svg {...props}>
-          <path d="M10 13a5 5 0 007.07 0l2.12-2.12a5 5 0 00-7.07-7.07L11 5" />
-          <path d="M14 11a5 5 0 00-7.07 0L4.81 13.12a5 5 0 007.07 7.07L13 19" />
-        </svg>
-      );
-    case 'social.metric':
-      return (
-        <svg {...props}>
-          <path d="M4 19V5h4v14H4zM10 19v-8h4v8h-4zM16 19v-12h4v12h-4z" />
-        </svg>
-      );
-    case 'social.code':
-      return (
-        <svg {...props}>
-          <path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13 6l-2 12" />
-        </svg>
-      );
     case 'social.profile':
       return (
         <svg {...props}>
@@ -171,17 +135,13 @@ function iconFor(classId: string, className: string) {
           <path d="M5 19a7 7 0 0114 0" />
         </svg>
       );
-    case 'social.audio':
+    case 'social.comparison':
+      // Two columns side by side
       return (
         <svg {...props}>
-          <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
-        </svg>
-      );
-    case 'social.frame':
-      return (
-        <svg {...props}>
-          <rect x="4" y="5" width="16" height="14" rx="1.5" />
-          <path d="M8 15h8" />
+          <rect x="3" y="5" width="8" height="14" rx="1" />
+          <rect x="13" y="5" width="8" height="14" rx="1" />
+          <path d="M5.5 9h3M5.5 12h3M15.5 9h3M15.5 12h3" />
         </svg>
       );
     case 'community.feed':

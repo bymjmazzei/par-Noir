@@ -69,7 +69,7 @@ describe('publicWidgetCatalog', () => {
       metadata: {
         ...entry.metadata,
         penClassId: 'social.note',
-        basedOnTemplateId: 'note.basic.portrait.v1',
+        basedOnTemplateId: 'note.hot_take.v1',
         title: 'Portrait'
       }
     } as CentralIndexEntry;

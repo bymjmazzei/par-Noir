@@ -51,7 +51,7 @@ describe('curriculum snapshots + fixture files', () => {
         writeJson(path.join(dir, 'meta.json'), { asCurrent: true });
       }
     }
-    expect(fs.existsSync(path.join(fixturesDir, 'notes/autumn-rain/build.json'))).toBe(true);
+    expect(fs.existsSync(path.join(fixturesDir, 'notes/hot-take/build.json'))).toBe(true);
     expect(fs.existsSync(path.join(fixturesDir, 'register/contacts/build.json'))).toBe(true);
   });
 });

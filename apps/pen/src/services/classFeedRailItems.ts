@@ -12,14 +12,14 @@ import type { ClassFeedRailItem } from '../components/ClassFeedRail';
 
 /**
  * Templates rail forms (all densities).
- * Fixed order — not derived from dataset presence.
- * Metric stays an editor surface. Widget is its own chip.
+ * Fixed order — not derived from dataset presence. Widget is its own chip.
  */
 export const SOCIAL_TEMPLATE_RAIL_FORMS = [
   'social.note',
-  'social.audio',
   'social.post',
   'social.collection',
+  'social.profile',
+  'social.comparison',
   'social.set',
   'widgets.widget'
 ] as const;
@@ -28,9 +28,10 @@ export type SocialTemplateRailFormId = (typeof SOCIAL_TEMPLATE_RAIL_FORMS)[numbe
 
 export const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, string> = {
   'social.note': 'note',
-  'social.audio': 'audio',
   'social.post': 'media',
   'social.collection': 'collection',
+  'social.profile': 'profile',
+  'social.comparison': 'comparison',
   'social.set': 'set',
   'widgets.widget': 'widget'
 };
@@ -51,7 +52,7 @@ export function isSocialCategoryClass(classId: string | undefined): boolean {
   return getClass(classId)?.parentId === 'social';
 }
 
-/** Templates rail chip allowlist (note/audio/post/collection/set). */
+/** Templates rail chip allowlist (note/post/collection/profile/comparison/set). */
 export function isSocialTemplateRailClass(classId: string | undefined): boolean {
   if (!classId) return false;
   return SOCIAL_TEMPLATE_RAIL_SET.has(classId);

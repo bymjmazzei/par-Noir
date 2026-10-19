@@ -354,16 +354,11 @@ describe('classes + templates', () => {
 
   it('social forms exclude feed; community owns feed + landing/home/site', () => {
     expect(listForms('social').map((f) => f.id).sort()).toEqual([
-      'social.audio',
-      'social.code',
       'social.collection',
-      'social.frame',
-      'social.link',
-      'social.metric',
+      'social.comparison',
       'social.note',
       'social.post',
       'social.profile',
-      'social.quote',
       'social.set'
     ]);
     expect(listForms('community').map((f) => f.id).sort()).toEqual([
@@ -402,8 +397,8 @@ describe('classes + templates', () => {
 
   it('search finds notes and empty query returns nothing', () => {
     expect(searchPenCatalog('').templates).toEqual([]);
-    const hit = searchPenCatalog('note (portrait)');
-    expect(hit.templates.some((t) => t.id === 'note.basic.portrait.v1')).toBe(true);
+    const hit = searchPenCatalog('hot take');
+    expect(hit.templates.some((t) => t.id === 'note.hot_take.v1')).toBe(true);
     expect(searchPenCatalog('social').categories.some((c) => c.id === 'social')).toBe(true);
   });
 
@@ -438,7 +433,7 @@ describe('classes + templates', () => {
   });
 
   it('compiles note from TipTap doc with filled style', () => {
-    const t = requireTemplate('note.basic.portrait.v1');
+    const t = requireTemplate('note.hot_take.v1');
     const out = compileDocumentToNote({
       templateId: t.id,
       title: 'Hello',
@@ -678,7 +673,7 @@ describe('chain authenticity', () => {
     const keys = mlDsa65Keygen();
     const genesis = signGenesis({
       docId: 'd1',
-      templateId: 'note.basic.portrait.v1',
+      templateId: 'note.hot_take.v1',
       authorPn: 'pn_a',
       clientCreatedAt: '2026-09-20T00:00:00Z',
       contentCommitment: hashSectionContent(utf8ToBytes('init')),
@@ -737,7 +732,7 @@ describe('renderRich media wrap', () => {
 
 describe('template seeds + Mini featured + layer locks', () => {
   it('starters expose seedSections and browseFeatured for social notes', () => {
-    const note = requireTemplate('note.basic.portrait.v1');
+    const note = requireTemplate('note.hot_take.v1');
     expect(note.seedSections?.length).toBeGreaterThan(0);
     expect(note.browseFeatured).toBe(true);
     const featured = listBrowseFeaturedTemplates('social.note');
@@ -755,17 +750,16 @@ describe('template seeds + Mini featured + layer locks', () => {
       expect(t.seedSections?.length, t.id).toBeGreaterThan(0);
       expect(t.seedGalleryPreviewSrc, t.id).toBeUndefined();
     }
-    const note = requireTemplate('note.basic.portrait.v1');
-    expect((note.seedSections?.[0]?.layers || []).every((l) => l.kind === 'text')).toBe(true);
-    const tile = requireTemplate('note.text_tile.light.v1');
-    expect(tile.classId).toBe('social.note');
-    expect(tile.browseFeatured).toBe(true);
+    const note = requireTemplate('note.lesson.v1');
+    expect(note.classId).toBe('social.note');
+    expect(note.browseFeatured).toBe(true);
+    expect((note.seedSections?.[0]?.layers || []).some((l) => l.kind === 'image' || l.kind === 'video')).toBe(false);
     expect(() => requireTemplate('journal.basic.v1')).toThrow(/unknown_pen_template/);
     expect(() => requireTemplate('list.basic.v1')).toThrow(/unknown_pen_template/);
     expect(() => requireTemplate('landing.basic.v1')).toThrow(/unknown_pen_template/);
     const set = requireTemplate('set.basic.v1');
     expect(set.seedSections?.some((s) => s.slug === 'sources')).toBe(true);
-    const collection = requireTemplate('collection.basic.v1');
+    const collection = requireTemplate('collection.how_to.v1');
     expect(collection.publishContentClass).toBe('collection');
     expect(collection.seedPageSwipeAxis).toBe('x');
     const animation = requireTemplate('animation.v1');
@@ -784,13 +778,9 @@ describe('template seeds + Mini featured + layer locks', () => {
     expect(sample?.strokeWidth).toBeGreaterThan(0);
     expect(sample?.shadowBlur).toBeGreaterThan(0);
     expect(JSON.stringify(sample?.textDoc)).toContain('fontFamily');
-    const video = requireTemplate('post.video.portrait.v1');
-    expect(video.title).toContain('Video Post');
-    expect(
-      video.seedSections?.some((s) =>
-        (s.layers || []).some((l) => l.kind === 'video' && l.videoSrc)
-      )
-    ).toBe(true);
+    const reel = requireTemplate('post.recipe_reel.v1');
+    expect(reel.seedSections?.[0]?.layers?.some((l) => l.name === 'Clip')).toBe(true);
+    expect(JSON.stringify(listStarterTemplates())).not.toMatch(/starter-assets|\.mp4|\.jpe?g/);
   });
 
   it('blankTemplateForClass yields empty seeds with no object layers', () => {

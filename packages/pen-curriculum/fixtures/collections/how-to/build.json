@@ -1,0 +1,26 @@
+{
+  "templateId": "collection.how_to.v1",
+  "title": "Clean cast iron",
+  "sections": [
+    {
+      "slug": "cover",
+      "plainText": "Clean cast iron in five minutes"
+    },
+    {
+      "slug": "step-1",
+      "plainText": "Scrape while warm\nFood lifts easily before the pan cools. Use a flat wooden spatula."
+    },
+    {
+      "slug": "step-2",
+      "plainText": "Rinse, no soap soak\nHot water and a brush. A drop of soap is fine; soaking is not."
+    },
+    {
+      "slug": "step-3",
+      "plainText": "Dry and oil\nDry on the burner, then wipe a thin film of oil inside."
+    },
+    {
+      "slug": "recap",
+      "plainText": "Scraped warm\nNo soaking\nOiled after drying"
+    }
+  ]
+}

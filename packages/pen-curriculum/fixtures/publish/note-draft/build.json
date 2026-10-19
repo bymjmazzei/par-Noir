@@ -1,10 +1,10 @@
 {
-  "templateId": "note.basic.portrait.v1",
-  "title": "Harbor light",
+  "templateId": "note.hot_take.v1",
+  "title": "Ship on Fridays",
   "sections": [
     {
       "slug": "body",
-      "plainText": "The ferry horn carries across the harbor."
+      "plainText": "If you are scared to ship on Friday, fix your rollback, not your calendar."
     }
   ]
 }

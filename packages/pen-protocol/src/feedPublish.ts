@@ -48,7 +48,7 @@ export function inferFeedContentClass(input: {
   }
   try {
     const compiled = compileDocumentToNote({
-      templateId: input.templateId || template?.id || 'note.basic.portrait.v1',
+      templateId: input.templateId || template?.id || 'blank.social.note',
       title: input.title || 'Untitled',
       sections,
       pagePresentation: input.pagePresentation || defaultPagePresentation(),

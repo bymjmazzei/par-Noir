@@ -1087,25 +1087,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
                       <option value="1/1">1:1</option>
                     </select>
                   )}
-                  {bundle.manifest.classId === 'social.audio' && (
-                    <input
-                      className="max-w-[7rem] truncate rounded border border-neutral-300 bg-white px-1 py-0.5 text-[11px] text-neutral-700"
-                      placeholder="audio SoT id"
-                      title="Published music/audio doc id (SoT)"
-                      aria-label="Audio source of truth doc id"
-                      value={bundle.manifest.audioSotDocId || ''}
-                      onChange={(e) => {
-                        persist({
-                          ...bundle,
-                          manifest: {
-                            ...bundle.manifest,
-                            audioSotDocId: e.target.value.trim() || null,
-                            updatedAt: new Date().toISOString()
-                          }
-                        });
-                      }}
-                    />
-                  )}
                   <button
                     type="button"
                     title="Undo"

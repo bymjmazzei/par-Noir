@@ -64,57 +64,17 @@ const CLASSES: PenClass[] = [
     parentId: 'social'
   },
   {
-    id: 'social.quote',
-    title: 'Quote',
-    description: 'Highlight / soundbite card',
-    kind: 'authored',
-    audience: 'consumer',
-    parentId: 'social'
-  },
-  {
-    id: 'social.link',
-    title: 'Link',
-    description: 'Bookmark / OpenGraph summary card',
-    kind: 'authored',
-    audience: 'consumer',
-    parentId: 'social'
-  },
-  {
-    id: 'social.metric',
-    title: 'Metric',
-    description: 'KPI / big-number callout',
-    kind: 'authored',
-    audience: 'consumer',
-    parentId: 'social'
-  },
-  {
-    id: 'social.code',
-    title: 'Code',
-    description: 'Syntax snippet card',
-    kind: 'authored',
-    audience: 'consumer',
-    parentId: 'social'
-  },
-  {
     id: 'social.profile',
     title: 'Profile',
-    description: 'Member badge card (profile landing uses isTopPost, not this form)',
+    description: 'Introduce a person, a team member, or a business',
     kind: 'authored',
     audience: 'consumer',
     parentId: 'social'
   },
   {
-    id: 'social.audio',
-    title: 'Audio',
-    description: 'Voice note / audiogram card',
-    kind: 'authored',
-    audience: 'consumer',
-    parentId: 'social'
-  },
-  {
-    id: 'social.frame',
-    title: 'Frame',
-    description: 'Interactive frame hosting embed + stickers',
+    id: 'social.comparison',
+    title: 'Comparison',
+    description: 'Options side by side: plans, picks, specs, or results',
     kind: 'authored',
     audience: 'consumer',
     parentId: 'social'

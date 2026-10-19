@@ -4,9 +4,8 @@
  */
 
 import {
-  getTemplate,
-  requireTemplate,
   stripPollSpreadsheetFromSection,
+  templateForDoc,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import {
@@ -126,9 +125,7 @@ export async function forkDocForNewPost(params: {
 }): Promise<LocalDocBundle> {
   const { session, source } = params;
   const forkDocId = randomPenDocId();
-  const template =
-    getTemplate(source.manifest.templateId) ||
-    requireTemplate(source.manifest.templateId);
+  const template = templateForDoc(source.manifest, source.sections);
   const cache = new Map<string, string>();
   const sections = await remapSectionsMedia({
     sections: source.sections,

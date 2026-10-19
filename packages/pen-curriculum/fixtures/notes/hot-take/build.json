@@ -1,0 +1,10 @@
+{
+  "templateId": "note.hot_take.v1",
+  "title": "Short standups",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "A standup over ten minutes is a planning meeting in disguise.\nSam Reyes, engineering manager\nIf it needs discussion, it needs its own slot. Standup is for blockers."
+    }
+  ]
+}

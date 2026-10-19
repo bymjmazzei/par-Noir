@@ -10,7 +10,6 @@ import { FormDocIcon } from './FormDocIcon';
 /** Blank popup forms — Social atoms only; collection/set stay on Templates rail. */
 const BLANK_WIZARD_FORMS: SocialTemplateRailFormId[] = [
   'social.note',
-  'social.audio',
   'social.post'
 ];
 

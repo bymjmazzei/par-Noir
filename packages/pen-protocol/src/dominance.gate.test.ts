@@ -28,37 +28,25 @@ describe('template dominance + orientations', () => {
     assertTemplateClassInvariants(listStarterTemplates());
   });
 
-  it('hard-cuts flat note/post media ids; ships orientation-split Social', () => {
+  it('hard-cuts generic orientation starters; ships purpose-built social posts', () => {
     const ids = new Set(listStarterTemplates().map((t) => t.id));
-    expect(ids.has('note.basic.v1')).toBe(false);
-    expect(ids.has('post.media.v1')).toBe(false);
-    expect(ids.has('post.video.v1')).toBe(false);
-    expect(ids.has('note.basic.portrait.v1')).toBe(true);
-    expect(ids.has('note.basic.landscape.v1')).toBe(true);
-    expect(ids.has('post.image.portrait.v1')).toBe(true);
-    expect(ids.has('post.image.landscape.v1')).toBe(true);
-    expect(ids.has('post.image.square.v1')).toBe(true);
-    expect(ids.has('post.video.portrait.v1')).toBe(true);
-    expect(ids.has('post.video.landscape.v1')).toBe(true);
-    expect(ids.has('post.video.square.v1')).toBe(true);
+    for (const retired of ['note.basic.portrait.v1', 'note.media.portrait.v1', 'post.image.portrait.v1', 'post.video.portrait.v1', 'collection.basic.v1', 'profile.basic.v1', 'comparison.basic.v1']) {
+      expect(ids.has(retired)).toBe(false);
+    }
+    expect(ids.has('note.hot_take.v1')).toBe(true);
+    expect(ids.has('post.product_drop.v1')).toBe(true);
+    expect(ids.has('collection.how_to.v1')).toBe(true);
+    expect(ids.has('profile.creator_intro.v1')).toBe(true);
+    expect(ids.has('comparison.pricing.v1')).toBe(true);
   });
 
-  it('Note on Media keeps a dominant text card layer; Video Post keeps media primary', () => {
-    const noteMedia = requireTemplate('note.media.portrait.v1');
-    const body = noteMedia.seedSections?.find((s) => s.slug === 'body');
-    const layers = body?.layers || [];
-    const textCard = layers.find((l) => l.id === 'layer_card' && l.kind === 'text');
-    const backdrop = layers.find((l) => l.kind === 'image');
-    expect(textCard).toBeTruthy();
-    expect(backdrop).toBeTruthy();
-    expect((textCard!.zIndex || 0) > (backdrop!.zIndex || 0)).toBe(true);
-    expect((textCard!.h || 0) >= 120).toBe(true);
-
-    const video = requireTemplate('post.video.portrait.v1');
-    const att = video.seedSections?.find((s) => s.slug === 'attachments');
-    const media = (att?.layers || []).find((l) => l.kind === 'video');
-    expect(media).toBeTruthy();
-    expect((media!.h || 0) >= 400).toBe(true);
+  it('quote, link, metric, code, audio, and frame are layers, not forms', () => {
+    for (const id of ['social.quote', 'social.link', 'social.metric', 'social.code', 'social.audio', 'social.frame']) {
+      expect(getClass(id)).toBeUndefined();
+    }
+    for (const id of ['quote.basic.v1', 'link.basic.v1', 'metric.basic.v1', 'code.basic.v1', 'audio.basic.v1', 'frame.basic.v1']) {
+      expect(() => requireTemplate(id)).toThrow(/unknown_pen_template/);
+    }
   });
 
   it('hides primitives.table from consumer New… catalog', () => {
@@ -66,12 +54,12 @@ describe('template dominance + orientations', () => {
     expect(listConsumerClasses().some((c) => c.id === 'primitives.table')).toBe(false);
   });
 
-  it('ships frame form; the poll is a widget; community feed embed starter retired', () => {
+  it('the poll is a widget; community feed embed starter retired', () => {
     expect(() => requireTemplate('feed.embed.v1')).toThrow(/unknown_pen_template/);
     expect(() => requireTemplate('poll.basic.v1')).toThrow(/unknown_pen_template/);
     expect(requireTemplate('widget.v1').classId).toBe('widgets.widget');
     expect(getClass('social.poll')).toBeUndefined();
-    expect(requireTemplate('frame.basic.v1').classId).toBe('social.frame');
+    expect(getClass('social.comparison')?.parentId).toBe('social');
     expect(requireTemplate('table.basic.v1').classId).toBe('primitives.table');
     expect(getClass('community.feed_embed')?.audience).toBe('kit');
   });
@@ -91,8 +79,16 @@ describe('cloud table primitive IR', () => {
   });
 
   it('rewrites seed table placeholders on embed + sticker binds', () => {
-    const frame = requireTemplate('frame.basic.v1');
-    const sections = frame.seedSections || [];
+    const sections = [
+      {
+        slug: 'body',
+        doc: { type: 'doc', content: [] },
+        layers: [
+          { ...createEmbedLayer(SEED_TABLE_DOC_PLACEHOLDER), id: 'embed' },
+          { ...createInteractiveLayer({ behavior: 'cta.open', bindDocId: SEED_TABLE_DOC_PLACEHOLDER, label: 'Open' }), id: 'sticker' }
+        ]
+      }
+    ];
     expect(sectionNeedsSeedTable(sections)).toBe(true);
     const rewritten = rewriteSeedTablePlaceholders(sections, 'pen_table_abc');
     expect(sectionNeedsSeedTable(rewritten)).toBe(false);

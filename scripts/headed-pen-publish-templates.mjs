@@ -23,239 +23,77 @@ const MAX_TEMPLATES = Math.max(1, Number(process.env.MAX_TEMPLATES || 5));
 const ONLY_SPEC = (process.env.ONLY_SPEC || '').trim();
 
 /**
- * Five flagship publishes — create from platform starter (live media IR), then refine.
+ * Five flagship publishes — create from a platform post template, then refine.
  */
 export const ATOM_PACK_TEMPLATE_IDS = [
-  'note.basic.portrait.v1',
-  'note.text_tile.light.v1',
-  'note.media.portrait.v1',
-  'quote.basic.v1',
-  'post.image.portrait.v1'
+  'note.hot_take.v1',
+  'note.lesson.v1',
+  'note.announcement.v1',
+  'post.product_drop.v1',
+  'comparison.pros_cons.v1'
 ];
+
+const STARTER_TITLES = {
+  'note.hot_take.v1': 'Hot take',
+  'note.lesson.v1': 'Lesson list',
+  'note.announcement.v1': 'Announcement',
+  'post.product_drop.v1': 'Product drop',
+  'comparison.pros_cons.v1': 'Pros and cons'
+};
 
 /** Story-safe layouts on ~360×640 social canvas (px). Top/bottom chrome reserved. */
 const SPECS = [
   {
-    id: 'punchy-note',
-    title: 'A short line that lands',
-    starterId: 'note.basic.portrait.v1',
-    bg: '#0c0c0c',
+    id: 'hot-take',
+    title: 'Agendas or it did not happen',
+    starterId: 'note.hot_take.v1',
     layers: [
-      {
-        name: 'Still',
-        kind: 'image',
-        mediaFile: 'note-hero.jpg',
-        x: 0,
-        y: 0,
-        w: 360,
-        h: 640
-      },
-      {
-        name: 'Scrim',
-        kind: 'text',
-        text: '',
-        x: 0,
-        y: 0,
-        w: 360,
-        h: 640,
-        gradient: 'linear-gradient(180deg, rgba(12,12,12,0.15) 0%, rgba(12,12,12,0.78) 100%)'
-      },
-      {
-        name: 'Eyebrow',
-        kind: 'text',
-        text: 'NOTE',
-        x: 28,
-        y: 360,
-        w: 120,
-        h: 28,
-        fill: '#0f766e'
-      },
-      {
-        name: 'Hook',
-        kind: 'text',
-        text: 'Say the thing once.',
-        x: 28,
-        y: 400,
-        w: 304,
-        h: 72
-      },
-      {
-        name: 'Body',
-        kind: 'text',
-        text: 'Then get out of the way.',
-        x: 28,
-        y: 480,
-        w: 304,
-        h: 80
-      }
+      { name: 'Ground', kind: 'text', text: '', x: 0, y: 0, w: 360, h: 640, fill: '#facc15' },
+      { name: 'Hook', kind: 'text', text: 'No agenda, no meeting.', x: 28, y: 220, w: 304, h: 96 },
+      { name: 'Byline', kind: 'text', text: 'Dana Okafor, ops lead', x: 28, y: 330, w: 304, h: 32 }
     ]
   },
   {
-    id: 'light-tile',
-    title: 'One clear thought',
-    starterId: 'note.text_tile.light.v1',
-    bg: '#e7e5e4',
+    id: 'lesson-list',
+    title: 'Three things from week one',
+    starterId: 'note.lesson.v1',
     layers: [
-      {
-        name: 'Photo',
-        kind: 'image',
-        mediaFile: 'card-note.jpg',
-        x: 0,
-        y: 0,
-        w: 360,
-        h: 640
-      },
-      {
-        name: 'Card',
-        kind: 'text',
-        text: 'One clear thought.\n\nHigh contrast on paper.',
-        x: 28,
-        y: 180,
-        w: 304,
-        h: 240,
-        fill: '#ffffff',
-        stroke: '#d6d3d1'
-      }
+      { name: 'Paper', kind: 'text', text: '', x: 0, y: 0, w: 360, h: 640, fill: '#fbf7ee' },
+      { name: 'Head', kind: 'text', text: 'Three things from week one', x: 28, y: 80, w: 304, h: 80 },
+      { name: 'List', kind: 'text', text: '01 Ask early.\n02 Write it down.\n03 Ship small.', x: 28, y: 190, w: 304, h: 200 }
     ]
   },
   {
-    id: 'note-on-media',
-    title: 'The words are the post',
-    starterId: 'note.media.portrait.v1',
-    bg: '#0c0c0c',
+    id: 'announcement',
+    title: 'We are moving',
+    starterId: 'note.announcement.v1',
     layers: [
-      {
-        name: 'Backdrop',
-        kind: 'image',
-        mediaFile: 'caption-bg.jpg',
-        x: 0,
-        y: 0,
-        w: 360,
-        h: 640
-      },
-      {
-        name: 'Scrim',
-        kind: 'text',
-        text: '',
-        x: 0,
-        y: 280,
-        w: 360,
-        h: 360,
-        gradient: 'linear-gradient(180deg, rgba(12,12,12,0) 0%, rgba(12,12,12,0.88) 40%)'
-      },
-      {
-        name: 'Card',
-        kind: 'text',
-        text: 'The words are the post.\n\nMedia is atmosphere.',
-        x: 24,
-        y: 360,
-        w: 312,
-        h: 180,
-        fill: 'rgba(12,12,12,0.88)',
-        stroke: 'rgba(184,149,108,0.35)'
-      }
+      { name: 'Sky', kind: 'text', text: '', x: 0, y: 0, w: 360, h: 640, gradient: 'linear-gradient(180deg,#7c2d12 0%,#ea580c 100%)' },
+      { name: 'Head', kind: 'text', text: 'New studio, same team.', x: 28, y: 120, w: 304, h: 96 },
+      { name: 'Card', kind: 'text', text: 'Doors open 1 September.', x: 28, y: 300, w: 304, h: 120, fill: 'rgba(255,247,237,0.12)' }
     ]
   },
   {
-    id: 'quote-card',
-    title: 'Clarity is a kindness',
-    starterId: 'quote.basic.v1',
-    bg: '#0c0c0c',
+    id: 'product-drop',
+    title: 'Batch 04 drops Friday',
+    starterId: 'post.product_drop.v1',
     layers: [
-      {
-        name: 'Still',
-        kind: 'image',
-        mediaFile: 'image-post.jpg',
-        x: 0,
-        y: 0,
-        w: 360,
-        h: 640
-      },
-      {
-        name: 'Motion',
-        kind: 'video',
-        mediaFile: 'video-post-sm.mp4',
-        x: 28,
-        y: 72,
-        w: 304,
-        h: 172
-      },
-      {
-        name: 'Quote',
-        kind: 'text',
-        text: 'Clarity is a kindness you practice in public.',
-        x: 28,
-        y: 280,
-        w: 304,
-        h: 160,
-        fill: 'rgba(12,12,12,0.82)'
-      },
-      {
-        name: 'Byline',
-        kind: 'text',
-        text: '— Ada Okonkwo',
-        x: 28,
-        y: 460,
-        w: 304,
-        h: 40
-      }
+      { name: 'Backdrop', kind: 'text', text: '', x: 0, y: 0, w: 360, h: 640, gradient: 'linear-gradient(160deg,#fde68a 0%,#b45309 100%)' },
+      { name: 'Name', kind: 'text', text: 'Amber mug, batch 04', x: 28, y: 420, w: 304, h: 60 },
+      { name: 'Price', kind: 'text', text: '$38 · 60 made', x: 28, y: 490, w: 304, h: 40, fill: 'rgba(28,25,23,0.8)' }
     ]
   },
   {
-    id: 'image-post',
-    title: 'Frame the subject',
-    starterId: 'post.image.portrait.v1',
-    bg: '#000000',
+    id: 'pros-cons',
+    title: 'Used EV in 2026?',
+    starterId: 'comparison.pros_cons.v1',
     layers: [
-      {
-        name: 'Photo',
-        kind: 'image',
-        mediaFile: 'image-post.jpg',
-        x: 0,
-        y: 0,
-        w: 360,
-        h: 640
-      },
-      {
-        name: 'Caption',
-        kind: 'text',
-        text: 'Frame the subject. Leave room to breathe.',
-        x: 0,
-        y: 540,
-        w: 360,
-        h: 100,
-        fill: 'rgba(0,0,0,0.62)'
-      }
+      { name: 'Ground', kind: 'text', text: '', x: 0, y: 0, w: 360, h: 640, fill: '#fafaf9' },
+      { name: 'Pros', kind: 'text', text: 'PROS\nCheap to charge', x: 16, y: 220, w: 158, h: 200, fill: '#dcfce7' },
+      { name: 'Cons', kind: 'text', text: 'CONS\nCheck the battery', x: 186, y: 220, w: 158, h: 200, fill: '#fee2e2' }
     ]
   }
 ];
-
-function mediaDataUrl(fileName) {
-  const p = resolve(ROOT, 'packages/pen-protocol/src/starter-assets', fileName);
-  if (!existsSync(p)) throw new Error(`missing_starter_asset:${fileName}`);
-  const buf = readFileSync(p);
-  const ext = fileName.split('.').pop()?.toLowerCase();
-  const mime =
-    ext === 'mp4'
-      ? 'video/mp4'
-      : ext === 'png'
-        ? 'image/png'
-        : ext === 'webp'
-          ? 'image/webp'
-          : 'image/jpeg';
-  return `data:${mime};base64,${buf.toString('base64')}`;
-}
-
-function hydrateSpecMedia(spec) {
-  const layers = (spec.layers || []).map((L) => {
-    if ((L.kind === 'image' || L.kind === 'video') && L.mediaFile) {
-      const src = mediaDataUrl(L.mediaFile);
-      return L.kind === 'video' ? { ...L, videoSrc: src } : { ...L, imageSrc: src };
-    }
-    return { ...L };
-  });
-  return { ...spec, layers };
-}
 
 function loadCreds() {
   const dir = resolve(ROOT, '.local/cursor-test-pn');
@@ -344,14 +182,7 @@ async function createFromStarter(page, spec) {
   if (!spec.starterId) {
     return createBlankSocial(page, spec);
   }
-  const starterTitles = {
-    'note.basic.portrait.v1': 'Note (Portrait)',
-    'note.text_tile.light.v1': 'Text Tile (Light)',
-    'note.media.portrait.v1': 'Note on Media (Portrait)',
-    'quote.basic.v1': 'Quote Card',
-    'post.image.portrait.v1': 'Image Post (Portrait)'
-  };
-  const wantTitle = starterTitles[spec.starterId] || spec.title;
+  const wantTitle = STARTER_TITLES[spec.starterId] || spec.title;
 
   // Deep-link opens preview modal via TemplatesBrowse initialPreviewId (?template=).
   const previewUrl = `${PEN_URL}/templates?template=${encodeURIComponent(spec.starterId)}`;
@@ -1187,8 +1018,7 @@ async function main() {
     await browseWarm.close().catch(() => {});
 
     const specs = SPECS.slice(0, MAX_TEMPLATES)
-      .filter((s) => !ONLY_SPEC || s.id === ONLY_SPEC)
-      .map(hydrateSpecMedia);
+      .filter((s) => !ONLY_SPEC || s.id === ONLY_SPEC);
     const publishedTitles = [];
     for (const spec of specs) {
       console.log(`\n=== Template: ${spec.id} ===`);

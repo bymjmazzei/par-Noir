@@ -1,32 +1,8 @@
 import type { SeedBundle } from '../starterSeeds.js';
-import type { PenPageLayer } from '../types.js';
 import { socialPresentation } from '../starterSeeds.js';
 import { plainDoc } from '../widgetElements.js';
-import { curatedCardSeed } from './kit.js';
+import { curatedCardSeed, stackSections } from './kit.js';
 import { seedWebContact, seedWebFaq, seedWebFeatures, seedWebHero, seedWebNav, seedWebTeam } from './website.js';
-
-/** Stacks section seeds top to bottom, prefixing ids so each page stays unique. */
-function stackSections(page: string, sections: Array<() => SeedBundle>): PenPageLayer[] {
-  const out: PenPageLayer[] = [];
-  let top = 0;
-  sections.forEach((seed, index) => {
-    const layers = seed().seedSections[0]?.layers ?? [];
-    const reId = (id: string) => `${page}_${index}_${id}`;
-    let height = 0;
-    for (const layer of layers) {
-      if (layer.widgetElement === 'html') height = Math.max(height, layer.h);
-      out.push({
-        ...layer,
-        id: reId(layer.id),
-        y: layer.y + top,
-        ...(layer.revealLayerId ? { revealLayerId: reId(layer.revealLayerId) } : {}),
-        ...(layer.bindRowId ? { bindRowId: reId(layer.bindRowId) } : {})
-      });
-    }
-    top += height;
-  });
-  return out;
-}
 
 /** Home / About / Contact site with the nav bar on each page (vertical swipe). */
 export function seedWebsiteDoc(): SeedBundle {

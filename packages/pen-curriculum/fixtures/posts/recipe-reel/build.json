@@ -1,0 +1,10 @@
+{
+  "templateId": "post.recipe_reel.v1",
+  "title": "Miso noodles",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "Ten-minute miso noodles\nOne pot, pantry staples, dinner before the kettle cools.\nNoodles · miso · spinach · egg · scallion"
+    }
+  ]
+}

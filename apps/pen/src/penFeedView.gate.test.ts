@@ -24,29 +24,31 @@ describe('buildSocialTemplateRailItems', () => {
     expect(items.map((i) => i.label)).toEqual([
       'ALL',
       'note',
-      'audio',
       'media',
       'collection',
+      'profile',
+      'comparison',
       'set',
       'widget'
     ]);
     expect(items.some((i) => i.id === 'widgets.widget')).toBe(true);
   });
 
-  it('isSocialTemplateRailClass matches Social rail atoms only (not metric / projects)', () => {
+  it('isSocialTemplateRailClass matches Social rail atoms only (not layers / projects)', () => {
     expect(isSocialTemplateRailClass('social.note')).toBe(true);
+    expect(isSocialTemplateRailClass('social.comparison')).toBe(true);
     expect(isSocialTemplateRailClass('social.metric')).toBe(false);
     expect(isSocialTemplateRailClass('projects.journal')).toBe(false);
     expect(isProjectsRailClass('projects.letter')).toBe(true);
-    expect(isSocialTemplateRailClass('social.quote')).toBe(false);
+    expect(isSocialTemplateRailClass('social.audio')).toBe(false);
     expect(isSocialTemplateRailClass('community.feed')).toBe(false);
   });
 
   it('templateMatchesRailSelection ALL includes every Social form', () => {
-    expect(templateMatchesRailSelection('social.quote', 'all')).toBe(true);
+    expect(templateMatchesRailSelection('social.profile', 'all')).toBe(true);
     expect(templateMatchesRailSelection('widgets.widget', 'all')).toBe(true);
     expect(templateMatchesRailSelection('social.note', 'social.note')).toBe(true);
-    expect(templateMatchesRailSelection('social.quote', 'social.note')).toBe(false);
+    expect(templateMatchesRailSelection('social.profile', 'social.note')).toBe(false);
     expect(templateMatchesRailSelection('projects.journal', 'all')).toBe(false);
     expect(templateMatchesRailSelection('widgets.widget', 'all')).toBe(true);
     expect(templateMatchesRailSelection('widgets.widget', 'widgets.widget')).toBe(true);

@@ -27,9 +27,10 @@ describe('template catalog building blocks', () => {
   it('rail chips are the social forms plus widget', () => {
     expect([...SOCIAL_TEMPLATE_RAIL_FORMS]).toEqual([
       'social.note',
-      'social.audio',
       'social.post',
       'social.collection',
+      'social.profile',
+      'social.comparison',
       'social.set',
       'widgets.widget'
     ]);
@@ -49,7 +50,8 @@ describe('template catalog building blocks', () => {
     }
     const ids = listTemplatesCatalogStarters().map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toContain('note.basic.portrait.v1');
+    expect(ids).toContain('note.open_question.v1');
+    expect(ids).toContain('comparison.pricing.v1');
   });
 
   it('public catalog keeps social templates and drops kit rows', () => {

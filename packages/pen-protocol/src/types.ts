@@ -510,11 +510,6 @@ export interface PenDocManifest {
    */
   pageSwipeAxis?: 'x' | 'y';
   /**
-   * Published music/audio asset used as SoT for social.audio (and companion visuals).
-   * Remixes reuse this id instead of re-uploading audio bytes.
-   */
-  audioSotDocId?: string | null;
-  /**
    * Knowledge claims + geo/place proofs on this asset (never raw PII / coords).
    * Place is an attestation extension — not a Place template.
    */

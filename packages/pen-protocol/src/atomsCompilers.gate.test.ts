@@ -112,7 +112,7 @@ describe('knowledge', () => {
         title: 't',
         docType: 'note',
         classId: 'social.note',
-        templateId: 'note.basic.portrait.v1',
+        templateId: 'note.hot_take.v1',
         templateVersion: '1',
         toc: ['body'],
         createdAt: '',

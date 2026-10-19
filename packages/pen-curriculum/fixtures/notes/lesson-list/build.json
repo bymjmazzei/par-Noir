@@ -1,0 +1,10 @@
+{
+  "templateId": "note.lesson.v1",
+  "title": "Bakery year one",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "Five things my first bakery year taught me\n01 Price for the bad weeks, not the good ones.\n02 Bake less, sell out, and say so.\n03 Regulars want their order remembered.\n04 Close one day a week, no matter what.\n05 The oven will break in December."
+    }
+  ]
+}

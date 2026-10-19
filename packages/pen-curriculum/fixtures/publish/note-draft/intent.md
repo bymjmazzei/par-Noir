@@ -1,1 +1,1 @@
-Draft a Note that will later be published (before).
+Draft a hot take that will later be published (before).

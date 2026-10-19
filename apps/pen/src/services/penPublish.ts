@@ -6,8 +6,8 @@ import {
   defaultPagePresentation,
   emptySection,
   getClass,
-  getTemplate,
   hashPnIdentifier,
+  templateForDoc,
   hashSectionContent,
   signGenesis,
   attachNotary,
@@ -184,8 +184,8 @@ export async function writeSocialPublishHandoff(
     opts?.resolveDoc ||
     (opts?.pnIdentifier ? resolvePenEmbedFromLocal(opts.pnIdentifier) : async () => null);
   const presentation = bundle.manifest.pagePresentation || defaultPagePresentation();
-  const tpl = getTemplate(bundle.manifest.templateId);
-  const isSet = tpl?.id === 'set.basic.v1' || tpl?.docType === 'set' || bundle.manifest.docType === 'set';
+  const tpl = templateForDoc(bundle.manifest, bundle.sections);
+  const isSet = tpl.id === 'set.basic.v1' || tpl.docType === 'set' || bundle.manifest.docType === 'set';
   const form = getClass(bundle.manifest.classId);
   const licensing = licensingForPublish(
     bundle.manifest.licensing,
@@ -208,6 +208,7 @@ export async function writeSocialPublishHandoff(
       })
     : compileDocumentToNote({
         templateId: bundle.manifest.templateId,
+        template: tpl,
         title: bundle.manifest.title,
         sections: await snapshotPenEmbeds(bundle.sections, resolveDoc),
         pagePresentation: presentation,
@@ -228,8 +229,7 @@ export async function writeSocialPublishHandoff(
     penIrRef: { objectId: bundle.manifest.docId },
     licensing,
     ...(() => {
-      const licensed =
-        audioPublishPlan(bundle.sections).licensedDocId || bundle.manifest.audioSotDocId || '';
+      const licensed = audioPublishPlan(bundle.sections).licensedDocId || '';
       return licensed ? { musicPenDocId: licensed } : {};
     })()
   };
@@ -600,14 +600,14 @@ export function writeTextCollectionHandoff(
     connectReady?: boolean;
   }
 ): MixedPagesPublish {
-  const template = getTemplate(bundle.manifest.templateId);
+  const template = templateForDoc(bundle.manifest, bundle.sections);
   if (
     !shouldPublishSocialAsCollection({
       classId: bundle.manifest.classId,
       isSocial: bundle.manifest.isSocial,
       toc: bundle.manifest.toc,
-      publishContentClass: template?.publishContentClass,
-      templateSectionSlugs: template?.sections.map((section) => section.slug),
+      publishContentClass: template.publishContentClass,
+      templateSectionSlugs: template.sections.map((section) => section.slug),
       sections: bundle.sections
     }) ||
     shouldPublishAsSocialTocCollection({
@@ -672,8 +672,7 @@ function provenanceFor(
   feedIds: string[]
 ): Record<string, unknown> {
   const form = getClass(bundle.manifest.classId);
-  const licensed =
-    audioPublishPlan(bundle.sections).licensedDocId || bundle.manifest.audioSotDocId || '';
+  const licensed = audioPublishPlan(bundle.sections).licensedDocId || '';
   return {
     feedIds,
     penClassId: bundle.manifest.classId,

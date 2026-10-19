@@ -1,0 +1,10 @@
+{
+  "templateId": "comparison.pros_cons.v1",
+  "title": "Standing desk",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "Is a standing desk worth it?\nPROS: less back stiffness, more energy after lunch, easy to alternate\nCONS: sore feet at first, costs more, cable mess\nVerdict: yes, if you alternate every hour and get a mat."
+    }
+  ]
+}

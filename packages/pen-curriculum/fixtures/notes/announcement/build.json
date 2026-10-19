@@ -1,0 +1,10 @@
+{
+  "templateId": "note.announcement.v1",
+  "title": "Book club moves",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "Book club moves to Thursdays\nFrom 5 March we meet at the Central Library, room 2, at 7pm.\nSame books, same people.\nFree parking after 6pm.\nBring your own mug."
+    }
+  ]
+}
