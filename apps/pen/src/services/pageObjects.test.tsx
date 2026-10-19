@@ -35,7 +35,7 @@ describe('page objects', () => {
     expect(ribbon).toMatch(/LAYERS_TEXT_LOOK_PRESETS/);
     expect(ribbon).toMatch(/textLookStyle/);
     expect(picker).not.toMatch(/placePageWidget|LAYERS_WIDGET_ELEMENTS/);
-    expect(picker).toMatch(/curatedWidgetPosterSrc/);
+    expect(picker).toMatch(/WidgetTemplateThumb/);
     expect(presets).not.toMatch(/look: 'label'/);
     const title = createTextLookLayer('title');
     expect(title.name).toBe('Title');

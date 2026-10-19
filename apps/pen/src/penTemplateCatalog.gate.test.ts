@@ -1,8 +1,11 @@
 /**
  * Gate: templates rail + public catalog include widget building blocks and social rows.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { requireTemplate } from '@par-noir/pen-protocol';
+import { isWidgetTemplateClass } from './components/WidgetTemplateThumb';
 import {
   SOCIAL_TEMPLATE_RAIL_FORMS,
   buildSocialTemplateRailItems,
@@ -72,5 +75,30 @@ describe('template catalog building blocks', () => {
     ]);
     expect(isTemplatesCatalogClass('widgets.text_preset')).toBe(true);
     expect(isTemplatesCatalogClass('records.register')).toBe(false);
+  });
+
+  it('widget templates render as posters on /templates, not layer-blind page previews', () => {
+    for (const id of [
+      'widgets.widget',
+      'widgets.sticker',
+      'widgets.animation',
+      'widgets.transition',
+      'widgets.text_preset'
+    ]) {
+      expect(isWidgetTemplateClass(id)).toBe(true);
+    }
+    expect(isWidgetTemplateClass('social.note')).toBe(false);
+    expect(isWidgetTemplateClass(undefined)).toBe(false);
+
+    const read = (rel: string) => readFileSync(resolve(__dirname, rel), 'utf8');
+    expect(read('components/PenFeedSlideStage.tsx')).toMatch(/previewOverride/);
+    for (const rel of [
+      'components/TemplatesFeedScroller.tsx',
+      'components/TemplateGalleryThumb.tsx',
+      'components/TemplatesBrowse.tsx'
+    ]) {
+      expect(read(rel)).toMatch(/WidgetTemplateThumb/);
+    }
+    expect(read('components/TemplatesBrowse.tsx')).toMatch(/published\.posters/);
   });
 });

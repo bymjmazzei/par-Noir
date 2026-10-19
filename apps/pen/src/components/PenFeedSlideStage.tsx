@@ -23,7 +23,8 @@ export function PenFeedSlideStage({
   buildSlot,
   onOpen,
   /** Browse feed highlight inside phone — Templates use pen-templates; Library uses pN. */
-  phoneActiveFeedId = 'public'
+  phoneActiveFeedId = 'public',
+  previewOverride
 }: {
   classId?: string;
   manifest: PenDocManifest;
@@ -36,12 +37,16 @@ export function PenFeedSlideStage({
   /** Library: open doc on preview click. Templates omit and use Build. */
   onOpen?: () => void;
   phoneActiveFeedId?: 'discovery' | 'public' | 'media' | 'notes' | 'collections' | 'pen-templates';
+  /** Non-social art that DocGalleryPreview cannot draw (widget posters). */
+  previewOverride?: ReactNode;
 }) {
   const social = categoryIdForClass(classId || manifest.classId || '') === 'social';
   const unlocked = Boolean(session?.pnIdentifier);
   const live = Boolean(fileId) && unlocked;
 
-  const preview = social ? (
+  const preview = previewOverride ? (
+    <div className="pen-feed-page-slot">{previewOverride}</div>
+  ) : social ? (
     <SocialFeedPhonePreview
       large
       manifest={manifest}

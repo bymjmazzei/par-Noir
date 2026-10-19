@@ -14,6 +14,7 @@ import {
 import type { PenSession } from '../services/penSession';
 import { DocGalleryPreview } from './DocGalleryPreview';
 import { SocialFeedPhonePreview } from './SocialFeedPhonePreview';
+import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
 
 export function templatePreviewBundle(pn: string | undefined, templateId: string) {
   if (pn && isPersonalTemplateId(templateId)) {
@@ -111,14 +112,27 @@ export function TemplateGalleryThumb({
   templateId,
   template,
   session,
-  phoneActiveFeedId = 'pen-templates'
+  phoneActiveFeedId = 'pen-templates',
+  posterFileId
 }: {
   pn?: string;
   templateId: string;
   template?: PenTemplate;
   session?: PenSession | null;
   phoneActiveFeedId?: 'discovery' | 'public' | 'media' | 'notes' | 'collections' | 'pen-templates';
+  /** Index fileId whose CDN poster shows a public widget. */
+  posterFileId?: string;
 }) {
+  if (template && isWidgetTemplateClass(template.classId)) {
+    return (
+      <WidgetTemplateThumb
+        template={template}
+        pn={pn}
+        session={session}
+        posterFileId={posterFileId}
+      />
+    );
+  }
   const preview = template
     ? previewBundleFromTemplate(pn, template)
     : templatePreviewBundle(pn, templateId);

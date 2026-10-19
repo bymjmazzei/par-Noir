@@ -2619,9 +2619,31 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-action-layer-gallery .pen-gallery-tile-preview .pen-white-media-thumb,
-.pen-action-layer-gallery .pen-gallery-tile-preview .pen-named-black-tile {
+.pen-action-layer-gallery .pen-gallery-tile-preview .pen-named-black-tile,
+.pen-templates-gallery .pen-gallery-tile-preview > .pen-white-media-thumb,
+.pen-templates-gallery .pen-gallery-tile-preview > .pen-named-black-tile {
   width: 100%;
   height: 100%;
+}
+
+/* Widget posters on /templates feed slides and preview modal */
+.pen-feed-page-slot > .pen-white-media-thumb,
+.pen-feed-page-slot > .pen-named-black-tile {
+  width: min(28rem, 80vw);
+  height: min(28rem, 70vh);
+}
+
+.pen-template-preview-modal-stage > .pen-white-media-thumb,
+.pen-template-preview-modal-stage > .pen-named-black-tile {
+  width: min(100%, 32rem);
+  height: min(68vh, 30rem);
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.pen-feed-page-slot > .pen-named-black-tile .pen-named-black-tile-text,
+.pen-template-preview-modal-stage > .pen-named-black-tile .pen-named-black-tile-text {
+  font-size: 16px;
 }
 
 .pen-widget-picker-preview-modal {

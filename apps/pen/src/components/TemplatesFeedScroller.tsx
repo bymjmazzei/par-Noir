@@ -9,6 +9,7 @@ import type { PenSession } from '../services/penSession';
 import { SnapFeedShell } from './SnapFeedShell';
 import { PenFeedSlideStage } from './PenFeedSlideStage';
 import { previewBundleFromTemplate } from './TemplateGalleryThumb';
+import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
 import { resolveTemplateEngagementFileId } from '../services/templateEngagementFileId';
 
 export function TemplatesFeedScroller({
@@ -17,7 +18,8 @@ export function TemplatesFeedScroller({
   session,
   busy,
   onBuild,
-  fileIdByTemplateId
+  fileIdByTemplateId,
+  posterFileIds
 }: {
   rail: ReactNode;
   templates: PenTemplate[];
@@ -25,6 +27,7 @@ export function TemplatesFeedScroller({
   busy?: boolean;
   onBuild: (templateId: string) => void;
   fileIdByTemplateId?: Map<string, string>;
+  posterFileIds?: Map<string, string>;
 }) {
   return (
     <SnapFeedShell
@@ -58,6 +61,16 @@ export function TemplatesFeedScroller({
             fileId={fileId}
             authorLabel={preview.authorDisplayName}
             phoneActiveFeedId="pen-templates"
+            previewOverride={
+              isWidgetTemplateClass(t.classId) ? (
+                <WidgetTemplateThumb
+                  template={t}
+                  pn={session?.pnIdentifier}
+                  session={session}
+                  posterFileId={posterFileIds?.get(t.id)}
+                />
+              ) : undefined
+            }
             buildSlot={
               <button
                 type="button"

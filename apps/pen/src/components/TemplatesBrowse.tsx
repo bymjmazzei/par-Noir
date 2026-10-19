@@ -11,6 +11,7 @@ import {
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
 import { DocGalleryPreview } from './DocGalleryPreview';
+import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
 import {
   TemplateGalleryThumb,
   previewBundleFromTemplate
@@ -90,6 +91,7 @@ export function TemplatesBrowse({
     () => new Map()
   );
   const [publicWidgets, setPublicWidgets] = useState<PenTemplate[]>([]);
+  const [posterFileIds, setPosterFileIds] = useState<Map<string, string>>(() => new Map());
 
   const railItems = useMemo(() => buildSocialTemplateRailItems(), []);
 
@@ -106,11 +108,13 @@ export function TemplatesBrowse({
         setFileIdByTemplateId(buildTemplateFileIdMap(entries));
         const published = publicWidgetCatalog(entries, sections);
         setPublicWidgets(published.templates);
+        setPosterFileIds(published.posters);
       })
       .catch(() => {
         if (!cancelled) {
           setFileIdByTemplateId(new Map());
           setPublicWidgets([]);
+          setPosterFileIds(new Map());
         }
       });
     return () => {
@@ -233,6 +237,11 @@ export function TemplatesBrowse({
   const previewIsSocial =
     preview?.manifest?.classId != null &&
     categoryIdForClass(String(preview.manifest.classId)) === 'social';
+  const previewWidget = useMemo(() => {
+    if (!previewId) return null;
+    const row = catalog.find((t) => t.id === previewId);
+    return row && isWidgetTemplateClass(row.classId) ? row : null;
+  }, [catalog, previewId]);
 
   const rail: ReactNode = (
     <ClassFeedRail
@@ -254,6 +263,7 @@ export function TemplatesBrowse({
           busy={busy}
           onBuild={(id) => void useTemplate(id)}
           fileIdByTemplateId={fileIdByTemplateId}
+          posterFileIds={posterFileIds}
         />
       ) : (
         <>
@@ -282,6 +292,7 @@ export function TemplatesBrowse({
                             templateId={t.id}
                             template={t}
                             session={session}
+                            posterFileId={posterFileIds.get(t.id)}
                           />
                         </span>
                       </button>
@@ -394,7 +405,14 @@ export function TemplatesBrowse({
             </div>
             <div className="pen-template-preview-modal-body pen-template-preview-modal-body--with-rail">
               <div className="pen-template-preview-modal-stage">
-                {previewIsSocial ? (
+                {previewWidget ? (
+                  <WidgetTemplateThumb
+                    template={previewWidget}
+                    pn={session?.pnIdentifier}
+                    session={session}
+                    posterFileId={posterFileIds.get(previewWidget.id)}
+                  />
+                ) : previewIsSocial ? (
                   <SocialFeedPhonePreview
                     large
                     manifest={preview.manifest as never}

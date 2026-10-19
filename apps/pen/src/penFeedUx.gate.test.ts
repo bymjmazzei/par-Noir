@@ -292,7 +292,7 @@ describe('pen feed UX chrome', () => {
     expect(menu).not.toMatch(/Vote sticker|Embed table|Open sticker/);
     expect(menu).toMatch(/insertWidgetCopy/);
     expect(menu).not.toMatch(/placePageWidget/);
-    expect(menu).toMatch(/curatedWidgetPosterSrc/);
+    expect(menu).toMatch(/WidgetTemplateThumb/);
     expect(menu).toMatch(/Add widget/);
     expect(menu).toMatch(/My widgets/);
     expect(menu).toMatch(/All widgets/);
@@ -301,7 +301,9 @@ describe('pen feed UX chrome', () => {
     expect(menu).toMatch(/pen-gallery-tiles/);
     expect(menu).toMatch(/pen-gallery-tile/);
     expect(menu).toMatch(/pen-action-layer-overlay/);
-    expect(menu).toMatch(/pen-named-black-tile/);
+    expect(
+      readFileSync(resolve(root, 'components/WidgetTemplateThumb.tsx'), 'utf8')
+    ).toMatch(/pen-named-black-tile/);
     expect(rail).toMatch(/widgets\.widget/);
   });
 
