@@ -7,6 +7,7 @@ import {
   emptySection,
   getClass,
   hashPnIdentifier,
+  pageTitleFor,
   templateForDoc,
   hashSectionContent,
   signGenesis,
@@ -575,6 +576,22 @@ function sectionBySlug(
   return bundle.sections.find((section) => section.slug === slug);
 }
 
+/** Per-page metadata on a collection part: action overlay, slug for `slug:` jumps, and the page title. */
+function collectionPartPageMeta(bundle: LocalDocBundle, slug: string): Record<string, unknown> {
+  const section = sectionBySlug(bundle, slug);
+  const index = Math.max(0, bundle.manifest.toc.indexOf(slug));
+  return {
+    ...(section ? { penFeedPage: penFeedPageForSection(section, bundle.manifest) } : {}),
+    penPageSlug: slug,
+    penPageTitle: pageTitleFor(
+      bundle.manifest,
+      templateForDoc(bundle.manifest, bundle.sections),
+      slug,
+      index
+    )
+  };
+}
+
 function sectionsInTocOrder(bundle: LocalDocBundle): PenSectionContent[] {
   const bySlug = new Map(bundle.sections.map((section) => [section.slug, section]));
   const toc = bundle.manifest.toc || [];
@@ -1038,14 +1055,7 @@ export async function publishPostToOwnerCloud(params: {
           metadata: {
             ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
-            ...(sectionBySlug(params.bundle, page.slug)
-              ? {
-                  penFeedPage: penFeedPageForSection(
-                    sectionBySlug(params.bundle, page.slug)!,
-                    params.bundle.manifest
-                  )
-                }
-              : {}),
+            ...collectionPartPageMeta(params.bundle, page.slug),
             fileType: 'video',
             contentClass: 'media',
             isPartOfCollection: true
@@ -1067,14 +1077,7 @@ export async function publishPostToOwnerCloud(params: {
           metadata: {
             ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
-            ...(sectionBySlug(params.bundle, page.slug)
-              ? {
-                  penFeedPage: penFeedPageForSection(
-                    sectionBySlug(params.bundle, page.slug)!,
-                    params.bundle.manifest
-                  )
-                }
-              : {}),
+            ...collectionPartPageMeta(params.bundle, page.slug),
             fileType: 'image',
             contentClass: 'media',
             isPartOfCollection: true
@@ -1098,14 +1101,7 @@ export async function publishPostToOwnerCloud(params: {
           metadata: {
             ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
-            ...(sectionBySlug(params.bundle, page.slug)
-              ? {
-                  penFeedPage: penFeedPageForSection(
-                    sectionBySlug(params.bundle, page.slug)!,
-                    params.bundle.manifest
-                  )
-                }
-              : {}),
+            ...collectionPartPageMeta(params.bundle, page.slug),
             fileType: 'image',
             contentClass: 'media',
             isPartOfCollection: true
@@ -1128,14 +1124,7 @@ export async function publishPostToOwnerCloud(params: {
           metadata: {
             ...publishMeta,
             ...provenanceFor(params.bundle, licensing, ['collection-part']),
-            ...(sectionBySlug(params.bundle, page.slug)
-              ? {
-                  penFeedPage: penFeedPageForSection(
-                    sectionBySlug(params.bundle, page.slug)!,
-                    params.bundle.manifest
-                  )
-                }
-              : {}),
+            ...collectionPartPageMeta(params.bundle, page.slug),
             fileType: 'note-collection-page',
             contentClass: 'note',
             textPost,

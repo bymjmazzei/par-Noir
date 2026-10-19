@@ -472,6 +472,8 @@ export interface PenDocManifest {
   groupId?: string;
   /** Ordered section slugs */
   toc: string[];
+  /** Author page titles keyed by section slug. Missing slugs fall back to the template, then `Page N`. */
+  pageTitles?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   genesisProof?: PenGenesisProof;

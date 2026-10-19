@@ -19,6 +19,7 @@ import {
   normalizeLicensingRoot,
   tableSectionFromPayload,
   sectionHasVoteButton,
+  seedPageTitles,
   structureFromLayers,
   type PenDocManifest,
   type PenDraftManifest,
@@ -67,6 +68,7 @@ export async function bootstrapDocBundle(input: {
   classId?: string;
   docType?: PenDocManifest['docType'];
   toc?: string[];
+  pageTitles?: PenDocManifest['pageTitles'];
 }): Promise<LocalDocBundle> {
   const draftId = randomDraftId();
   const now = new Date().toISOString();
@@ -133,6 +135,7 @@ export async function bootstrapDocBundle(input: {
       : social
         ? defaultPagePresentation()
         : defaultEditorPagePresentation());
+  const pageTitles = input.pageTitles || seedPageTitles(input.template, toc);
 
   const manifest: PenDocManifest = {
     docId: input.docId,
@@ -143,6 +146,7 @@ export async function bootstrapDocBundle(input: {
     templateVersion: input.template.version,
     groupId,
     toc,
+    ...(pageTitles ? { pageTitles } : {}),
     createdAt: now,
     updatedAt: now,
     genesisProof: genesis,

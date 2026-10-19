@@ -89,6 +89,8 @@ import {
   structureFromLayers,
   submitFields,
   syncPollLayers,
+  pageTitleFor,
+  withPageTitle,
   type PenDocComment,
   type PenPageLayout,
   type PenDocManifest,
@@ -375,7 +377,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     bundle.manifest.toc.map((slug) => ({ slug, title: slug, required: true as boolean | undefined }))
   ).map((s) => ({
     slug: s.slug,
-    title: s.title || s.slug,
+    title: bundle.manifest.pageTitles?.[s.slug] || s.title || s.slug,
     required: s.required
   }));
   const pageView = resolvePageView(bundle.manifest.pageView, bundle.manifest.pageLayout);
@@ -384,17 +386,11 @@ export function DocEditorShell(state: DocEditorReadyState) {
     bundle.manifest.flowWorkspaceHeightPx,
     bundle.manifest.pageOrientation
   );
-  const previewPages = bundle.manifest.toc.map((slug, index) => {
-    const fromTemplate = template?.sections.find((item) => item.slug === slug);
-    return {
-      slug,
-      title:
-        fromTemplate?.title && fromTemplate.title !== 'Body'
-          ? fromTemplate.title
-          : `Page ${index + 1}`,
-      section: bundle.sections.find((item) => item.slug === slug)
-    };
-  });
+  const previewPages = bundle.manifest.toc.map((slug, index) => ({
+    slug,
+    title: pageTitleFor(bundle.manifest, template, slug, index),
+    section: bundle.sections.find((item) => item.slug === slug)
+  }));
   const pagePresentation = mergePagePresentation(
     defaultEditorPagePresentation(),
     bundle.manifest.pagePresentation
@@ -681,12 +677,14 @@ export function DocEditorShell(state: DocEditorReadyState) {
       ? removeStoryFrame(bundle.sections, bundle.manifest.toc, slug)
       : removeDocPage(bundle.sections, bundle.manifest.toc, slug);
     if (!removed) return;
+    const pageTitles = withPageTitle(bundle.manifest.pageTitles, slug, '');
     persist({
       ...bundle,
       sections: removed.sections,
       manifest: {
         ...bundle.manifest,
         toc: removed.toc,
+        pageTitles,
         updatedAt: new Date().toISOString()
       }
     });
@@ -704,6 +702,19 @@ export function DocEditorShell(state: DocEditorReadyState) {
       manifest: {
         ...bundle.manifest,
         toc: next.toc,
+        updatedAt: new Date().toISOString()
+      }
+    });
+  };
+
+  const renamePreviewPage = (slug: string, title: string) => {
+    const pageTitles = withPageTitle(bundle.manifest.pageTitles, slug, title);
+    if (JSON.stringify(pageTitles || {}) === JSON.stringify(bundle.manifest.pageTitles || {})) return;
+    persist({
+      ...bundle,
+      manifest: {
+        ...bundle.manifest,
+        pageTitles,
         updatedAt: new Date().toISOString()
       }
     });
@@ -1710,6 +1721,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
               onSelect={setActiveSlug}
               onAddPage={addPreviewPage}
               onDeletePage={deletePreviewPage}
+              onRenamePage={renamePreviewPage}
               onReorder={reorderPreviewPages}
               onFlip={flipPreviewPage}
             />

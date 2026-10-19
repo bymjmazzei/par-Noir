@@ -27,7 +27,7 @@ export function sectionsToFeedPages(
   titleFallback: string,
   manifest?: Pick<
     PenDocManifest,
-    'pagePresentation' | 'galleryAspect' | 'docId' | 'penFeedMediaBySlug'
+    'pagePresentation' | 'galleryAspect' | 'docId' | 'penFeedMediaBySlug' | 'pageTitles'
   >
 ): FeedTilePage[] {
   const pres = mergePagePresentation(
@@ -48,7 +48,7 @@ export function sectionsToFeedPages(
     const media = primaryMediaLayer(s.layers);
     const page: FeedTilePage = {
       slug: s.slug,
-      title: plain.slice(0, 80) || titleFallback,
+      title: manifest?.pageTitles?.[s.slug] || plain.slice(0, 80) || titleFallback,
       bodyText: plain || titleFallback,
       bodyHtml: docToHtml(s.doc),
       backgroundColor: pres.backgroundColor,
@@ -92,6 +92,7 @@ export function bundleToFeedTileModel(input: {
   galleryPreviewPosterRef?: string;
   galleryAspect?: PenDocManifest['galleryAspect'];
   penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
+  pageTitles?: PenDocManifest['pageTitles'];
   /** Catalog posters, one per section; each replaces that page's live layers. */
   pagePosters?: string[];
 }): FeedTileViewModel {
@@ -106,7 +107,8 @@ export function bundleToFeedTileModel(input: {
         pagePresentation: input.pagePresentation,
         galleryAspect: input.galleryAspect,
         docId: input.fileId,
-        penFeedMediaBySlug: input.penFeedMediaBySlug
+        penFeedMediaBySlug: input.penFeedMediaBySlug,
+        pageTitles: input.pageTitles
       });
   if (input.galleryPreviewRef && pages[0]) {
     pages[0] = {

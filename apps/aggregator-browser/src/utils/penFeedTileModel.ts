@@ -73,6 +73,8 @@ export function buildPenCollectionFeedTileModel(
     if (!member) continue;
     const kind = mediaKindForMeta(member.meta);
     pages.push({
+      ...(typeof member.meta.penPageSlug === 'string' ? { slug: member.meta.penPageSlug } : {}),
+      ...(typeof member.meta.penPageTitle === 'string' ? { title: member.meta.penPageTitle } : {}),
       mediaSrc: member.videoUrl || member.posterUrl,
       mediaKind: kind,
       posterUrl: member.posterUrl,

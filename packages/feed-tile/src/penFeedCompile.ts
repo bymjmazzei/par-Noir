@@ -2,6 +2,8 @@ import type { PenFeedPagePayload } from '@par-noir/pen-protocol';
 import type { FeedTilePage, FeedTileViewModel } from './FeedTileSurface.js';
 
 export type PenFeedCompilePageInput = {
+  /** Section slug for `page.go` slug targets and per-page views. */
+  slug?: string;
   mediaSrc?: string;
   mediaKind?: 'image' | 'video';
   posterUrl?: string;
@@ -27,6 +29,7 @@ export type PenFeedCompileInput = {
 
 function pageFromInput(input: PenFeedCompilePageInput, titleFallback: string): FeedTilePage {
   return {
+    ...(input.slug ? { slug: input.slug } : {}),
     title: input.title || titleFallback,
     bodyText: input.bodyText,
     bodyHtml: input.bodyHtml,

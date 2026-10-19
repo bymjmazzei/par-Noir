@@ -165,6 +165,7 @@ export async function forkDocForNewPost(params: {
     classId: source.manifest.classId,
     docType: source.manifest.docType,
     toc: source.manifest.toc,
+    pageTitles: source.manifest.pageTitles,
     pageLayout: source.manifest.pageLayout,
     pageView: source.manifest.pageView,
     pagePresentation,

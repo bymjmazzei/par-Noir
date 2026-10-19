@@ -741,6 +741,7 @@ export function PageFinderTiles({
   canDelete = true,
   onDeletePage,
   onSelect,
+  onRenameRequest,
   onDragStart,
   onDrop
 }: {
@@ -752,6 +753,8 @@ export function PageFinderTiles({
   canDelete?: boolean;
   onDeletePage: (slug: string) => void;
   onSelect: (slug: string) => void;
+  /** Double-click a tile's title to rename that page. */
+  onRenameRequest?: (slug: string) => void;
   onDragStart: (index: number) => void;
   onDrop: (index: number) => void;
 }) {
@@ -821,6 +824,15 @@ export function PageFinderTiles({
                 <span className="block w-[88px] px-2 py-6 text-[11px]">{title}</span>
               )}
             </div>
+            {onRenameRequest && !screen ? (
+              <span
+                className="block w-[88px] truncate px-0.5 pt-0.5 text-center text-[10px] text-stone-600"
+                title={title}
+                onDoubleClick={() => onRenameRequest(page.slug)}
+              >
+                {title}
+              </span>
+            ) : null}
             {screen && index < pages.length - 1 ? <PageCut axis="x" /> : null}
           </div>
         );
@@ -837,6 +849,7 @@ export function PreviewPageBar({
   onSelect,
   onAddPage,
   onDeletePage,
+  onRenamePage,
   onReorder,
   onFlip,
   screenAllPages = false,
@@ -849,6 +862,8 @@ export function PreviewPageBar({
   onSelect: (slug: string) => void;
   onAddPage: () => void;
   onDeletePage: (slug: string) => void;
+  /** Empty title clears the author title so the fallback shows. */
+  onRenamePage?: (slug: string, title: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onFlip: (direction: -1 | 1) => void;
   screenAllPages?: boolean;
@@ -862,11 +877,23 @@ export function PreviewPageBar({
   const active = pages[activeIndex];
   const activeLabel = active?.title || `Page ${activeIndex + 1}`;
   const [pageDraft, setPageDraft] = useState(String(activeIndex + 1));
+  const [titleDraft, setTitleDraft] = useState(activeLabel);
+  const titleRef = useRef<HTMLInputElement>(null);
   const canDelete = pages.length > 1;
 
   useEffect(() => {
     setPageDraft(String(activeIndex + 1));
   }, [activeIndex, pages.length]);
+
+  useEffect(() => {
+    setTitleDraft(activeLabel);
+  }, [activeLabel]);
+
+  function commitTitle() {
+    if (!active || !onRenamePage) return;
+    if (titleDraft.trim() === activeLabel) return;
+    onRenamePage(active.slug, titleDraft);
+  }
 
   useEffect(() => {
     if (!pagesOpen) return;
@@ -915,6 +942,24 @@ export function PreviewPageBar({
         {pagesOpen && (
           <div className="absolute bottom-full left-0 z-40 mb-1 max-w-[80vw] rounded border border-stone-300 bg-white p-1 shadow-lg">
             <div className="mb-1 flex items-center justify-end gap-1">
+              {onRenamePage && active ? (
+                <input
+                  ref={titleRef}
+                  aria-label="Page title"
+                  placeholder={`Page ${activeIndex + 1}`}
+                  className="mr-auto h-6 min-w-0 flex-1 rounded border border-stone-300 px-1.5 text-[12px] text-stone-900"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={commitTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') {
+                      setTitleDraft(activeLabel);
+                      e.currentTarget.blur();
+                    }
+                  }}
+                />
+              ) : null}
               <button
                 type="button"
                 aria-label="Delete pages"
@@ -947,6 +992,15 @@ export function PreviewPageBar({
                 onSelect(slug);
                 setPagesOpen(false);
               }}
+              onRenameRequest={
+                onRenamePage
+                  ? (slug) => {
+                      onSelect(slug);
+                      setPagesOpen(true);
+                      requestAnimationFrame(() => titleRef.current?.select());
+                    }
+                  : undefined
+              }
               onDragStart={setDragIndex}
               onDrop={dropOn}
             />
