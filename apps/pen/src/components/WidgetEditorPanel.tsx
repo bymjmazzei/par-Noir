@@ -25,6 +25,7 @@ import {
   setVoteCorrect,
   setVoteWriteIn,
   setWidgetSvgOnLayer,
+  type PenGoTo,
   type PenInteractiveBehavior,
   type PenPageLayer,
   type PenPageLayout,
@@ -145,6 +146,29 @@ const TRIGGERS: Array<{ id: PenInteractiveBehavior; label: string }> = [
   { id: 'cta.calendar', label: 'Add to calendar' }
 ];
 
+const RELATIVE_GO_TO: Array<{ value: PenGoTo; label: string }> = [
+  { value: 'next', label: 'Next page' },
+  { value: 'prev', label: 'Previous page' },
+  { value: 'first', label: 'First page' },
+  { value: 'last', label: 'Last page' }
+];
+
+/** Relative targets, then every page by title as a `slug:` target so it survives reordering. */
+export function goToOptions(
+  pages: Array<{ slug: string; title: string }> | undefined,
+  current: PenGoTo | undefined
+): Array<{ value: string; label: string }> {
+  const options: Array<{ value: string; label: string }> = [
+    { value: '', label: 'Choose a page…' },
+    ...RELATIVE_GO_TO,
+    ...(pages || []).map((page) => ({ value: `slug:${page.slug}`, label: page.title }))
+  ];
+  if (current && !options.some((option) => option.value === current)) {
+    options.push({ value: current, label: current });
+  }
+  return options;
+}
+
 export function WidgetEditorPanel({
   layer,
   section,
@@ -165,7 +189,8 @@ export function WidgetEditorPanel({
   onEnterGroup,
   previewFrame = 0,
   onPreviewFrameChange,
-  hideTriggers = false
+  hideTriggers = false,
+  pages
 }: {
   layer: PenPageLayer | null;
   section: PenSectionContent;
@@ -188,6 +213,8 @@ export function WidgetEditorPanel({
   onPreviewFrameChange?: (frame: number) => void;
   /** Sticker docs keep SVG, image, and text. Buttons and sheet writes stay hidden. */
   hideTriggers?: boolean;
+  /** Doc pages in order. "Go to page" is offered only when there is more than one. */
+  pages?: Array<{ slug: string; title: string }>;
 }) {
   const frameCount = frameCountForGroup(section.layers || [], scopeGroupId);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -354,7 +381,10 @@ export function WidgetEditorPanel({
                 }}
               >
                 <option value="">None</option>
-                {TRIGGERS.map((trigger) => (
+                {TRIGGERS.filter(
+                  (trigger) =>
+                    trigger.id !== 'page.go' || (pages?.length ?? 0) > 1 || layer.behavior === 'page.go'
+                ).map((trigger) => (
                   <option key={trigger.id} value={trigger.id}>
                     {trigger.label}
                   </option>
@@ -487,15 +517,24 @@ export function WidgetEditorPanel({
               {layer.behavior === 'page.go' && (
                 <label className="flex flex-col gap-1">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Go to</span>
-                  <input
+                  <select
                     aria-label="Go to page"
-                    className="border border-stone-300 px-2 py-1"
-                    placeholder="next, page:0, slug:home"
+                    className="border border-stone-300 bg-white px-2 py-1"
                     value={layer.goTo || ''}
                     onChange={(event) =>
-                      onSectionChange(patchLayerStyle(section, layer.id, { goTo: event.target.value as never }))
+                      onSectionChange(
+                        patchLayerStyle(section, layer.id, {
+                          goTo: (event.target.value || undefined) as PenGoTo | undefined
+                        })
+                      )
                     }
-                  />
+                  >
+                    {goToOptions(pages, layer.goTo).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               )}
               {layer.behavior === 'widget.step' && (

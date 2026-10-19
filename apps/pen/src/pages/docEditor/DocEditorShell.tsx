@@ -1245,6 +1245,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
               key={widgetStripLayer?.id || 'widget'}
               layer={widgetStripLayer}
               section={section}
+              pages={previewPages}
               accessToken={session.accessToken}
               pnIdentifier={session.pnIdentifier}
               excludeDocId={bundle.manifest.docId}

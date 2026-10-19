@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { WidgetEditorPanel } from './WidgetEditorPanel';
+import { WidgetEditorPanel, goToOptions } from './WidgetEditorPanel';
 import type { PenPageLayer, PenSectionContent } from '@par-noir/pen-protocol';
 
 const button: PenPageLayer = {
@@ -111,6 +111,36 @@ describe('widget trigger panel', () => {
     expect(render('https://evil.example', 'Sign in to par Noir')).toContain(
       'data-widget-link-warning="label_mismatch"'
     );
+  });
+
+  it('offers Go to page only on multipage docs, as a page dropdown of slug targets', () => {
+    const single = renderToStaticMarkup(
+      <WidgetEditorPanel
+        layer={button}
+        section={section}
+        pages={[{ slug: 'card', title: 'Card' }]}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(single).not.toContain('Go to page');
+    const pages = [
+      { slug: 'cover', title: 'Cover' },
+      { slug: 'menu', title: 'Pick a product' }
+    ];
+    const multi = renderToStaticMarkup(
+      <WidgetEditorPanel
+        layer={{ ...button, behavior: 'page.go', goTo: 'slug:menu' }}
+        section={section}
+        pages={pages}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(multi).toContain('<select aria-label="Go to page"');
+    expect(multi).toContain('value="slug:menu" selected=""');
+    expect(multi).toContain('>Pick a product<');
+    expect(multi).toContain('>Next page<');
+    expect(multi).not.toContain('placeholder="next, page:0, slug:home"');
+    expect(goToOptions(pages, 'page:3').at(-1)).toEqual({ value: 'page:3', label: 'page:3' });
   });
 
   it('warns that a form asking for a secret will not send', () => {
