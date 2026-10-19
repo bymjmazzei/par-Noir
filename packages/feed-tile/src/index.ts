@@ -5,6 +5,8 @@ export {
   type FeedTilePage
 } from './FeedTileSurface.js';
 export { PenFeedPageStage } from './PenFeedPageStage.js';
+export { FeedTileTestOverlay } from './FeedTileTestOverlay.js';
+export { sandboxEffect, type SandboxOutcome } from './sandboxEffect.js';
 export { resolveNavigatePageIndex, saveIcsFile } from './penNavigate.js';
 export { LeaveSheet, needsLeaveSheet, type LeaveEffect } from './LeaveSheet.js';
 export {

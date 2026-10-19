@@ -145,8 +145,11 @@ import {
   IconPreview,
   IconRedo,
   IconSocial,
+  IconTest,
   IconUndo
 } from '../../components/icons/PenIcons';
+import { FeedTileTestOverlay } from '@par-noir/feed-tile';
+import { bundleToFeedTileModel } from '../../services/feedTileFromPen';
 import { useVerifiedAuthor } from '../../hooks/useVerifiedAuthor';
 import { starTemplateToCloud } from '../../services/penCloudTemplates';
 import {
@@ -371,6 +374,8 @@ export function DocEditorShell(state: DocEditorReadyState) {
     writingEnabled,
     writingLabel,
   } = state;
+  const [testOpen, setTestOpen] = useState(false);
+  const socialDoc = getClass(bundle.manifest.classId)?.parentId === 'social';
   const chainStatus = verifyChain(bundle.chain);
   const tocSections = (
     template?.sections ||
@@ -1130,6 +1135,18 @@ export function DocEditorShell(state: DocEditorReadyState) {
                   >
                     <IconPreview />
                   </button>
+                  {socialDoc ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center px-2 py-0.5 text-neutral-600 hover:text-black"
+                      title="Test: try every button, nothing is saved"
+                      aria-label="Test"
+                      aria-pressed={testOpen}
+                      onClick={() => setTestOpen(true)}
+                    >
+                      <IconTest />
+                    </button>
+                  ) : null}
                 </div>
               </div>
               {writingEnabled && !activeMediaLayer && !isWidgetDoc && !widgetEditorLayer ? (
@@ -1752,6 +1769,25 @@ export function DocEditorShell(state: DocEditorReadyState) {
           </div>
         ) : null}
       </div>
+      {testOpen ? (
+        <FeedTileTestOverlay
+          aspectRatio={normalizeGalleryAspect(bundle.manifest.galleryAspect)}
+          onClose={() => setTestOpen(false)}
+          model={{
+            ...bundleToFeedTileModel({
+              title: bundle.manifest.title || 'Untitled',
+              sections: previewPages.flatMap((page) => (page.section ? [page.section] : [])),
+              pagePresentation: bundle.manifest.pagePresentation,
+              contentClass: bundle.manifest.docType,
+              pageSwipeAxis: bundle.manifest.pageSwipeAxis,
+              pageView: bundle.manifest.pageView,
+              galleryAspect: bundle.manifest.galleryAspect,
+              pageTitles: bundle.manifest.pageTitles
+            }),
+            penDocId: bundle.manifest.docId
+          }}
+        />
+      ) : null}
     </div>
   );
 }

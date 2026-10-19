@@ -12,6 +12,7 @@ import {
   Eraser,
   Eye,
   EyeOff,
+  FlaskConical,
   Globe,
   Indent,
   Link2,
@@ -37,6 +38,9 @@ import {
 
 const sz = { width: 16, height: 16, strokeWidth: 2 } as const;
 
+export function IconTest(p: SVGProps<SVGSVGElement>) {
+  return <FlaskConical {...sz} {...p} />;
+}
 export function IconPreview(p: SVGProps<SVGSVGElement>) {
   return <Eye {...sz} {...p} />;
 }

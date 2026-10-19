@@ -12,6 +12,7 @@ import { previewBundleFromTemplate } from './TemplateGalleryThumb';
 import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
 import { platformTemplatePagePosters } from '../services/widgetPosters';
 import { resolveTemplateEngagementFileId } from '../services/templateEngagementFileId';
+import { TemplateTestButton } from './TemplateTestButton';
 
 export function TemplatesFeedScroller({
   rail,
@@ -68,16 +69,21 @@ export function TemplatesFeedScroller({
             pagePosters={platformTemplatePagePosters(t.id) ?? undefined}
             caption={t.feedCaption}
             buildSlot={
-              <button
-                type="button"
-                className="pen-templates-feed-build"
-                disabled={busy}
-                title={session ? 'Build from template' : 'Unlock to build'}
-                aria-label="Build"
-                onClick={() => onBuild(t.id)}
-              >
-                Build
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="pen-templates-feed-build"
+                  disabled={busy}
+                  title={session ? 'Build from template' : 'Unlock to build'}
+                  aria-label="Build"
+                  onClick={() => onBuild(t.id)}
+                >
+                  Build
+                </button>
+                {isWidgetTemplateClass(t.classId) ? null : (
+                  <TemplateTestButton template={t} pn={session?.pnIdentifier} />
+                )}
+              </>
             }
           />
         );

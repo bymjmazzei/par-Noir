@@ -1435,6 +1435,9 @@ button.pen-template-engagement-stat.is-liked {
 }
 
 .pen-template-engagement-build-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   margin-bottom: 0.15rem;
   pointer-events: auto;
 }

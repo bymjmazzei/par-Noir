@@ -64,10 +64,6 @@ export function DocPreviewPage({
       saveIcsFile(effect);
       return;
     }
-    if (effect.kind === 'navigate') {
-      setStatus('Page navigation works in the published feed preview.');
-      return;
-    }
     if (effect.kind !== 'vote' && effect.kind !== 'widget_row') return;
     if (!effect.widgetId) {
       setStatus('Save the widget before testing it.');
@@ -126,7 +122,8 @@ export function DocPreviewPage({
     pagePresentation: bundle.manifest.pagePresentation,
     contentClass: bundle.manifest.docType,
     pageSwipeAxis: bundle.manifest.pageSwipeAxis,
-    pageView: bundle.manifest.pageView
+    pageView: bundle.manifest.pageView,
+    pageTitles: bundle.manifest.pageTitles
   });
 
   return (

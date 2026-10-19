@@ -29,6 +29,7 @@ import {
 import { ClassFeedRail } from './ClassFeedRail';
 import { TemplatesFeedScroller } from './TemplatesFeedScroller';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
+import { TemplateTestButton } from './TemplateTestButton';
 import { SocialFeedPhonePreview } from './SocialFeedPhonePreview';
 import { fetchPublicPenTemplates } from '../services/penCentralIndex';
 import {
@@ -229,6 +230,7 @@ export function TemplatesBrowse({
   const previewIsSocial =
     preview?.manifest?.classId != null &&
     categoryIdForClass(String(preview.manifest.classId)) === 'social';
+  const previewRow = previewId ? catalog.find((t) => t.id === previewId) || null : null;
   const previewWidget = useMemo(() => {
     if (!previewId) return null;
     const row = catalog.find((t) => t.id === previewId);
@@ -432,16 +434,21 @@ export function TemplatesBrowse({
                 readOnly={!previewLive}
                 placement="aside"
                 buildSlot={
-                  <button
-                    type="button"
-                    className="pen-templates-feed-build"
-                    disabled={busy}
-                    title={session ? 'Build from template' : 'Unlock to build'}
-                    aria-label="Build"
-                    onClick={() => void useTemplate(previewId)}
-                  >
-                    Build
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="pen-templates-feed-build"
+                      disabled={busy}
+                      title={session ? 'Build from template' : 'Unlock to build'}
+                      aria-label="Build"
+                      onClick={() => void useTemplate(previewId)}
+                    >
+                      Build
+                    </button>
+                    {previewIsSocial && previewRow ? (
+                      <TemplateTestButton template={previewRow} pn={session?.pnIdentifier} />
+                    ) : null}
+                  </>
                 }
               />
             </div>

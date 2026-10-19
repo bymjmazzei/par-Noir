@@ -63,8 +63,6 @@ export async function runFeedPenEffect(input: {
     case 'calendar':
       saveIcsFile(effect);
       return;
-    case 'navigate':
-      return;
     case 'widget_row': {
       if (!userPnIdentifier || !effect.widgetId || !penDocId || !creatorPnIdentifier) return;
       const responseId = effect.row.actionId || crypto.randomUUID();
