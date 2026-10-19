@@ -12,6 +12,7 @@ import {
 import { ownerFetch, ownerGet } from './penOwnerFetch';
 import { ensurePenRoot, penSessionDrive } from './penDriveLibrary';
 import {
+  isStarterMirror,
   listPersonalTemplates,
   type PersonalTemplate
 } from './penPersonalTemplates';
@@ -56,11 +57,17 @@ function readLocalBlob(pn: string): PenPrefsBlob {
   };
 }
 
-/** Merge cloud into local: union templates by id (newer createdAt wins), union pins. */
+/**
+ * Merge cloud into local: union templates by id (newer createdAt wins), union pins.
+ * Starter mirror rows are dropped from both sides.
+ */
 export function mergePrefsBlob(local: PenPrefsBlob, cloud: PenPrefsBlob): PenPrefsBlob {
   const byId = new Map<string, PersonalTemplate>();
-  for (const t of local.personalTemplates) byId.set(t.id, t);
+  for (const t of local.personalTemplates) {
+    if (!isStarterMirror(t)) byId.set(t.id, t);
+  }
   for (const t of cloud.personalTemplates) {
+    if (isStarterMirror(t)) continue;
     const prev = byId.get(t.id);
     if (!prev || (t.createdAt || '') > (prev.createdAt || '')) byId.set(t.id, t);
   }
@@ -179,6 +186,11 @@ export async function pullAndMergePrefsCloud(params: {
   const local = readLocalBlob(params.pnIdentifier);
   const merged = mergePrefsBlob(local, cloud);
   applyMergedLocally(params.pnIdentifier, merged);
+  if (cloud.personalTemplates.some(isStarterMirror)) {
+    await pushPrefsCloud(params).catch(() => {
+      /* offline — next local mutation pushes */
+    });
+  }
   try {
     window.dispatchEvent(
       new CustomEvent('pen-prefs-merged', { detail: { pn: params.pnIdentifier } })

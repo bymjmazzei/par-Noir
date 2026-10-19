@@ -57,17 +57,6 @@ describe('publicWidgetCatalog', () => {
     expect(layers.length).toBeGreaterThan(0);
   });
 
-  it('maps listings with an indexed feedPoster to their fileId', () => {
-    const withPoster = {
-      ...entry,
-      fileId: 'file-2',
-      metadata: { ...entry.metadata, feedPoster: { r2Key: 'k' } }
-    } as unknown as CentralIndexEntry;
-    const catalog = publicWidgetCatalog([entry, withPoster]);
-    expect(catalog.posters.get('pubwidget_file-2')).toBe('file-2');
-    expect(catalog.posters.has('pubwidget_file-1')).toBe(false);
-  });
-
   it('does not fall back to the empty widget.v1 seed', () => {
     const catalog = publicWidgetCatalog([entry]);
     expect(catalog.templates[0]?.seedSections).toBeUndefined();

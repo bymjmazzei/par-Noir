@@ -18,8 +18,7 @@ export function TemplatesFeedScroller({
   session,
   busy,
   onBuild,
-  fileIdByTemplateId,
-  posterFileIds
+  fileIdByTemplateId
 }: {
   rail: ReactNode;
   templates: PenTemplate[];
@@ -27,7 +26,6 @@ export function TemplatesFeedScroller({
   busy?: boolean;
   onBuild: (templateId: string) => void;
   fileIdByTemplateId?: Map<string, string>;
-  posterFileIds?: Map<string, string>;
 }) {
   return (
     <SnapFeedShell
@@ -63,12 +61,7 @@ export function TemplatesFeedScroller({
             phoneActiveFeedId="pen-templates"
             previewOverride={
               isWidgetTemplateClass(t.classId) ? (
-                <WidgetTemplateThumb
-                  template={t}
-                  pn={session?.pnIdentifier}
-                  session={session}
-                  posterFileId={posterFileIds?.get(t.id)}
-                />
+                <WidgetTemplateThumb template={t} pn={session?.pnIdentifier} session={session} />
               ) : undefined
             }
             buildSlot={

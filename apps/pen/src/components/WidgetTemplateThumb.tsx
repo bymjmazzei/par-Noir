@@ -1,5 +1,5 @@
 /**
- * Widget template art as a screenshot (shipped poster, published poster, committed still).
+ * Widget template art as a screenshot (shipped poster, committed still).
  * Widgets are layer-only, so page previews that read doc text render them blank.
  */
 import { useEffect, useState } from 'react';
@@ -7,7 +7,6 @@ import { categoryIdForClass, type PenTemplate } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import type { GalleryMedia } from '../services/penGalleryPreview';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
-import { resolvePublicMediaSignedUrl } from '../services/penPublicFeedMedia';
 import { curatedWidgetPosterSrc } from '../services/widgetPosters';
 import { previewBundleFromTemplate } from './TemplateGalleryThumb';
 
@@ -75,52 +74,17 @@ function PosterImage({ src, title }: { src: string | null; title: string }) {
   );
 }
 
-function PublicPosterThumb({
-  fileId,
-  title,
-  session
-}: {
-  fileId: string;
-  title: string;
-  session?: PenSession | null;
-}) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    setSrc(null);
-    setFailed(false);
-    void resolvePublicMediaSignedUrl(fileId, 'poster', session?.accessToken)
-      .then((url) => {
-        if (!cancelled) setSrc(url);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fileId, session?.accessToken]);
-  if (failed) return <NamedBlackTile name={title} />;
-  return <PosterImage src={src} title={title} />;
-}
-
 export function WidgetTemplateThumb({
   template,
   pn,
-  session,
-  posterFileId
+  session
 }: {
   template: PenTemplate;
   pn?: string;
   session?: PenSession | null;
-  posterFileId?: string;
 }) {
   const curated = curatedWidgetPosterSrc(template.id);
   if (curated) return <PosterImage src={curated} title={template.title} />;
-  if (posterFileId) {
-    return <PublicPosterThumb fileId={posterFileId} title={template.title} session={session} />;
-  }
   const manifest = previewBundleFromTemplate(pn, template)?.manifest;
   const still = manifest?.galleryPreviewPosterRef || manifest?.galleryPreviewRef;
   if (!manifest || !still) {

@@ -1,9 +1,7 @@
 /** Personal templates (local only — not community marketplace). */
 
 import {
-  emptySection,
   getTemplate,
-  requireTemplate,
   type PenClass,
   type PenDocType,
   type PenSectionContent,
@@ -139,52 +137,29 @@ export function loadPersonalTemplate(pn: string, id: string): PersonalTemplate |
   return listPersonalTemplates(pn).find((t) => t.id === id);
 }
 
-/** Save a starter (or personal) catalog template into My templates. */
-export function savePersonalTemplateFromCatalog(
-  pn: string,
-  templateId: string,
-  title?: string
-): PersonalTemplate {
-  if (isPersonalTemplateId(templateId)) {
-    const existing = loadPersonalTemplate(pn, templateId);
-    if (existing) return existing;
-  }
-  const based =
-    getTemplate(templateId) ||
-    (isPersonalTemplateId(templateId) ? undefined : requireTemplate(templateId));
-  if (!based) {
-    throw new Error('template_not_found');
-  }
-  const id = `personal_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
-  const now = new Date().toISOString();
-  const seedSections =
-    based.seedSections?.length
-      ? based.seedSections.map((s) => ({ ...s }))
-      : based.sections.map((s) => emptySection(s.slug));
-  const tpl: PersonalTemplate = {
-    id,
-    title: title?.trim() || based.title,
-    classId: based.classId,
-    docType: based.docType,
-    basedOnTemplateId: based.id,
-    version: based.version || '1',
-    sections: based.sections.map((s) => ({
-      slug: s.slug,
-      title: s.title,
-      required: s.required !== false
-    })),
-    seedSections,
-    createdAt: now
-  };
+/**
+ * Frozen copy of a platform starter written by the retired starter mirror:
+ * same title as its starter and no gallery still of its own.
+ */
+export function isStarterMirror(t: PersonalTemplate): boolean {
+  const basedOn = t.basedOnTemplateId?.trim();
+  if (!basedOn || basedOn.startsWith('blank.') || isPersonalTemplateId(basedOn)) return false;
+  const starter = getTemplate(basedOn);
+  if (!starter) return false;
+  return t.title === starter.title && !t.galleryPreviewRef;
+}
+
+/** Drop starter mirror rows (and their IR buffers); push the cleaned list to cloud prefs. */
+export function purgeStarterMirrors(pn: string): number {
   const list = listPersonalTemplates(pn);
-  list.unshift(tpl);
-  saveAll(pn, list);
-  try {
-    void import('./penPrefsCloud').then((m) => m.schedulePrefsCloudPush(pn));
-  } catch {
-    /* ignore */
-  }
-  return tpl;
+  const mirrors = list.filter(isStarterMirror);
+  if (!mirrors.length) return 0;
+  saveAll(pn, list.filter((t) => !isStarterMirror(t)));
+  void import('./penCloudTemplates').then((m) => {
+    for (const t of mirrors) m.clearCloudTemplateIr(pn, t.id);
+  });
+  void import('./penPrefsCloud').then((m) => m.schedulePrefsCloudPush(pn));
+  return mirrors.length;
 }
 
 /** Synthetic class entries so personal templates still resolve in trail UI. */

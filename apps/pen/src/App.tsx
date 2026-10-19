@@ -2,7 +2,7 @@
  * Pen app — flow-first document builder with collab + authenticity.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   LockButton,
@@ -40,8 +40,7 @@ import { PenLockedLanding } from './components/PenLockedLanding';
 import { PenNotebookPage } from './components/PenNotebookPage';
 import { TemplatesBrowse } from './components/TemplatesBrowse';
 import { loadBrowseDensity, saveBrowseDensity, type PenBrowseDensity } from './services/penClassPrefs';
-import { useVerifiedAuthor } from './hooks/useVerifiedAuthor';
-import { ensurePlatformTemplateRoots } from './services/penPlatformTemplates';
+import { purgeStarterMirrors } from './services/penPersonalTemplates';
 import { completeLicensePurchase } from './services/licensePurchase';
 import { clearDocKeysForSession } from './services/penDocCrypto';
 import {
@@ -436,8 +435,6 @@ function AuthenticatedApp({
   const [mlKemSecretKey, setMlKemSecretKey] = useState<string | null>(
     () => session.mlKemSecretKey || peekMlKemSecretKey() || null
   );
-  const verifiedAuthor = useVerifiedAuthor(session);
-
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     if (q.get('license') !== 'success') return;
@@ -467,14 +464,8 @@ function AuthenticatedApp({
     if (peeked) setMlKemSecretKey(peeked);
   }, [session.mlKemSecretKey, mlKemSecretKey]);
 
-  useEffect(() => {
-    if (!verifiedAuthor) return;
-    try {
-      ensurePlatformTemplateRoots(session.pnIdentifier);
-    } catch {
-      /* ignore — catalog still works from listStarterTemplates */
-    }
-  }, [session.pnIdentifier, verifiedAuthor]);
+  // Before children render: TemplatesBrowse reads personal templates during its first render.
+  useMemo(() => purgeStarterMirrors(session.pnIdentifier), [session.pnIdentifier]);
 
   useEffect(() => {
     if (!mlKemSecretKey) {

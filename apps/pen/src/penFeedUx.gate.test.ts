@@ -341,7 +341,7 @@ describe('pen feed UX chrome', () => {
     expect(app).toMatch(/path="\/templates"/);
     expect(app).toMatch(/TemplatesBrowse/);
     expect(app).not.toMatch(/PublicTemplatesFeedPage/);
-    expect(app).toMatch(/ensurePlatformTemplateRoots/);
+    expect(app).not.toMatch(/ensurePlatformTemplateRoots/);
     expect(verified).toMatch(/VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST/);
   });
 });

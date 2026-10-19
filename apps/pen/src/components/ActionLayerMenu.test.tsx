@@ -11,9 +11,7 @@ describe('ActionLayerMenu', () => {
     expect(src).toMatch(/sourceLayers\(t\)\.length > 0/);
     expect(src).toMatch(/import \{ WidgetTemplateThumb \} from '\.\/WidgetTemplateThumb'/);
     expect(thumb).toMatch(/curatedWidgetPosterSrc/);
-    expect(thumb).toMatch(/resolvePublicMediaSignedUrl/);
     expect(thumb).toMatch(/pen-named-black-tile/);
-    expect(src).toMatch(/posters/);
     expect(src).toMatch(/Add widget/);
     expect(src).toMatch(/pen-gallery-tiles/);
     expect(src).toMatch(/pen-action-layer-overlay/);

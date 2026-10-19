@@ -46,9 +46,9 @@ describe('page objects', () => {
     expect(JSON.stringify(quote.textDoc)).toContain('A short quote');
   });
 
-  it('puts a sticker chip on the templates rail and hides triggers in the shared editor', () => {
+  it('keeps the empty sticker blank off the templates rail and hides triggers in the shared editor', () => {
     const rail = buildSocialTemplateRailItems();
-    expect(rail.some((item) => item.id === 'widgets.sticker' && item.label === 'sticker')).toBe(true);
+    expect(rail.some((item) => item.id === 'widgets.sticker')).toBe(false);
     const html = renderToStaticMarkup(
       <WidgetEditorPanel
         hideTriggers

@@ -112,26 +112,16 @@ export function TemplateGalleryThumb({
   templateId,
   template,
   session,
-  phoneActiveFeedId = 'pen-templates',
-  posterFileId
+  phoneActiveFeedId = 'pen-templates'
 }: {
   pn?: string;
   templateId: string;
   template?: PenTemplate;
   session?: PenSession | null;
   phoneActiveFeedId?: 'discovery' | 'public' | 'media' | 'notes' | 'collections' | 'pen-templates';
-  /** Index fileId whose CDN poster shows a public widget. */
-  posterFileId?: string;
 }) {
   if (template && isWidgetTemplateClass(template.classId)) {
-    return (
-      <WidgetTemplateThumb
-        template={template}
-        pn={pn}
-        session={session}
-        posterFileId={posterFileId}
-      />
-    );
+    return <WidgetTemplateThumb template={template} pn={pn} session={session} />;
   }
   const preview = template
     ? previewBundleFromTemplate(pn, template)

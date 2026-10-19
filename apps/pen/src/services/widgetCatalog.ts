@@ -13,8 +13,6 @@ export type PublicWidgetCatalog = {
   templates: PenTemplate[];
   /** Public listing id → basedOnTemplateId from the index row. */
   sources: Map<string, string>;
-  /** Public listing id → index fileId whose CDN poster can be shown. */
-  posters: Map<string, string>;
 };
 
 export function publicWidgetCatalog(
@@ -23,7 +21,6 @@ export function publicWidgetCatalog(
 ): PublicWidgetCatalog {
   const templates: PenTemplate[] = [];
   const sources = new Map<string, string>();
-  const posters = new Map<string, string>();
   for (const entry of entries) {
     const meta = entry.metadata;
     const classId = meta?.penClassId;
@@ -66,9 +63,8 @@ export function publicWidgetCatalog(
       seedGalleryAspect: source?.seedGalleryAspect
     });
     if (basedOn) sources.set(id, basedOn);
-    if ((meta as { feedPoster?: unknown }).feedPoster) posters.set(id, entry.fileId);
   }
-  return { templates, sources, posters };
+  return { templates, sources };
 }
 
 function docTypeForClass(classId: string): string {

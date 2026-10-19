@@ -87,6 +87,14 @@ export function loadCloudTemplateIr(
   }
 }
 
+export function clearCloudTemplateIr(pn: string, templateId: string): void {
+  try {
+    localStorage.removeItem(irStoreKey(pn, templateId));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export function listStarredTemplatesLocal(pn: string): PersonalTemplate[] {
   return listPersonalTemplates(pn);
 }

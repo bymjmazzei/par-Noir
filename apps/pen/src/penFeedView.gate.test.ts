@@ -28,11 +28,7 @@ describe('buildSocialTemplateRailItems', () => {
       'media',
       'collection',
       'set',
-      'widget',
-      'sticker',
-      'animation',
-      'transition',
-      'text preset'
+      'widget'
     ]);
     expect(items.some((i) => i.id === 'widgets.widget')).toBe(true);
   });

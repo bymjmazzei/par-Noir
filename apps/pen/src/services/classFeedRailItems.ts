@@ -1,6 +1,13 @@
 /** Build ClassFeedRail items from library docs or public template class ids. */
 
-import { getClass, getTemplate } from '@par-noir/pen-protocol';
+import {
+  CURATED_WIDGET_IDS,
+  categoryIdForClass,
+  getClass,
+  getTemplate,
+  listStarterTemplates,
+  type PenTemplate
+} from '@par-noir/pen-protocol';
 import type { ClassFeedRailItem } from '../components/ClassFeedRail';
 
 /**
@@ -14,11 +21,7 @@ export const SOCIAL_TEMPLATE_RAIL_FORMS = [
   'social.post',
   'social.collection',
   'social.set',
-  'widgets.widget',
-  'widgets.sticker',
-  'widgets.animation',
-  'widgets.transition',
-  'widgets.text_preset'
+  'widgets.widget'
 ] as const;
 
 export type SocialTemplateRailFormId = (typeof SOCIAL_TEMPLATE_RAIL_FORMS)[number];
@@ -29,11 +32,7 @@ export const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, strin
   'social.post': 'media',
   'social.collection': 'collection',
   'social.set': 'set',
-  'widgets.widget': 'widget',
-  'widgets.sticker': 'sticker',
-  'widgets.animation': 'animation',
-  'widgets.transition': 'transition',
-  'widgets.text_preset': 'text preset'
+  'widgets.widget': 'widget'
 };
 
 const SOCIAL_TEMPLATE_RAIL_SET = new Set<string>(SOCIAL_TEMPLATE_RAIL_FORMS);
@@ -66,6 +65,19 @@ export function isTemplatesCatalogClass(classId: string | undefined): boolean {
     return true;
   }
   return getClass(classId)?.parentId === 'widgets';
+}
+
+/**
+ * Platform starters on /templates. Widgets are the curated library only;
+ * empty widget/sticker/animation/transition/text-preset blanks stay in New….
+ */
+export function listTemplatesCatalogStarters(): PenTemplate[] {
+  const curated = new Set<string>(CURATED_WIDGET_IDS);
+  return listStarterTemplates().filter((t) => {
+    if (getClass(t.classId)?.audience === 'kit') return false;
+    if (categoryIdForClass(t.classId) === 'widgets') return curated.has(t.id);
+    return isTemplatesCatalogClass(t.classId);
+  });
 }
 
 /** Whether a template belongs under the active rail chip. */

@@ -3,12 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import {
-  categoryIdForClass,
-  getClass,
-  listStarterTemplates,
-  type PenTemplate
-} from '@par-noir/pen-protocol';
+import { categoryIdForClass, getClass, type PenTemplate } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
 import { DocGalleryPreview } from './DocGalleryPreview';
 import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
@@ -27,6 +22,7 @@ import { fetchLicenseGrant, startLicenseCheckout } from '../services/licensePurc
 import {
   buildSocialTemplateRailItems,
   isTemplatesCatalogClass,
+  listTemplatesCatalogStarters,
   templateMatchesRailSelection
 } from '../services/classFeedRailItems';
 import { ClassFeedRail } from './ClassFeedRail';
@@ -90,8 +86,7 @@ export function TemplatesBrowse({
   const [fileIdByTemplateId, setFileIdByTemplateId] = useState<Map<string, string>>(
     () => new Map()
   );
-  const [publicWidgets, setPublicWidgets] = useState<PenTemplate[]>([]);
-  const [posterFileIds, setPosterFileIds] = useState<Map<string, string>>(() => new Map());
+  const [publicTemplates, setPublicTemplates] = useState<PenTemplate[]>([]);
 
   const railItems = useMemo(() => buildSocialTemplateRailItems(), []);
 
@@ -107,14 +102,14 @@ export function TemplatesBrowse({
         if (cancelled) return;
         setFileIdByTemplateId(buildTemplateFileIdMap(entries));
         const published = publicWidgetCatalog(entries, sections);
-        setPublicWidgets(published.templates);
-        setPosterFileIds(published.posters);
+        setPublicTemplates(
+          published.templates.filter((t) => !isWidgetTemplateClass(t.classId))
+        );
       })
       .catch(() => {
         if (!cancelled) {
           setFileIdByTemplateId(new Map());
-          setPublicWidgets([]);
-          setPosterFileIds(new Map());
+          setPublicTemplates([]);
         }
       });
     return () => {
@@ -123,18 +118,14 @@ export function TemplatesBrowse({
   }, []);
 
   const catalog: PenTemplate[] = useMemo(() => {
-    const starters = listStarterTemplates().filter((t) => {
-      const form = getClass(t.classId);
-      if (form?.audience === 'kit') return false;
-      return isTemplatesCatalogClass(t.classId);
-    });
+    const starters = listTemplatesCatalogStarters();
     const yours = session?.pnIdentifier
       ? personalTemplatesAsPenTemplates(session.pnIdentifier).filter((t) =>
           isTemplatesCatalogClass(t.classId)
         )
       : [];
-    return [...yours, ...starters, ...publicWidgets];
-  }, [session?.pnIdentifier, publicWidgets]);
+    return [...yours, ...starters, ...publicTemplates];
+  }, [session?.pnIdentifier, publicTemplates]);
 
   const filtered = useMemo(() => {
     return catalog.filter((t) => templateMatchesRailSelection(t.classId, activeClassId));
@@ -195,7 +186,7 @@ export function TemplatesBrowse({
     try {
       let bundle;
       if (templateId.startsWith('pubwidget_')) {
-        const template = publicWidgets.find((t) => t.id === templateId);
+        const template = publicTemplates.find((t) => t.id === templateId);
         const sections = template?.seedSections;
         if (!template || !sections?.length) {
           throw new Error('This published widget has no layers to copy');
@@ -263,7 +254,6 @@ export function TemplatesBrowse({
           busy={busy}
           onBuild={(id) => void useTemplate(id)}
           fileIdByTemplateId={fileIdByTemplateId}
-          posterFileIds={posterFileIds}
         />
       ) : (
         <>
@@ -292,7 +282,6 @@ export function TemplatesBrowse({
                             templateId={t.id}
                             template={t}
                             session={session}
-                            posterFileId={posterFileIds.get(t.id)}
                           />
                         </span>
                       </button>
@@ -410,7 +399,6 @@ export function TemplatesBrowse({
                     template={previewWidget}
                     pn={session?.pnIdentifier}
                     session={session}
-                    posterFileId={posterFileIds.get(previewWidget.id)}
                   />
                 ) : previewIsSocial ? (
                   <SocialFeedPhonePreview

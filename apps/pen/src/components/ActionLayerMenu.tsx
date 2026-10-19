@@ -1,6 +1,6 @@
 /**
  * Browse widgets in-editor: My widgets, All widgets, and search.
- * Tiles are screenshots only (shipped poster, published poster, committed still).
+ * Tiles are screenshots only (shipped poster, committed still).
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -12,10 +12,7 @@ import {
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
-import { fetchPublicPenTemplates } from '../services/penCentralIndex';
 import { personalTemplatesAsPenTemplates } from '../services/penPersonalTemplates';
-import { loadPublishedWidgetSections } from '../services/publishedWidgetIr';
-import { publicWidgetCatalog } from '../services/widgetCatalog';
 import { insertWidgetCopy } from '../services/widgetInsert';
 import { placeGiphySticker, searchGiphyStickers, type GiphyStickerHit } from '../services/giphyStickers';
 import { WidgetTemplateThumb } from './WidgetTemplateThumb';
@@ -76,8 +73,6 @@ export function ActionLayerMenu({
   const yours = pn
     ? personalTemplatesAsPenTemplates(pn).filter((t) => t.classId === classId)
     : [];
-  const [remote, setRemote] = useState<PenTemplate[]>([]);
-  const [posters, setPosters] = useState<Map<string, string>>(() => new Map());
   const [tab, setTab] = useState<'mine' | 'all'>('all');
   const [category, setCategory] = useState<'all' | CuratedWidgetCategory>('all');
   const [query, setQuery] = useState('');
@@ -88,30 +83,9 @@ export function ActionLayerMenu({
   const [giphyBusy, setGiphyBusy] = useState(false);
   const [preview, setPreview] = useState<WidgetPickerPreview | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetchPublicPenTemplates({ limit: 200 })
-      .then(async (entries) => {
-        const published = await loadPublishedWidgetSections(entries);
-        if (cancelled) return;
-        const catalog = publicWidgetCatalog(entries, published);
-        setRemote(catalog.templates.filter((template) => template.classId === classId));
-        setPosters(catalog.posters);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setRemote([]);
-          setPosters(new Map());
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [classId]);
-
   const shownTemplates = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let rows = tab === 'mine' ? yours : [...starters, ...remote];
+    let rows = tab === 'mine' ? yours : starters;
     if (!sticker && category !== 'all') {
       rows = rows.filter((template) => template.widgetCategory === category);
     }
@@ -127,7 +101,7 @@ export function ActionLayerMenu({
         catLabel.includes(q)
       );
     });
-  }, [category, query, remote, starters, sticker, tab, yours]);
+  }, [category, query, starters, sticker, tab, yours]);
 
   const shownGiphy = useMemo(() => {
     if (!sticker) return [];
@@ -307,7 +281,6 @@ export function ActionLayerMenu({
                         template={template}
                         pn={pn}
                         session={session}
-                        posterFileId={posters.get(template.id)}
                       />
                     </span>
                   </button>
@@ -408,7 +381,6 @@ export function ActionLayerMenu({
                     template={previewTemplate}
                     pn={pn}
                     session={session}
-                    posterFileId={posters.get(previewTemplate.id)}
                   />
                 ) : previewGiphy ? (
                   <div className="pen-white-media-thumb flex items-center justify-center bg-white p-4">
