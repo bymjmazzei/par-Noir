@@ -203,7 +203,7 @@ function topFive(): PenTemplate {
             chipLayer('tfc_kicker', box(24, 48, 140, 26, 2), 'MY TOP FIVE', ink, '#f5f0e6'),
             motion(textLayer('tfc_title', box(24, 92, 312, 120, 3), 'Five books that changed how I work', { family: 'serif', size: 34, color: ink, bold: true }), { in: 'rise' }),
             textLayer('tfc_sub', box(24, 222, 312, 44, 4), 'Counting down from five. Number one surprised me too.', { size: 14, color: muted }),
-            nextButton('tfc_next', { fill: ink, color: '#f5f0e6' }, 'Count down')
+            nextButton('tfc_next', { fill: ink, color: '#f5f0e6' }, 'See #5')
           ]
         },
         ...books.map(rankPage),
@@ -272,7 +272,7 @@ function tripRecap(): PenTemplate {
               'trc_art',
               artHtml(
                 '#fef3c7',
-                '<svg width="360" height="640" style="position:absolute;inset:0"><path d="M60 560 C 120 470, 40 400, 140 350 S 300 300, 260 220 S 180 140, 290 90" fill="none" stroke="#dc2626" stroke-width="4" stroke-dasharray="10 8"/><circle cx="60" cy="560" r="10" fill="#dc2626"/><circle cx="140" cy="350" r="10" fill="#15803d"/><circle cx="290" cy="90" r="10" fill="#b45309"/></svg><div class="r" style="left:0;right:0;top:0;bottom:0;background:repeating-linear-gradient(0deg,transparent 0 47px,rgba(180,83,9,.12) 47px 48px),repeating-linear-gradient(90deg,transparent 0 47px,rgba(180,83,9,.12) 47px 48px)"></div>'
+                '<svg width="360" height="640" style="position:absolute;inset:0"><path d="M48 252 C 110 210, 30 150, 130 130 S 260 170, 250 100 S 270 40, 312 52" fill="none" stroke="#dc2626" stroke-width="4" stroke-dasharray="10 8"/><circle cx="48" cy="252" r="10" fill="#dc2626"/><circle cx="130" cy="130" r="10" fill="#15803d"/><circle cx="312" cy="52" r="10" fill="#b45309"/></svg><div class="r" style="left:0;right:0;top:0;bottom:0;background:repeating-linear-gradient(0deg,transparent 0 47px,rgba(180,83,9,.12) 47px 48px),repeating-linear-gradient(90deg,transparent 0 47px,rgba(180,83,9,.12) 47px 48px)"></div>'
               ),
               f
             ),

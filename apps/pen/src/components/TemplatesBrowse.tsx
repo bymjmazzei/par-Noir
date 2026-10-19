@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { categoryIdForClass, getClass, type PenTemplate } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
 import { DocGalleryPreview } from './DocGalleryPreview';
-import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
+import { WidgetTemplateThumb, isWidgetTemplateClass, usesCatalogPoster } from './WidgetTemplateThumb';
 import {
   TemplateGalleryThumb,
   previewBundleFromTemplate
@@ -228,10 +228,10 @@ export function TemplatesBrowse({
   const previewIsSocial =
     preview?.manifest?.classId != null &&
     categoryIdForClass(String(preview.manifest.classId)) === 'social';
-  const previewWidget = useMemo(() => {
+  const previewPosterRow = useMemo(() => {
     if (!previewId) return null;
     const row = catalog.find((t) => t.id === previewId);
-    return row && isWidgetTemplateClass(row.classId) ? row : null;
+    return row && usesCatalogPoster(row) ? row : null;
   }, [catalog, previewId]);
 
   const rail: ReactNode = (
@@ -394,9 +394,9 @@ export function TemplatesBrowse({
             </div>
             <div className="pen-template-preview-modal-body pen-template-preview-modal-body--with-rail">
               <div className="pen-template-preview-modal-stage">
-                {previewWidget ? (
+                {previewPosterRow ? (
                   <WidgetTemplateThumb
-                    template={previewWidget}
+                    template={previewPosterRow}
                     pn={session?.pnIdentifier}
                     session={session}
                   />

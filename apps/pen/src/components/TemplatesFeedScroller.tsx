@@ -9,7 +9,7 @@ import type { PenSession } from '../services/penSession';
 import { SnapFeedShell } from './SnapFeedShell';
 import { PenFeedSlideStage } from './PenFeedSlideStage';
 import { previewBundleFromTemplate } from './TemplateGalleryThumb';
-import { WidgetTemplateThumb, isWidgetTemplateClass } from './WidgetTemplateThumb';
+import { WidgetTemplateThumb, usesCatalogPoster } from './WidgetTemplateThumb';
 import { resolveTemplateEngagementFileId } from '../services/templateEngagementFileId';
 
 export function TemplatesFeedScroller({
@@ -60,7 +60,7 @@ export function TemplatesFeedScroller({
             authorLabel={preview.authorDisplayName}
             phoneActiveFeedId="pen-templates"
             previewOverride={
-              isWidgetTemplateClass(t.classId) ? (
+              usesCatalogPoster(t) ? (
                 <WidgetTemplateThumb template={t} pn={session?.pnIdentifier} session={session} />
               ) : undefined
             }

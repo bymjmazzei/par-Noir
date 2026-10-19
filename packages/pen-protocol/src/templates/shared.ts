@@ -79,7 +79,12 @@ export function scrimLayer(id: string, b: Box, gradient: string): PenPageLayer {
   };
 }
 
-/** Small pill label: kickers, dates, status tags. */
+/** Editor text layers pad 8px around a 20px line, so a one-line label needs 36px. */
+const CHIP_MIN_H = 36;
+
+/** Small pill label: kickers, dates, status tags. Short boxes grow to one line, keeping their center. */
 export function chipLayer(id: string, b: Box, text: string, fill: string, color: string, extra: Partial<PenPageLayer> = {}): PenPageLayer {
-  return panelLayer(id, b, fill, text, { size: 11, color, bold: true, align: 'center' }, { name: 'Chip', cornerRadius: Math.round(b.h / 2), ...extra });
+  const h = Math.max(b.h, CHIP_MIN_H);
+  const y = Math.max(0, b.y - Math.round((h - b.h) / 2));
+  return panelLayer(id, { ...b, y, h }, fill, text, { size: 11, color, bold: true, align: 'center' }, { name: 'Chip', cornerRadius: Math.round(h / 2), ...extra });
 }

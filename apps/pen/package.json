@@ -7,7 +7,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "widget-posters": "node scripts/widget-posters.mjs"
+    "widget-posters": "node scripts/widget-posters.mjs",
+    "template-posters": "node scripts/widget-posters.mjs --templates"
   },
   "dependencies": {
     "@par-noir/aggregator-domain": "file:../../packages/aggregator-domain",

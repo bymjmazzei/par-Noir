@@ -99,7 +99,7 @@ function thisOrThat(): PenTemplate {
             'tt_art',
             artHtml(
               '#0f172a',
-              '<div class="r" style="left:0;top:0;width:180px;bottom:0;background:linear-gradient(180deg,#fdba74 0%,#f97316 100%)"></div><div class="r" style="left:180px;top:0;right:0;bottom:0;background:linear-gradient(180deg,#312e81 0%,#0f172a 100%)"></div><div class="s" style="left:120px;top:250px;width:44px;height:44px;background:#fef3c7"></div><div class="s" style="left:290px;top:40px;width:26px;height:26px;background:#e0e7ff;box-shadow:-8px 4px 0 0 #312e81 inset"></div>'
+              '<div class="r" style="left:0;top:0;width:180px;bottom:0;background:linear-gradient(180deg,#fdba74 0%,#f97316 100%)"></div><div class="r" style="left:180px;top:0;right:0;bottom:0;background:linear-gradient(180deg,#312e81 0%,#0f172a 100%)"></div><div class="s" style="left:132px;top:106px;width:28px;height:28px;background:#fef3c7"></div><div class="s" style="left:310px;top:106px;width:24px;height:24px;background:#e0e7ff;box-shadow:-7px 4px 0 0 #312e81 inset"></div>'
             ),
             f
           ),
@@ -119,7 +119,7 @@ function thisOrThat(): PenTemplate {
             countdownLayer('tt_time', box(16, 316, 90, 26, 8), '#fef3c7', 2, 'rgba(15,23,42,0.6)'),
             textLayer('tt_results', box(118, 318, 226, 22, 9), 'Results show after you vote', { size: 11, color: 'rgba(255,255,255,0.8)' })
           ]),
-          chipLayer('tt_vs', box(160, 152, 40, 40, 20), 'VS', '#fef3c7', '#0f172a')
+          chipLayer('tt_vs', box(160, 200, 40, 40, 20), 'VS', '#fef3c7', '#0f172a')
         ]
       }
     ])
@@ -250,17 +250,17 @@ function prosCons(): PenTemplate {
               'pc_art',
               artHtml(
                 '#fafaf9',
-                '<div class="r car"></div><div class="s" style="left:120px;top:160px;width:34px;height:34px;background:#1c1917"></div><div class="s" style="left:212px;top:160px;width:34px;height:34px;background:#1c1917"></div><div class="r" style="left:250px;top:120px;width:10px;height:22px;border-radius:2px;background:#22c55e"></div>',
-                '.car{left:100px;top:110px;width:166px;height:62px;border-radius:30px 40px 12px 12px;background:#0ea5e9}'
+                '<div class="r car"></div><div class="s" style="left:120px;top:176px;width:34px;height:34px;background:#1c1917"></div><div class="s" style="left:212px;top:176px;width:34px;height:34px;background:#1c1917"></div><div class="r" style="left:250px;top:146px;width:10px;height:22px;border-radius:2px;background:#22c55e"></div>',
+                '.car{left:100px;top:136px;width:166px;height:56px;border-radius:28px 36px 12px 12px;background:#0ea5e9}'
               ),
               f
             ),
             chipLayer('pc_kicker', box(16, 32, 130, 26, 2), 'BUYER’S GUIDE', ink, '#fafaf9'),
-            motion(textLayer('pc_title', box(16, 70, 328, 36, 3), 'Should you buy a used EV in 2026?', { family: 'serif', size: 22, color: ink, bold: true }), { in: 'rise' }),
-            column('pc_pros', box(16, 220, 158, 260, 4), '#dcfce7', ['PROS', 'Prices fell 30% since 2024', 'Cheap to charge at home', 'Few moving parts to fix'], { size: 13, color: '#14532d' }),
-            column('pc_cons', box(186, 220, 158, 260, 5), '#fee2e2', ['CONS', 'Battery health varies a lot', 'Fast charging adds up', 'Older models: shorter range'], { size: 13, color: '#7f1d1d' }),
+            motion(textLayer('pc_title', box(16, 70, 328, 58, 3), 'Should you buy a used EV in 2026?', { family: 'serif', size: 22, color: ink, bold: true }), { in: 'rise' }),
+            column('pc_pros', box(16, 224, 158, 252, 4), '#dcfce7', ['PROS', 'Prices fell 30% since 2024', 'Cheap to charge at home', 'Few moving parts to fix'], { size: 13, color: '#14532d' }),
+            column('pc_cons', box(186, 224, 158, 252, 5), '#fee2e2', ['CONS', 'Battery health varies a lot', 'Fast charging adds up', 'Older models: shorter range'], { size: 13, color: '#7f1d1d' }),
             motion(
-              panelLayer('pc_verdict', box(16, 492, 328, 60, 6), ink, 'Verdict: yes, if you can charge at home and the battery reads above 85%.', { size: 13, color: '#fafaf9', bold: true }, { name: 'Verdict' }),
+              panelLayer('pc_verdict', box(16, 488, 328, 64, 6), ink, 'Verdict: yes, if you can charge at home and the battery reads above 85%.', { size: 13, color: '#fafaf9', bold: true }, { name: 'Verdict' }),
               { in: 'fade' }
             ),
             buttonLayer('pc_helpful', box(16, 568, 150, 44, 7), 'Helpful', { fill: '#22c55e', color: '#052e16' }, { behavior: 'widget.stamp', label: 'Found it helpful' }),

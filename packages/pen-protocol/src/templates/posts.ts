@@ -117,8 +117,8 @@ function eventRecap(): PenTemplate {
             'Photo',
             artHtml(
               'linear-gradient(180deg,#1e1b4b 0%,#312e81 60%,#0f0a1e 100%)',
-              '<div class="lights"></div><div class="r stall" style="left:20px"></div><div class="r stall" style="left:150px;background:repeating-linear-gradient(90deg,#34d399 0 16px,#ecfdf5 16px 32px)"></div><div class="r stall" style="left:280px;background:repeating-linear-gradient(90deg,#fbbf24 0 16px,#fffbeb 16px 32px)"></div><div class="r" style="left:0;right:0;bottom:0;height:90px;background:#0f0a1e"></div>',
-              '.lights{position:absolute;left:-20px;top:30px;width:440px;height:80px;border-bottom:2px solid rgba(255,255,255,.25);border-radius:0 0 50% 50%;background:radial-gradient(circle,#fde68a 0 3px,transparent 4px) 0 100%/28px 20px repeat-x}.stall{top:190px;width:110px;height:80px;border-radius:6px 6px 0 0;background:repeating-linear-gradient(90deg,#f472b6 0 16px,#fdf2f8 16px 32px)}'
+              '<div class="lights"></div><div class="r stall" style="left:20px"></div><div class="r stall" style="left:150px;background:repeating-linear-gradient(90deg,#34d399 0 16px,#ecfdf5 16px 32px)"></div><div class="r stall" style="left:280px;background:repeating-linear-gradient(90deg,#fbbf24 0 16px,#fffbeb 16px 32px)"></div><div class="r" style="left:0;right:0;bottom:0;height:64px;background:linear-gradient(180deg,#4c1d95 0%,#2e1065 100%);border-top:3px solid #fde68a"></div>',
+              '.lights{position:absolute;left:-20px;top:30px;width:440px;height:80px;border-bottom:2px solid rgba(255,255,255,.25);border-radius:0 0 50% 50%;background:radial-gradient(circle,#fde68a 0 3px,transparent 4px) 0 100%/28px 20px repeat-x}.stall{top:180px;width:110px;height:120px;border-radius:6px 6px 0 0;background:repeating-linear-gradient(90deg,#f472b6 0 16px,#fdf2f8 16px 32px)}'
             )
           ),
           motion(

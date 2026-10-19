@@ -228,8 +228,15 @@ function widgetStarters(): PenTemplate[] {
   ];
 }
 
+const PLATFORM_POSTS = platformPostTemplates();
+
+/** The social post templates; each ships a screenshot poster in the Pen app. */
+export const PLATFORM_POST_TEMPLATE_IDS: readonly string[] = PLATFORM_POSTS.map((t) => t.id);
+
+export { frameOf } from './templates/index.js';
+
 const STARTER: PenTemplate[] = [
-  ...platformPostTemplates(),
+  ...PLATFORM_POSTS,
   withSeed(
       {
         id: 'website.v1',
