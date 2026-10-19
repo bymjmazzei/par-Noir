@@ -108,6 +108,26 @@ export async function insertWidgetResponse(input: {
   return { inserted: result.rows.length > 0 };
 }
 
+/** Taps are events, not answers: every press is its own row and never touches widget_response_cache. */
+export async function insertWidgetTap(input: {
+  actionId: string;
+  widgetId: string;
+  actorHash: string;
+  button: string;
+  action: string;
+  target: string;
+}): Promise<{ inserted: boolean }> {
+  const db = getDatabasePool();
+  const result = await db.query(
+    `INSERT INTO widget_tap_events (action_id, widget_id, actor_hash, button, action, target)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (action_id) DO NOTHING
+     RETURNING action_id`,
+    [input.actionId, input.widgetId, input.actorHash, input.button, input.action, input.target]
+  );
+  return { inserted: result.rows.length > 0 };
+}
+
 export async function readWidgetResponse(
   widgetId: string,
   actorHash: string

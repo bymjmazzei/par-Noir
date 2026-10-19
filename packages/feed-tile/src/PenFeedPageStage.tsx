@@ -7,12 +7,14 @@ import {
   pollCountsFromWidgetView,
   scoreCaption,
   emptyPenViewerState,
+  isTapBehavior,
   penViewerButtonFace,
   pressPenAction,
   timeLayerCaption,
   trackingWidgetId,
   voteFaceForLayer,
   type PenActionEffect,
+  type PenActionTrack,
   type PenFeedPagePayload,
   type PenPageLayer,
   type PenSectionContent,
@@ -218,6 +220,7 @@ export function PenFeedPageStage({
   widgetViews = {},
   externalClockSec,
   onEffect,
+  onTrack,
   onPressBlocked,
   onReportLink,
   actorId,
@@ -236,6 +239,8 @@ export function PenFeedPageStage({
    * Open, email, and Messaging effects arrive only after the viewer confirms the leave sheet.
    */
   onEffect?: (effect: PenActionEffect) => void | Promise<void>;
+  /** Open, go-to-page, and calendar taps for the doc's Taps widget, sent on press. */
+  onTrack?: (track: PenActionTrack) => void;
   /** Viewer must unlock before responding to backend widgets. */
   onPressBlocked?: () => void;
   /** Report link on the leave sheet. Omit where there is nothing to report to. */
@@ -254,7 +259,7 @@ export function PenFeedPageStage({
   const press = (layerId: string) => {
     const layers = penFeedPage.actionSection.layers;
     const layer = layers.find((item) => item.id === layerId);
-    if (layer && docId) {
+    if (layer && docId && !isTapBehavior(layer.behavior)) {
       const widgetId = trackingWidgetId(docId, layers, layer);
       const phase = widgetId ? widgetViews[widgetId]?.phase : undefined;
       if (phase === 'locked') {
@@ -271,6 +276,7 @@ export function PenFeedPageStage({
     });
     viewerRef.current = result.state;
     setViewer(result.state);
+    if (result.track) onTrack?.(result.track);
     if (result.effect.kind === 'none') return;
     if (needsLeaveSheet(result.effect)) {
       setLeaving(result.effect);

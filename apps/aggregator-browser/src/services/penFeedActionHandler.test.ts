@@ -5,7 +5,7 @@ vi.mock('./ownerApiFetch', () => ({
   ownerFetch: (...args: unknown[]) => ownerFetch(...args)
 }));
 
-import { runFeedPenEffect } from './penFeedActionHandler';
+import { runFeedPenEffect, sendPenTap } from './penFeedActionHandler';
 
 const row = {
   actionId: 'a1',
@@ -121,5 +121,41 @@ describe('runFeedPenEffect', () => {
       userPnIdentifier: 'viewer'
     });
     expect(ownerFetch.mock.calls[0][2]).toMatchObject({ optionId: 'other', writeIn: 'Dark mode' });
+  });
+});
+
+describe('sendPenTap', () => {
+  const tapRow = {
+    actionId: 'tap-1',
+    trigger: 'widget.tap' as const,
+    actorId: '',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    headers: ['button', 'action', 'target'],
+    cells: ['Shop', 'open', 'shop.example']
+  };
+
+  beforeEach(() => {
+    ownerFetch.mockReset();
+    ownerFetch.mockResolvedValue(new Response('{}'));
+  });
+
+  it('sends a locked viewer tap anonymously, with no pn', async () => {
+    await sendPenTap({ track: { widgetId: 'doc-1:taps', row: tapRow }, creatorPnIdentifier: 'owner' });
+    expect(ownerFetch).toHaveBeenCalledWith(
+      'POST',
+      '/api/pen/widgets/tap',
+      { ownerPnIdentifier: 'owner', widgetId: 'doc-1:taps', row: tapRow },
+      undefined
+    );
+  });
+
+  it('stamps an unlocked viewer, and skips posts with no doc or creator', async () => {
+    await sendPenTap({ track: { widgetId: 'doc-1:taps', row: tapRow }, creatorPnIdentifier: 'owner', userPnIdentifier: 'viewer' });
+    expect(ownerFetch.mock.calls[0][2]).toMatchObject({ userPnIdentifier: 'viewer' });
+    expect(ownerFetch.mock.calls[0][3]).toEqual({ pnIdentifier: 'viewer' });
+    ownerFetch.mockClear();
+    await sendPenTap({ track: { row: tapRow }, creatorPnIdentifier: 'owner' });
+    await sendPenTap({ track: { widgetId: 'doc-1:taps', row: tapRow } });
+    expect(ownerFetch).not.toHaveBeenCalled();
   });
 });

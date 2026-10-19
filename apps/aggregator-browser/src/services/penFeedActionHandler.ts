@@ -2,6 +2,7 @@ import { saveIcsFile } from '@par-noir/feed-tile';
 import {
   buildCorrespondenceHandoffHash,
   type PenActionEffect,
+  type PenActionTrack,
   type WidgetViewPayload
 } from '@par-noir/pen-protocol';
 import { ownerFetch } from './ownerApiFetch';
@@ -85,6 +86,27 @@ export async function runFeedPenEffect(input: {
     default:
       return;
   }
+}
+
+/** Log a button tap to the creator's Taps sheet. Locked viewers count too, as `anonymous`. */
+export async function sendPenTap(input: {
+  track: PenActionTrack;
+  creatorPnIdentifier?: string;
+  userPnIdentifier?: string;
+}): Promise<void> {
+  const { track, creatorPnIdentifier, userPnIdentifier } = input;
+  if (!track.widgetId || !creatorPnIdentifier) return;
+  await ownerFetch(
+    'POST',
+    '/api/pen/widgets/tap',
+    {
+      ...(userPnIdentifier ? { userPnIdentifier } : {}),
+      ownerPnIdentifier: creatorPnIdentifier,
+      widgetId: track.widgetId,
+      row: track.row
+    },
+    userPnIdentifier ? { pnIdentifier: userPnIdentifier } : undefined
+  ).catch(() => undefined);
 }
 
 export async function fetchPenWidgetView(input: {

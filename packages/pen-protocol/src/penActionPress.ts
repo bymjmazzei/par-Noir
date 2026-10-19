@@ -28,6 +28,7 @@ import {
   type WidgetActionRow
 } from './widgetElements.js';
 import { checkLink, type LinkWarning } from './linkSafety.js';
+import { tapRow, tapWidgetId } from './tapTracking.js';
 import { normalizeWriteIn } from './pollSheet.js';
 import { docToPlainText } from './richDoc.js';
 import type { PenGoTo, PenPageLayer, PenSectionContent } from './types.js';
@@ -44,6 +45,9 @@ export type PenActionEffect =
   | { kind: 'navigate'; goTo: PenGoTo }
   | { kind: 'calendar'; ics: string; filename: string }
   | { kind: 'none' };
+
+/** Tap row for the doc's Taps widget. Hosts send it whether or not the viewer is unlocked. */
+export type PenActionTrack = { widgetId?: string; row: WidgetActionRow };
 
 export function emptyPenViewerState(): PenViewerState {
   return {
@@ -76,11 +80,16 @@ export function pressPenAction(input: {
   actorId?: string;
   docId?: string;
   now?: string;
-}): { state: PenViewerState; effect: PenActionEffect } {
+}): { state: PenViewerState; effect: PenActionEffect; track?: PenActionTrack } {
   const { layers, state } = input;
   const none = { state, effect: { kind: 'none' } as PenActionEffect };
   const layer = layers.find((item) => item.id === input.layerId);
   if (!layer || layer.kind !== 'interactive' || !layer.behavior) return none;
+  const tapWidget = tapWidgetId(input.docId || '');
+  const track = (target: string): PenActionTrack => ({
+    ...(tapWidget ? { widgetId: tapWidget } : {}),
+    row: tapRow({ layer, target, actorId: input.actorId || '', actionId: newActionId(), createdAt: input.now })
+  });
   const groupId = layer.parentGroupId || null;
   const groupKey = penViewerGroupKey(layer);
   const section = sectionOf(layers);
@@ -99,13 +108,14 @@ export function pressPenAction(input: {
       if (!link.ok) return none;
       return {
         state,
-        effect: { kind: 'open', url: link.url, host: link.host, warnings: link.warnings }
+        effect: { kind: 'open', url: link.url, host: link.host, warnings: link.warnings },
+        track: track(link.host)
       };
     }
     case 'page.go': {
       const goTo = layer.goTo;
       if (!goTo) return none;
-      return { state, effect: { kind: 'navigate', goTo } };
+      return { state, effect: { kind: 'navigate', goTo }, track: track(goTo) };
     }
     case 'cta.calendar': {
       const time = layers.find(
@@ -124,7 +134,7 @@ export function pressPenAction(input: {
         startIso,
         durationMin: layer.eventDurationMin
       });
-      return { state, effect: { kind: 'calendar', ics, filename } };
+      return { state, effect: { kind: 'calendar', ics, filename }, track: track(title) };
     }
     case 'widget.reveal': {
       const target = layer.revealLayerId;

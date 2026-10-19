@@ -9,6 +9,7 @@ import {
   encodeWidgetId,
   revealPolicyFromLayers,
   structureFromLayers,
+  tapWidgetId,
   type PollCounts,
   type PollStructure,
   type PenSectionContent,
@@ -68,6 +69,32 @@ export async function registerWidget(input: {
       structure,
       revealPolicy,
       closesAt: structure.closesAt,
+      spreadsheetId: input.spreadsheetId
+    },
+    { pnIdentifier: input.session.pnIdentifier }
+  );
+  await readJson(res);
+}
+
+/** Register the doc's Taps widget so viewers' button taps reach this owner's sheet. */
+export async function registerTapWidget(input: {
+  session: PenSession;
+  docId: string;
+  spreadsheetId: string;
+}): Promise<void> {
+  const widgetId = tapWidgetId(input.docId);
+  if (!widgetId) return;
+  const res = await apiFetch(
+    'POST',
+    '/api/pen/widgets/register',
+    {
+      userPnIdentifier: input.session.pnIdentifier,
+      widgetId,
+      docId: input.docId,
+      kind: 'tap',
+      structure: { question: '', options: [], closesAt: null },
+      revealPolicy: 'creator_only',
+      closesAt: null,
       spreadsheetId: input.spreadsheetId
     },
     { pnIdentifier: input.session.pnIdentifier }

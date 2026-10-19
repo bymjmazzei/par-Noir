@@ -1,9 +1,11 @@
-/** One tracking spreadsheet per widget group that records presses. */
+/** One tracking spreadsheet per widget group that records presses, plus the doc's Taps sheet. */
 
 import {
   groupNeedsTrackingSheet,
   isSheetTrigger,
   patchLayerStyle,
+  sectionsHaveTapButtons,
+  TAP_WIDGET_GROUP,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { createPollSheet } from './pollCloud';
@@ -15,12 +17,15 @@ export type MintTrackingSheet = (input: {
   docId: string;
   groupId: string;
   section: PenSectionContent;
+  title?: string;
 }) => Promise<string>;
 
 export async function ensureBundleTrackingSheets(input: {
   session: PenSession;
   bundle: LocalDocBundle;
   mintSheet?: MintTrackingSheet;
+  /** Publish only: give a post with open, go-to-page, or calendar buttons a Taps sheet. */
+  taps?: boolean;
 }): Promise<LocalDocBundle> {
   const mint = input.mintSheet || createPollSheet;
   let manifest = input.bundle.manifest;
@@ -62,6 +67,23 @@ export async function ensureBundleTrackingSheets(input: {
       section = patchLayerStyle(section, effectiveGroupId, { spreadsheetId });
     }
     sections[i] = section;
+  }
+
+  if (input.taps && sectionsHaveTapButtons(sections) && !manifest.tapSpreadsheetId?.trim()) {
+    const shared = sections
+      .flatMap((section) => section.layers || [])
+      .map((layer) => (layer.spreadsheetId || '').trim())
+      .find(Boolean);
+    const tapSpreadsheetId =
+      shared ||
+      (await mint({
+        session: input.session,
+        docId: manifest.docId,
+        groupId: TAP_WIDGET_GROUP,
+        section: sections[0]!,
+        title: `Taps ${manifest.docId.slice(0, 8)}`
+      }));
+    manifest = { ...manifest, tapSpreadsheetId };
   }
 
   return { ...input.bundle, manifest, sections };

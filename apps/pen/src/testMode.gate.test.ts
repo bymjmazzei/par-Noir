@@ -23,4 +23,10 @@ describe('test mode', () => {
     expect(button).toMatch(/<FeedTileTestOverlay/);
     expect(button).not.toMatch(/fetch\(|ownerFetch|respondWidget/);
   });
+
+  it('never records taps from the sandbox', () => {
+    const overlay = read('../../../packages/feed-tile/src/FeedTileTestOverlay.tsx');
+    expect(overlay).toMatch(/<FeedTileSurface/);
+    expect(overlay).not.toMatch(/onTrack/);
+  });
 });

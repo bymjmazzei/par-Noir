@@ -2,6 +2,7 @@
  * Widget register / respond / view. Server enforces reveal policy and one response per actor.
  */
 
+import crypto from 'crypto';
 import type { Application, Request, Response } from 'express';
 import {
   hashPnIdentifier,
@@ -10,6 +11,8 @@ import {
   parseWidgetId,
   POLL_WRITE_IN_MAX,
   structureRejectsVote,
+  TAP_COLUMNS,
+  TAP_WIDGET_GROUP,
   type PollStructure,
   type WidgetBackendKind,
   type WidgetRevealPolicy
@@ -24,6 +27,7 @@ import { hashIdentifier, safeLogger } from '../../utils/logger';
 import {
   buildWidgetView,
   insertWidgetResponse,
+  insertWidgetTap,
   pollCountsFromResponses,
   readWidgetStructure,
   upsertWidgetStructure
@@ -31,6 +35,34 @@ import {
 
 const MAX_ROW_CELLS = 64;
 const MAX_CELL_CHARS = 2000;
+const MAX_TAP_CELL_CHARS = 200;
+const TAP_WINDOW_MS = 10 * 60 * 1000;
+const TAP_LIMIT = 30;
+const TAP_LIMIT_ALL_WIDGETS = 300;
+const TAP_BUCKETS_MAX = 20000;
+export const ANONYMOUS_TAP_ACTOR = 'anonymous';
+
+/** Fixed windows per viewer (or IP when anonymous), per widget and overall. In memory, so they reset on deploy. */
+const tapBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function tapAllowed(key: string, limit: number, now = Date.now()): boolean {
+  const bucket = tapBuckets.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    if (tapBuckets.size >= TAP_BUCKETS_MAX) {
+      for (const [k, b] of tapBuckets) if (b.resetAt <= now) tapBuckets.delete(k);
+      if (tapBuckets.size >= TAP_BUCKETS_MAX) tapBuckets.clear();
+    }
+    tapBuckets.set(key, { count: 1, resetAt: now + TAP_WINDOW_MS });
+    return true;
+  }
+  if (bucket.count >= limit) return false;
+  bucket.count += 1;
+  return true;
+}
+
+export function resetTapRateLimit(): void {
+  tapBuckets.clear();
+}
 
 function stringList(raw: unknown): string[] | null {
   if (raw == null) return [];
@@ -180,7 +212,7 @@ export function setupWidgetRoutes(app: Application): void {
         const actionRow = (req.body?.row || {}) as Record<string, unknown>;
         const trigger = String(actionRow.trigger || '').trim();
         const actionId = String(actionRow.actionId || responseId).trim();
-        if (trigger !== 'widget.submit' && !isSheetTrigger(trigger)) {
+        if (trigger === 'widget.tap' || (trigger !== 'widget.submit' && !isSheetTrigger(trigger))) {
           return res.status(400).json({ error: 'widget_trigger_invalid' });
         }
         const headers = stringList(actionRow.headers);
@@ -237,6 +269,83 @@ export function setupWidgetRoutes(app: Application): void {
         err: e instanceof Error ? e.message : 'unknown'
       });
       return res.status(500).json({ error: 'widget_respond_failed' });
+    }
+  });
+
+  /**
+   * Button taps (open, go to page, calendar). Without a viewer pn the tap is anonymous and needs
+   * no bearer; with one, the usual first-party owner gate applies. Owner taps are dropped.
+   */
+  app.post('/api/pen/widgets/tap', async (req: Request, res: Response) => {
+    try {
+      const viewerPn = String(req.body?.userPnIdentifier || '').trim();
+      const ownerPn = String(req.body?.ownerPnIdentifier || '').trim();
+      const widgetId = String(req.body?.widgetId || '').trim();
+      const tap = (req.body?.row || {}) as Record<string, unknown>;
+      const parsed = parseWidgetId(widgetId);
+      if (!ownerPn || !parsed || parsed.groupLayerId !== TAP_WIDGET_GROUP) {
+        return res.status(400).json({ error: 'widget_tap_fields_required' });
+      }
+      const headers = stringList(tap.headers);
+      const cells = stringList(tap.cells);
+      if (
+        !headers ||
+        !cells ||
+        headers.join('|') !== TAP_COLUMNS.join('|') ||
+        cells.length !== TAP_COLUMNS.length ||
+        cells.some((cell) => cell.length > MAX_TAP_CELL_CHARS)
+      ) {
+        return res.status(400).json({ error: 'widget_tap_row_invalid' });
+      }
+      const rawActionId = String(tap.actionId || '').trim();
+      const actionId = /^[A-Za-z0-9-]{8,64}$/.test(rawActionId) ? rawActionId : crypto.randomUUID();
+
+      if (viewerPn && !(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, viewerPn))) {
+        return;
+      }
+      const row = await readWidgetStructure(widgetId);
+      if (!row) return res.status(404).json({ error: 'widget_not_found' });
+      if (hashPnIdentifier(ownerPn) !== row.ownerPnHash) {
+        return res.status(403).json({ error: 'widget_owner_mismatch' });
+      }
+      const actorHash = viewerPn ? hashPnIdentifier(viewerPn) : ANONYMOUS_TAP_ACTOR;
+      if (actorHash === row.ownerPnHash) return res.json({ ok: true, ignored: 'owner' });
+      const who = viewerPn ? actorHash : `ip:${req.ip || 'unknown'}`;
+      if (!tapAllowed(`${who}|${widgetId}`, TAP_LIMIT) || !tapAllowed(who, TAP_LIMIT_ALL_WIDGETS)) {
+        return res.status(429).json({ error: 'widget_tap_rate_limited' });
+      }
+
+      const [button, action, target] = cells as [string, string, string];
+      const inserted = await insertWidgetTap({ actionId, widgetId, actorHash, button, action, target });
+      if (!inserted.inserted) return res.json({ ok: true, duplicate: true });
+      const enqueued = await enqueueSocialJob({
+        jobType: 'pen.widget_action',
+        peerPn: ownerPn,
+        requestId: actionId,
+        sealed: {
+          docId: row.docId,
+          spreadsheetId: row.spreadsheetId,
+          widgetId,
+          actionId,
+          trigger: 'widget.tap',
+          actorId: actorHash,
+          createdAt: new Date().toISOString(),
+          headers,
+          cells
+        }
+      });
+      if (!enqueued) {
+        safeLogger.warn('[pen/widgets] tap stored but owner mailbox was not enqueued', {
+          widget: hashIdentifier(widgetId),
+          action: hashIdentifier(actionId)
+        });
+      }
+      return res.json({ ok: true });
+    } catch (e) {
+      safeLogger.warn('[pen/widgets] tap failed', {
+        err: e instanceof Error ? e.message : 'unknown'
+      });
+      return res.status(500).json({ error: 'widget_tap_failed' });
     }
   });
 }

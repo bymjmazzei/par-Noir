@@ -28,18 +28,22 @@ export const WIDGET_TEMPLATE_ID = 'widget.v1';
 
 export const DEFAULT_WIDGET_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" preserveAspectRatio="none"><rect width="120" height="80" rx="8" fill="#101418"/></svg>`;
 
-const SHEET_TRIGGERS = ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate'] as const;
+/** `widget.tap` is never a layer behavior: open, go-to-page, and calendar presses log it. */
+const SHEET_TRIGGERS = ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate', 'widget.tap'] as const;
 
 export type WidgetSheetTrigger = (typeof SHEET_TRIGGERS)[number];
 
 /** Sheet write that is not a press trigger. Submit records a form row. */
 export type WidgetWriteTrigger = WidgetSheetTrigger | 'widget.submit';
 
-export const WIDGET_TAB: Record<WidgetSheetTrigger, 'Toggle' | 'Stamp' | 'Rank' | 'Allocate'> = {
+export type WidgetSheetTab = 'Toggle' | 'Stamp' | 'Rank' | 'Allocate' | 'Taps';
+
+export const WIDGET_TAB: Record<WidgetSheetTrigger, WidgetSheetTab> = {
   'widget.toggle': 'Toggle',
   'widget.stamp': 'Stamp',
   'widget.rank': 'Rank',
-  'widget.allocate': 'Allocate'
+  'widget.allocate': 'Allocate',
+  'widget.tap': 'Taps'
 };
 
 export type WidgetActionRow = {
@@ -761,7 +765,7 @@ export function applyWidgetSheetRows(input: {
   headers: string[];
   cells?: string[];
   existing: string[][];
-}): { tab: 'Toggle' | 'Stamp' | 'Rank' | 'Allocate' | 'Submit'; headers: string[]; rows: string[][] } {
+}): { tab: WidgetSheetTab | 'Submit'; headers: string[]; rows: string[][] } {
   if (input.trigger === 'widget.submit') {
     const headers = ['user', ...input.headers];
     return {
@@ -782,6 +786,13 @@ export function applyWidgetSheetRows(input: {
       tab,
       headers: ['user', 'stamped_at'],
       rows: [...input.existing, [input.user, input.createdAt]]
+    };
+  }
+  if (input.trigger === 'widget.tap') {
+    return {
+      tab,
+      headers: ['user', 'tapped_at', ...input.headers],
+      rows: [...input.existing, [input.user, input.createdAt, ...(input.cells || [])]]
     };
   }
   const headers = ['user', ...input.headers];

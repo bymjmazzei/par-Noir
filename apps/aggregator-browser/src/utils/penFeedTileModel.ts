@@ -85,7 +85,7 @@ export function buildPenCollectionFeedTileModel(
           : undefined
     });
   }
-  return compilePenFeedTileModel({
+  const model = compilePenFeedTileModel({
     title:
       (typeof parentMeta.title === 'string' && parentMeta.title) ||
       (typeof parentMeta.name === 'string' && parentMeta.name) ||
@@ -100,4 +100,6 @@ export function buildPenCollectionFeedTileModel(
     posterUrl: pages[0]?.posterUrl,
     pages
   });
+  const penDocId = typeof parentMeta.penDocId === 'string' ? parentMeta.penDocId : undefined;
+  return penDocId ? { ...model, penDocId } : model;
 }

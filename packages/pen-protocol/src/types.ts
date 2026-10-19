@@ -474,6 +474,8 @@ export interface PenDocManifest {
   toc: string[];
   /** Author page titles keyed by section slug. Missing slugs fall back to the template, then `Page N`. */
   pageTitles?: Record<string, string>;
+  /** Sheet behind the doc's Taps widget (`docId:taps`). Reuses a widget sheet when the post has one. */
+  tapSpreadsheetId?: string;
   createdAt: string;
   updatedAt: string;
   genesisProof?: PenGenesisProof;

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FeedTileSurface, type FeedPlayback, type FeedTileViewModel } from '@par-noir/feed-tile';
-import { collectWidgetIds, type PenActionEffect, type WidgetViewPayload } from '@par-noir/pen-protocol';
-import { fetchPenWidgetView, runFeedPenEffect } from '../services/penFeedActionHandler';
+import {
+  collectWidgetIds,
+  type PenActionEffect,
+  type PenActionTrack,
+  type WidgetViewPayload
+} from '@par-noir/pen-protocol';
+import { fetchPenWidgetView, runFeedPenEffect, sendPenTap } from '../services/penFeedActionHandler';
 
 /** Pen feed tile centered in a feed slide; loads widget view state for backend widgets. */
 export function PenFeedTilePlayer({
@@ -72,6 +77,13 @@ export function PenFeedTilePlayer({
     [creatorPnIdentifier, docId, onEffect, userPnIdentifier]
   );
 
+  const handleTrack = useCallback(
+    (track: PenActionTrack) => {
+      void sendPenTap({ track, creatorPnIdentifier, userPnIdentifier });
+    },
+    [creatorPnIdentifier, userPnIdentifier]
+  );
+
   const tileModel = useMemo(
     () => ({ ...model, penDocId: docId, widgetViews }),
     [docId, model, widgetViews]
@@ -89,6 +101,7 @@ export function PenFeedTilePlayer({
         hideEngagementRail
         aspectRatio={aspectRatio}
         onEffect={handleEffect}
+        onTrack={handleTrack}
         onPressBlocked={onPressBlocked}
         onReportLink={onReportLink}
         playback={playback}

@@ -228,6 +228,18 @@ describe('widget placement and triggers', () => {
     });
     expect(stamped.headers).toEqual(['user', 'stamped_at']);
     expect(stamped.rows).toHaveLength(1);
+
+    const tapped = applyWidgetSheetRows({
+      trigger: 'widget.tap',
+      user: 'anonymous',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      headers: ['button', 'action', 'target'],
+      cells: ['Shop', 'open', 'shop.example'],
+      existing: [['anonymous', '2025-12-31T00:00:00.000Z', 'Shop', 'open', 'shop.example']]
+    });
+    expect(tapped.tab).toBe('Taps');
+    expect(tapped.headers).toEqual(['user', 'tapped_at', 'button', 'action', 'target']);
+    expect(tapped.rows).toHaveLength(2);
     expect(
       applyWidgetSheetRows({
         trigger: 'widget.stamp',

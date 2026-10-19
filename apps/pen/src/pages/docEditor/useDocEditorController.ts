@@ -151,7 +151,7 @@ import {
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
 import { requestNotaryStamp, fetchMonetizationStatus } from '../../services/penApi';
-import { ensureWidgetSheet, registerWidget } from '../../services/pollCloud';
+import { ensureWidgetSheet, registerTapWidget, registerWidget } from '../../services/pollCloud';
 import { ensureBundleTrackingSheets } from '../../services/widgetTracking';
 import { resolveSigningKeys } from '../../services/penKeys';
 import {
@@ -1966,8 +1966,15 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         });
         const ready = await ensureBundleTrackingSheets({
           session,
-          bundle: b
+          bundle: b,
+          taps: true
         });
+        const tapSheet = ready.manifest.tapSpreadsheetId?.trim();
+        if (tapSheet) {
+          await registerTapWidget({ session, docId: ready.manifest.docId, spreadsheetId: tapSheet }).catch(
+            (e: unknown) => console.warn('[pen] tap widget register failed', e instanceof Error ? e.message : e)
+          );
+        }
         bundleRef.current = ready;
         persist({
           ...ready,

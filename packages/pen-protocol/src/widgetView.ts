@@ -11,7 +11,7 @@ export type WidgetRevealPolicy = 'after_response' | 'at_close' | 'creator_only';
 
 export type WidgetViewPhase = 'locked' | 'ballot' | 'waiting' | 'results' | 'owner';
 
-export type WidgetBackendKind = 'poll' | 'toggle' | 'stamp' | 'rank' | 'allocate' | 'submit';
+export type WidgetBackendKind = 'poll' | 'toggle' | 'stamp' | 'rank' | 'allocate' | 'submit' | 'tap';
 
 export function encodeWidgetId(docId: string, groupLayerId: string): string {
   return `${docId.trim()}:${groupLayerId.trim()}`;

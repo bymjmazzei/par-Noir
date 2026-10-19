@@ -4,6 +4,7 @@ import {
   buildActionStageDocument,
   readPenActionMessage,
   type PenActionEffect,
+  type PenActionTrack,
   type PenFeedPagePayload,
   type WidgetViewPayload
 } from '@par-noir/pen-protocol';
@@ -191,6 +192,7 @@ function PageSurface({
   page,
   titleFallback,
   onEffect,
+  onTrack,
   onPressBlocked,
   onReportLink,
   actorId,
@@ -203,6 +205,7 @@ function PageSurface({
   page: FeedTilePage;
   titleFallback: string;
   onEffect?: (effect: PenActionEffect) => void | Promise<void>;
+  onTrack?: (track: PenActionTrack) => void;
   onPressBlocked?: () => void;
   onReportLink?: (url: string) => void;
   actorId?: string;
@@ -234,6 +237,7 @@ function PageSurface({
         widgetViews={widgetViews}
         externalClockSec={externalClockSec}
         onEffect={onEffect}
+        onTrack={onTrack}
         onPressBlocked={onPressBlocked}
         onReportLink={onReportLink}
         actorId={actorId}
@@ -285,6 +289,7 @@ export function FeedTileSurface({
   aspectRatio = '9/16',
   layout = 'preview',
   onEffect,
+  onTrack,
   onPressBlocked,
   onReportLink,
   actorId,
@@ -312,6 +317,8 @@ export function FeedTileSurface({
   layout?: 'preview' | 'feed';
   /** Side effect of a button press on the action layer. Links arrive after the leave sheet. */
   onEffect?: (effect: PenActionEffect) => void | Promise<void>;
+  /** Button tap rows for the post's Taps widget. Omit in test mode so nothing records. */
+  onTrack?: (track: PenActionTrack) => void;
   /** Unlock required before backend widget respond. */
   onPressBlocked?: () => void;
   /** Report link on the leave sheet. Published feed posts only. */
@@ -437,6 +444,7 @@ export function FeedTileSurface({
                 }}
                 titleFallback={model.title}
                 onEffect={pageEffect(i)}
+                onTrack={onTrack}
                 onPressBlocked={onPressBlocked}
                 onReportLink={onReportLink}
                 actorId={actorId}
@@ -472,6 +480,7 @@ export function FeedTileSurface({
                 page={page}
                 titleFallback={model.title}
                 onEffect={pageEffect(i)}
+                onTrack={onTrack}
                 onPressBlocked={onPressBlocked}
                 onReportLink={onReportLink}
                 actorId={actorId}
@@ -493,6 +502,7 @@ export function FeedTileSurface({
           }}
           titleFallback={model.title}
           onEffect={pageEffect(0)}
+          onTrack={onTrack}
           onPressBlocked={onPressBlocked}
           onReportLink={onReportLink}
           actorId={actorId}

@@ -644,6 +644,23 @@ export async function initializeDatabase(): Promise<void> {
     `);
 
     await db.query(`
+      CREATE TABLE IF NOT EXISTS widget_tap_events (
+        action_id TEXT PRIMARY KEY,
+        widget_id TEXT NOT NULL,
+        actor_hash TEXT NOT NULL,
+        button TEXT NOT NULL DEFAULT '',
+        action TEXT NOT NULL DEFAULT '',
+        target TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_widget_tap_events_widget
+      ON widget_tap_events(widget_id, created_at)
+    `);
+
+    await db.query(`
       CREATE INDEX IF NOT EXISTS idx_engagement_type
       ON engagement(type)
     `);

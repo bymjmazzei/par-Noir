@@ -50,6 +50,35 @@ describe('pressPenAction', () => {
     expect(empty.effect.kind).toBe('none');
   });
 
+  it('open, go-to-page, and calendar presses carry a tap row for the doc Taps widget', () => {
+    const textDoc = (text: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] });
+    const open = press([button('b', { behavior: 'cta.open', openUrl: 'https://shop.example/x', textDoc: textDoc('Shop') })], 'b');
+    expect(open.track?.widgetId).toBe('doc-1:taps');
+    expect(open.track?.row).toMatchObject({
+      trigger: 'widget.tap',
+      actorId: 'actor',
+      headers: ['button', 'action', 'target'],
+      cells: ['Shop', 'open', 'shop.example']
+    });
+    const go = press([button('b', { behavior: 'page.go', goTo: 'slug:menu', label: 'Back' })], 'b');
+    expect(go.track?.row.cells).toEqual(['Back', 'go to page', 'menu']);
+    const next = press([button('b', { behavior: 'page.go', goTo: 'next', label: 'Next' })], 'b');
+    expect(next.track?.row.cells).toEqual(['Next', 'go to page', 'next']);
+    const cal = press(
+      [button('b', { behavior: 'cta.calendar', eventStart: '2026-11-01T18:00:00Z', eventTitle: 'Launch night', label: 'Add' })],
+      'b'
+    );
+    expect(cal.track?.row.cells).toEqual(['Add', 'calendar', 'Launch night']);
+    expect(press([button('b', { behavior: 'cta.open', openUrl: 'javascript:alert(1)' })], 'b').track).toBeUndefined();
+    expect(press([button('b', { behavior: 'widget.reveal', revealLayerId: 't' })], 'b').track).toBeUndefined();
+    const noDoc = pressPenAction({
+      layers: [button('b', { behavior: 'page.go', goTo: 'next' })],
+      layerId: 'b',
+      state: emptyPenViewerState()
+    });
+    expect(noDoc.track?.widgetId).toBeUndefined();
+  });
+
   it('widget.reveal adds the target to revealed state', () => {
     const r = press([button('b', { behavior: 'widget.reveal', revealLayerId: 't' })], 'b');
     expect(r.effect.kind).toBe('none');
