@@ -30,7 +30,8 @@ import {
   type LayerAlignMode,
   type PenPageLayer,
   type PenPageLayout,
-  type PenSectionContent
+  type PenSectionContent,
+  type PenWidgetElement
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
@@ -46,7 +47,7 @@ import { SoundCatalogMenu } from './SoundCatalogMenu';
 import { CloudFeedMediaPicker, type CloudMediaKind } from './CloudFeedMediaPicker';
 import { IconChevron, IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
 import { LayerTitleControl } from './LayerTitleControl';
-import { type LayersAddAccordionSection } from './layersAddMenu';
+import { LAYERS_WIDGET_ELEMENTS, type LayersAddAccordionSection } from './layersAddMenu';
 
 export function layerDisplayLabel(layer: PenPageLayer, all: PenPageLayer[]): string {
   return defaultLayerName(layer, all);
@@ -275,6 +276,15 @@ export function LayersPopover({
     commit(upsertLayer(prepared, layer));
     onSelectLayer(layer.id);
     onSelectedIdsChange([layer.id]);
+  }
+
+  function addPlaced(element: PenWidgetElement) {
+    const active = allLayers.find((layer) => layer.id === activeLayerId);
+    const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
+    const placed = placeWidgetLayer(prepared, groupId, element);
+    commit(placed.section);
+    onSelectLayer(placed.layerId);
+    onSelectedIdsChange([placed.layerId]);
   }
 
   function closeMediaPicker() {
@@ -658,14 +668,44 @@ export function LayersPopover({
               <button
                 type="button"
                 role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
-                onClick={() => {
-                  closeAddMenu();
-                  setWidgetOpen(true);
-                }}
+                aria-expanded={addSection === 'widgets'}
+                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium hover:bg-neutral-50"
+                onClick={() => toggleAddSection('widgets')}
               >
                 Widgets
+                <IconChevron
+                  className={`shrink-0 text-neutral-400 transition-transform ${addSection === 'widgets' ? 'rotate-180' : ''}`}
+                />
               </button>
+              {addSection === 'widgets' && (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                    onClick={() => {
+                      closeAddMenu();
+                      setWidgetOpen(true);
+                    }}
+                  >
+                    All widgets
+                  </button>
+                  {LAYERS_WIDGET_ELEMENTS.map(({ element, label }) => (
+                    <button
+                      key={element}
+                      type="button"
+                      role="menuitem"
+                      className="block w-full py-1.5 pl-5 pr-3 text-left text-[11px] hover:bg-neutral-50"
+                      onClick={() => {
+                        addPlaced(element);
+                        closeAddMenu();
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </>
+              )}
               <button
                 type="button"
                 role="menuitem"
