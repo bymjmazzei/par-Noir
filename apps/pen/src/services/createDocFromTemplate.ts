@@ -7,6 +7,7 @@ import {
   defaultEditorPagePresentation,
   emptyPollTable,
   getClass,
+  pageSizeForGalleryAspect,
   hashSectionContent,
   notaryHashForGenesis,
   attachNotary,
@@ -59,6 +60,10 @@ export async function bootstrapDocBundle(input: {
   forkedFromDocId?: string;
   /** When set, used instead of template seed presentation / layout. */
   pageLayout?: PenDocManifest['pageLayout'];
+  pageSize?: PenDocManifest['pageSize'];
+  pageOrientation?: PenDocManifest['pageOrientation'];
+  flowWorkspaceWidthPx?: PenDocManifest['flowWorkspaceWidthPx'];
+  flowWorkspaceHeightPx?: PenDocManifest['flowWorkspaceHeightPx'];
   pageView?: PenDocManifest['pageView'];
   pagePresentation?: PenDocManifest['pagePresentation'];
   galleryAspect?: PenDocManifest['galleryAspect'];
@@ -123,10 +128,20 @@ export async function bootstrapDocBundle(input: {
   const parentId = getClass(classId)?.parentId;
   const social = parentId === 'social';
   const widget = parentId === 'widgets';
+  const galleryAspect = input.galleryAspect ?? input.template.seedGalleryAspect;
+  const seedSize =
+    social && !input.pageLayout && !input.pageSize
+      ? pageSizeForGalleryAspect(galleryAspect)
+      : null;
   const pageLayout =
     input.pageLayout ||
+    seedSize?.layout ||
     input.template.seedPageLayout ||
     (social || widget ? 'flow' : 'letter');
+  const pageSize = input.pageSize ?? seedSize?.id;
+  const pageOrientation = input.pageOrientation ?? seedSize?.orientation;
+  const flowWorkspaceWidthPx = input.flowWorkspaceWidthPx ?? seedSize?.widthPx;
+  const flowWorkspaceHeightPx = input.flowWorkspaceHeightPx ?? seedSize?.heightPx;
   const pagePresentation =
     input.pagePresentation ||
     input.template.seedPagePresentation ||
@@ -151,9 +166,13 @@ export async function bootstrapDocBundle(input: {
     updatedAt: now,
     genesisProof: genesis,
     pageLayout,
+    ...(pageSize ? { pageSize } : {}),
+    ...(pageOrientation ? { pageOrientation } : {}),
+    ...(flowWorkspaceWidthPx != null ? { flowWorkspaceWidthPx } : {}),
+    ...(flowWorkspaceHeightPx != null ? { flowWorkspaceHeightPx } : {}),
     pageView: input.pageView || defaultPageView(pageLayout),
     pagePresentation,
-    galleryAspect: input.galleryAspect ?? input.template.seedGalleryAspect,
+    galleryAspect,
     pageSwipeAxis:
       input.pageSwipeAxis ||
       input.template.seedPageSwipeAxis ||

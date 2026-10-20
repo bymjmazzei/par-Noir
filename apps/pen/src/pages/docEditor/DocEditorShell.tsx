@@ -1734,6 +1734,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
               activeSlug={activeSlug}
               pageView={pageView}
               presentation={pagePresentation}
+              maxHeightPx={previewPaneSize.height}
               screenAllPages={screenAllPages}
               onToggleScreenPages={() => setScreenAllPages((on) => !on)}
               onSelect={setActiveSlug}

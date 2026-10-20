@@ -760,15 +760,26 @@ export function PageFinderTiles({
 }) {
   const screen = pageView === 'screen';
   const axis = pageTileAxis(pageView);
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const list = listRef.current;
+    const tile = list?.querySelector<HTMLElement>('[data-active-page]');
+    if (!list || !tile) return;
+    if (tile.offsetLeft < list.scrollLeft) list.scrollLeft = tile.offsetLeft;
+    else if (tile.offsetLeft + tile.offsetWidth > list.scrollLeft + list.clientWidth) {
+      list.scrollLeft = tile.offsetLeft + tile.offsetWidth - list.clientWidth;
+    }
+    if (tile.offsetTop < list.scrollTop) list.scrollTop = tile.offsetTop;
+    else if (tile.offsetTop + tile.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = tile.offsetTop + tile.offsetHeight - list.clientHeight;
+    }
+  }, [activeSlug]);
   return (
     <div
+      ref={listRef}
       data-page-tiles={screen ? 'screen' : axis}
-      className={`flex overflow-auto ${
-        screen
-          ? 'max-w-[70vw] flex-row gap-0'
-          : axis === 'vertical'
-            ? 'max-h-80 flex-col gap-1'
-            : 'max-w-[70vw] flex-row gap-1'
+      className={`relative flex min-h-0 min-w-0 max-w-full overflow-auto overscroll-contain ${
+        screen ? 'flex-row gap-0' : axis === 'vertical' ? 'flex-col gap-1' : 'flex-row gap-1'
       }`}
     >
       {pages.map((page, index) => {
@@ -777,6 +788,7 @@ export function PageFinderTiles({
         return (
           <div
             key={page.slug}
+            data-active-page={selected ? '' : undefined}
             draggable
             onDragStart={() => onDragStart(index)}
             onDragOver={(event: DragEvent) => event.preventDefault()}
@@ -853,12 +865,15 @@ export function PreviewPageBar({
   onReorder,
   onFlip,
   screenAllPages = false,
-  onToggleScreenPages
+  onToggleScreenPages,
+  maxHeightPx
 }: {
   pages: Array<{ slug: string; title: string; section?: PenSectionContent }>;
   activeSlug: string;
   pageView: PenPageView;
   presentation: PenPagePresentation;
+  /** Height of the live preview above the bar. The page list never grows past it. */
+  maxHeightPx?: number;
   onSelect: (slug: string) => void;
   onAddPage: () => void;
   onDeletePage: (slug: string) => void;
@@ -927,9 +942,9 @@ export function PreviewPageBar({
     <div
       role="toolbar"
       aria-label="Pages"
-      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-t border-stone-300 bg-stone-50 px-2 py-1.5"
+      className="relative grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-t border-stone-300 bg-stone-50 px-2 py-1.5"
     >
-      <div ref={pagesRef} className="relative justify-self-start">
+      <div ref={pagesRef} className="justify-self-start">
         <button
           type="button"
           aria-label="Pages"
@@ -940,8 +955,18 @@ export function PreviewPageBar({
           {activeLabel}
         </button>
         {pagesOpen && (
-          <div className="absolute bottom-full left-0 z-40 mb-1 max-w-[80vw] rounded border border-stone-300 bg-white p-1 shadow-lg">
-            <div className="mb-1 flex items-center justify-end gap-1">
+          <div
+            data-pages-popover
+            className={`absolute bottom-full left-2 z-40 mb-1 flex max-w-[calc(100%-1rem)] flex-col rounded border border-stone-300 bg-white p-1 shadow-lg ${
+              maxHeightPx && maxHeightPx > 0 ? '' : 'max-h-80'
+            }`}
+            style={
+              maxHeightPx && maxHeightPx > 0
+                ? { maxHeight: Math.max(120, Math.round(maxHeightPx) - 8) }
+                : undefined
+            }
+          >
+            <div className="mb-1 flex shrink-0 items-center justify-end gap-1">
               {onRenamePage && active ? (
                 <input
                   ref={titleRef}
@@ -988,15 +1013,11 @@ export function PreviewPageBar({
               deleteMode={deleteMode}
               canDelete={canDelete}
               onDeletePage={onDeletePage}
-              onSelect={(slug) => {
-                onSelect(slug);
-                setPagesOpen(false);
-              }}
+              onSelect={onSelect}
               onRenameRequest={
                 onRenamePage
                   ? (slug) => {
                       onSelect(slug);
-                      setPagesOpen(true);
                       requestAnimationFrame(() => titleRef.current?.select());
                     }
                   : undefined

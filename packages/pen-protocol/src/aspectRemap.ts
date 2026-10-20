@@ -2,9 +2,20 @@
  * Remap overlay layer rects when switching Social galleryAspect.
  */
 
-import type { PenDocManifest, PenPageLayer, PenSectionContent } from './types.js';
+import type { PenDocManifest, PenPageLayer, PenPageOrientation, PenSectionContent } from './types.js';
+import { selectPageSize, type PageSizeChoice } from './pageGeometry.js';
 
 export type GalleryAspect = NonNullable<PenDocManifest['galleryAspect']>;
+
+/** Ratio page a social template was drawn at. No aspect means the template keeps its own layout. */
+export function pageSizeForGalleryAspect(
+  aspect: string | null | undefined
+): (PageSizeChoice & { orientation: PenPageOrientation }) | null {
+  if (aspect !== '9/16' && aspect !== '16/9' && aspect !== '1/1') return null;
+  const orientation: PenPageOrientation = aspect === '16/9' ? 'landscape' : 'portrait';
+  const choice = selectPageSize(aspect === '1/1' ? 'ratio-1-1' : 'ratio-9-16', undefined, orientation);
+  return { ...choice, orientation };
+}
 
 /** Canonical social canvas size for each gallery aspect (CSS px). */
 export function canvasSizeForAspect(aspect: GalleryAspect): { w: number; h: number } {

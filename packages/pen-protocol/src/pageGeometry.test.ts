@@ -33,6 +33,7 @@ import {
   sizeMediaLayerForAttach,
   wrapSideFromGeom
 } from './pageGeometry.js';
+import { pageSizeForGalleryAspect } from './aspectRemap.js';
 import { emptyTipTapDoc } from './richDoc.js';
 import type { PenSectionContent } from './types.js';
 import { attachMediaToLayer, createTextLayer, upsertLayer } from './layers.js';
@@ -96,6 +97,29 @@ describe('pageGeometry', () => {
       heightPx: A4_HEIGHT_PX
     });
     expect(matchPageSize('flow', 1920, 1080, 'custom').id).toBe('custom');
+  });
+
+  it('a social template opens at the ratio page it was drawn at', () => {
+    expect(pageSizeForGalleryAspect('9/16')).toMatchObject({
+      id: 'ratio-9-16',
+      layout: 'flow',
+      orientation: 'portrait',
+      widthPx: 360,
+      heightPx: 640
+    });
+    expect(pageSizeForGalleryAspect('16/9')).toMatchObject({
+      id: 'ratio-9-16',
+      orientation: 'landscape',
+      widthPx: 640,
+      heightPx: 360
+    });
+    expect(pageSizeForGalleryAspect('1/1')).toMatchObject({
+      id: 'ratio-1-1',
+      orientation: 'portrait',
+      widthPx: 360,
+      heightPx: 360
+    });
+    expect(pageSizeForGalleryAspect(undefined)).toBeNull();
   });
 
   it('legacy % migrate is stable across page layouts (same px)', () => {

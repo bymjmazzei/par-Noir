@@ -147,6 +147,36 @@ describe('preview page toolbar', () => {
     expect(horizontal).not.toContain('data-page-seam');
   });
 
+  it('page tiles scroll inside the preview and selecting one keeps the picker open', () => {
+    const pages = [
+      { slug: 'body', title: 'Page 1', section: emptySection('body') },
+      { slug: 'page-2', title: 'Page 2', section: emptySection('page-2') }
+    ];
+    for (const pageView of ['horizontal', 'vertical', 'screen'] as const) {
+      const html = renderToStaticMarkup(
+        <PageFinderTiles
+          pageView={pageView}
+          pages={pages}
+          activeSlug="page-2"
+          presentation={defaultPagePresentation()}
+          onDeletePage={() => undefined}
+          onSelect={() => undefined}
+          onDragStart={() => undefined}
+          onDrop={() => undefined}
+        />
+      );
+      expect(html).not.toContain('vw]');
+      expect(html).toContain('max-w-full');
+      expect(html).toContain('overflow-auto');
+      expect(html.match(/data-active-page/g)?.length).toBe(1);
+    }
+    const source = readFileSync(resolve(__dirname, 'PreviewPageBar.tsx'), 'utf8');
+    const finder = source.slice(source.indexOf('<PageFinderTiles'), source.indexOf('onDrop={dropOn}'));
+    expect(finder).toContain('onSelect={onSelect}');
+    expect(finder).not.toContain('setPagesOpen(false)');
+    expect(source).not.toContain('max-w-[80vw]');
+  });
+
   it('orientation shows the active icon and keeps the choices closed', () => {
     const html = renderToStaticMarkup(
       <PreviewOrientationMenu
