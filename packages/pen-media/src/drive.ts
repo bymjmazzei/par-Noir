@@ -43,6 +43,9 @@ function withType(blob: Blob, mime: string): Blob {
   return mime && blob.type !== mime ? new Blob([blob], { type: mime }) : blob;
 }
 
+/** PNM1 bytes already downloaded while the doc key was not yet on the device. */
+const sealedAwaitingKey = new Map<string, Blob>();
+
 /** Download a Drive file; PNM1 → decrypted with the doc key, otherwise the raw media. */
 export async function downloadPenMedia(params: {
   pnIdentifier: string;
@@ -50,19 +53,25 @@ export async function downloadPenMedia(params: {
   docId?: string;
   fileId: string;
 }): Promise<Blob> {
-  const raw = await trackActivity('download', () =>
-    deviceDriveDownloadBlobForSession({
-      pnIdentifier: params.pnIdentifier,
-      fileId: params.fileId
-    })
-  );
+  const raw =
+    sealedAwaitingKey.get(params.fileId) ??
+    (await trackActivity('download', () =>
+      deviceDriveDownloadBlobForSession({
+        pnIdentifier: params.pnIdentifier,
+        fileId: params.fileId
+      })
+    ));
   const head = await headBytes(raw, PEN_MEDIA_HEADER_BYTES);
   if (!isPenMediaHeader(head)) {
     const type = raw.type && raw.type !== 'application/octet-stream' ? raw.type : '';
     return withType(raw, type || sniffMediaMime(await headBytes(raw, SNIFF_BYTES)));
   }
   const key = params.docId ? penMediaConfig().loadDocKey(params.docId) : null;
-  if (!key) throw new Error('doc_key_required');
+  if (!key) {
+    sealedAwaitingKey.set(params.fileId, raw);
+    throw new Error('doc_key_required');
+  }
+  sealedAwaitingKey.delete(params.fileId);
   const plain = await openMedia(raw, key, '');
   return withType(plain, sniffMediaMime(await headBytes(plain, SNIFF_BYTES)));
 }

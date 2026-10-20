@@ -5,6 +5,7 @@ import { generateChatKey, isPenMediaHeader } from '@par-noir/dm-crypto';
 const drive = vi.hoisted(() => ({
   files: new Map<string, Blob>(),
   uploads: 0,
+  downloads: 0,
   failNext: 0,
   noToken: false,
   gate: null as Promise<void> | null
@@ -13,6 +14,7 @@ const drive = vi.hoisted(() => ({
 vi.mock('@par-noir/device-cloud-credentials', () => ({
   getCloudAccessTokenFromSession: vi.fn(() => (drive.noToken ? null : 'google-at')),
   deviceDriveDownloadBlobForSession: vi.fn(async (p: { fileId: string }) => {
+    drive.downloads += 1;
     const hit = drive.files.get(p.fileId);
     if (!hit) throw new Error('drive_download_404');
     return hit;
@@ -82,6 +84,7 @@ beforeEach(async () => {
   for (let i = 1; i <= 3; i++) await deleteLocalMedia(`drive_f${i}`);
   drive.files.clear();
   drive.uploads = 0;
+  drive.downloads = 0;
   drive.failNext = 0;
   drive.noToken = false;
   drive.gate = null;
@@ -211,5 +214,21 @@ describe('pen-media download', () => {
     await expect(
       ensurePenMediaUrl({ src: 'penmedia:f7', docId: 'other-doc', pnIdentifier: 'pn' })
     ).rejects.toThrow('doc_key_required');
+  });
+
+  it('downloads PNM1 once when the doc key lands after the first try', async () => {
+    const original = videoBlob(4000);
+    await attachMediaFile({ pnIdentifier: 'pn', docId: 'd8', file: original });
+    drive.files.set('f8', drive.files.get('f1')!);
+    const params = { src: 'penmedia:f8', docId: 'late-key-doc', pnIdentifier: 'pn' };
+
+    await expect(ensurePenMediaUrl(params)).rejects.toThrow('doc_key_required');
+    await expect(ensurePenMediaUrl(params)).rejects.toThrow('doc_key_required');
+    keys.set('late-key-doc', keys.get('d8')!);
+    const url = await ensurePenMediaUrl(params);
+
+    expect(url).toMatch(/^blob:/);
+    expect(drive.downloads).toBe(1);
+    expect(await bytesOf((await getLocalMedia('drive_f8'))!.blob)).toEqual(await bytesOf(original));
   });
 });
