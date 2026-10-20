@@ -156,6 +156,7 @@ export function punchVideoHolesFromLive(liveRoot: HTMLElement, cloneRoot: HTMLEl
   const liveVideos = Array.from(liveRoot.querySelectorAll('video')) as HTMLVideoElement[];
   const cloneVideos = Array.from(cloneRoot.querySelectorAll('video')) as HTMLVideoElement[];
   const rootRect = liveRoot.getBoundingClientRect();
+  const scale = visualScale(liveRoot);
   const count = Math.min(liveVideos.length, cloneVideos.length);
   for (let i = 0; i < count; i++) {
     const live = liveVideos[i]!;
@@ -164,7 +165,13 @@ export function punchVideoHolesFromLive(liveRoot: HTMLElement, cloneRoot: HTMLEl
       clone.remove();
       continue;
     }
-    const r = live.getBoundingClientRect();
+    const vr = live.getBoundingClientRect();
+    const r = {
+      left: rootRect.left + (vr.left - rootRect.left) / scale,
+      top: rootRect.top + (vr.top - rootRect.top) / scale,
+      width: vr.width / scale,
+      height: vr.height / scale
+    };
     const cs = getComputedStyle(live);
     const ph = document.createElement('div');
     const floatVal = cs.float;
@@ -294,12 +301,19 @@ export function sanitizeCloneForRaster(clone: HTMLElement): void {
   forceSystemFonts(clone);
 }
 
+/** Layout px, unaffected by ancestor transforms; the clone is laid out from computed styles in these units. */
 function measureEl(el: HTMLElement): { w: number; h: number } {
   const rect = el.getBoundingClientRect();
   return {
-    w: Math.max(1, Math.round(rect.width || el.offsetWidth || 1)),
-    h: Math.max(1, Math.round(rect.height || el.offsetHeight || 1))
+    w: Math.max(1, Math.round(el.offsetWidth || rect.width || 1)),
+    h: Math.max(1, Math.round(el.offsetHeight || rect.height || 1))
   };
+}
+
+/** On-screen px per layout px (preview zoom). Divide client rects by this to get layout px. */
+export function visualScale(el: HTMLElement): number {
+  const rect = el.getBoundingClientRect();
+  return el.offsetWidth > 0 && rect.width > 0 ? rect.width / el.offsetWidth : 1;
 }
 
 export type RasterSizeOpts = {
@@ -419,8 +433,11 @@ export async function rasterizeElementSafeStill(
 ): Promise<Blob> {
   const quality = opts?.quality ?? JPEG_QUALITY;
   const { w, h } = measureEl(el);
-  const { cw, ch, sx, sy } = rasterOutputSize(w, h, opts);
-  const scale = Math.min(sx, sy);
+  const { cw, ch, sx: layoutSx, sy: layoutSy } = rasterOutputSize(w, h, opts);
+  const scale = Math.min(layoutSx, layoutSy);
+  const zoom = visualScale(el);
+  const sx = layoutSx / zoom;
+  const sy = layoutSy / zoom;
 
   const canvas = document.createElement('canvas');
   canvas.width = cw;

@@ -24,7 +24,8 @@ import type { PenSectionContent } from '@par-noir/pen-protocol';
 import {
   rasterOutputSize,
   rasterizeElementToPosterBlob,
-  rasterizeElementSafeStill
+  rasterizeElementSafeStill,
+  visualScale
 } from './rasterizePagePoster';
 import { playbackMode } from './playbackMode';
 import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
@@ -239,10 +240,12 @@ async function seekSlots(slots: VideoSlot[], timeSec: number): Promise<void> {
 
 /** Flattened JPEG of the page with each video's first frame in its slot. No encode. */
 export async function composePageStill(root: HTMLElement): Promise<Blob> {
-  const rect = root.getBoundingClientRect();
-  const srcW = Math.max(2, Math.round(rect.width || root.clientWidth || 360));
-  const srcH = Math.max(2, Math.round(rect.height || root.clientHeight || 640));
-  const { cw, ch, sx, sy } = rasterOutputSize(srcW, srcH);
+  const srcW = Math.max(2, Math.round(root.offsetWidth || 360));
+  const srcH = Math.max(2, Math.round(root.offsetHeight || 640));
+  const { cw, ch, sx: layoutSx, sy: layoutSy } = rasterOutputSize(srcW, srcH);
+  const zoom = visualScale(root);
+  const sx = layoutSx / zoom;
+  const sy = layoutSy / zoom;
   const slots = collectUntaintedVideoSlots(root);
   const canvas = await buildStaticBackdrop(root, cw, ch);
   if (slots.length) {

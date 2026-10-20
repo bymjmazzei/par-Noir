@@ -1553,7 +1553,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
                       previewStrip.docH
                     );
                     const pageManifest =
-                      pageView === 'screen'
+                      pageView === 'screen' && !captureLayers
                         ? {
                             ...bundle.manifest,
                             pagePresentation: {

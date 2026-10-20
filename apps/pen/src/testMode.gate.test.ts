@@ -26,6 +26,17 @@ describe('test mode', () => {
     expect(body).not.toMatch(/composePageToVideo/);
   });
 
+  it('rasterizes the zoomed preview at layout size so the still lines up with the action layer', () => {
+    const raster = read('services/rasterizePagePoster.ts');
+    expect(raster).toMatch(/w: Math\.max\(1, Math\.round\(el\.offsetWidth/);
+    const punch = raster.slice(raster.indexOf('export function punchVideoHolesFromLive'));
+    expect(punch.slice(0, punch.indexOf('\n}\n'))).toMatch(/visualScale\(liveRoot\)/);
+    const compose = read('services/composePageVideoEncode.ts');
+    const still = compose.slice(compose.indexOf('export async function composePageStill'));
+    expect(still.slice(0, still.indexOf('\n}\n'))).toMatch(/visualScale\(root\)/);
+    expect(read('pages/docEditor/DocEditorShell.tsx')).toMatch(/pageView === 'screen' && !captureLayers/);
+  });
+
   it('offers Test beside Build in the templates feed and preview modal', () => {
     expect(read('components/TemplatesFeedScroller.tsx')).toMatch(/<TemplateTestButton/);
     expect(read('components/TemplatesBrowse.tsx')).toMatch(/<TemplateTestButton/);
