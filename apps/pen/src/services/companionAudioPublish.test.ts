@@ -1,9 +1,9 @@
 /**
- * A still with audio stays a note. Own lanes become companion files.
- * A licensed lane sets musicPenDocId and is not uploaded.
+ * Page audio lives inside the published file. A still page with its own audio
+ * publishes as video; a licensed lane only sets musicPenDocId and is never uploaded.
  */
 import { describe, expect, it } from 'vitest';
-import { publishPostToOwnerCloud } from './penPublish';
+import { pagePublishesAsVideo, publishPostToOwnerCloud } from './penPublish';
 import type { LocalDocBundle } from './penLocalStore';
 
 function prose(text: string) {
@@ -13,8 +13,7 @@ function prose(text: string) {
   };
 }
 
-function bundle(): LocalDocBundle {
-  const voice = `data:audio/mpeg;base64,${btoa('voice')}`;
+function bundle(audioTracks: unknown[]): LocalDocBundle {
   return {
     manifest: {
       docId: 'doc-still',
@@ -42,10 +41,7 @@ function bundle(): LocalDocBundle {
             h: 160,
             zIndex: 1,
             imageSrc: 'penlocal:still',
-            audioTracks: [
-              { id: 'voice', src: voice, offsetSec: 2, gain: 70 },
-              { id: 'song', licensedDocId: 'music-doc-9' }
-            ]
+            audioTracks
           }
         ]
       }
@@ -54,15 +50,31 @@ function bundle(): LocalDocBundle {
   } as unknown as LocalDocBundle;
 }
 
-describe('companion audio publish', () => {
-  it('uploads own audio beside the still and points at the licensed doc', async () => {
+const voice = { id: 'voice', src: `data:audio/mpeg;base64,${btoa('voice')}`, offsetSec: 2, gain: 70 };
+const song = { id: 'song', licensedDocId: 'music-doc-9' };
+
+describe('page audio publish', () => {
+  it('a still page with its own audio publishes as video so the sound is in the file', () => {
+    const doc = bundle([voice, song]);
+    expect(pagePublishesAsVideo(doc.sections[0]!, doc.manifest)).toBe(true);
+  });
+
+  it('a still page with only licensed audio is one image pointing at the licensed doc', async () => {
+    const doc = bundle([song]);
+    expect(pagePublishesAsVideo(doc.sections[0]!, doc.manifest)).toBe(false);
+
     let n = 0;
     const puts: Array<Record<string, unknown>> = [];
-    const uploaded: string[] = [];
     const request = async (method: string, path: string, body?: unknown) => {
       if (path === '/api/drive/files') {
         n += 1;
         return new Response(JSON.stringify({ id: `file-${n}` }), { status: 200 });
+      }
+      if (path.includes('/api/aggregator/feed-media/owner-upload')) {
+        return new Response(JSON.stringify({ key: `preview-${n}` }), { status: 200 });
+      }
+      if (path.includes('/api/aggregator/feed-media/confirm-upload')) {
+        return new Response('{}', { status: 200 });
       }
       if (path.includes('/ensure-public')) {
         return new Response(
@@ -84,26 +96,21 @@ describe('companion audio publish', () => {
     };
 
     const result = await publishPostToOwnerCloud({
-      bundle: bundle(),
+      bundle: doc,
       feedIds: ['public'],
       pnIdentifier: 'pn',
       membership: false,
       parentFolderId: 'public-folder',
       request,
-      uploadCompanionAudio: async (_bytes, index) => {
-        uploaded.push(`lane-${index}`);
-        return `audio-${index}`;
-      }
+      image: { slug: 'body', posterBlob: new Blob([1, 2, 3], { type: 'image/jpeg' }) }
     });
 
-    expect(result.fileId).toBeTruthy();
-    expect(uploaded).toEqual(['lane-0']);
-    const post = puts[puts.length - 1];
-    expect(post?.fileType).toBe('note');
-    expect(post?.fileType).not.toBe('video');
-    expect(post?.companionAudioFileIds).toEqual(['audio-0']);
-    expect(post?.companionAudioOffsetsSec).toEqual([2]);
-    expect(post?.companionAudioGains).toEqual([70]);
+    expect(result.fileId).toBe('file-1');
+    expect(puts).toHaveLength(1);
+    const post = puts[0];
+    expect(post?.fileType).toBe('image');
+    expect(post?.penFeedPage).toBeTruthy();
     expect(post?.musicPenDocId).toBe('music-doc-9');
+    expect(post?.companionAudioFileIds).toBeUndefined();
   });
 });

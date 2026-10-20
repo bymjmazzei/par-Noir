@@ -16,14 +16,14 @@ describe('test mode', () => {
     expect(shell).toMatch(/<FeedTileTestOverlay/);
   });
 
-  it('paints the flattened page (first frame, actions hidden) under the action layer', () => {
+  it('renders only the action layer: page media is stripped and nothing is flattened', () => {
+    const overlay = read('../../../packages/feed-tile/src/FeedTileTestOverlay.tsx');
+    expect(overlay).toMatch(/posterUrl: undefined/);
+    expect(overlay).toMatch(/mediaSrc: undefined, mediaKind: undefined/);
     const shell = read('pages/docEditor/DocEditorShell.tsx');
-    expect(shell).toMatch(/penFeedMediaBySlug: testMedia/);
-    const controller = read('pages/docEditor/useDocEditorController.ts');
-    const fn = controller.slice(controller.indexOf('async function buildTestMedia'));
-    const body = fn.slice(0, fn.indexOf('async function downloadFlattened'));
-    expect(body).toMatch(/withActionsHidden\(root, \(\) => composePageStill\(root\)\)/);
-    expect(body).not.toMatch(/composePageToVideo/);
+    const test = shell.slice(shell.indexOf('<FeedTileTestOverlay'));
+    expect(test.slice(0, test.indexOf('/>'))).not.toMatch(/penFeedMediaBySlug/);
+    expect(read('pages/docEditor/useDocEditorController.ts')).not.toMatch(/buildTestMedia/);
   });
 
   it('rasterizes the zoomed preview at layout size so the still lines up with the action layer', () => {
@@ -31,9 +31,9 @@ describe('test mode', () => {
     expect(raster).toMatch(/w: Math\.max\(1, Math\.round\(el\.offsetWidth/);
     const punch = raster.slice(raster.indexOf('export function punchVideoHolesFromLive'));
     expect(punch.slice(0, punch.indexOf('\n}\n'))).toMatch(/visualScale\(liveRoot\)/);
-    const compose = read('services/composePageVideoEncode.ts');
-    const still = compose.slice(compose.indexOf('export async function composePageStill'));
-    expect(still.slice(0, still.indexOf('\n}\n'))).toMatch(/visualScale\(root\)/);
+    const encode = read('services/encodePageVideo.ts');
+    const slot = encode.slice(encode.indexOf('function measureSlot'));
+    expect(slot.slice(0, slot.indexOf('\n}\n'))).toMatch(/visualScale\(root\)/);
     expect(read('pages/docEditor/DocEditorShell.tsx')).toMatch(/pageView === 'screen' && !captureLayers/);
   });
 

@@ -10,22 +10,40 @@ import {
   normalizeSection,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
-import { resolveUntaintedDrawableVideo } from './composePageVideoEncode';
+import { peekPenMediaController } from '@par-noir/feed-tile';
+import { isUntaintedMediaUrl, resolveUntaintedDrawableVideo } from './composePageVideoEncode';
 
-function placeVideo(master: HTMLVideoElement, at: number, force = false) {
+const SEEK_TIMEOUT_MS = 1500;
+
+/** Seek and resolve once the frame at `at` is decoded (or on timeout). */
+export function seekVideoTo(master: HTMLVideoElement, at: number): Promise<void> {
   const dur = master.duration;
-  if (!dur || !Number.isFinite(dur)) return;
+  if (!dur || !Number.isFinite(dur)) return Promise.resolve();
   const target = Math.min(dur, Math.max(0, at));
-  if (!force && Math.abs((master.currentTime || 0) - target) <= 0.35) return;
-  try {
-    master.currentTime = target;
-  } catch {
-    /* metadata not ready */
+  if (Math.abs((master.currentTime || 0) - target) < 0.0005 && !master.seeking) {
+    return Promise.resolve();
   }
+  return new Promise((resolve) => {
+    const done = () => {
+      window.clearTimeout(timer);
+      master.removeEventListener('seeked', done);
+      resolve();
+    };
+    const timer = window.setTimeout(done, SEEK_TIMEOUT_MS);
+    master.addEventListener('seeked', done);
+    try {
+      master.currentTime = target;
+    } catch {
+      done();
+    }
+  });
 }
 
-function findLayerVideoMaster(root: HTMLElement, layerId: string): HTMLVideoElement | null {
+export function findLayerVideoMaster(root: HTMLElement, layerId: string): HTMLVideoElement | null {
   const key = `pen-layer:${layerId}`;
+  // A replaced source leaves the old master in the document until its viewers release it.
+  const current = peekPenMediaController(key)?.master;
+  if (current && isUntaintedMediaUrl(current.currentSrc || current.src || '')) return current;
   const scoped = root.querySelector(
     `video[data-pen-media-drawable="1"][data-pen-media-key="${CSS.escape(key)}"]`
   );
@@ -39,27 +57,25 @@ function findLayerVideoMaster(root: HTMLElement, layerId: string): HTMLVideoElem
   return null;
 }
 
-/** Pause or seek each video layer to timeline `timeSec` (compose scrub / encode). */
-export function seekSectionVideosAtTime(
+/** Pause each video layer and seek it to its file time at timeline `timeSec`; resolves when every seek lands. */
+export async function seekSectionVideosAtTime(
   section: PenSectionContent,
   root: HTMLElement,
   timeSec: number
-): void {
+): Promise<void> {
   const sec = normalizeSection(section);
   const seen = new Set<string>();
+  const seeks: Promise<void>[] = [];
   for (const layer of sec.layers || []) {
     if (layer.kind !== 'video' || seen.has(layer.id)) continue;
     seen.add(layer.id);
     const span = layerClockSpan(sec, layer);
     const master = findLayerVideoMaster(root, layer.id);
     if (!master) continue;
-    if (!layerOnClock(layer, timeSec, span)) {
-      master.pause();
-      continue;
-    }
-    const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
-    const mediaAt = layerMediaTime(layer, timeSec, rate, span);
     master.pause();
-    placeVideo(master, mediaAt, true);
+    if (!layerOnClock(layer, timeSec, span)) continue;
+    const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
+    seeks.push(seekVideoTo(master, layerMediaTime(layer, timeSec, rate, span)));
   }
+  await Promise.all(seeks);
 }

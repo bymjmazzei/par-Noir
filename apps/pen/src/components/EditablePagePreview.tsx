@@ -859,6 +859,7 @@ export function EditablePagePreview({
           {/* Body — padded content box; wrap floats + prose */}
           <div
             ref={bodyRef}
+            data-pen-page-body
             className={`pen-rich-html relative z-0 ${scrollWithParent ? 'h-full overflow-hidden' : ''} ${fontsReady ? '' : 'opacity-90'}`}
             style={{
               ...bodyStyle,

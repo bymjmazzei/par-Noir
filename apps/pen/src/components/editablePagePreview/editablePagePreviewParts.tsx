@@ -105,7 +105,11 @@ export function ResolvedPageBackground({
   if (kind === 'video') {
     const videoStyle = { objectFit: 'cover' as const };
     return (
-      <div data-pen-playback={playback} className="pointer-events-none absolute inset-0 z-0">
+      <div
+        data-pen-playback={playback}
+        data-pen-page-background="video"
+        className="pointer-events-none absolute inset-0 z-0"
+      >
         {!resolved ? (
           posterUrl ? (
             <img src={posterUrl} alt="" className="h-full w-full object-cover" draggable={false} />
@@ -122,6 +126,7 @@ export function ResolvedPageBackground({
   if (!resolved) return null;
   return (
     <div
+      data-pen-page-background="image"
       className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
       style={{ backgroundImage: `url(${resolved})` }}
     />

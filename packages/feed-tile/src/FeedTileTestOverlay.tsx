@@ -4,7 +4,7 @@ import type { PenActionEffect, WidgetViewPayload } from '@par-noir/pen-protocol'
 import { FeedTileSurface, type FeedTileViewModel } from './FeedTileSurface.js';
 import { sandboxEffect } from './sandboxEffect.js';
 
-/** Full-screen sandbox: every button works on this screen; nothing is saved or sent. */
+/** Full-screen sandbox for navigation: only the action layer renders; every button works; nothing is saved or sent. */
 export function FeedTileTestOverlay({
   model,
   aspectRatio = '9/16',
@@ -40,7 +40,15 @@ export function FeedTileTestOverlay({
     if (outcome.openUrl) window.open(outcome.openUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const tileModel = useMemo(() => ({ ...model, widgetViews }), [model, widgetViews]);
+  const tileModel = useMemo(
+    () => ({
+      ...model,
+      posterUrl: undefined,
+      pages: model.pages.map((page) => ({ ...page, mediaSrc: undefined, mediaKind: undefined })),
+      widgetViews
+    }),
+    [model, widgetViews]
+  );
   const widthClass = aspectRatio === '16/9' ? 'w-[min(90vw,48rem)]' : aspectRatio === '1/1' ? 'w-[min(80vw,28rem)]' : 'w-[min(80vw,22rem)]';
 
   const overlay = (
@@ -57,7 +65,7 @@ export function FeedTileTestOverlay({
         onClick={(event) => event.stopPropagation()}
       >
         <span className="rounded bg-amber-400 px-2 py-1 font-semibold text-black">
-          Test mode: nothing is saved
+          Test mode: buttons only, nothing is saved
         </span>
         <button
           type="button"

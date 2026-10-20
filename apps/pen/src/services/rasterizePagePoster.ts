@@ -15,6 +15,7 @@ const JPEG_QUALITY = 0.85;
 const INLINE_STYLE_PROPS = [
   'zoom',
   'display',
+  'visibility',
   'float',
   'clear',
   'position',
@@ -121,6 +122,17 @@ function shouldSkipInlineValue(prop: string, val: string): boolean {
 }
 
 /**
+ * A computed background-image that can be drawn without tainting the canvas:
+ * gradients and blob:/data: urls. Any other url (remote images) taints toBlob.
+ */
+export function safeBackgroundImage(value: string | null | undefined): string | null {
+  const v = (value || '').trim();
+  if (!v || v === 'none') return null;
+  const urls = v.match(/url\s*\([^)]*\)/gi) || [];
+  return urls.every((u) => /url\s*\(\s*['"]?(blob:|data:)/i.test(u)) ? v : null;
+}
+
+/**
  * Copy layout/paint from the live tree onto the clone so foreignObject does not
  * depend on page stylesheets (invisible inside SVG-as-image).
  */
@@ -141,10 +153,8 @@ export function inlineSafeComputedStyles(liveRoot: HTMLElement, cloneRoot: HTMLE
       if (shouldSkipInlineValue(prop, val)) continue;
       parts.push(`${prop}:${val}`);
     }
-    const bgImg = cs.backgroundImage;
-    if (bgImg && bgImg !== 'none' && /url\s*\(\s*['"]?(blob:|data:)/i.test(bgImg)) {
-      parts.push(`background-image:${bgImg}`);
-    }
+    const bgImg = safeBackgroundImage(cs.backgroundImage);
+    if (bgImg) parts.push(`background-image:${bgImg}`);
     parts.push('font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif');
     clone.style.cssText = parts.join(';');
     clone.removeAttribute('class');
@@ -354,10 +364,13 @@ export async function rasterizeElementToPosterBlob(
     quality?: number;
     punchVideos?: boolean;
     mime?: 'image/jpeg' | 'image/png';
+    /** No white fill; PNG with alpha. Used for layer bands stacked over video. */
+    transparent?: boolean;
   }
 ): Promise<Blob> {
   const quality = opts?.quality ?? JPEG_QUALITY;
-  const mime = opts?.mime ?? 'image/jpeg';
+  const transparent = opts?.transparent === true;
+  const mime = transparent ? 'image/png' : (opts?.mime ?? 'image/jpeg');
   const punchVideos = opts?.punchVideos !== false;
   const { w, h } = measureEl(el);
   const { cw, ch, sx, sy } = rasterOutputSize(w, h, opts);
@@ -386,7 +399,7 @@ export async function rasterizeElementToPosterBlob(
     const serialized = new XMLSerializer().serializeToString(clone);
     svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}">
       <foreignObject width="100%" height="100%" x="0" y="0">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;transform:scale(${sx},${sy});transform-origin:0 0;background:#ffffff;font-family:system-ui,-apple-system,sans-serif;color:#111111;">
+        <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;transform:scale(${sx},${sy});transform-origin:0 0;background:${transparent ? 'transparent' : '#ffffff'};font-family:system-ui,-apple-system,sans-serif;color:#111111;">
           ${serialized}
         </div>
       </foreignObject>
@@ -404,8 +417,10 @@ export async function rasterizeElementToPosterBlob(
       i.onerror = () => reject(new Error('rasterize_image_failed'));
       i.src = url;
     });
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cw, ch);
+    if (!transparent) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cw, ch);
+    }
     ctx.drawImage(img, 0, 0);
   } finally {
     URL.revokeObjectURL(url);
@@ -424,14 +439,32 @@ export async function rasterizeElementToPosterBlob(
   });
 }
 
+/** A CSS gradient drawn alone through SVG; it loads nothing external, so it cannot taint. */
+async function cssBackgroundImage(value: string, w: number, h: number): Promise<HTMLImageElement> {
+  const escaped = value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;background-image:${escaped}"></div></foreignObject></svg>`;
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+  try {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('rasterize_gradient_failed'));
+      i.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 /**
  * Fallback when foreignObject taints: background + blob images + text via fillText.
  */
 export async function rasterizeElementSafeStill(
   el: HTMLElement,
-  opts?: RasterSizeOpts & { quality?: number }
+  opts?: RasterSizeOpts & { quality?: number; transparent?: boolean }
 ): Promise<Blob> {
   const quality = opts?.quality ?? JPEG_QUALITY;
+  const transparent = opts?.transparent === true;
   const { w, h } = measureEl(el);
   const { cw, ch, sx: layoutSx, sy: layoutSy } = rasterOutputSize(w, h, opts);
   const scale = Math.min(layoutSx, layoutSy);
@@ -445,10 +478,21 @@ export async function rasterizeElementSafeStill(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas_unavailable');
 
-  const fill = getComputedStyle(el).backgroundColor;
-  ctx.fillStyle =
-    fill && fill !== 'rgba(0, 0, 0, 0)' && fill !== 'transparent' ? fill : '#ffffff';
-  ctx.fillRect(0, 0, cw, ch);
+  const rootStyle = getComputedStyle(el);
+  const fill = rootStyle.backgroundColor;
+  const hasFill = Boolean(fill) && fill !== 'rgba(0, 0, 0, 0)' && fill !== 'transparent';
+  if (hasFill || !transparent) {
+    ctx.fillStyle = hasFill ? fill : '#ffffff';
+    ctx.fillRect(0, 0, cw, ch);
+  }
+  const gradient = safeBackgroundImage(rootStyle.backgroundImage);
+  if (gradient && !/url\s*\(/i.test(gradient)) {
+    try {
+      ctx.drawImage(await cssBackgroundImage(gradient, cw, ch), 0, 0, cw, ch);
+    } catch {
+      /* keep the solid fill */
+    }
+  }
 
   const rootRect = el.getBoundingClientRect();
 
@@ -456,6 +500,7 @@ export async function rasterizeElementSafeStill(
   for (const img of imgs) {
     const src = img.currentSrc || img.src || '';
     if (!isSafeMediaUrl(src)) continue;
+    if (getComputedStyle(img).visibility === 'hidden') continue;
     const r = img.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) continue;
     try {
@@ -533,8 +578,8 @@ export async function rasterizeElementSafeStill(
     try {
       canvas.toBlob(
         (b) => (b ? resolve(b) : reject(new Error('rasterize_toBlob_failed'))),
-        'image/jpeg',
-        quality
+        transparent ? 'image/png' : 'image/jpeg',
+        transparent ? undefined : quality
       );
     } catch (e) {
       reject(e instanceof Error ? e : new Error('rasterize_canvas_tainted'));

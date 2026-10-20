@@ -61,8 +61,6 @@ import {
   ensureOwnerAssignment,
   collectFontFamiliesFromDoc,
   templateAuthorLabel,
-  shouldPublishAsSingleComposedVideo,
-  shouldPublishAsSingleComposedVideoForFeed,
   shouldPublishAsMixedPages,
   shouldPublishAsSocialTocCollection,
   shouldPublishSocialAsCollection,
@@ -113,24 +111,14 @@ import { MediaEditorPanel } from '../../components/MediaEditorPanel';
 import { SectionTimeline } from '../../components/SectionTimeline';
 import { setPlayheadSec } from '../../services/playheadStore';
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
+import { composedMaster, type ComposePageVideoResult } from '../../services/composePageVideoEncode';
 import {
-  composedMaster,
   composePageStill,
-  composePageToVideo
-} from '../../services/composePageVideoEncode';
-import { composeTimelineEncodeOpts } from '../../services/penFeedPagePublish';
+  encodePageVideo,
+  VIDEO_ENCODER_UNAVAILABLE
+} from '../../services/encodePageVideo';
 import { setPlaybackMode } from '../../services/playbackMode';
-import {
-  rasterizeElementSafeStill,
-  rasterizeElementToPosterBlob
-} from '../../services/rasterizePagePoster';
-import {
-  actionLayerIds,
-  downloadBasename,
-  hideActionLayers,
-  pngBlobsToPdf,
-  saveDownload
-} from '../../services/penDownload';
+import { downloadBasename, pngBlobsToPdf, saveDownload } from '../../services/penDownload';
 import { WidgetEditorPanel } from '../../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../../components/LayerPartsMenu';
 import { useVerifiedAuthor } from '../../hooks/useVerifiedAuthor';
@@ -147,10 +135,13 @@ import {
   saveProjectAsLibraryTemplate,
   publishPostToOwnerCloud,
   publishTemplateToOwnerCloud,
+  pagePublishesAsVideo,
+  singlePublishSection,
   writeComposedVideoPublishHandoff,
   writeMixedPagesPublishHandoff,
   writeSocialTocCollectionHandoff,
   writeTextCollectionHandoff,
+  type PageExport,
   type PublishPostTarget
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
@@ -1835,13 +1826,16 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
 
   function sharePublishErrorMessage(e: unknown): string {
     const raw = e instanceof Error ? e.message : 'feed_connect_failed';
+    if (raw === VIDEO_ENCODER_UNAVAILABLE) {
+      return 'Update your browser to share video posts.';
+    }
     if (raw === 'gallery_video_not_ready') {
       return 'Video is still loading. Wait a moment, then try Share again.';
     }
     if (raw === 'compose_export_root_missing') {
       return 'Could not prepare the page for export. Switch to the video page and retry.';
     }
-    if (raw === 'compose_no_video_frames' || raw === 'compose_empty_video') {
+    if (raw === 'compose_empty_video') {
       return 'Could not record the page video for the feed. Wait for the clip to finish loading, then try Share again.';
     }
     if (/toBlob|tainted|rasterize_/i.test(raw)) {
@@ -1856,104 +1850,84 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     return raw;
   }
 
-  async function withActionsHidden<T>(root: HTMLElement, run: () => Promise<T>): Promise<T> {
+  /** Mount `slug` on the capture surface with its page background and layers showing. */
+  async function capturePageRoot(slug: string): Promise<HTMLElement> {
     const current = bundleRef.current || bundle;
-    const restore = hideActionLayers(root, actionLayerIds(current?.sections || []));
+    await mountComposeCaptureForEncode(slug);
+    if (current && resolvePageView(current.manifest.pageView, current.manifest.pageLayout) === 'screen') {
+      flushSync(() => setCaptureLayers(true));
+      await waitTwoFrames();
+    }
+    return rootForSlug(slug);
+  }
+
+  function pageContext(slug: string) {
+    const current = bundleRef.current || bundle;
+    const section = current?.sections.find((item) => item.slug === slug);
+    if (!current || !section) throw new Error('compose_export_root_missing');
+    return { section, manifest: current.manifest };
+  }
+
+  /** One image of a page's non-action layers: the feed background of a page without video. */
+  async function flattenPage(slug: string, mime?: 'image/jpeg' | 'image/png'): Promise<Blob> {
+    const root = await capturePageRoot(slug);
+    return composePageStill(root, pageContext(slug), { mime });
+  }
+
+  /** One timeline video of a page's non-action layers, with its sound mixed in. */
+  async function encodePage(
+    slug: string,
+    onProgress?: (pct: number) => void
+  ): Promise<ComposePageVideoResult> {
+    setPlaybackMode('publish');
     try {
-      return await run();
+      const root = await capturePageRoot(slug);
+      return await encodePageVideo(root, pageContext(slug), { onProgress });
     } finally {
-      restore();
+      setPlaybackMode('edit');
     }
   }
 
-  /** Test mode base: flattened first-frame still per page, action layers hidden, keyed by slug. */
-  async function buildTestMedia(): Promise<NonNullable<PenDocManifest['penFeedMediaBySlug']>> {
-    const media: NonNullable<PenDocManifest['penFeedMediaBySlug']> = {};
-    if (!bundle) return media;
-    const prev = activeSlugRef.current;
-    const view = resolvePageView(bundle.manifest.pageView, bundle.manifest.pageLayout);
-    setStatus('Preparing test…');
-    try {
-      if (view === 'screen') {
-        flushSync(() => setCaptureLayers(true));
-        await waitTwoFrames();
-      }
-      for (const slug of bundle.manifest.toc) {
-        try {
-          const root = await rootForSlug(slug);
-          const blob = await withActionsHidden(root, () => composePageStill(root));
-          media[slug] = { ref: URL.createObjectURL(blob), kind: 'image' };
-        } catch {
-          /* page keeps its raw media layer */
-        }
-      }
-      return media;
-    } finally {
-      setStatus(null);
-      setCaptureLayers(false);
-      setGalleryComposeCapture(false);
-      if (activeSlugRef.current !== prev) setActiveSlug(prev);
-    }
-  }
+  const pageExport: PageExport = {
+    flattenSection: (slug) => flattenPage(slug),
+    encodeSection: encodePage
+  };
 
   async function downloadFlattened() {
     if (!bundle) return;
     const kind = downloadKindForSections(bundle.sections);
     const name = downloadBasename(bundle.manifest.title || 'pen');
     const prev = activeSlugRef.current;
-    const view = resolvePageView(bundle.manifest.pageView, bundle.manifest.pageLayout);
     setStatus(kind === 'video' ? 'Preparing video…' : 'Preparing download…');
     try {
-      if (view === 'screen') {
-        flushSync(() => setCaptureLayers(true));
-        await waitTwoFrames();
-      }
       if (kind === 'video') {
         const { videoSections } = partitionSectionsForPublish(bundle.sections);
         const slug = videoSections[0]?.slug || bundle.sections[0]?.slug;
         if (!slug) throw new Error('compose_export_root_missing');
-        const root = await rootForSlug(slug);
-        setPlaybackMode('publish');
-        const section = bundle.sections.find((item) => item.slug === slug);
-        const encoded = await withActionsHidden(root, () =>
-          composePageToVideo(
-            root,
-            section ? composeTimelineEncodeOpts(section, bundle.manifest) : undefined
-          )
+        const master = composedMaster(
+          await encodePage(slug, (pct) => setStatus(`Preparing video… ${Math.round(pct)}%`))
         );
-        const master = composedMaster(encoded);
         const ext = master.contentType.includes('mp4') ? 'mp4' : 'webm';
         saveDownload(master.blob, `${name}.${ext}`);
       } else if (kind === 'image') {
         const slug =
           bundle.sections.find((item) => sectionIsFeedPage(item))?.slug || bundle.sections[0]?.slug;
         if (!slug) throw new Error('compose_export_root_missing');
-        const root = await rootForSlug(slug);
-        const blob = await withActionsHidden(root, () =>
-          rasterizeElementToPosterBlob(root, { mime: 'image/png' })
-        );
-        saveDownload(blob, `${name}.png`);
+        saveDownload(await flattenPage(slug, 'image/png'), `${name}.png`);
       } else {
         const pages = bundle.sections.filter((item) => sectionIsFeedPage(item));
         const targets = pages.length ? pages : bundle.sections;
         const blobs: Blob[] = [];
-        for (const page of targets) {
-          const root = await rootForSlug(page.slug);
-          blobs.push(
-            await withActionsHidden(root, () => rasterizeElementToPosterBlob(root, { mime: 'image/png' }))
-          );
-        }
+        for (const page of targets) blobs.push(await flattenPage(page.slug, 'image/png'));
         saveDownload(await pngBlobsToPdf(blobs), `${name}.pdf`);
       }
       setStatus(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'download_failed');
+      const raw = e instanceof Error ? e.message : 'download_failed';
+      setError(raw === VIDEO_ENCODER_UNAVAILABLE ? 'Update your browser to export video.' : raw);
       setStatus(null);
     } finally {
-      setPlaybackMode('edit');
-      setCaptureLayers(false);
-      setGalleryComposeCapture(false);
-      if (activeSlugRef.current !== prev) setActiveSlug(prev);
+      teardownComposeCaptureForEncode(prev);
     }
   }
 
@@ -2041,34 +2015,12 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               sections: b.sections
             })
           ) {
-            setStatus('Encoding feed pages…');
+            setStatus('Flattening feed pages…');
             const mixed = await writeSocialTocCollectionHandoff(b, {
               ...publishOpts,
-              activateSection: async (slug) => {
-                await mountComposeCaptureForEncode(slug);
-              },
-              resolveExportRoot: (slug) => rootForSlug(slug),
-              rasterizeSection: async (slug) => {
-                await mountComposeCaptureForEncode(slug);
-                const view = resolvePageView(b.manifest.pageView, b.manifest.pageLayout);
-                if (view === 'screen') {
-                  flushSync(() => setCaptureLayers(true));
-                  await waitTwoFrames();
-                }
-                const root = await rootForSlug(slug);
-                try {
-                  return await rasterizeElementToPosterBlob(root, {
-                    mime: 'image/jpeg',
-                    punchVideos: false
-                  });
-                } catch {
-                  return await rasterizeElementSafeStill(root);
-                } finally {
-                  setCaptureLayers(false);
-                }
-              },
+              ...pageExport,
               onProgress: (pct) => {
-                setStatus(`Encoding feed pages… ${Math.round(pct)}%`);
+                setStatus(`Flattening feed pages… ${Math.round(pct)}%`);
               }
             });
             setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
@@ -2083,82 +2035,54 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
               feedPublish,
               target
             });
-          } else if (
-            shouldPublishAsSingleComposedVideoForFeed(b.sections, feedManifest)
-          ) {
-          const { videoSections } = partitionSectionsForPublish(b.sections);
-          const videoSlug = videoSections[0]?.slug;
-          if (videoSlug) await mountComposeCaptureForEncode(videoSlug);
-          setStatus('Encoding composed video…');
-          const exportRoot = videoSlug ? await rootForSlug(videoSlug) : undefined;
-          const video = await writeComposedVideoPublishHandoff(b, {
-            ...publishOpts,
-            exportRoot,
-            activateSection: (slug) => {
-              setActiveSlug(slug);
-            },
-            onProgress: (pct) => {
-              setStatus(`Encoding composed video… ${Math.round(pct)}%`);
-            }
-          });
-          setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
-          publishResult = await publishPostToOwnerCloud({
-            bundle: b,
-            feedIds: input.feedIds,
-            pnIdentifier: session.pnIdentifier,
-            membership: licensingMembership,
-            connectReady,
-            session,
-            video,
-            feedPublish,
-            target
-          });
-          } else if (shouldPublishAsMixedPages(b.sections)) {
-          setStatus('Encoding video pages…');
-          const mixed = await writeMixedPagesPublishHandoff(b, {
-            ...publishOpts,
-            activateSection: async (slug) => {
-              await mountComposeCaptureForEncode(slug);
-            },
-            onProgress: (pct) => {
-              setStatus(`Encoding video pages… ${Math.round(pct)}%`);
-            }
-          });
-          setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
-          publishResult = await publishPostToOwnerCloud({
-            bundle: b,
-            feedIds: input.feedIds,
-            pnIdentifier: session.pnIdentifier,
-            membership: licensingMembership,
-            connectReady,
-            session,
-            mixed,
-            feedPublish,
-            target
-          });
           } else {
-          const template = getTemplate(b.manifest.templateId);
-          const asCollection = shouldPublishSocialAsCollection({
-            classId: b.manifest.classId,
-            isSocial: b.manifest.isSocial,
-            toc: b.manifest.toc,
-            publishContentClass: template?.publishContentClass,
-            templateSectionSlugs: template?.sections.map((section) => section.slug),
-            sections: b.sections
-          });
-          publishResult = await publishPostToOwnerCloud({
-            bundle: b,
-            feedIds: input.feedIds,
-            pnIdentifier: session.pnIdentifier,
-            membership: licensingMembership,
-            connectReady,
-            session,
-            feedPublish,
-            target,
-            ...(asCollection
-              ? { mixed: writeTextCollectionHandoff(b, publishOpts) }
-              : {})
-          });
+            const template = getTemplate(b.manifest.templateId);
+            const asCollection =
+              shouldPublishAsMixedPages(b.sections) ||
+              shouldPublishSocialAsCollection({
+                classId: b.manifest.classId,
+                isSocial: b.manifest.isSocial,
+                toc: b.manifest.toc,
+                publishContentClass: template?.publishContentClass,
+                templateSectionSlugs: template?.sections.map((section) => section.slug),
+                sections: b.sections
+              });
+            const onProgress = (pct: number) => {
+              setStatus(`Flattening feed pages… ${Math.round(pct)}%`);
+            };
+            setStatus('Flattening feed pages…');
+            let parts: Pick<Parameters<typeof publishPostToOwnerCloud>[0], 'mixed' | 'video' | 'image'>;
+            if (asCollection) {
+              const handoff = shouldPublishAsMixedPages(b.sections)
+                ? writeMixedPagesPublishHandoff
+                : writeTextCollectionHandoff;
+              parts = { mixed: await handoff(b, { ...publishOpts, ...pageExport, onProgress }) };
+            } else {
+              const page = singlePublishSection(b);
+              if (!page) throw new Error('compose_export_root_missing');
+              parts = pagePublishesAsVideo(page, b.manifest)
+                ? {
+                    video: await writeComposedVideoPublishHandoff(b, {
+                      ...publishOpts,
+                      encodeSection: pageExport.encodeSection,
+                      slug: page.slug,
+                      onProgress
+                    })
+                  }
+                : { image: { slug: page.slug, posterBlob: await flattenPage(page.slug) } };
+            }
+            setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
+            publishResult = await publishPostToOwnerCloud({
+              bundle: b,
+              feedIds: input.feedIds,
+              pnIdentifier: session.pnIdentifier,
+              membership: licensingMembership,
+              connectReady,
+              session,
+              feedPublish,
+              target,
+              ...parts
+            });
           }
           rememberPostFileId(
             bundleRef.current || b,
@@ -2481,7 +2405,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     dirty,
     dirtyRef,
     docId,
-    buildTestMedia,
     downloadFlattened,
     editor,
     editorPanePx,

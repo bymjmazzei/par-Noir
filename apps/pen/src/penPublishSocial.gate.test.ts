@@ -13,7 +13,9 @@ describe('publishSocial pipeline', () => {
     expect(block).toContain('assertDocMediaOnDrive');
     expect(block).toContain('ensurePublishPlaybackBytes');
     expect(block).toContain('feedPublish');
-    expect(block).toContain('mountComposeCaptureForEncode');
+    expect(block).toContain('teardownComposeCaptureForEncode');
+    const capture = src.slice(src.indexOf('async function capturePageRoot'));
+    expect(capture.slice(0, capture.indexOf('\n  }\n'))).toContain('mountComposeCaptureForEncode');
     expect(block).toContain('forkDocForNewPost');
     expect(block).toContain("mode === 'update'");
     expect(block).toContain('target');

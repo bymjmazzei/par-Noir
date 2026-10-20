@@ -13,11 +13,7 @@ import {
   type PenPageLayer
 } from '@par-noir/pen-protocol';
 import { setPlaybackMode } from './playbackMode';
-import {
-  collectUntaintedVideoSlots,
-  rootHasUntaintedPlayableVideo
-} from './composePageVideoEncode';
-import { composePageVideoWithoutActions, composeTimelineEncodeOpts } from './penFeedPagePublish';
+import { composePageStill, encodePageVideo } from './encodePageVideo';
 import {
   rasterizeElementToPosterBlob,
   rasterizeElementSafeStill
@@ -149,10 +145,6 @@ export function resolveGalleryMedia(
   return resolveLayerMedia(sections, manifest.pagePresentation);
 }
 
-/**
- * Prefer page-layer compose root (flattened layers) over feed tile; among
- * those, prefer a root that already has untainted playable video.
- */
 /** Compose capture root for a specific doc section (feed publish / download). */
 export function composeExportRootForSlug(slug: string): HTMLElement | null {
   if (typeof document === 'undefined') return null;
@@ -163,6 +155,7 @@ export function composeExportRootForSlug(slug: string): HTMLElement | null {
   return findComposeExportRoot();
 }
 
+/** Prefer a page-layer root over the feed tile; among those, one that mounts video. */
 export function findComposeExportRoot(): HTMLElement | null {
   if (typeof document === 'undefined') return null;
   const roots = Array.from(
@@ -171,7 +164,7 @@ export function findComposeExportRoot(): HTMLElement | null {
   if (!roots.length) return null;
   const pageRoots = roots.filter((r) => r.getAttribute('data-pen-compose-export-root') === 'page');
   const pool = pageRoots.length ? pageRoots : roots;
-  const withVideo = pool.find((r) => rootHasUntaintedPlayableVideo(r));
+  const withVideo = pool.find((r) => r.querySelector('video, [data-pen-media-key]'));
   return withVideo || pool[0] || roots[0] || null;
 }
 
@@ -221,23 +214,6 @@ async function uploadOrLocal(params: {
   }
 }
 
-const VIDEO_HYDRATE_TIMEOUT_MS = 20_000;
-const VIDEO_HYDRATE_POLL_MS = 200;
-
-export async function waitForUntaintedComposeVideos(
-  initialRoot: HTMLElement,
-  timeoutMs = VIDEO_HYDRATE_TIMEOUT_MS
-): Promise<HTMLElement> {
-  const deadline = Date.now() + timeoutMs;
-  let root = initialRoot;
-  while (Date.now() < deadline) {
-    root = findComposeRoot() || root;
-    if (collectUntaintedVideoSlots(root).length > 0) return root;
-    await new Promise((r) => setTimeout(r, VIDEO_HYDRATE_POLL_MS));
-  }
-  throw new Error('gallery_video_not_ready');
-}
-
 /**
  * Compose page → local cache → Drive penmedia.
  * When `sections` include a video layer, encode composed video or throw
@@ -257,27 +233,23 @@ export async function buildAndStoreGalleryPreview(params: {
     params.pagePresentation
   );
 
-  let root = findComposeRoot();
+  const root = findComposeRoot();
   if (!root) throw new Error('compose_export_root_missing');
 
   const pn = params.session.pnIdentifier;
   const docId = params.docId;
+  const section = params.clockSection || params.sections[0];
+  if (!section) throw new Error('compose_export_root_missing');
+  const page = {
+    section: normalizeSection(section),
+    manifest: { pagePresentation: params.pagePresentation || undefined }
+  };
 
   if (needsVideo) {
     setPlaybackMode('publish');
-    let encoded: Awaited<ReturnType<typeof composePageToVideo>>;
+    let encoded: Awaited<ReturnType<typeof encodePageVideo>>;
     try {
-      root = await waitForUntaintedComposeVideos(root);
-      const clockSection = params.clockSection ? normalizeSection(params.clockSection) : null;
-      encoded = await composePageVideoWithoutActions(
-        root,
-        params.sections,
-        clockSection
-          ? composeTimelineEncodeOpts(clockSection, {
-              pagePresentation: params.pagePresentation || undefined
-            })
-          : undefined
-      );
+      encoded = await encodePageVideo(root, page);
     } finally {
       setPlaybackMode('edit');
     }
@@ -302,13 +274,7 @@ export async function buildAndStoreGalleryPreview(params: {
     };
   }
 
-  // Still path — prefer foreignObject rasterize; fall back to safe still (no taint).
-  let posterBlob: Blob;
-  try {
-    posterBlob = await rasterizeElementToPosterBlob(root);
-  } catch {
-    posterBlob = await rasterizeElementSafeStill(root);
-  }
+  const posterBlob = await composePageStill(root, page);
   const image = await uploadOrLocal({
     blob: posterBlob,
     docId,

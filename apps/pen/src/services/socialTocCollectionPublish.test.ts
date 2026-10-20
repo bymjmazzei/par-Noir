@@ -1,50 +1,23 @@
 /**
- * Social toggle + 2 TOC pages (video + action-only) → feed collection publish.
+ * Social toggle + 2 TOC pages (video + action-only) → feed collection publish:
+ * the video page encodes, the action-only page flattens to one image.
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { LocalDocBundle } from './penLocalStore';
-vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-  cb(0);
-  return 0;
-});
-
-vi.mock('./penFeedPagePublish', () => ({
-  composePageVideoWithoutActions: vi.fn(async () => ({
-    poster: { blob: new Blob([9], { type: 'image/jpeg' }), contentType: 'image/jpeg' },
-    sd: {
-      blob: new Blob([1, 2], { type: 'video/mp4' }),
-      contentType: 'video/mp4',
-      width: 406,
-      height: 720,
-      durationMs: 5000
-    },
-    hd: {
-      blob: new Blob([1, 2, 3], { type: 'video/mp4' }),
-      contentType: 'video/mp4',
-      width: 608,
-      height: 1080,
-      durationMs: 5000
-    }
-  })),
-  composeTimelineEncodeOpts: vi.fn(() => ({
-    clockDurationSec: 5,
-    allowInertOnly: true,
-    onSample: vi.fn()
-  })),
-  penFeedPageForSection: vi.fn(),
-  penPresentationFields: vi.fn(() => ({}))
-}));
-
-vi.mock('./penGalleryPreview', () => ({
-  findComposeExportRoot: () => ({}) as HTMLElement,
-  waitForUntaintedComposeVideos: async (el: HTMLElement) => el
-}));
-
-vi.mock('./playbackMode', () => ({
-  setPlaybackMode: vi.fn()
-}));
-
 import { writeSocialTocCollectionHandoff } from './penPublish';
+
+const encoded = {
+  poster: { variant: 'poster', blob: new Blob([9], { type: 'image/jpeg' }), contentType: 'image/jpeg', byteSize: 1 },
+  sd: {
+    variant: 'sd',
+    blob: new Blob([1, 2], { type: 'video/mp4' }),
+    contentType: 'video/mp4',
+    byteSize: 2,
+    width: 406,
+    height: 720,
+    durationMs: 5000
+  }
+} as const;
 
 function bundle(): LocalDocBundle {
   return {
@@ -102,22 +75,22 @@ function bundle(): LocalDocBundle {
 }
 
 describe('social TOC collection publish', () => {
-  it('builds video + raster pages and indexes collection parent', async () => {
-    vi.useFakeTimers();
-    const doc = bundle();
-    const raster = new Blob([7, 8], { type: 'image/png' });
-    const handoffPromise = writeSocialTocCollectionHandoff(doc, {
-      activateSection: vi.fn(),
-      resolveExportRoot: vi.fn(async () => ({}) as HTMLElement),
-      rasterizeSection: vi.fn(async () => raster),
+  it('encodes the video page and flattens the action-only page', async () => {
+    const still = new Blob([7, 8], { type: 'image/jpeg' });
+    const encodeSection = vi.fn(async () => encoded);
+    const flattenSection = vi.fn(async () => still);
+    const handoff = await writeSocialTocCollectionHandoff(bundle(), {
+      encodeSection,
+      flattenSection,
       canPublishPublicTemplate: false
     });
-    await vi.runAllTimersAsync();
-    const handoff = await handoffPromise;
-    vi.useRealTimers();
     expect(handoff.contentClass).toBe('collection');
-    expect(handoff.pages.map((p) => p.kind)).toEqual(['video', 'video']);
-    expect(handoff.videos).toHaveLength(2);
-    expect(handoff.videos[0]?.slug).toBe('page-1');
+    expect(handoff.pages).toEqual([
+      { kind: 'video', slug: 'page-1', videoIndex: 0 },
+      { kind: 'raster', slug: 'page-2', posterBlob: still }
+    ]);
+    expect(handoff.videos.map((video) => video.slug)).toEqual(['page-1']);
+    expect(encodeSection).toHaveBeenCalledWith('page-1', expect.any(Function));
+    expect(flattenSection).toHaveBeenCalledWith('page-2');
   });
 });
