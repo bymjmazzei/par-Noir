@@ -113,7 +113,11 @@ import { MediaEditorPanel } from '../../components/MediaEditorPanel';
 import { SectionTimeline } from '../../components/SectionTimeline';
 import { setPlayheadSec } from '../../services/playheadStore';
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
-import { composedMaster, composePageToVideo } from '../../services/composePageVideoEncode';
+import {
+  composedMaster,
+  composePageStill,
+  composePageToVideo
+} from '../../services/composePageVideoEncode';
 import { composeTimelineEncodeOpts } from '../../services/penFeedPagePublish';
 import { setPlaybackMode } from '../../services/playbackMode';
 import {
@@ -1862,6 +1866,36 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     }
   }
 
+  /** Test mode base: flattened first-frame still per page, action layers hidden, keyed by slug. */
+  async function buildTestMedia(): Promise<NonNullable<PenDocManifest['penFeedMediaBySlug']>> {
+    const media: NonNullable<PenDocManifest['penFeedMediaBySlug']> = {};
+    if (!bundle) return media;
+    const prev = activeSlugRef.current;
+    const view = resolvePageView(bundle.manifest.pageView, bundle.manifest.pageLayout);
+    setStatus('Preparing test…');
+    try {
+      if (view === 'screen') {
+        flushSync(() => setCaptureLayers(true));
+        await waitTwoFrames();
+      }
+      for (const slug of bundle.manifest.toc) {
+        try {
+          const root = await rootForSlug(slug);
+          const blob = await withActionsHidden(root, () => composePageStill(root));
+          media[slug] = { ref: URL.createObjectURL(blob), kind: 'image' };
+        } catch {
+          /* page keeps its raw media layer */
+        }
+      }
+      return media;
+    } finally {
+      setStatus(null);
+      setCaptureLayers(false);
+      setGalleryComposeCapture(false);
+      if (activeSlugRef.current !== prev) setActiveSlug(prev);
+    }
+  }
+
   async function downloadFlattened() {
     if (!bundle) return;
     const kind = downloadKindForSections(bundle.sections);
@@ -2447,6 +2481,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     dirty,
     dirtyRef,
     docId,
+    buildTestMedia,
     downloadFlattened,
     editor,
     editorPanePx,

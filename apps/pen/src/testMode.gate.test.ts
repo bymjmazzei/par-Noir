@@ -16,6 +16,16 @@ describe('test mode', () => {
     expect(shell).toMatch(/<FeedTileTestOverlay/);
   });
 
+  it('paints the flattened page (first frame, actions hidden) under the action layer', () => {
+    const shell = read('pages/docEditor/DocEditorShell.tsx');
+    expect(shell).toMatch(/penFeedMediaBySlug: testMedia/);
+    const controller = read('pages/docEditor/useDocEditorController.ts');
+    const fn = controller.slice(controller.indexOf('async function buildTestMedia'));
+    const body = fn.slice(0, fn.indexOf('async function downloadFlattened'));
+    expect(body).toMatch(/withActionsHidden\(root, \(\) => composePageStill\(root\)\)/);
+    expect(body).not.toMatch(/composePageToVideo/);
+  });
+
   it('offers Test beside Build in the templates feed and preview modal', () => {
     expect(read('components/TemplatesFeedScroller.tsx')).toMatch(/<TemplateTestButton/);
     expect(read('components/TemplatesBrowse.tsx')).toMatch(/<TemplateTestButton/);

@@ -240,6 +240,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     addComment,
     applyHistorySnapshot,
     applyingHistoryRef,
+    buildTestMedia,
     bumpHistoryUi,
     bundle,
     bundleRef,
@@ -374,7 +375,23 @@ export function DocEditorShell(state: DocEditorReadyState) {
     writingEnabled,
     writingLabel,
   } = state;
-  const [testOpen, setTestOpen] = useState(false);
+  const [testMedia, setTestMedia] = useState<NonNullable<PenDocManifest['penFeedMediaBySlug']> | null>(
+    null
+  );
+  const [testPreparing, setTestPreparing] = useState(false);
+  const openTest = async () => {
+    if (testPreparing) return;
+    setTestPreparing(true);
+    try {
+      setTestMedia(await buildTestMedia());
+    } finally {
+      setTestPreparing(false);
+    }
+  };
+  const closeTest = () => {
+    for (const item of Object.values(testMedia || {})) URL.revokeObjectURL(item.ref);
+    setTestMedia(null);
+  };
   const socialDoc = getClass(bundle.manifest.classId)?.parentId === 'social';
   const chainStatus = verifyChain(bundle.chain);
   const tocSections = (
@@ -1141,8 +1158,9 @@ export function DocEditorShell(state: DocEditorReadyState) {
                       className="inline-flex items-center px-2 py-0.5 text-neutral-600 hover:text-black"
                       title="Test: try every button, nothing is saved"
                       aria-label="Test"
-                      aria-pressed={testOpen}
-                      onClick={() => setTestOpen(true)}
+                      aria-pressed={testMedia !== null}
+                      disabled={testPreparing}
+                      onClick={() => void openTest()}
                     >
                       <IconTest />
                     </button>
@@ -1770,10 +1788,10 @@ export function DocEditorShell(state: DocEditorReadyState) {
           </div>
         ) : null}
       </div>
-      {testOpen ? (
+      {testMedia ? (
         <FeedTileTestOverlay
           aspectRatio={normalizeGalleryAspect(bundle.manifest.galleryAspect)}
-          onClose={() => setTestOpen(false)}
+          onClose={closeTest}
           model={{
             ...bundleToFeedTileModel({
               title: bundle.manifest.title || 'Untitled',
@@ -1783,7 +1801,8 @@ export function DocEditorShell(state: DocEditorReadyState) {
               pageSwipeAxis: bundle.manifest.pageSwipeAxis,
               pageView: bundle.manifest.pageView,
               galleryAspect: bundle.manifest.galleryAspect,
-              pageTitles: bundle.manifest.pageTitles
+              pageTitles: bundle.manifest.pageTitles,
+              penFeedMediaBySlug: testMedia
             }),
             penDocId: bundle.manifest.docId
           }}

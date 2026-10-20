@@ -21,7 +21,11 @@ import {
   type PublishTierNotch
 } from '@par-noir/aggregator-domain';
 import type { PenSectionContent } from '@par-noir/pen-protocol';
-import { rasterizeElementToPosterBlob, rasterizeElementSafeStill } from './rasterizePagePoster';
+import {
+  rasterOutputSize,
+  rasterizeElementToPosterBlob,
+  rasterizeElementSafeStill
+} from './rasterizePagePoster';
 import { playbackMode } from './playbackMode';
 import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
 
@@ -231,6 +235,45 @@ async function seekSlots(slots: VideoSlot[], timeSec: number): Promise<void> {
       /* ignore */
     }
   }
+}
+
+/** Flattened JPEG of the page with each video's first frame in its slot. No encode. */
+export async function composePageStill(root: HTMLElement): Promise<Blob> {
+  const rect = root.getBoundingClientRect();
+  const srcW = Math.max(2, Math.round(rect.width || root.clientWidth || 360));
+  const srcH = Math.max(2, Math.round(rect.height || root.clientHeight || 640));
+  const { cw, ch, sx, sy } = rasterOutputSize(srcW, srcH);
+  const slots = collectUntaintedVideoSlots(root);
+  const canvas = await buildStaticBackdrop(root, cw, ch);
+  if (slots.length) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas_unavailable');
+    const resume = slots.map((slot) => ({ el: slot.el, time: slot.el.currentTime }));
+    await seekSlots(slots, 0);
+    for (const slot of slots) {
+      if (slot.el.readyState >= 2) {
+        ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
+      }
+    }
+    for (const { el, time } of resume) {
+      try {
+        el.currentTime = time;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return new Promise<Blob>((resolve, reject) => {
+    try {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('compose_still_failed'))),
+        'image/jpeg',
+        0.85
+      );
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error('compose_still_tainted'));
+    }
+  });
 }
 
 type VideoVariant = 'sd' | 'hd';
