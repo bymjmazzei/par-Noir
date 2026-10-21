@@ -31,6 +31,7 @@ import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSe
 import { registerPlatformRegistryRoutes } from './server/modules/platformRegistryRoutes';
 import { PlatformRegistrySyncService } from './server/modules/platformRegistrySyncService';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
+import { registerAgentRoutes } from './server/modules/agentRoutes';
 import { registerPublicNameRoutes } from './server/modules/publicNameRoutes';
 import {
   registerVerificationRoutes,
@@ -980,6 +981,7 @@ class ProductionServer {
     registerDeveloperSelfServiceRoutes(this.app);
     registerPlatformRegistryRoutes(this.app);
     registerOwnedAssetRoutes(this.app);
+    registerAgentRoutes(this.app);
     registerPublicNameRoutes(this.app);
     registerVerificationRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);

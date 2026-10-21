@@ -17,6 +17,8 @@ export type AuthCodeRecord = {
   did: string;
   publicKey: string;
   pnIdentifier?: string;
+  /** RFC 7636 S256 challenge; exchange must present the matching verifier. */
+  codeChallenge?: string;
   expiresAt: number;
 };
 

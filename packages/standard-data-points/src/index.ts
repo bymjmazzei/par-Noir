@@ -49,6 +49,7 @@ export {
 export {
   type AiScope,
   AGENT_MCP_CLIENT_ID,
+  AGENT_MCP_REDIRECT_URI,
   AGENT_MCP_CLIENT,
   AI_SCOPE_PREFIX,
   AI_SCOPES,

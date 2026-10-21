@@ -7,6 +7,9 @@
 
 export const AGENT_MCP_CLIENT_ID = 'pn-agent-mcp';
 
+/** Validated only: Unlock hands the code to the broker and never navigates here. */
+export const AGENT_MCP_REDIRECT_URI = 'https://unlock.parnoir.com/oauth/agent-complete';
+
 export const AI_SCOPE_PREFIX = 'ai:';
 
 export const AI_SCOPES = {
@@ -45,5 +48,6 @@ export const AGENT_MCP_CLIENT = {
   clientId: AGENT_MCP_CLIENT_ID,
   name: 'par Noir MCP (AI agents)',
   description: 'Local MCP server that lets an AI agent sub-pN read what its owner delegated',
+  redirectUris: [AGENT_MCP_REDIRECT_URI] as readonly string[],
   scopes: ['openid', ...Object.values(AI_SCOPES)] as readonly string[],
 } as const;

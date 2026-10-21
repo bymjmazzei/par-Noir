@@ -4,6 +4,11 @@
 
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'crypto';
+import {
+  assertMlDsa65PublicKeyB64,
+  deriveCanonicalPnIdentifier
+} from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import { AGENT_MCP_CLIENT_ID, filterKnownAiScopes } from '@par-noir/standard-data-points';
 import { getDatabasePool } from '../utils/database';
 import { appendAuditEvent } from './auditService';
 import { isPnRevokedForNetwork } from './identitySuccessionService';
@@ -848,5 +853,231 @@ export class OwnedAssetService {
     });
 
     return sheetToRow(created);
+  }
+
+  /**
+   * Postgres authz cache for an AI agent sub-pN. The dashboard writes the Drive sheet rows
+   * on-device with the ids returned here; the API never opens Drive for agents.
+   */
+  static async registerAgent(params: {
+    rootPn: string;
+    assetId?: string;
+    subjectPnIdentifier: string;
+    subjectPublicKey: string;
+    label: string;
+    scopes: string[];
+    expiresAt?: string | null;
+  }): Promise<AiAgentRegistration> {
+    const root = normalizePn(params.rootPn);
+    const subject = normalizePn(params.subjectPnIdentifier);
+    const publicKey = String(params.subjectPublicKey || '').trim();
+    if (!assertMlDsa65PublicKeyB64(publicKey) || deriveCanonicalPnIdentifier(publicKey) !== subject) {
+      throw Object.assign(new Error('agent_key_mismatch'), { code: 'INVALID_INPUT' });
+    }
+    if (subject === root) {
+      throw Object.assign(new Error('agent_is_root'), { code: 'INVALID_INPUT' });
+    }
+    const scopes = filterKnownAiScopes(params.scopes);
+    if (scopes.length === 0) {
+      throw Object.assign(new Error('agent_scopes_required'), { code: 'INVALID_INPUT' });
+    }
+    const label = String(params.label || '').trim().slice(0, 64);
+    if (!label) {
+      throw Object.assign(new Error('agent_label_required'), { code: 'INVALID_INPUT' });
+    }
+    const assetId =
+      params.assetId && UUID_RE.test(params.assetId) ? params.assetId : randomUUID();
+    const expiresAt = params.expiresAt ? new Date(params.expiresAt).toISOString() : null;
+
+    const pool = getDatabasePool();
+    const existing = await pool.query(
+      `SELECT id, root_pn_identifier, kind FROM pn_owned_assets
+       WHERE id = $1 OR subject_pn_identifier = $2`,
+      [assetId, subject]
+    );
+    for (const row of existing.rows as Record<string, unknown>[]) {
+      if (String(row.root_pn_identifier) !== root || String(row.kind) !== 'ai_agent') {
+        throw Object.assign(new Error('agent_conflict'), { code: 'FORBIDDEN' });
+      }
+    }
+    const id = existing.rows.length > 0 ? String(existing.rows[0].id) : assetId;
+
+    await pool.query(
+      `INSERT INTO pn_owned_assets (
+        id, root_pn_identifier, subject_pn_identifier, kind, status, metadata, subject_public_key
+      ) VALUES ($1, $2, $3, 'ai_agent', 'active', $4::jsonb, $5)
+      ON CONFLICT (id) DO UPDATE SET
+        status = 'active',
+        metadata = EXCLUDED.metadata,
+        subject_public_key = EXCLUDED.subject_public_key,
+        updated_at = NOW(),
+        revoked_at = NULL`,
+      [id, root, subject, JSON.stringify({ label }), publicKey]
+    );
+    await pool.query(
+      `UPDATE pn_asset_delegations SET status = 'revoked', updated_at = NOW()
+       WHERE owned_asset_id = $1 AND status = 'active'`,
+      [id]
+    );
+    const delegations: Array<{ id: string; scope: string }> = [];
+    for (const scope of scopes) {
+      const delegationId = randomUUID();
+      await pool.query(
+        `INSERT INTO pn_asset_delegations (
+          id, owned_asset_id, delegatee_client_id, scope, expires_at, status
+        ) VALUES ($1, $2, $3, $4, $5::timestamptz, 'active')`,
+        [delegationId, id, AGENT_MCP_CLIENT_ID, scope, expiresAt]
+      );
+      delegations.push({ id: delegationId, scope });
+    }
+    await appendAuditEvent({
+      eventType: 'owned_asset.ai_agent_registered',
+      actorHint: 'dashboard',
+      subjectPnIdentifier: root,
+      metadata: { assetId: id, scopes }
+    });
+    return { assetId: id, subjectPnIdentifier: subject, delegations, expiresAt };
+  }
+
+  /** Active AI agents for the dashboard; never returns the agent public key. */
+  static async listAgents(rootPn: string): Promise<AiAgentSummary[]> {
+    const root = normalizePn(rootPn);
+    const pool = getDatabasePool();
+    const r = await pool.query(
+      `SELECT oa.id, oa.subject_pn_identifier, oa.metadata, oa.created_at,
+              COALESCE(array_agg(d.scope) FILTER (WHERE d.status = 'active'), '{}') AS scopes
+       FROM pn_owned_assets oa
+       LEFT JOIN pn_asset_delegations d ON d.owned_asset_id = oa.id
+       WHERE oa.root_pn_identifier = $1 AND oa.kind = 'ai_agent' AND oa.status = 'active'
+       GROUP BY oa.id
+       ORDER BY oa.created_at DESC`,
+      [root]
+    );
+    return (r.rows as Record<string, unknown>[]).map((row) => {
+      const meta = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<
+        string,
+        unknown
+      >;
+      return {
+        id: String(row.id),
+        subjectPnIdentifier: String(row.subject_pn_identifier),
+        label: typeof meta.label === 'string' ? meta.label : '',
+        scopes: filterKnownAiScopes(Array.isArray(row.scopes) ? (row.scopes as string[]) : []),
+        createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : ''
+      };
+    });
+  }
+
+  /** Revoke one agent: cache rows go revoked and its refresh tokens are deleted. */
+  static async revokeAgent(rootPn: string, assetId: string): Promise<boolean> {
+    const root = normalizePn(rootPn);
+    const pool = getDatabasePool();
+    const r = await pool.query(
+      `UPDATE pn_owned_assets SET status = 'revoked', revoked_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND root_pn_identifier = $2 AND kind = 'ai_agent' AND status = 'active'
+       RETURNING id, subject_public_key`,
+      [assetId, root]
+    );
+    if (r.rows.length === 0) return false;
+    await cutAgentAccess(r.rows as Record<string, unknown>[]);
+    await appendAuditEvent({
+      eventType: 'owned_asset.ai_agent_revoked',
+      actorHint: 'dashboard',
+      subjectPnIdentifier: root,
+      metadata: { assetId }
+    });
+    return true;
+  }
+
+  /** Revoke every active AI agent under this root. */
+  static async revokeAllAgents(rootPn: string): Promise<number> {
+    const root = normalizePn(rootPn);
+    const pool = getDatabasePool();
+    const r = await pool.query(
+      `UPDATE pn_owned_assets SET status = 'revoked', revoked_at = NOW(), updated_at = NOW()
+       WHERE root_pn_identifier = $1 AND kind = 'ai_agent' AND status = 'active'
+       RETURNING id, subject_public_key`,
+      [root]
+    );
+    if (r.rows.length === 0) return 0;
+    await cutAgentAccess(r.rows as Record<string, unknown>[]);
+    await appendAuditEvent({
+      eventType: 'owned_asset.ai_agents_revoked_all',
+      actorHint: 'dashboard',
+      subjectPnIdentifier: root,
+      metadata: { count: r.rows.length }
+    });
+    return r.rows.length;
+  }
+
+  /**
+   * Live delegation for an agent bearer. Null when the agent is unknown, revoked, or has
+   * no unexpired `ai:` scope for the MCP client.
+   */
+  static async resolveAgentDelegation(agentPn: string): Promise<AiAgentDelegation | null> {
+    const subject = normalizePn(agentPn);
+    const pool = getDatabasePool();
+    const r = await pool.query(
+      `SELECT oa.id, oa.root_pn_identifier, d.scope
+       FROM pn_owned_assets oa
+       JOIN pn_asset_delegations d ON d.owned_asset_id = oa.id
+       WHERE oa.subject_pn_identifier = $1 AND oa.kind = 'ai_agent' AND oa.status = 'active'
+         AND d.status = 'active' AND d.delegatee_client_id = $2
+         AND (d.expires_at IS NULL OR d.expires_at > NOW())`,
+      [subject, AGENT_MCP_CLIENT_ID]
+    );
+    if (r.rows.length === 0) return null;
+    const first = r.rows[0] as Record<string, unknown>;
+    const scopes = filterKnownAiScopes(
+      (r.rows as Record<string, unknown>[]).map((row) => String(row.scope))
+    );
+    if (scopes.length === 0) return null;
+    return {
+      assetId: String(first.id),
+      rootPnIdentifier: String(first.root_pn_identifier),
+      scopes
+    };
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface AiAgentRegistration {
+  assetId: string;
+  subjectPnIdentifier: string;
+  delegations: Array<{ id: string; scope: string }>;
+  expiresAt: string | null;
+}
+
+export interface AiAgentSummary {
+  id: string;
+  subjectPnIdentifier: string;
+  label: string;
+  scopes: string[];
+  createdAt: string;
+}
+
+export interface AiAgentDelegation {
+  assetId: string;
+  rootPnIdentifier: string;
+  scopes: string[];
+}
+
+async function cutAgentAccess(rows: Record<string, unknown>[]): Promise<void> {
+  const pool = getDatabasePool();
+  const ids = rows.map((row) => String(row.id));
+  await pool.query(
+    `UPDATE pn_asset_delegations SET status = 'revoked', updated_at = NOW()
+     WHERE owned_asset_id = ANY($1::uuid[]) AND status = 'active'`,
+    [ids]
+  );
+  const keys = rows
+    .map((row) => (row.subject_public_key ? String(row.subject_public_key) : ''))
+    .filter(Boolean);
+  if (keys.length > 0) {
+    await pool.query(
+      `DELETE FROM oauth_refresh_tokens WHERE client_id = $1 AND public_key = ANY($2::text[])`,
+      [AGENT_MCP_CLIENT_ID, keys]
+    );
   }
 }

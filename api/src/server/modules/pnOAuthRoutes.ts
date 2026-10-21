@@ -111,7 +111,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
     // Dynamic import to avoid circular dependencies
     const PNOAuthService = require('./pnOAuthService').PNOAuthService;
-    const { OauthUnlockProofError } = require('./pnOAuthService');
+    const { OauthUnlockProofError, normalizePkceChallenge } = require('./pnOAuthService');
 
     app.get('/.well-known/jwks.json', (_req, res) => {
       const jwks = PNOAuthService.getJwks();
@@ -309,6 +309,10 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           publicKey: string;
         };
         try {
+          const codeChallenge = normalizePkceChallenge(
+            req.body?.code_challenge,
+            req.body?.code_challenge_method
+          );
           authResult = await PNOAuthService.authenticateWithUnlockProof({
             clientId: client_id,
             redirectUri: redirect_uri,
@@ -318,6 +322,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
             challengeId: challenge_id,
             publicKey: public_key,
             signature,
+            codeChallenge,
           });
         } catch (oauthErr: unknown) {
           if (oauthErr instanceof OauthUnlockProofError || (oauthErr as { name?: string })?.name === 'OauthUnlockProofError') {
@@ -646,7 +651,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
     // Use lenient rate limiter for OAuth token exchange (users may unlock multiple times during setup)
     app.post('/oauth/token', oauthTokenLimiter, async (req, res) => {
       try {
-        const { code, client_id, redirect_uri, grant_type, granted_data_points } = req.body;
+        const { code, client_id, redirect_uri, grant_type, granted_data_points, code_verifier } = req.body;
 
         if (!code || !client_id || !redirect_uri) {
           return res.status(400).json({
@@ -665,7 +670,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         const tokenResponse = await PNOAuthService.exchangeCodeForToken({
           code,
           clientId: client_id,
-          redirectUri: redirect_uri
+          redirectUri: redirect_uri,
+          codeVerifier: typeof code_verifier === 'string' ? code_verifier : undefined
         });
 
         if (!tokenResponse) {
@@ -673,6 +679,12 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
             error: 'invalid_grant',
             error_description: 'Invalid or expired authorization code'
           });
+        }
+
+        // AI agents hold no cloud of their own; their grant is the owner's delegation.
+        const { AGENT_MCP_CLIENT_ID } = await import('@par-noir/standard-data-points');
+        if (client_id === AGENT_MCP_CLIENT_ID) {
+          return res.json(tokenResponse);
         }
 
         // Persist third-party permissions + integrator silo for all OAuth clients

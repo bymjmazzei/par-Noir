@@ -1146,6 +1146,19 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const agentPath = path.join(__dirname, '../../migrations/add_ai_agent_registry.sql');
+      await db.query(fs.readFileSync(agentPath, 'utf-8'));
+      console.log('✅ ai_agent registry migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ ai_agent registry migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
       const { OwnedAssetService } = await import('../modules/ownedAssetService');
       await OwnedAssetService.backfillLegacyApiKeys();
     } catch (bfErr: unknown) {

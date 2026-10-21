@@ -12,6 +12,7 @@ import {
   deriveDidFromPublicKey,
   verifyOauthUnlockProof,
 } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import { AGENT_MCP_CLIENT_ID } from '@par-noir/standard-data-points';
 import { getDatabasePool } from '../utils/database';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
 import { appendSecurityAuditEvent } from './auditService';
@@ -47,7 +48,42 @@ export interface AuthorizationCode {
   publicKey?: string; // Public key from identity file (needed for file decryption)
   pnIdentifier?: string; // pN identifier (derived client-side, never derived from secrets on server)
   // SECURITY: pN name and passcode are NEVER stored - they're secrets
+  codeChallenge?: string;
   expiresAt: number; // Timestamp
+}
+
+/** Public clients that cannot keep a secret and collect their code from the broker. */
+const PKCE_REQUIRED_CLIENT_IDS = new Set<string>([AGENT_MCP_CLIENT_ID]);
+
+const PKCE_CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/;
+const PKCE_VERIFIER_RE = /^[A-Za-z0-9._~-]{43,128}$/;
+
+export function clientRequiresPkce(clientId: string): boolean {
+  return PKCE_REQUIRED_CLIENT_IDS.has(clientId);
+}
+
+/** Validate an S256 code_challenge; plain is not accepted. */
+export function normalizePkceChallenge(
+  challenge: unknown,
+  method: unknown
+): string | null {
+  if (challenge == null || challenge === '') return null;
+  if (method !== 'S256') {
+    throw new OauthUnlockProofError('invalid_request', 'code_challenge_method must be S256', 400);
+  }
+  const value = String(challenge);
+  if (!PKCE_CHALLENGE_RE.test(value)) {
+    throw new OauthUnlockProofError('invalid_request', 'code_challenge must be a base64url SHA-256 digest', 400);
+  }
+  return value;
+}
+
+export function pkceVerifierMatches(verifier: unknown, challenge: string): boolean {
+  if (typeof verifier !== 'string' || !PKCE_VERIFIER_RE.test(verifier)) return false;
+  const computed = crypto.createHash('sha256').update(verifier, 'ascii').digest('base64url');
+  const a = Buffer.from(computed);
+  const b = Buffer.from(challenge);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 export interface AccessToken {
@@ -280,8 +316,13 @@ export class PNOAuthService {
     challengeId: string;
     publicKey: string;
     signature: string;
+    /** Validated S256 challenge (see normalizePkceChallenge). */
+    codeChallenge?: string | null;
   }): Promise<{ code: string; did: string; pnIdentifier: string; publicKey: string }> {
     const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
+    if (clientRequiresPkce(params.clientId) && !params.codeChallenge) {
+      throw new OauthUnlockProofError('invalid_request', 'code_challenge is required for this client', 400);
+    }
     const record = await takeUnlockChallengeRecord(params.challengeId);
 
     if (!record) {
@@ -339,6 +380,7 @@ export class PNOAuthService {
       did,
       publicKey: params.publicKey,
       pnIdentifier,
+      codeChallenge: params.codeChallenge || undefined,
     });
     return { code, did, pnIdentifier, publicKey: params.publicKey };
   }
@@ -357,6 +399,7 @@ export class PNOAuthService {
     did: string;
     publicKey?: string;
     pnIdentifier?: string;
+    codeChallenge?: string;
   }): Promise<string> {
     if (isPnRevokedForNetwork(params.pnIdentifier)) {
       const err = new Error('identity_superseded') as Error & { code: string };
@@ -392,6 +435,7 @@ export class PNOAuthService {
         did: params.did,
         publicKey: params.publicKey || '',
         pnIdentifier: params.pnIdentifier,
+        ...(params.codeChallenge ? { codeChallenge: params.codeChallenge } : {}),
         expiresAt: Date.now() + this.CODE_EXPIRY,
       },
       this.CODE_EXPIRY
@@ -505,8 +549,9 @@ export class PNOAuthService {
     code: string;
     clientId: string;
     redirectUri: string;
+    codeVerifier?: string;
   }): Promise<AccessToken | null> {
-    // Check if this code was already exchanged (idempotency)
+    // Check if this code was already exchanged (idempotency). PKCE codes are never cached.
     const existingExchange = codeToTokenMap.get(params.code);
     if (existingExchange && existingExchange.expiresAt > Date.now()) {
       if (process.env.NODE_ENV === 'development') {
@@ -561,6 +606,13 @@ export class PNOAuthService {
       return null;
     }
 
+    if (authCode.codeChallenge || clientRequiresPkce(authCode.clientId)) {
+      if (!authCode.codeChallenge || !pkceVerifierMatches(params.codeVerifier, authCode.codeChallenge)) {
+        safeLogger.warn('[OAuth] PKCE verifier missing or mismatched', { clientId: params.clientId });
+        return null;
+      }
+    }
+
     if (isPnRevokedForNetwork(authCode.pnIdentifier) || isDidRevokedForNetwork(authCode.did)) {
       return null;
     }
@@ -593,10 +645,12 @@ export class PNOAuthService {
     };
 
     // Store the exchange result for idempotency (keep for 30 seconds)
-    codeToTokenMap.set(params.code, {
-      token: tokenResponse,
-      expiresAt: Date.now() + 30 * 1000 // 30 seconds
-    });
+    if (!authCode.codeChallenge) {
+      codeToTokenMap.set(params.code, {
+        token: tokenResponse,
+        expiresAt: Date.now() + 30 * 1000 // 30 seconds
+      });
+    }
 
     // Clean up old entries from codeToTokenMap
     for (const [code, exchange] of codeToTokenMap.entries()) {

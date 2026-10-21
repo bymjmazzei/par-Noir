@@ -5,6 +5,7 @@
 
 import bcrypt from 'bcryptjs';
 import {
+  AGENT_MCP_CLIENT,
   BROWSER_APP_CLIENT_ID,
   CLIENT_CONTRACTS,
   MESSAGING_APP_CLIENT_ID,
@@ -179,6 +180,13 @@ export class ClientRegistrationService {
           'http://127.0.0.1:5177/oauth-callback.html'
         ],
         scopes: ['openid', 'profile', 'cloud:read', 'cloud:app']
+      },
+      {
+        clientId: AGENT_MCP_CLIENT.clientId,
+        name: AGENT_MCP_CLIENT.name,
+        description: AGENT_MCP_CLIENT.description,
+        redirectUris: [...AGENT_MCP_CLIENT.redirectUris],
+        scopes: [...AGENT_MCP_CLIENT.scopes]
       }
     ];
 
