@@ -5,8 +5,10 @@ import {
   isAttestableDataPointId,
   type AgentAttestation,
 } from '@par-noir/standard-data-points';
+import type { PenAgentBuild } from '@par-noir/pen-protocol';
 import type { AgentApiClient } from './apiClient';
 import { McpToolError } from './errors';
+import { sealPenAgentDraft } from './penDraft';
 
 const fileSummaryShape = {
   fileId: z.string(),
@@ -104,6 +106,33 @@ export function projectProof(raw: unknown, asked: string): AgentAttestation {
 
 const idInput = z.string().trim().min(1).max(200);
 
+/** Only the PenAgentBuild fields; anything else the AI adds is dropped before sealing. */
+const penAgentBuildSchema = z.object({
+  templateId: z.string().min(1).max(200).describe('Pen starter template id, for example note.hot_take.v1'),
+  title: z.string().min(1).max(300),
+  sections: z
+    .array(
+      z.object({
+        slug: z.string().min(1).max(100).describe('Section slug from the template'),
+        plainText: z.string().optional().describe('Section text; blank lines split paragraphs'),
+        doc: z.record(z.unknown()).optional().describe('TipTap JSON doc, instead of plainText'),
+        html: z.string().optional().describe('Pen library HTML, compiled into layers'),
+      })
+    )
+    .max(50)
+    .optional(),
+  rows: z
+    .array(z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])))
+    .max(500)
+    .optional()
+    .describe('Register rows, for templates that have register columns'),
+});
+
+const draftStatusShape = {
+  draftId: z.string(),
+  status: z.literal('awaiting_owner'),
+};
+
 export const TOOL_DEFS = {
   search_my_files: {
     scope: AI_SCOPES.filesPublished,
@@ -139,6 +168,22 @@ export const TOOL_DEFS = {
     inputSchema: { dataPointId: dataPointIdSchema.describe('Which proof to check') },
     outputSchema: proofShape,
   },
+  propose_pen_draft: {
+    scope: AI_SCOPES.penDrafts,
+    title: 'Propose a Pen draft',
+    description:
+      'Propose a new Pen document for the owner. It is sealed to the owner before it leaves this tool and waits in ' +
+      'Pen under AI drafts; nothing is saved until they accept it, and unaccepted drafts expire after 7 days. ' +
+      'Retrying with the same draftId does not create a second draft.',
+    inputSchema: {
+      draftId: z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{8,64}$/)
+        .describe('A new unique id you choose for this draft, such as a UUID. Reuse it only when retrying.'),
+      build: penAgentBuildSchema,
+    },
+    outputSchema: draftStatusShape,
+  },
 } as const;
 
 export type ToolName = keyof typeof TOOL_DEFS;
@@ -172,4 +217,22 @@ export async function proveDataPoint(
 ): Promise<AgentAttestation> {
   const body = await client.get('proofs.get', `/api/agent/proofs/${encodeURIComponent(args.dataPointId)}`);
   return projectProof(body, args.dataPointId);
+}
+
+export async function proposePenDraft(
+  client: AgentApiClient,
+  args: { draftId: string; build: z.infer<typeof penAgentBuildSchema> }
+): Promise<{ draftId: string; status: 'awaiting_owner' }> {
+  const submission = await sealPenAgentDraft({
+    draftId: args.draftId,
+    build: args.build as PenAgentBuild,
+    ownerMlKemPublicKey: async () => {
+      const body = await client.get('agent.owner_key', '/api/agent/owner-key');
+      if (typeof body.mlKemPublicKey !== 'string' || !body.mlKemPublicKey) throw new McpToolError('unavailable');
+      return body.mlKemPublicKey;
+    },
+  });
+  const body = await client.post('pen.drafts', '/api/agent/pen/drafts', submission);
+  if (body.draftId !== args.draftId || body.status !== 'awaiting_owner') throw new McpToolError('unavailable');
+  return { draftId: args.draftId, status: 'awaiting_owner' };
 }

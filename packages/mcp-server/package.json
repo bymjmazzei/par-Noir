@@ -18,6 +18,8 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@napi-rs/keyring": "^2.1.2",
+    "@par-noir/dm-crypto": "^0.1.0",
+    "@par-noir/pen-protocol": "^0.1.0",
     "@par-noir/standard-data-points": "^1.0.0",
     "tsx": "^4.23.15",
     "zod": "^3.25.76"

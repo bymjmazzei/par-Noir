@@ -77,37 +77,64 @@ export class AgentApiClient {
   }
 
   /** `route` is a fixed label for logs; `path` may carry ids and never gets logged. */
-  async get(route: string, path: string): Promise<Record<string, unknown>> {
+  get(route: string, path: string): Promise<Record<string, unknown>> {
+    return this.request(route, 'GET', path);
+  }
+
+  /** `body` is sent as JSON and never logged. */
+  post(route: string, path: string, body: unknown): Promise<Record<string, unknown>> {
+    return this.request(route, 'POST', path, body);
+  }
+
+  private async request(
+    route: string,
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown
+  ): Promise<Record<string, unknown>> {
     let tokens = await this.store.load();
     if (!tokens) throw new McpToolError('not_signed_in');
     if (tokens.expiresAt - EXPIRY_SKEW_MS <= this.now()) tokens = await this.refresh(tokens);
 
-    let res = await this.send(tokens, path);
+    let res = await this.send(tokens, method, path, body);
     if (res.status === 401) {
       tokens = await this.refresh(tokens);
-      res = await this.send(tokens, path);
+      res = await this.send(tokens, method, path, body);
       if (res.status === 401) await this.revoked('unauthorized_after_refresh');
     }
     this.logger.info('api_call', { route, status: res.status });
 
     if (res.ok) return readJson(res);
-    const body = await readJson(res);
-    const code = typeof body.error === 'string' ? body.error : '';
+    const error = await readJson(res);
+    const code = typeof error.error === 'string' ? error.error : '';
     if (res.status === 403) {
       if (code === 'insufficient_scope') throw new McpToolError('insufficient_scope');
       await this.revoked(code === 'delegation_revoked' ? 'delegation_revoked' : 'forbidden');
     }
-    if (res.status === 404) throw new McpToolError(code === 'not_attested' ? 'not_attested' : 'not_found');
+    if (res.status === 404) {
+      if (code === 'not_attested') throw new McpToolError('not_attested');
+      if (code === 'owner_key_missing') throw new McpToolError('owner_inbox_unavailable');
+      throw new McpToolError('not_found');
+    }
+    if (res.status === 409 && code === 'owner_inbox_unavailable') throw new McpToolError('owner_inbox_unavailable');
     if (res.status === 410 && code === 'expired') throw new McpToolError('proof_expired');
+    if (res.status === 413) throw new McpToolError('draft_too_large');
+    if (res.status === 429) throw new McpToolError('draft_rate_limited');
     if (res.status === 400) throw new McpToolError('invalid_request');
     throw new McpToolError('unavailable');
   }
 
-  private async send(tokens: StoredTokens, path: string): Promise<Response> {
+  private async send(tokens: StoredTokens, method: 'GET' | 'POST', path: string, body?: unknown): Promise<Response> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${tokens.accessToken}`,
+      Accept: 'application/json',
+    };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
     try {
       return await this.fetchImpl(`${tokens.apiUrl}${path}`, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: 'application/json' },
+        method,
+        headers,
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
     } catch {
       throw new McpToolError('unavailable');

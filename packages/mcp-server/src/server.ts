@@ -3,12 +3,28 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { AgentApiClient } from './apiClient';
 import { ERROR_MESSAGES, toErrorCode } from './errors';
 import type { Logger } from './log';
-import { TOOL_DEFS, proveDataPoint, readFile, readPenDocument, searchMyFiles, type ToolName } from './tools';
+import {
+  TOOL_DEFS,
+  proposePenDraft,
+  proveDataPoint,
+  readFile,
+  readPenDocument,
+  searchMyFiles,
+  type ToolName,
+} from './tools';
 
 export const SERVER_VERSION = '0.1.0';
 
 const READ_ONLY = {
   readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+/** Writes only a sealed proposal the owner must accept; the client-supplied draftId makes retries safe. */
+const OWNER_CONFIRMED_WRITE = {
+  readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: false,
@@ -42,16 +58,17 @@ export async function createPnMcpServer(deps: PnMcpDeps): Promise<McpServer> {
     { name: 'par-noir', version: SERVER_VERSION },
     {
       instructions:
-        'Read-only access, through an AI agent the owner approved, to what they have published on par Noir and to ' +
-        'yes/no answers about proofs they chose to share. Nothing private is available.',
+        'Access, through an AI agent the owner approved, to what they have published on par Noir and to ' +
+        'yes/no answers about proofs they chose to share. The only write is proposing a Pen draft, which the ' +
+        'owner must accept in Pen. Nothing private is available.',
     }
   );
   const granted = new Set(await deps.client.grantedScopes());
   if (granted.size === 0) deps.logger.warn('no_tools', { reason: 'not_signed_in' });
   const allowed = (name: ToolName) => granted.has(TOOL_DEFS[name].scope);
-  const config = (name: ToolName) => {
+  const config = (name: ToolName, hints: typeof READ_ONLY | typeof OWNER_CONFIRMED_WRITE = READ_ONLY) => {
     const { title, description, inputSchema, outputSchema } = TOOL_DEFS[name];
-    return { title, description, inputSchema, outputSchema, annotations: { ...READ_ONLY, title } };
+    return { title, description, inputSchema, outputSchema, annotations: { ...hints, title } };
   };
 
   if (allowed('search_my_files')) {
@@ -72,6 +89,11 @@ export async function createPnMcpServer(deps: PnMcpDeps): Promise<McpServer> {
   if (allowed('prove_data_point')) {
     server.registerTool('prove_data_point', config('prove_data_point'), (args) =>
       run('prove_data_point', deps, async () => ({ ...(await proveDataPoint(deps.client, args)) }))
+    );
+  }
+  if (allowed('propose_pen_draft')) {
+    server.registerTool('propose_pen_draft', config('propose_pen_draft', OWNER_CONFIRMED_WRITE), (args) =>
+      run('propose_pen_draft', deps, async () => ({ ...(await proposePenDraft(deps.client, args)) }))
     );
   }
   return server;
