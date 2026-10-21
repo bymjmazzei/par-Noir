@@ -5,7 +5,17 @@
 
 import { DEFAULT_UNLOCK_ORIGIN, UNLOCK_CUSTOM_SCHEME } from '../consentUnlock/constants';
 
-export const SHELL_OPS = ['session', 'export', 'recovery', 'sub_pn', 'dm', 'rotate', 'create', 'seal_vault'] as const;
+export const SHELL_OPS = [
+  'session',
+  'export',
+  'recovery',
+  'sub_pn',
+  'dm',
+  'rotate',
+  'create',
+  'seal_vault',
+  'agent',
+] as const;
 export type ShellOp = (typeof SHELL_OPS)[number];
 
 export type HostedShellSession = {
@@ -171,6 +181,8 @@ export function buildShellLaunchUrl(args: {
   vaultPayload?: string;
   /** Ephemeral ML-KEM public key. The matching secret stays in the calling tab. */
   handoffPk?: string;
+  /** op=agent: display name for the new AI agent. */
+  agentLabel?: string;
 }): string {
   const params = new URLSearchParams({
     flow: 'shell',
@@ -184,6 +196,7 @@ export function buildShellLaunchUrl(args: {
   if (args.apiEndpoint) params.set('api_endpoint', args.apiEndpoint);
   if (args.vaultPayload) params.set('vault_payload', args.vaultPayload);
   if (args.handoffPk) params.set('handoff_pk', args.handoffPk);
+  if (args.agentLabel) params.set('agent_label', args.agentLabel);
   return `${UNLOCK_CUSTOM_SCHEME}://oauth/consent?${params.toString()}`;
 }
 
@@ -195,6 +208,7 @@ export type ShellLaunchArgs = {
   state?: string;
   vaultPayload?: string;
   handoffPk?: string;
+  agentLabel?: string;
 };
 
 /** Same shell query on the web unlock page. Factors stay there, not on the hosted site. */

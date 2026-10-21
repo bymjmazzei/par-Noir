@@ -24,6 +24,9 @@ export interface AuthenticateWithUnlockProofParams {
   scope?: string[];
   state?: string;
   nonce?: string;
+  /** RFC 7636 S256 challenge; the API binds it to the minted code. */
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
 }
 
 function randomHex(bytes: number): string {

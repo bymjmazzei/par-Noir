@@ -50,6 +50,7 @@ import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
 import { applyShellFragment, assertFactorFree, encodeShellReturn } from '../hostedShell/session';
 import { assertBrokerBodyHasNoPrivateKeys, sealHandoffPayload } from '../handoffSeal';
 import { buildShellResult } from '../hostedShell/shellResult';
+import type { SaveAgentIdentity } from '../hostedShell/agentIdentity';
 import { consentUnlockCss, consentUnlockBrokerCssExtras, resolveConsentAssetBase } from './consentUnlockStyles';
 import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
 
@@ -110,6 +111,8 @@ export type ConsentUnlockAppProps = {
   onUnlockedForVault?: (material: ConsentVaultEnrollMaterial) => void | Promise<void>;
   /** Called once vaultFactors path finishes or fails so the host can clear vaultFactors. */
   onVaultFactorsConsumed?: () => void;
+  /** op=agent: seal the new agent identity into the device vault. Absent → agent op fails closed. */
+  saveAgentIdentity?: SaveAgentIdentity;
 };
 
 type Step = 'unlock' | 'consent';
@@ -203,6 +206,7 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
       vaultFactors={props.vaultFactors}
       onUnlockedForVault={props.onUnlockedForVault}
       onVaultFactorsConsumed={props.onVaultFactorsConsumed}
+      saveAgentIdentity={props.saveAgentIdentity}
     />
   );
 }
@@ -220,6 +224,7 @@ function ConsentUnlockInner(props: {
   vaultFactors?: ConsentVaultFactors | null;
   onUnlockedForVault?: (material: ConsentVaultEnrollMaterial) => void | Promise<void>;
   onVaultFactorsConsumed?: () => void;
+  saveAgentIdentity?: SaveAgentIdentity;
 }): React.ReactElement {
   const {
     params,
@@ -234,6 +239,7 @@ function ConsentUnlockInner(props: {
     vaultFactors,
     onUnlockedForVault,
     onVaultFactorsConsumed,
+    saveAgentIdentity,
   } = props;
   const [step, setStep] = useState<Step>('unlock');
   const [unlockMode, setUnlockMode] = useState<UnlockMode>('file');
@@ -367,6 +373,8 @@ function ConsentUnlockInner(props: {
           pnName: factors.pnName,
           passcode: factors.passcode,
           vaultPayload: active.vaultPayload,
+          agentLabel: active.agentLabel,
+          saveAgentIdentity,
           unlocked: {
             publicKey: unlocked.publicKey,
             decryptedIdentity: unlocked.decryptedIdentity as unknown as Record<string, unknown>,
@@ -438,7 +446,7 @@ function ConsentUnlockInner(props: {
         handoffPk: active.handoffPk,
       });
     },
-    [params, openExternal, deliverLocalBroker, returnShellToCaller]
+    [params, openExternal, deliverLocalBroker, returnShellToCaller, saveAgentIdentity]
   );
 
   const resetFormAfterBrokerHandoff = useCallback(() => {
@@ -507,6 +515,8 @@ function ConsentUnlockInner(props: {
         nonce: active.nonce,
         publicKey: unlocked.publicKey,
         decryptedIdentity: unlocked.decryptedIdentity as DecryptedIdentityRecord,
+        codeChallenge: active.codeChallenge || undefined,
+        codeChallengeMethod: active.codeChallengeMethod || undefined,
       });
 
       setAuthCode(mint.code);

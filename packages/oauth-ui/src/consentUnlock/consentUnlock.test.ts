@@ -56,6 +56,33 @@ describe('consentUnlock mint', () => {
     expect(result.pnIdentifier).toBe('pn_test_id');
     expect(fetchMock).toHaveBeenCalled();
   });
+
+  it('passes the PKCE challenge from the deep link to authenticate', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).includes('/challenge')) {
+          return { ok: true, json: async () => ({ challenge_id: 'cid', challenge: 'chal' }) } as Response;
+        }
+        bodies.push(JSON.parse(String(init?.body || '{}')));
+        return { ok: true, json: async () => ({ code: 'authcode' }) } as Response;
+      })
+    );
+    const p = parseConsentUnlockParams(
+      `client_id=pn-agent-mcp&redirect_uri=https%3A%2F%2Fu.test%2Fcb&code_challenge=${'c'.repeat(43)}&code_challenge_method=S256`
+    );
+    await authenticateWithUnlockProofDetailed({
+      apiEndpoint: 'https://api.example.com',
+      clientId: p.clientId,
+      redirectUri: p.redirectUri,
+      publicKey: 'pk',
+      mlDsaSecretKeyB64: 'c2VjcmV0',
+      codeChallenge: p.codeChallenge,
+      codeChallengeMethod: p.codeChallengeMethod,
+    });
+    expect(bodies[0]).toMatchObject({ code_challenge: 'c'.repeat(43), code_challenge_method: 'S256' });
+  });
 });
 
 describe('shouldUseCrossProcessBrokerHandoff', () => {

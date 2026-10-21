@@ -7,6 +7,7 @@ import { IdentityCrypto } from '@par-noir/identity-crypto';
 import { sealCloudVault } from '@par-noir/device-cloud-credentials';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import type { ShellOp } from './session';
+import { createAgentIdentity, type SaveAgentIdentity } from './agentIdentity';
 
 export type ShellUnlocked = {
   publicKey: string;
@@ -30,7 +31,18 @@ export async function buildShellResult(args: {
   passcode: string;
   unlocked?: ShellUnlocked;
   vaultPayload?: string;
+  agentLabel?: string;
+  saveAgentIdentity?: SaveAgentIdentity;
 }): Promise<Record<string, string> | undefined> {
+  if (args.op === 'agent') {
+    if (!args.unlocked) throw new Error('Unlock your pN to add an AI agent');
+    const agent = await createAgentIdentity({
+      label: args.agentLabel || '',
+      saveAgentIdentity: args.saveAgentIdentity,
+    });
+    return { agentPnIdentifier: agent.agentPnIdentifier, agentPublicKey: agent.agentPublicKey };
+  }
+
   if (args.op === 'seal_vault') {
     if (!args.vaultPayload) throw new Error('Cloud envelope missing');
     const credentials = JSON.parse(b64UrlDecode(args.vaultPayload)) as StorageCredentialsEnvelope;

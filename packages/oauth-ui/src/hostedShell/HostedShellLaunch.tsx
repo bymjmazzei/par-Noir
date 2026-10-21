@@ -46,6 +46,9 @@ export type HostedShellLaunchProps = {
   label?: string;
   className?: string;
   vaultPayload?: string;
+  /** op=agent: name for the AI agent Unlock creates. */
+  agentLabel?: string;
+  disabled?: boolean;
   /** Button only. The caller prints the explanation once for several actions. */
   buttonOnly?: boolean;
   onSession: (session: HostedShellSession) => void;
@@ -144,6 +147,7 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
       state,
       vaultPayload: props.vaultPayload,
       handoffPk: bindHandoffKem(state).publicKey,
+      agentLabel: props.agentLabel,
     };
     void (async () => {
       const choice = await tryPreferUnlockApp(buildShellLaunchUrl(launch));
@@ -189,6 +193,7 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
             padding: '12px 16px',
           }}
           onClick={openUnlock}
+          disabled={props.disabled}
         >
           {props.label || 'Continue in par Noir Unlock'}
         </button>

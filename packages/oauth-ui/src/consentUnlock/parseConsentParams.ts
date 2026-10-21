@@ -12,11 +12,16 @@ export interface ConsentUnlockParams {
   apiEndpoint: string;
   /** `shell` — return a factor-free fragment to the hosted app. */
   flow: string;
-  shellOp: 'session' | 'export' | 'recovery' | 'sub_pn' | 'dm' | 'rotate' | 'create' | 'seal_vault';
+  shellOp: 'session' | 'export' | 'recovery' | 'sub_pn' | 'dm' | 'rotate' | 'create' | 'seal_vault' | 'agent';
   /** Base64url cloud envelope for op=seal_vault. */
   vaultPayload: string;
   /** Ephemeral ML-KEM public key from the calling tab. Secrets are sealed to it. */
   handoffPk: string;
+  /** op=agent: display name for the new AI agent. */
+  agentLabel: string;
+  /** RFC 7636 S256 challenge passed through to authenticate. */
+  codeChallenge: string;
+  codeChallengeMethod: string;
 }
 
 function readParam(search: URLSearchParams, key: string): string {
@@ -52,6 +57,9 @@ export function parseConsentUnlockParams(
     shellOp: (readParam(params, 'op') || 'session') as ConsentUnlockParams['shellOp'],
     vaultPayload: readParam(params, 'vault_payload'),
     handoffPk: readParam(params, 'handoff_pk'),
+    agentLabel: readParam(params, 'agent_label'),
+    codeChallenge: readParam(params, 'code_challenge'),
+    codeChallengeMethod: readParam(params, 'code_challenge_method'),
   };
 }
 

@@ -25,6 +25,8 @@ export type CompleteConsentUnlockInput = {
   nonce: string;
   publicKey: string;
   decryptedIdentity: DecryptedIdentityRecord;
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
 };
 
 /**
@@ -59,6 +61,8 @@ export async function mintConsentAuthorizationCode(
     scope: scopeParts,
     state: input.state || undefined,
     nonce: input.nonce || undefined,
+    codeChallenge: input.codeChallenge,
+    codeChallengeMethod: input.codeChallengeMethod,
   });
 
   return detailed;
@@ -120,6 +124,10 @@ export async function authenticateWithUnlockProofDetailed(
     public_key: params.publicKey,
     signature,
   };
+  if (params.codeChallenge) {
+    body.code_challenge = params.codeChallenge;
+    body.code_challenge_method = params.codeChallengeMethod || 'S256';
+  }
 
   const forbidden = ['passcode', 'pn_name', 'pnName', 'password'] as const;
   for (const key of forbidden) {

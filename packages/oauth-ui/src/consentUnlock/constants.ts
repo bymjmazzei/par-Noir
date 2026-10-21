@@ -7,6 +7,9 @@ export function isMessagingHandoffClient(clientId: string): boolean {
   return (MESSAGING_HANDOFF_CLIENT_IDS as readonly string[]).includes(clientId);
 }
 
+/** Must equal AGENT_MCP_CLIENT_ID in @par-noir/standard-data-points. */
+export const AGENT_SIGN_IN_CLIENT_ID = 'pn-agent-mcp';
+
 /**
  * Cap / prefer-app (`popup=false`) may finish solely via API broker or openExternal
  * (handoffDone UI; caller polls broker-pending).

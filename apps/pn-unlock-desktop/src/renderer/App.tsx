@@ -7,6 +7,10 @@ import {
   searchFromUnlockUrl,
   postOAuthBrokerComplete,
   postBrokerLaunched,
+  vaultEntriesForClient,
+  AGENT_SIGN_IN_CLIENT_ID,
+  AGENT_VAULT_REQUIRED_MESSAGE,
+  type AgentVaultEntry,
   type ConsentVaultEnrollMaterial,
   type ConsentVaultFactors,
   type SessionVaultPickerOption,
@@ -199,9 +203,14 @@ export default function App(): React.ReactElement {
     setVaultError(null);
     setVaultBusy(true);
     try {
-      const entries = await unlockSessionVaultEntries();
+      const clientId = new URLSearchParams(search.replace(/^\?/, '')).get('client_id') || '';
+      const entries = vaultEntriesForClient(await unlockSessionVaultEntries(), clientId);
       if (entries.length === 0) {
-        setVaultError('No sealed unlock session');
+        setVaultError(
+          clientId === AGENT_SIGN_IN_CLIENT_ID
+            ? 'No AI agent is saved on this Mac. Add one in Dashboard, Sub-pNs.'
+            : 'No sealed unlock session'
+        );
         return;
       }
       if (entries.length === 1) {
@@ -222,7 +231,14 @@ export default function App(): React.ReactElement {
     } finally {
       setVaultBusy(false);
     }
-  }, [applyEntry]);
+  }, [applyEntry, search]);
+
+  const saveAgentIdentity = useCallback(async (entry: AgentVaultEntry) => {
+    if (!(await isUnlockSessionVaultAvailable())) {
+      throw new Error(AGENT_VAULT_REQUIRED_MESSAGE);
+    }
+    await enrollUnlockSessionVault({ kind: 'unlock_keys', ...entry });
+  }, []);
 
   // Auto-prompt Touch ID when the vault overlay is offered (cold start or prefer-app).
   useEffect(() => {
@@ -362,6 +378,7 @@ export default function App(): React.ReactElement {
         vaultFactors={vaultFactors}
         onVaultFactorsConsumed={() => setVaultFactors(null)}
         onUnlockedForVault={onUnlockedForVault}
+        saveAgentIdentity={saveAgentIdentity}
       />
     </>
   );

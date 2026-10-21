@@ -279,3 +279,13 @@ export {
   shellLaunchAfterAppProbe,
 } from './hostedShell/session';
 export type { ShellOp, HostedShellSession } from './hostedShell/session';
+export {
+  AGENT_VAULT_NICKNAME_PREFIX,
+  AGENT_VAULT_REQUIRED_MESSAGE,
+  agentVaultNickname,
+  isAgentVaultNickname,
+  normalizeAgentLabel,
+  vaultEntriesForClient,
+} from './hostedShell/agentIdentity';
+export type { AgentVaultEntry, SaveAgentIdentity, AgentIdentityResult } from './hostedShell/agentIdentity';
+export { AGENT_SIGN_IN_CLIENT_ID } from './consentUnlock/constants';
