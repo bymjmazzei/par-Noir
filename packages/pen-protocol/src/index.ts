@@ -24,6 +24,7 @@ export * from './mediaStyle.js';
 export * from './playbackSrc.js';
 export * from './layerParts.js';
 export * from './agent.js';
+export * from './agentDraft.js';
 export * from './licensing.js';
 export * from './verifiedAuthor.js';
 export * from './table.js';
