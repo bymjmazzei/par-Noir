@@ -5,7 +5,13 @@
  */
 
 import type { Application, NextFunction, Request, Response } from 'express';
-import { AGENT_MCP_CLIENT_ID, AI_SCOPES, type AiScope } from '@par-noir/standard-data-points';
+import {
+  AGENT_MCP_CLIENT_ID,
+  AI_SCOPES,
+  type AgentAttestation,
+  type AgentDelegationStatement,
+  type AiScope
+} from '@par-noir/standard-data-points';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { OwnedAssetService } from './ownedAssetService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
@@ -18,6 +24,31 @@ export interface AgentRequestContext {
   agentPnIdentifier: string;
   rootPnIdentifier: string;
   scopes: AiScope[];
+  attestations: AgentAttestation[];
+  statement: AgentDelegationStatement;
+}
+
+/** What the agent may see of its own delegation: no owner key, no attestations. */
+export interface AgentDelegationView {
+  v: number;
+  agentPnIdentifier: string;
+  agentPublicKey: string;
+  scopes: AiScope[];
+  issuedAt: string;
+  expiresAt: string | null;
+  nonce: string;
+}
+
+export function projectDelegation(statement: AgentDelegationStatement, liveScopes: AiScope[]): AgentDelegationView {
+  return {
+    v: statement.v,
+    agentPnIdentifier: statement.agentPnIdentifier,
+    agentPublicKey: statement.agentPublicKey,
+    scopes: liveScopes,
+    issuedAt: statement.issuedAt,
+    expiresAt: statement.expiresAt,
+    nonce: statement.nonce
+  };
 }
 
 type AgentRequest = Request & { agent?: AgentRequestContext };
@@ -58,17 +89,18 @@ function deny(res: Response, status: number, error: string): void {
 }
 
 /**
- * Bearer must be a pn-agent-mcp token whose agent sub-pN still holds `scope` from its owner.
- * Fails closed: unknown, revoked, or expired delegation → 403 delegation_revoked.
+ * Bearer must be a pn-agent-mcp token whose agent sub-pN still holds an owner-signed
+ * delegation, and `scope` when given. Fails closed: unknown, revoked, unsigned or expired
+ * delegation → 403 delegation_revoked.
  */
-export function requireAgentDelegation(scope: AiScope) {
+export function requireAgentDelegation(scope?: AiScope) {
   return async (req: AgentRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier) return deny(res, 401, 'unauthorized');
       if (payload.clientId !== AGENT_MCP_CLIENT_ID) return deny(res, 403, 'agent_client_required');
       const tokenScopes = Array.isArray(payload.scope) ? payload.scope : [];
-      if (!tokenScopes.includes(scope)) return deny(res, 403, 'insufficient_scope');
+      if (scope && !tokenScopes.includes(scope)) return deny(res, 403, 'insufficient_scope');
 
       const agentPn = normalizePn(payload.pnIdentifier);
       const delegation = await OwnedAssetService.resolveAgentDelegation(agentPn);
@@ -76,12 +108,14 @@ export function requireAgentDelegation(scope: AiScope) {
         safeLogger.info('[agent] delegation missing or revoked', { agentHash: hashIdentifier(agentPn) });
         return deny(res, 403, 'delegation_revoked');
       }
-      if (!delegation.scopes.includes(scope)) return deny(res, 403, 'insufficient_scope');
+      if (scope && !delegation.scopes.includes(scope)) return deny(res, 403, 'insufficient_scope');
 
       req.agent = {
         agentPnIdentifier: agentPn,
         rootPnIdentifier: normalizePn(delegation.rootPnIdentifier),
-        scopes: delegation.scopes as AiScope[]
+        scopes: delegation.scopes as AiScope[],
+        attestations: delegation.attestations,
+        statement: delegation.statement
       };
       next();
     } catch (e) {
@@ -152,6 +186,11 @@ async function metadataService() {
 }
 
 export function registerAgentRoutes(app: Application): void {
+  app.get('/api/agent/delegation', requireAgentDelegation(), (req: AgentRequest, res: Response) => {
+    const agent = req.agent!;
+    return res.json({ delegation: projectDelegation(agent.statement, agent.scopes) });
+  });
+
   app.get(
     '/api/agent/files/search',
     requireAgentDelegation(AI_SCOPES.filesPublished),

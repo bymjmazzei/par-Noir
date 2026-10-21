@@ -51,8 +51,30 @@ function agentToken(scope = ['openid', 'ai:files.published', 'ai:pen.published']
   validateAccessToken.mockReturnValue({ pnIdentifier: 'pn-agent1', clientId: 'pn-agent-mcp', scope });
 }
 
-function delegate(scopes = ['ai:files.published', 'ai:pen.published']) {
-  resolveAgentDelegation.mockResolvedValue({ assetId: 'a1', rootPnIdentifier: ROOT, scopes });
+const ROOT_PUBLIC_KEY = 'root-ml-dsa-public-key';
+const ATTESTATIONS = [
+  { dataPointId: 'over_18', satisfied: true, level: 'verified', expiresAt: null },
+  { dataPointId: 'over_21', satisfied: false, level: 'attested', expiresAt: '2026-01-01T00:00:00.000Z' },
+];
+
+function delegate(scopes = ['ai:files.published', 'ai:pen.published'], attestations = ATTESTATIONS) {
+  resolveAgentDelegation.mockResolvedValue({
+    assetId: 'a1',
+    rootPnIdentifier: ROOT,
+    scopes,
+    attestations,
+    statement: {
+      v: 1,
+      rootPublicKey: ROOT_PUBLIC_KEY,
+      agentPnIdentifier: 'pn-agent1',
+      agentPublicKey: 'agent-pk',
+      scopes,
+      attestations,
+      issuedAt: '2026-10-21T13:00:00.000Z',
+      expiresAt: null,
+      nonce: 'nonce-abcdefghijklmnop',
+    },
+  });
 }
 
 const SENSITIVE = {
@@ -119,6 +141,42 @@ describe('agent routes gate', () => {
     resolveAgentDelegation.mockRejectedValue(new Error('db down'));
     const res = await request(app()).get('/api/agent/files/f1').set('Authorization', 'Bearer t');
     expect(res.status).toBe(503);
+  });
+});
+
+describe('GET /api/agent/delegation', () => {
+  it('returns the signed statement without the owner key or attestations', async () => {
+    agentToken();
+    delegate(['ai:files.published', 'ai:proofs']);
+    const res = await request(app()).get('/api/agent/delegation').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(200);
+    expect(res.body.delegation).toEqual({
+      v: 1,
+      agentPnIdentifier: 'pn-agent1',
+      agentPublicKey: 'agent-pk',
+      scopes: ['ai:files.published', 'ai:proofs'],
+      issuedAt: '2026-10-21T13:00:00.000Z',
+      expiresAt: null,
+      nonce: 'nonce-abcdefghijklmnop',
+    });
+    const raw = JSON.stringify(res.body);
+    for (const leak of [ROOT_PUBLIC_KEY, ROOT, 'over_18', 'satisfied', 'signature']) {
+      expect(raw).not.toContain(leak);
+    }
+  });
+
+  it('403 once the owner revokes', async () => {
+    agentToken();
+    resolveAgentDelegation.mockResolvedValue(null);
+    const res = await request(app()).get('/api/agent/delegation').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('delegation_revoked');
+  });
+
+  it('403 for a first-party token', async () => {
+    validateAccessToken.mockReturnValue({ pnIdentifier: ROOT, clientId: 'browser-app', scope: ['openid'] });
+    const res = await request(app()).get('/api/agent/delegation').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(403);
   });
 });
 

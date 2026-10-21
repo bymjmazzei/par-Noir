@@ -154,7 +154,9 @@ export function registerOwnedAssetRoutes(app: Application): void {
         subjectPublicKey: String(body.subjectPublicKey || ''),
         label: String(body.label || ''),
         scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : [],
-        expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : null
+        expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : null,
+        statement: body.statement,
+        signature: typeof body.signature === 'string' ? body.signature : ''
       });
       return res.status(201).json({ agent: registration });
     } catch (e: unknown) {

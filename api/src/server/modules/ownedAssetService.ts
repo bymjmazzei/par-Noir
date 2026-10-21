@@ -8,7 +8,16 @@ import {
   assertMlDsa65PublicKeyB64,
   deriveCanonicalPnIdentifier
 } from '@par-noir/pqc-crypto/oauth-unlock-proof';
-import { AGENT_MCP_CLIENT_ID, filterKnownAiScopes } from '@par-noir/standard-data-points';
+import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
+import { mlDsa65Verify } from '@par-noir/pqc-crypto/ml-dsa';
+import {
+  AGENT_MCP_CLIENT_ID,
+  canonicalDelegationBytes,
+  filterKnownAiScopes,
+  parseAgentDelegationStatement,
+  type AgentAttestation,
+  type AgentDelegationStatement
+} from '@par-noir/standard-data-points';
 import { getDatabasePool } from '../utils/database';
 import { appendAuditEvent } from './auditService';
 import { isPnRevokedForNetwork } from './identitySuccessionService';
@@ -858,6 +867,7 @@ export class OwnedAssetService {
   /**
    * Postgres authz cache for an AI agent sub-pN. The dashboard writes the Drive sheet rows
    * on-device with the ids returned here; the API never opens Drive for agents.
+   * The delegation must be signed by the root pN's ML-DSA key and match the request.
    */
   static async registerAgent(params: {
     rootPn: string;
@@ -867,6 +877,9 @@ export class OwnedAssetService {
     label: string;
     scopes: string[];
     expiresAt?: string | null;
+    statement: unknown;
+    signature: string;
+    now?: number;
   }): Promise<AiAgentRegistration> {
     const root = normalizePn(params.rootPn);
     const subject = normalizePn(params.subjectPnIdentifier);
@@ -885,9 +898,19 @@ export class OwnedAssetService {
     if (!label) {
       throw Object.assign(new Error('agent_label_required'), { code: 'INVALID_INPUT' });
     }
+    const expiresAt = params.expiresAt ? new Date(params.expiresAt).toISOString() : null;
+    const statement = verifyAgentStatement({
+      raw: params.statement,
+      signature: params.signature,
+      root,
+      subject,
+      publicKey,
+      scopes,
+      expiresAt,
+      now: params.now ?? Date.now()
+    });
     const assetId =
       params.assetId && UUID_RE.test(params.assetId) ? params.assetId : randomUUID();
-    const expiresAt = params.expiresAt ? new Date(params.expiresAt).toISOString() : null;
 
     const pool = getDatabasePool();
     const existing = await pool.query(
@@ -904,15 +927,18 @@ export class OwnedAssetService {
 
     await pool.query(
       `INSERT INTO pn_owned_assets (
-        id, root_pn_identifier, subject_pn_identifier, kind, status, metadata, subject_public_key
-      ) VALUES ($1, $2, $3, 'ai_agent', 'active', $4::jsonb, $5)
+        id, root_pn_identifier, subject_pn_identifier, kind, status, metadata, subject_public_key,
+        delegation_statement, delegation_signature
+      ) VALUES ($1, $2, $3, 'ai_agent', 'active', $4::jsonb, $5, $6::jsonb, $7)
       ON CONFLICT (id) DO UPDATE SET
         status = 'active',
         metadata = EXCLUDED.metadata,
         subject_public_key = EXCLUDED.subject_public_key,
+        delegation_statement = EXCLUDED.delegation_statement,
+        delegation_signature = EXCLUDED.delegation_signature,
         updated_at = NOW(),
         revoked_at = NULL`,
-      [id, root, subject, JSON.stringify({ label }), publicKey]
+      [id, root, subject, JSON.stringify({ label }), publicKey, JSON.stringify(statement), params.signature]
     );
     await pool.query(
       `UPDATE pn_asset_delegations SET status = 'revoked', updated_at = NOW()
@@ -1011,14 +1037,17 @@ export class OwnedAssetService {
   }
 
   /**
-   * Live delegation for an agent bearer. Null when the agent is unknown, revoked, or has
-   * no unexpired `ai:` scope for the MCP client.
+   * Live delegation for an agent bearer. Null when the agent is unknown, revoked, has no
+   * owner-signed statement, the statement expired, or no unexpired `ai:` scope remains.
    */
-  static async resolveAgentDelegation(agentPn: string): Promise<AiAgentDelegation | null> {
+  static async resolveAgentDelegation(
+    agentPn: string,
+    now: number = Date.now()
+  ): Promise<AiAgentDelegation | null> {
     const subject = normalizePn(agentPn);
     const pool = getDatabasePool();
     const r = await pool.query(
-      `SELECT oa.id, oa.root_pn_identifier, d.scope
+      `SELECT oa.id, oa.root_pn_identifier, oa.delegation_statement, d.scope
        FROM pn_owned_assets oa
        JOIN pn_asset_delegations d ON d.owned_asset_id = oa.id
        WHERE oa.subject_pn_identifier = $1 AND oa.kind = 'ai_agent' AND oa.status = 'active'
@@ -1028,15 +1057,94 @@ export class OwnedAssetService {
     );
     if (r.rows.length === 0) return null;
     const first = r.rows[0] as Record<string, unknown>;
+    const statement = parseAgentDelegationStatement(first.delegation_statement);
+    if (!statement || statement.agentPnIdentifier !== subject) return null;
+    if (statement.expiresAt && Date.parse(statement.expiresAt) <= now) return null;
+    const signed = new Set<string>(statement.scopes);
     const scopes = filterKnownAiScopes(
       (r.rows as Record<string, unknown>[]).map((row) => String(row.scope))
-    );
+    ).filter((scope) => signed.has(scope));
     if (scopes.length === 0) return null;
     return {
       assetId: String(first.id),
       rootPnIdentifier: String(first.root_pn_identifier),
-      scopes
+      scopes,
+      attestations: statement.attestations,
+      statement
     };
+  }
+}
+
+/** Accept a statement fresh within this window around the server clock. */
+const STATEMENT_MAX_AGE_MS = 15 * 60 * 1000;
+const STATEMENT_MAX_SKEW_MS = 5 * 60 * 1000;
+
+function invalid(message: string): Error {
+  return Object.assign(new Error(message), { code: 'INVALID_INPUT' });
+}
+
+function sameScopeSet(a: readonly string[], b: readonly string[]): boolean {
+  const sa = new Set(a);
+  const sb = new Set(b);
+  return sa.size === sb.size && [...sa].every((s) => sb.has(s));
+}
+
+/** Root pN signed exactly this delegation for exactly this agent, recently. */
+function verifyAgentStatement(args: {
+  raw: unknown;
+  signature: string;
+  root: string;
+  subject: string;
+  publicKey: string;
+  scopes: string[];
+  expiresAt: string | null;
+  now: number;
+}): AgentDelegationStatement {
+  const raw = typeof args.raw === 'string' ? safeJson(args.raw) : args.raw;
+  const statement = parseAgentDelegationStatement(raw);
+  if (!statement || typeof args.signature !== 'string' || !args.signature) {
+    throw invalid('agent_statement_required');
+  }
+  if (
+    !assertMlDsa65PublicKeyB64(statement.rootPublicKey) ||
+    deriveCanonicalPnIdentifier(statement.rootPublicKey) !== args.root
+  ) {
+    throw invalid('agent_statement_root_mismatch');
+  }
+  let ok = false;
+  try {
+    ok = mlDsa65Verify(
+      base64ToBytes(args.signature),
+      canonicalDelegationBytes(statement),
+      base64ToBytes(statement.rootPublicKey)
+    );
+  } catch {
+    ok = false;
+  }
+  if (!ok) throw invalid('agent_signature_invalid');
+  if (
+    statement.agentPnIdentifier !== args.subject ||
+    statement.agentPublicKey !== args.publicKey ||
+    !sameScopeSet(statement.scopes, args.scopes) ||
+    statement.expiresAt !== args.expiresAt
+  ) {
+    throw invalid('agent_statement_mismatch');
+  }
+  const issued = Date.parse(statement.issuedAt);
+  if (issued > args.now + STATEMENT_MAX_SKEW_MS || issued < args.now - STATEMENT_MAX_AGE_MS) {
+    throw invalid('agent_statement_stale');
+  }
+  if (statement.expiresAt && Date.parse(statement.expiresAt) <= args.now) {
+    throw invalid('agent_statement_expired');
+  }
+  return statement;
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
   }
 }
 
@@ -1061,6 +1169,8 @@ export interface AiAgentDelegation {
   assetId: string;
   rootPnIdentifier: string;
   scopes: string[];
+  attestations: AgentAttestation[];
+  statement: AgentDelegationStatement;
 }
 
 async function cutAgentAccess(rows: Record<string, unknown>[]): Promise<void> {
