@@ -58,6 +58,7 @@ import {
 } from '../../components/TemplateGalleryThumb';
 import { PenNotebookPage } from '../../components/PenNotebookPage';
 import { DocFeedScroller } from '../../components/DocFeedScroller';
+import { AgentDraftsInbox } from '../../components/AgentDraftsInbox';
 import { ClassFeedRail } from '../../components/ClassFeedRail';
 import {
   buildSocialTemplateRailItems,
@@ -187,6 +188,13 @@ export function DocListShell(state: DocListReadyState) {
       showDensityTools={docs.length > 0 || allFolders.length > 0}
       toolsExtra={trashTools}
     >
+      <AgentDraftsInbox
+        session={session}
+        onAccepted={(docId) => {
+          onDocsChange();
+          navigate(`/d/${docId}`);
+        }}
+      />
       {docs.length === 0 && allFolders.length === 0 ? (
         <div className="px-6 py-16 text-center">
           <p className="text-neutral-500">No documents yet.</p>

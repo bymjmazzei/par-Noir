@@ -646,13 +646,31 @@ async function applyMailboxRekey(
 const mailboxRouteByPn = new Map<string, string>();
 const drainInFlight = new Map<string, Promise<number>>();
 
+/** This owner's claimed inbox route, cached for the session. Null when locked or unreachable. */
+export async function resolvePenMailboxRouteKey(session: PenSession): Promise<string | null> {
+  const cached = mailboxRouteByPn.get(session.pnIdentifier);
+  if (cached) return cached;
+  const seal = sealSessionFromPen(session);
+  if (!seal) return null;
+  try {
+    const routeKey = await ensureMailboxRouteKey(session.pnIdentifier, seal, {
+      apiBaseUrl: API_ENDPOINT,
+      authToken: session.accessToken,
+      pnIdentifier: session.pnIdentifier
+    });
+    mailboxRouteByPn.set(session.pnIdentifier, routeKey);
+    return routeKey;
+  } catch {
+    return null;
+  }
+}
+
 export async function drainPenMailbox(session: PenSession): Promise<number> {
   const existing = drainInFlight.get(session.pnIdentifier);
   if (existing) return existing;
 
   const run = (async () => {
-    const seal = sealSessionFromPen(session);
-    if (!seal) return 0;
+    if (!session.mlKemSecretKey) return 0;
 
     const apply = createApiSocialApplier({
       apiBaseUrl: API_ENDPOINT,
@@ -662,19 +680,8 @@ export async function drainPenMailbox(session: PenSession): Promise<number> {
         openSocialEnvelope<Record<string, unknown>>(envelope, session.mlKemSecretKey!, contextId)
     });
 
-    let routeKey = mailboxRouteByPn.get(session.pnIdentifier);
-    if (!routeKey) {
-      try {
-        routeKey = await ensureMailboxRouteKey(session.pnIdentifier, seal, {
-          apiBaseUrl: API_ENDPOINT,
-          authToken: session.accessToken,
-          pnIdentifier: session.pnIdentifier
-        });
-        mailboxRouteByPn.set(session.pnIdentifier, routeKey);
-      } catch {
-        return 0;
-      }
-    }
+    const routeKey = await resolvePenMailboxRouteKey(session);
+    if (!routeKey) return 0;
 
     const pendingQs = new URLSearchParams({
       pnIdentifier: session.pnIdentifier,
