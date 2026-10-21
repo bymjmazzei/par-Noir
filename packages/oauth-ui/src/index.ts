@@ -288,4 +288,11 @@ export {
   vaultEntriesForClient,
 } from './hostedShell/agentIdentity';
 export type { AgentVaultEntry, SaveAgentIdentity, AgentIdentityResult } from './hostedShell/agentIdentity';
+export {
+  createAgentCustodyBridge,
+  createAgentJwksSource,
+  agentApprovalPrompt,
+  type AgentCustodyBridge,
+  type AgentCustodyBridgeDeps,
+} from './agentCustody';
 export { AGENT_SIGN_IN_CLIENT_ID } from './consentUnlock/constants';

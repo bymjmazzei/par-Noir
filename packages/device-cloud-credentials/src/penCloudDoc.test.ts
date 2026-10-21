@@ -13,6 +13,7 @@ import {
   decryptSectionPayload,
   encryptSectionJson,
   openWrappedDocKey,
+  penCloudDocPlainText,
   readPenCloudDoc,
   sectionsToWireCipherMap,
   wireB64ToEnvelope,
@@ -87,6 +88,28 @@ describe('pen cloud doc decrypt', () => {
       docKey: null
     });
     expect(doc).toEqual({ manifest: null, chain: null, currentSections: [], drafts: [] });
+  });
+
+  it('reads committed sections as plain text, else the newest draft', () => {
+    const para = (text: string): PenSectionContent => ({
+      slug: text,
+      doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
+    });
+    const base = { manifest: null, chain: null };
+    expect(
+      penCloudDocPlainText({ ...base, currentSections: [para('one'), para('two')], drafts: [] })
+    ).toBe('one\n\ntwo');
+    expect(
+      penCloudDocPlainText({
+        ...base,
+        currentSections: [],
+        drafts: [
+          { draft: { updatedAt: '2026-01-01T00:00:00Z' } as never, sections: [para('old')] },
+          { draft: { updatedAt: '2026-02-01T00:00:00Z' } as never, sections: [para('new')] }
+        ]
+      })
+    ).toBe('new');
+    expect(penCloudDocPlainText({ ...base, currentSections: [], drafts: [] })).toBe('');
   });
 });
 

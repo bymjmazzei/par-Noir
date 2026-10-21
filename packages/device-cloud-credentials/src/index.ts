@@ -294,6 +294,7 @@ export {
   sectionsToWireCipherMap,
   readPenCloudDoc,
   decryptCloudDoc,
+  penCloudDocPlainText,
   openWrappedDocKey,
   openDocKeysFromGroups,
 } from './penCloudDoc.js';

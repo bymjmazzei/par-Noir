@@ -71,6 +71,38 @@ export {
   canonicalDelegationBytes
 } from './agentClient';
 export {
+  type AgentCustodyTool,
+  type AgentCustodyErrorCode,
+  type AgentCustodyRequest,
+  type AgentCustodyResponse,
+  type PrivateFileHit,
+  type PrivatePenHit,
+  type PrivateSearchResult,
+  type PrivateFileText,
+  type PrivatePenText,
+  AGENT_CUSTODY_PROTOCOL_VERSION,
+  AGENT_CUSTODY_APP_DIR,
+  AGENT_CUSTODY_SOCKET_FILE,
+  AGENT_CUSTODY_MAX_LINE_BYTES,
+  AGENT_CUSTODY_SESSION_MS,
+  AGENT_CUSTODY_TOOLS,
+  AGENT_CUSTODY_TOOL_SCOPES,
+  AGENT_CUSTODY_ERRORS,
+  PRIVATE_TEXT_MAX_CHARS,
+  PRIVATE_FILE_MAX_BYTES,
+  PRIVATE_SEARCH_MAX_RESULTS,
+  isAgentCustodyTool,
+  isAgentCustodyErrorCode,
+  isAgentCustodyRequestId,
+  parseAgentCustodyRequest,
+  parseAgentCustodyResponse,
+  capPrivateText,
+  projectPrivateSearch,
+  projectPrivateFileText,
+  projectPrivatePenText,
+  isPrivateTextType
+} from './agentCustody';
+export {
   type PermissionManifestItem,
   type PermissionManifestItemType,
   type IntegratorPermissionManifest,

@@ -14,7 +14,8 @@
     "dist:mac": "npm run build && electron-builder --mac --dir",
     "dist:win": "npm run build && electron-builder --win --dir",
     "dist:all": "npm run build && electron-builder --mac --win --dir",
-    "lint": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit"
+    "lint": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@par-noir/device-session-vault": "file:../../packages/device-session-vault",

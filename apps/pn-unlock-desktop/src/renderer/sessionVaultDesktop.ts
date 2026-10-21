@@ -81,9 +81,10 @@ export async function enrollUnlockSessionVault(payload: UnlockKeysPayload): Prom
 }
 
 /** Biometric once → all enrolled unlock_keys entries (empty array if none). */
-export async function unlockSessionVaultEntries(): Promise<UnlockKeysPayload[]> {
+export async function unlockSessionVaultEntries(reason?: string): Promise<UnlockKeysPayload[]> {
   const v = await getVault();
-  const payload = await v.unlockWithBiometric(APP_ID);
+  if (v instanceof UnsupportedSessionVault) return [];
+  const payload = await v.unlockWithBiometric(APP_ID, reason);
   if (!payload) return [];
   if (payload.kind === 'unlock_multi') return payload.entries;
   if (payload.kind === 'unlock_keys') return [payload];

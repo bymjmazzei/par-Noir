@@ -11,6 +11,10 @@ export type UnlockDesktopApi = {
   vaultSet: (key: string, value: string) => Promise<void>;
   vaultRemove: (key: string) => Promise<void>;
   confirmBiometric: (reason: string) => Promise<boolean>;
+  /** Local AI agent socket: main hands each request line here and waits for `respondAgent`. */
+  onAgentRequest: (handler: (requestId: string, line: string) => void) => () => void;
+  respondAgent: (requestId: string, line: string) => void;
+  agentReady: () => void;
 };
 
 const api: UnlockDesktopApi = {
@@ -31,6 +35,17 @@ const api: UnlockDesktopApi = {
   vaultSet: (key, value) => ipcRenderer.invoke('unlock:vault-set', key, value),
   vaultRemove: (key) => ipcRenderer.invoke('unlock:vault-remove', key),
   confirmBiometric: (reason) => ipcRenderer.invoke('unlock:confirm-biometric', reason),
+  onAgentRequest: (handler) => {
+    const listener = (_event: Electron.IpcRendererEvent, requestId: string, line: string) => {
+      if (typeof requestId === 'string' && typeof line === 'string') handler(requestId, line);
+    };
+    ipcRenderer.on('agent:request', listener);
+    return () => {
+      ipcRenderer.removeListener('agent:request', listener);
+    };
+  },
+  respondAgent: (requestId, line) => ipcRenderer.send('agent:respond', requestId, line),
+  agentReady: () => ipcRenderer.send('agent:ready'),
 };
 
 contextBridge.exposeInMainWorld('pnUnlockDesktop', api);

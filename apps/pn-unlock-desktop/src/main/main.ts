@@ -10,6 +10,8 @@ import {
 } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
+import { agentErrorLine, startAgentSocket } from './agentSocket';
 
 const PROTOCOL = 'com.parnoir.unlock';
 /** Canonical unlock broker origin — file:// / localhost Electron has no CORS Origin. */
@@ -80,6 +82,39 @@ function registerApiOriginBridge(): void {
 
 let mainWindow: BrowserWindow | null = null;
 let pendingDeepLink: string | null = null;
+
+/** Covers the owner's Touch ID prompt plus the Drive reads behind one agent request. */
+const AGENT_REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
+let agentRendererReady = false;
+const agentSendQueue: Array<() => void> = [];
+const agentPending = new Map<string, (line: string) => void>();
+let agentSocket: { close: () => void } | null = null;
+
+function settleAllAgentRequests(): void {
+  for (const settle of [...agentPending.values()]) settle('');
+  agentSendQueue.length = 0;
+}
+
+/** Hand one socket line to the renderer's custody bridge; opens the window when it is closed. */
+function forwardAgentLine(line: string): Promise<string> {
+  return new Promise((resolve) => {
+    const requestId = randomUUID();
+    const timer = setTimeout(() => settle(''), AGENT_REQUEST_TIMEOUT_MS);
+    function settle(out: string) {
+      clearTimeout(timer);
+      agentPending.delete(requestId);
+      resolve(out || agentErrorLine(line, 'unavailable'));
+    }
+    agentPending.set(requestId, settle);
+    const send = () => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('agent:request', requestId, line);
+      else settle('');
+    };
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+    if (agentRendererReady) send();
+    else agentSendQueue.push(send);
+  });
+}
 
 const vaultFilePath = () => path.join(app.getPath('userData'), 'unlock-session-vault.json');
 
@@ -161,6 +196,12 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    agentRendererReady = false;
+    settleAllAgentRequests();
+  });
+
+  mainWindow.webContents.on('did-start-loading', () => {
+    agentRendererReady = false;
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
@@ -235,6 +276,18 @@ function registerIpc(): void {
   ipcMain.handle('unlock:confirm-biometric', async (_e, reason: string) => {
     return confirmVaultBiometric(typeof reason === 'string' ? reason : '');
   });
+
+  ipcMain.on('agent:ready', (e) => {
+    if (!mainWindow || e.sender !== mainWindow.webContents) return;
+    agentRendererReady = true;
+    for (const send of agentSendQueue.splice(0)) send();
+  });
+
+  ipcMain.on('agent:respond', (e, requestId: unknown, line: unknown) => {
+    if (!mainWindow || e.sender !== mainWindow.webContents) return;
+    if (typeof requestId !== 'string' || typeof line !== 'string') return;
+    agentPending.get(requestId)?.(line);
+  });
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -267,6 +320,9 @@ if (!gotLock) {
     registerApiOriginBridge();
     registerIpc();
     createWindow();
+    agentSocket = startAgentSocket(app.getPath('userData'), forwardAgentLine, (reason) => {
+      console.warn('[Unlock] AI agent socket unavailable', { reason });
+    });
     const fromArgv = extractDeepLinkFromArgv(process.argv);
     if (fromArgv) sendDeepLink(fromArgv);
 
@@ -277,5 +333,11 @@ if (!gotLock) {
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+  });
+
+  app.on('will-quit', () => {
+    agentSocket?.close();
+    agentSocket = null;
+    settleAllAgentRequests();
   });
 }

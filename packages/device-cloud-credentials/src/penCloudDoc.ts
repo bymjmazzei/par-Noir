@@ -11,11 +11,12 @@ import {
   openSocialEnvelope,
   unwrapChatKeyForOwner
 } from '@par-noir/dm-crypto';
-import type {
-  PenDocManifest,
-  PenDraftManifest,
-  PenHistoryChain,
-  PenSectionContent
+import {
+  sectionPlainText,
+  type PenDocManifest,
+  type PenDraftManifest,
+  type PenHistoryChain,
+  type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { listDeviceGroups } from './deviceSocial.js';
 import { readDocTree, type PenCloudSectionFile } from './penDriveTree.js';
@@ -197,6 +198,21 @@ export async function decryptCloudDoc(params: {
     });
   }
   return { manifest: raw.manifest, chain: raw.chain, currentSections, drafts };
+}
+
+/** What a reader sees: the committed sections, or the newest draft's when nothing is committed. */
+export function penCloudDocPlainText(doc: DecryptedCloudDoc): string {
+  let sections = doc.currentSections;
+  if (!sections.length) {
+    const newest = [...doc.drafts]
+      .filter((d) => d.sections.length)
+      .sort((a, b) => String(b.draft.updatedAt).localeCompare(String(a.draft.updatedAt)))[0];
+    sections = newest?.sections || [];
+  }
+  return sections
+    .map((s) => sectionPlainText(s))
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export type OpenedDocKey = { docKey: string; liveClaimSecret: string | null; keyEpoch: number | null };

@@ -25,6 +25,7 @@ import {
   unlockIdentityLabel,
   unlockSessionVaultEntries,
 } from './sessionVaultDesktop';
+import { startAgentBridge } from './agentBridge';
 
 /** Bundled branding — never load from the network (Electron file:// + CDN CORP blocks HTTPS). */
 import logoUrl from '../../../pn-unlock/public/branding/Par-Noir-Logo-White.png';
@@ -129,6 +130,8 @@ export default function App(): React.ReactElement {
     }
     window.location.assign(url);
   }, []);
+
+  useEffect(() => startAgentBridge(API_DEFAULT.replace(/\/$/, '')), []);
 
   useEffect(() => {
     let cancelled = false;
