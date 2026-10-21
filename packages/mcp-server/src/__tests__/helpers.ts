@@ -20,9 +20,10 @@ export const SECRETS = {
   newAccessToken: 'at-secret-rotated-access',
   newRefreshToken: 'rt-secret-rotated-refresh',
   age: '9137',
+  birthdate: '1931-07-09',
 } as const;
 
-export const ALL_SCOPES = ['openid', 'ai:files.published', 'ai:pen.published'];
+export const ALL_SCOPES = ['openid', 'ai:files.published', 'ai:pen.published', 'ai:proofs'];
 
 export function tokens(overrides: Partial<StoredTokens> = {}): StoredTokens {
   return {
@@ -43,6 +44,7 @@ export const LEAKY = {
   passcode: SECRETS.passcode,
   pnName: SECRETS.pnName,
   age: Number(SECRETS.age),
+  dateOfBirth: SECRETS.birthdate,
   accessToken: SECRETS.accessToken,
 };
 

@@ -8,6 +8,7 @@ import type { Application, NextFunction, Request, Response } from 'express';
 import {
   AGENT_MCP_CLIENT_ID,
   AI_SCOPES,
+  isAttestableDataPointId,
   type AgentAttestation,
   type AgentDelegationStatement,
   type AiScope
@@ -37,6 +38,11 @@ export interface AgentDelegationView {
   issuedAt: string;
   expiresAt: string | null;
   nonce: string;
+}
+
+/** Exactly the four fields an agent may learn about one proof. */
+export function projectAttestation(a: AgentAttestation): AgentAttestation {
+  return { dataPointId: a.dataPointId, satisfied: a.satisfied, level: a.level, expiresAt: a.expiresAt };
 }
 
 export function projectDelegation(statement: AgentDelegationStatement, liveScopes: AiScope[]): AgentDelegationView {
@@ -190,6 +196,22 @@ export function registerAgentRoutes(app: Application): void {
     const agent = req.agent!;
     return res.json({ delegation: projectDelegation(agent.statement, agent.scopes) });
   });
+
+  /** Answers only from the owner-signed attestations; never opens Drive or a proof. */
+  app.get(
+    '/api/agent/proofs/:dataPointId',
+    requireAgentDelegation(AI_SCOPES.proofs),
+    (req: AgentRequest, res: Response) => {
+      const id = String(req.params.dataPointId || '');
+      if (!isAttestableDataPointId(id)) return res.status(400).json({ error: 'invalid_request' });
+      const attestation = req.agent!.attestations.find((a) => a.dataPointId === id);
+      if (!attestation) return res.status(404).json({ error: 'not_attested' });
+      if (attestation.expiresAt && Date.parse(attestation.expiresAt) <= Date.now()) {
+        return res.status(410).json({ error: 'expired' });
+      }
+      return res.json(projectAttestation(attestation));
+    }
+  );
 
   app.get(
     '/api/agent/files/search',

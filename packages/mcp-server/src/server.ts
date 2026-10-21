@@ -3,7 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { AgentApiClient } from './apiClient';
 import { ERROR_MESSAGES, toErrorCode } from './errors';
 import type { Logger } from './log';
-import { TOOL_DEFS, readFile, readPenDocument, searchMyFiles, type ToolName } from './tools';
+import { TOOL_DEFS, proveDataPoint, readFile, readPenDocument, searchMyFiles, type ToolName } from './tools';
 
 export const SERVER_VERSION = '0.1.0';
 
@@ -42,7 +42,8 @@ export async function createPnMcpServer(deps: PnMcpDeps): Promise<McpServer> {
     { name: 'par-noir', version: SERVER_VERSION },
     {
       instructions:
-        "Read-only access to what the owner has published on par Noir, through an AI agent they approved. Nothing private is available.",
+        'Read-only access, through an AI agent the owner approved, to what they have published on par Noir and to ' +
+        'yes/no answers about proofs they chose to share. Nothing private is available.',
     }
   );
   const granted = new Set(await deps.client.grantedScopes());
@@ -66,6 +67,11 @@ export async function createPnMcpServer(deps: PnMcpDeps): Promise<McpServer> {
   if (allowed('read_pen_document')) {
     server.registerTool('read_pen_document', config('read_pen_document'), (args) =>
       run('read_pen_document', deps, () => readPenDocument(deps.client, args))
+    );
+  }
+  if (allowed('prove_data_point')) {
+    server.registerTool('prove_data_point', config('prove_data_point'), (args) =>
+      run('prove_data_point', deps, async () => ({ ...(await proveDataPoint(deps.client, args)) }))
     );
   }
   return server;

@@ -44,10 +44,15 @@ const okApi = fakeFetch((url) => {
 });
 
 describe('tool listing and schemas', () => {
-  it('lists the three read-only tools with input and output schemas', async () => {
+  it('lists the read-only tools with input and output schemas', async () => {
     const { mcp, close } = await connect({ store: new MemoryTokenStore(tokens()), fetch: okApi.fetch });
     const { tools } = await mcp.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['read_file', 'read_pen_document', 'search_my_files']);
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      'prove_data_point',
+      'read_file',
+      'read_pen_document',
+      'search_my_files',
+    ]);
     for (const tool of tools) {
       expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
       expect(tool.outputSchema?.type).toBe('object');
@@ -56,6 +61,12 @@ describe('tool listing and schemas', () => {
     expect(Object.keys(byName.search_my_files.inputSchema.properties ?? {}).sort()).toEqual(['limit', 'query']);
     expect(byName.read_file.inputSchema.required).toEqual(['fileId']);
     expect(byName.read_pen_document.inputSchema.required).toEqual(['docId']);
+    expect(byName.prove_data_point.inputSchema.required).toEqual(['dataPointId']);
+    const idSchema = (byName.prove_data_point.inputSchema.properties as Record<string, { enum?: string[] }>).dataPointId;
+    expect(idSchema.enum).toEqual(['over_18', 'over_21', 'name_attestation', 'email_verification', 'phone_verification', 'location_verification']);
+    expect(Object.keys(byName.prove_data_point.outputSchema?.properties ?? {}).sort()).toEqual(
+      ['dataPointId', 'expiresAt', 'level', 'satisfied']
+    );
     await close();
   });
 
@@ -158,6 +169,77 @@ describe('scope enforcement', () => {
     expect(res.isError).toBe(true);
     expect(String((res.content as Array<{ text: string }>)[0].text)).toMatch(/does not have access/);
     expect(await store.load()).not.toBeNull();
+    await close();
+  });
+});
+
+describe('prove_data_point', () => {
+  const proofApi = fakeFetch((url) => {
+    if (url.pathname === '/api/agent/proofs/over_21')
+      return json(200, {
+        dataPointId: 'over_21',
+        satisfied: true,
+        level: 'verified',
+        expiresAt: '2027-10-21T13:00:00.000Z',
+        ...LEAKY,
+        value: SECRETS.birthdate,
+        proof: { public_inputs: { age_bucket: '30_39', dob: SECRETS.birthdate } },
+      });
+    if (url.pathname === '/api/agent/proofs/over_18')
+      return json(200, { dataPointId: 'over_21', satisfied: true, level: 'verified', expiresAt: null });
+    if (url.pathname === '/api/agent/proofs/phone_verification') return json(404, { error: 'not_attested' });
+    if (url.pathname === '/api/agent/proofs/email_verification') return json(410, { error: 'expired' });
+    return json(404, { error: 'not_found' });
+  });
+
+  it('returns exactly the four fields and never the raw age or birthdate', async () => {
+    const { mcp, logs, close } = await connect({ store: new MemoryTokenStore(tokens()), fetch: proofApi.fetch });
+    const res = await mcp.callTool({ name: 'prove_data_point', arguments: { dataPointId: 'over_21' } });
+    expect(res.isError).toBeFalsy();
+    expect(res.structuredContent).toEqual({
+      dataPointId: 'over_21',
+      satisfied: true,
+      level: 'verified',
+      expiresAt: '2027-10-21T13:00:00.000Z',
+    });
+    assertNoSecrets(res, logs);
+    expect(JSON.stringify(res)).not.toContain('30_39');
+    await close();
+  });
+
+  it('refuses an answer for a different data point than asked', async () => {
+    const { mcp, close } = await connect({ store: new MemoryTokenStore(tokens()), fetch: proofApi.fetch });
+    const res = await mcp.callTool({ name: 'prove_data_point', arguments: { dataPointId: 'over_18' } });
+    expect(res.isError).toBe(true);
+    expect(res.content).toEqual([{ type: 'text', text: 'par Noir is unavailable right now. Try again shortly.' }]);
+    await close();
+  });
+
+  it('maps not attested and expired to fixed messages', async () => {
+    const { mcp, close } = await connect({ store: new MemoryTokenStore(tokens()), fetch: proofApi.fetch });
+    const missing = await mcp.callTool({ name: 'prove_data_point', arguments: { dataPointId: 'phone_verification' } });
+    expect(missing.content).toEqual([{ type: 'text', text: 'The owner has not shared that proof with this AI agent.' }]);
+    const expired = await mcp.callTool({ name: 'prove_data_point', arguments: { dataPointId: 'email_verification' } });
+    expect(expired.content).toEqual([
+      { type: 'text', text: 'That proof has expired. The owner can renew it in Dashboard, Privacy.' },
+    ]);
+    await close();
+  });
+
+  it('rejects ids outside the attestable list without calling the API', async () => {
+    const api = fakeFetch(() => json(200, {}));
+    const { mcp, close } = await connect({ store: new MemoryTokenStore(tokens()), fetch: api.fetch });
+    const res = await mcp.callTool({ name: 'prove_data_point', arguments: { dataPointId: 'age_attestation' } });
+    expect(res.isError).toBe(true);
+    expect(api.calls).toHaveLength(0);
+    await close();
+  });
+
+  it('is not listed without ai:proofs', async () => {
+    const store = new MemoryTokenStore(tokens({ scopes: ['openid', 'ai:files.published', 'ai:pen.published'] }));
+    const { mcp, close } = await connect({ store, fetch: proofApi.fetch });
+    const { tools } = await mcp.listTools();
+    expect(tools.map((t) => t.name)).not.toContain('prove_data_point');
     await close();
   });
 });

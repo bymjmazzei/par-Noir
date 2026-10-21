@@ -4,6 +4,8 @@ export const ERROR_MESSAGES = {
   access_revoked: 'Access revoked or expired. Run pn-mcp login.',
   insufficient_scope: 'This AI agent does not have access to that. Add a new agent in Dashboard, Sub-pNs.',
   not_found: 'Nothing published with that id.',
+  not_attested: 'The owner has not shared that proof with this AI agent.',
+  proof_expired: 'That proof has expired. The owner can renew it in Dashboard, Privacy.',
   invalid_request: 'That request was not valid.',
   unavailable: 'par Noir is unavailable right now. Try again shortly.',
   login_failed: 'Sign-in did not finish. Run pn-mcp login again.',

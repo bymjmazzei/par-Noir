@@ -144,6 +144,51 @@ describe('agent routes gate', () => {
   });
 });
 
+describe('GET /api/agent/proofs/:dataPointId', () => {
+  beforeEach(() => {
+    agentToken(['openid', 'ai:proofs']);
+    delegate(['ai:proofs'], [
+      ...ATTESTATIONS,
+      { dataPointId: 'email_verification', satisfied: true, level: 'attested', expiresAt: '2099-01-01T00:00:00.000Z', value: 'owner@example.com' } as never,
+    ]);
+  });
+
+  it('answers with exactly the four attested fields', async () => {
+    const res = await request(app()).get('/api/agent/proofs/over_18').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ dataPointId: 'over_18', satisfied: true, level: 'verified', expiresAt: null });
+    const email = await request(app()).get('/api/agent/proofs/email_verification').set('Authorization', 'Bearer t');
+    expect(Object.keys(email.body).sort()).toEqual(['dataPointId', 'expiresAt', 'level', 'satisfied']);
+    expect(JSON.stringify(email.body)).not.toContain('owner@example.com');
+    expect(searchMetadata).not.toHaveBeenCalled();
+    expect(getFileMetadata).not.toHaveBeenCalled();
+  });
+
+  it('404 when the owner did not attest that data point', async () => {
+    const res = await request(app()).get('/api/agent/proofs/phone_verification').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'not_attested' });
+  });
+
+  it('expired once past expiresAt', async () => {
+    const res = await request(app()).get('/api/agent/proofs/over_21').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(410);
+    expect(res.body).toEqual({ error: 'expired' });
+  });
+
+  it('400 for a data point that is never attestable', async () => {
+    const res = await request(app()).get('/api/agent/proofs/age_attestation').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(400);
+  });
+
+  it('403 without ai:proofs', async () => {
+    agentToken(['openid', 'ai:files.published']);
+    const res = await request(app()).get('/api/agent/proofs/over_18').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('insufficient_scope');
+  });
+});
+
 describe('GET /api/agent/delegation', () => {
   it('returns the signed statement without the owner key or attestations', async () => {
     agentToken();

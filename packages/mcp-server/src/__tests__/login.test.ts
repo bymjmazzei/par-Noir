@@ -54,7 +54,7 @@ describe('PKCE', () => {
       client_id: 'pn-agent-mcp',
       redirect_uri: 'https://unlock.parnoir.com/oauth/agent-complete',
       response_type: 'code',
-      scope: 'openid ai:files.published ai:pen.published',
+      scope: 'openid ai:files.published ai:pen.published ai:proofs ai:pen.drafts ai:files.private ai:pen.private',
       state: 's1',
       nonce: 'n1',
       api_endpoint: API,

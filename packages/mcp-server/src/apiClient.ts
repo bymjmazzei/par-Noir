@@ -97,7 +97,8 @@ export class AgentApiClient {
       if (code === 'insufficient_scope') throw new McpToolError('insufficient_scope');
       await this.revoked(code === 'delegation_revoked' ? 'delegation_revoked' : 'forbidden');
     }
-    if (res.status === 404) throw new McpToolError('not_found');
+    if (res.status === 404) throw new McpToolError(code === 'not_attested' ? 'not_attested' : 'not_found');
+    if (res.status === 410 && code === 'expired') throw new McpToolError('proof_expired');
     if (res.status === 400) throw new McpToolError('invalid_request');
     throw new McpToolError('unavailable');
   }

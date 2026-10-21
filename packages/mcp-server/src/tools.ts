@@ -1,6 +1,12 @@
 import { z } from 'zod';
-import { AI_SCOPES } from '@par-noir/standard-data-points';
+import {
+  AI_SCOPES,
+  ATTESTABLE_DATA_POINT_IDS,
+  isAttestableDataPointId,
+  type AgentAttestation,
+} from '@par-noir/standard-data-points';
 import type { AgentApiClient } from './apiClient';
+import { McpToolError } from './errors';
 
 const fileSummaryShape = {
   fileId: z.string(),
@@ -28,6 +34,15 @@ const penDocumentSchema = z.object({
   text: z.string().nullable(),
   textTruncated: z.boolean(),
 });
+
+const dataPointIdSchema = z.enum(ATTESTABLE_DATA_POINT_IDS);
+
+const proofShape = {
+  dataPointId: dataPointIdSchema,
+  satisfied: z.boolean(),
+  level: z.enum(['attested', 'verified']),
+  expiresAt: z.string().nullable(),
+};
 
 export type FileSummary = z.infer<z.ZodObject<typeof fileSummaryShape>>;
 export type AgentFile = z.infer<typeof fileSchema>;
@@ -75,6 +90,18 @@ export function projectPenDocument(raw: unknown): PenDocument {
   };
 }
 
+/** Yes/no answer only. A reply that is not exactly a proof for the asked id is refused. */
+export function projectProof(raw: unknown, asked: string): AgentAttestation {
+  const r = record(raw);
+  const id = str(r.dataPointId);
+  if (id !== asked || !isAttestableDataPointId(id) || typeof r.satisfied !== 'boolean') {
+    throw new McpToolError('unavailable');
+  }
+  if (r.level !== 'attested' && r.level !== 'verified') throw new McpToolError('unavailable');
+  const expiresAt = typeof r.expiresAt === 'string' && !Number.isNaN(Date.parse(r.expiresAt)) ? r.expiresAt : null;
+  return { dataPointId: id, satisfied: r.satisfied, level: r.level, expiresAt };
+}
+
 const idInput = z.string().trim().min(1).max(200);
 
 export const TOOL_DEFS = {
@@ -103,6 +130,15 @@ export const TOOL_DEFS = {
     inputSchema: { docId: idInput.describe('Pen document id') },
     outputSchema: { document: penDocumentSchema },
   },
+  prove_data_point: {
+    scope: AI_SCOPES.proofs,
+    title: 'Check a proof the owner holds',
+    description:
+      'Ask yes or no about one proof the owner chose to share with this agent, such as over_18 or email_verification. ' +
+      'Returns only whether it is satisfied, its level (attested or verified) and when it expires; never the underlying data.',
+    inputSchema: { dataPointId: dataPointIdSchema.describe('Which proof to check') },
+    outputSchema: proofShape,
+  },
 } as const;
 
 export type ToolName = keyof typeof TOOL_DEFS;
@@ -128,4 +164,12 @@ export async function readPenDocument(
 ): Promise<{ document: PenDocument }> {
   const body = await client.get('pen.read', `/api/agent/pen/${encodeURIComponent(args.docId)}`);
   return { document: projectPenDocument(body.document) };
+}
+
+export async function proveDataPoint(
+  client: AgentApiClient,
+  args: { dataPointId: string }
+): Promise<AgentAttestation> {
+  const body = await client.get('proofs.get', `/api/agent/proofs/${encodeURIComponent(args.dataPointId)}`);
+  return projectProof(body, args.dataPointId);
 }
