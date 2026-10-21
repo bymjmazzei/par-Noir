@@ -48,6 +48,10 @@ export {
 } from './clientContracts';
 export {
   type AiScope,
+  type AttestableDataPointId,
+  type AgentAttestation,
+  type AgentDelegationStatement,
+  type AgentDelegationDraft,
   AGENT_MCP_CLIENT_ID,
   AGENT_MCP_REDIRECT_URI,
   AGENT_MCP_CLIENT,
@@ -55,9 +59,16 @@ export {
   AI_SCOPES,
   AI_SCOPE_LABELS,
   AI_DATA_DISCLOSURE,
+  ATTESTABLE_DATA_POINT_IDS,
+  AGENT_DELEGATION_VERSION,
   isAiScope,
   isKnownAiScope,
-  filterKnownAiScopes
+  isLocalOnlyAiScope,
+  isAttestableDataPointId,
+  filterKnownAiScopes,
+  parseAgentDelegationDraft,
+  parseAgentDelegationStatement,
+  canonicalDelegationBytes
 } from './agentClient';
 export {
   type PermissionManifestItem,
