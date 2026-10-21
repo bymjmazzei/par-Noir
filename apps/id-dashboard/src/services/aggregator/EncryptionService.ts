@@ -4,7 +4,7 @@
  */
 
 import { ShareToken, EncryptedFilePackage, AuthSession } from '../../types/aggregator';
-import { EncryptionManager, cryptoWorkerManager } from '@par-noir/identity-crypto';
+import { EncryptionManager, decryptPrivateFile } from '@par-noir/identity-crypto';
 
 export class EncryptionService {
   /**
@@ -83,37 +83,6 @@ export class EncryptionService {
   }
 
   /**
-   * Decrypt file from download
-   * Uses stable pN identity (id + publicKey) for consistent decryption across sessions
-   */
-  async decryptFileFromDownload(
-    encryptedPackage: EncryptedFilePackage,
-    session: Pick<AuthSession, 'id' | 'publicKey'>
-  ): Promise<{ decryptedBlob: Blob; metadata: any }> {
-    if (!session.id || !session.publicKey) {
-      throw new Error('Missing required session data: id and publicKey are required');
-    }
-
-    // Decrypt using stable pN identity (id + publicKey)
-    // The id (DID) is stable and doesn't change between sessions, ensuring consistent decryption
-    const encryptionManager = new EncryptionManager();
-    const decrypted = await encryptionManager.decrypt(
-      encryptedPackage.encrypted,
-      encryptedPackage.iv,
-      encryptedPackage.salt,
-      session.id,
-      session.publicKey
-    );
-
-    // Create Blob from decrypted data
-    const decryptedBlob = new Blob([decrypted], {
-      type: encryptedPackage.metadata.originalMimeType || 'application/octet-stream',
-    });
-
-    return { decryptedBlob, metadata: encryptedPackage.metadata };
-  }
-
-  /**
    * Generate public share material: slim token (API) + ciphertext envelope (cloud only).
    * Never embed shareEncrypted in the API token.
    */
@@ -125,14 +94,10 @@ export class EncryptionService {
       throw new Error('Missing required session data: id and publicKey are required');
     }
 
-    const encryptionManager = new EncryptionManager();
-    const decrypted = await encryptionManager.decrypt(
-      encryptedPackage.encrypted,
-      encryptedPackage.iv,
-      encryptedPackage.salt,
-      session.id,
-      session.publicKey
-    );
+    const { bytes: decrypted } = await decryptPrivateFile(encryptedPackage, {
+      id: session.id,
+      publicKey: session.publicKey,
+    });
 
     const shareKeyArray = crypto.getRandomValues(new Uint8Array(32));
     const shareKeyBase64 = btoa(Array.from(shareKeyArray).map(b => String.fromCharCode(b)).join(''));

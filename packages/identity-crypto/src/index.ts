@@ -12,6 +12,8 @@ export { cryptoWorkerManager } from './cryptoWorkerManager';
 export { default } from './cryptoWorkerManager';
 export { SecureCredentialManager } from './secureCredentialManager';
 export { EncryptionManager } from './encryptionManager';
+export { decryptPrivateFile, decryptPrivateFileBlob } from './privateFile';
+export type { PrivateFileOwner, PrivateFilePackageShape } from './privateFile';
 export { VolumeIdGenerator } from './volumeIdGenerator';
 export type { VolumeIdParams } from './volumeIdGenerator';
 

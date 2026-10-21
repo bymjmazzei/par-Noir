@@ -10,7 +10,7 @@
  */
 import React, { useEffect } from 'react';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
-import type { EncryptionService } from '../../../services/aggregator/EncryptionService';
+import { decryptPrivateFileBlob } from '@par-noir/identity-crypto';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken } from '../../../types/aggregator';
 import { isImageFile, isVideoFile } from '../FileStorageAggregatorHelpers';
 
@@ -18,7 +18,6 @@ export interface UseFilePreviewParams {
   authenticatedUser: any;
   resolvedAuth: { publicKey: string; authToken?: string } | null;
   aggregatorService: FileAggregatorService | null;
-  encryptionService: EncryptionService | null;
   activeBackendId: string | null;
   files: AggregatedFile[];
   fileMetadataMap: Map<string, PublicMetadata>;
@@ -38,7 +37,6 @@ export function useFilePreview({
   authenticatedUser,
   resolvedAuth,
   aggregatorService,
-  encryptionService,
   activeBackendId,
   files,
   fileMetadataMap,
@@ -137,8 +135,8 @@ export function useFilePreview({
       // ---------- Attempt 2: Owner fallback (private files) ----------
       if (!previewUrl) {
         try {
-          if (!aggregatorService || !encryptionService) {
-            throw new Error('Aggregator or encryption service not available');
+          if (!aggregatorService) {
+            throw new Error('Aggregator service not available');
           }
 
           const sessionId = authenticatedUser?.id;
@@ -185,10 +183,7 @@ export function useFilePreview({
             publicKey: sessionPublicKey,
           };
 
-          const { decryptedBlob, metadata } = await encryptionService.decryptFileFromDownload(
-            encryptedPackage,
-            session
-          );
+          const { decryptedBlob, metadata } = await decryptPrivateFileBlob(encryptedPackage, session);
 
           previewUrl = URL.createObjectURL(decryptedBlob);
           previewRetryCounts.current.delete(file.id);

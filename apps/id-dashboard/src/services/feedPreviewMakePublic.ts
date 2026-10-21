@@ -1,6 +1,7 @@
 /**
  * Dashboard: resolve plaintext preview blob for make-public (not MIME-only).
  */
+import { decryptPrivateFileBlob } from '@par-noir/identity-crypto';
 import type { EncryptedFilePackage } from '../types/aggregator';
 import type { FileAggregatorService } from './aggregator/FileAggregatorService';
 import {
@@ -10,12 +11,6 @@ import {
 
 type DecryptSession = { id: string; publicKey: string };
 
-type FeedPreviewEncryptionService = {
-  decryptFileFromDownload: (
-    encryptedPackage: EncryptedFilePackage,
-    session: DecryptSession
-  ) => Promise<{ decryptedBlob: Blob }>;
-};
 export function visualFeedPreviewKind(meta: {
   fileType?: string;
   name?: string;
@@ -52,7 +47,6 @@ async function downloadDecryptPreviewBlob(params: {
   aggregatorService: FileAggregatorService;
   backendId: string;
   fileId: string;
-  encryptionService: FeedPreviewEncryptionService;
   session: DecryptSession;
   encrypted?: boolean;
 }): Promise<{ blob: Blob; mimeType: string }> {
@@ -65,10 +59,7 @@ async function downloadDecryptPreviewBlob(params: {
   if (params.encrypted !== false) {
     const encJson = JSON.parse(await encBlob.text()) as EncryptedFilePackage;
     mimeType = encJson.metadata?.originalMimeType || mimeType;
-    const { decryptedBlob } = await params.encryptionService.decryptFileFromDownload(
-      encJson,
-      params.session
-    );
+    const { decryptedBlob } = await decryptPrivateFileBlob(encJson, params.session);
     return { blob: decryptedBlob, mimeType };
   }
   return { blob: encBlob, mimeType: encBlob.type || mimeType };
@@ -89,7 +80,6 @@ export async function publishFeedPreviewsForDashboardMakePublic(params: {
   title?: string;
   collectionFileIds?: string[];
   encrypted?: boolean;
-  encryptionService: FeedPreviewEncryptionService;
   session: DecryptSession;
   planId?: string;
 }): Promise<PublishedFeedPreviews | Record<string, never>> {
@@ -110,7 +100,6 @@ export async function publishFeedPreviewsForDashboardMakePublic(params: {
       aggregatorService: params.aggregatorService,
       backendId: params.backendId,
       fileId: params.fileId,
-      encryptionService: params.encryptionService,
       session: params.session,
       encrypted: params.encrypted,
     });
@@ -125,7 +114,6 @@ export async function publishFeedPreviewsForDashboardMakePublic(params: {
       aggregatorService: params.aggregatorService,
       backendId: params.backendId,
       fileId: coverId,
-      encryptionService: params.encryptionService,
       session: params.session,
       encrypted: true,
     });
@@ -139,7 +127,6 @@ export async function publishFeedPreviewsForDashboardMakePublic(params: {
       aggregatorService: params.aggregatorService,
       backendId: params.backendId,
       fileId: params.fileId,
-      encryptionService: params.encryptionService,
       session: params.session,
       encrypted: params.encrypted,
     });

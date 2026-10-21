@@ -13,7 +13,7 @@
  * modal state; every dependency it touches is passed in explicitly.
  */
 import React from 'react';
-import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { SecureCredentialManager, decryptPrivateFileBlob } from '@par-noir/identity-crypto';
 import type { FileAggregatorService } from '../../../../services/aggregator/FileAggregatorService';
 import type { EncryptionService } from '../../../../services/aggregator/EncryptionService';
 import type { MetadataIndexService } from '../../../../services/metadata/MetadataIndexService';
@@ -200,8 +200,8 @@ export async function togglePublicVisibility(
             const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
             const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
 
-            if (credentials && encryptionService) {
-              const { decryptedBlob } = await encryptionService.decryptFileFromDownload(
+            if (credentials) {
+              const { decryptedBlob } = await decryptPrivateFileBlob(
                 encryptedPackage,
                 {
                   id: authenticatedUser?.id || resolvedAuth.publicKey,
@@ -402,8 +402,8 @@ export async function togglePublicVisibility(
       }
 
       try {
-        if (!aggregatorService || !encryptionService) {
-          throw new Error('Aggregator/encryption service not available for feed preview');
+        if (!aggregatorService) {
+          throw new Error('Aggregator service not available for feed preview');
         }
         let folderId: string | undefined;
         try {
@@ -435,7 +435,6 @@ export async function togglePublicVisibility(
           title: publicMetadata.name,
           collectionFileIds: Array.isArray(collectionFileIds) ? collectionFileIds : undefined,
           encrypted: file.encrypted !== false,
-          encryptionService,
           session: {
             id: authenticatedUser?.id || resolvedAuth.publicKey,
             publicKey: resolvedAuth.publicKey,

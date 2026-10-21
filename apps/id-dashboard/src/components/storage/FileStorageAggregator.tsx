@@ -647,7 +647,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     authenticatedUser,
     resolvedAuth,
     aggregatorService,
-    encryptionService,
     driveAccounts,
     activeBackendId,
     files,

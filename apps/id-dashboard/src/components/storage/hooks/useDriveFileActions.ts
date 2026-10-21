@@ -8,9 +8,8 @@
  * single surface FileStorageAggregator consumes.
  */
 import React from 'react';
-import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { SecureCredentialManager, decryptPrivateFileBlob } from '@par-noir/identity-crypto';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
-import type { EncryptionService } from '../../../services/aggregator/EncryptionService';
 import { ownerFetch } from '../../../services/ownerApiService';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken } from '../../../types/aggregator';
 import { canEncryptUnlockedFiles, publicKeyFromUnlockedUser } from '../../../services/storageUnlockAuth';
@@ -27,7 +26,6 @@ export interface UseDriveFileActionsParams {
   authenticatedUser: any;
   resolvedAuth: { publicKey: string; authToken?: string } | null;
   aggregatorService: FileAggregatorService | null;
-  encryptionService: EncryptionService | null;
   driveAccounts: DriveAccountState[];
   activeBackendId: string | null;
   files: AggregatedFile[];
@@ -69,7 +67,6 @@ export function useDriveFileActions({
   authenticatedUser,
   resolvedAuth,
   aggregatorService,
-  encryptionService,
   driveAccounts,
   activeBackendId,
   files,
@@ -126,7 +123,6 @@ export function useDriveFileActions({
     authenticatedUser,
     resolvedAuth,
     aggregatorService,
-    encryptionService,
     activeBackendId,
     files,
     fileMetadataMap,
@@ -260,13 +256,6 @@ export function useDriveFileActions({
         hasPublicKey: !!session.publicKey
       });
 
-      // Decrypt file using stable pN identity (id + publicKey)
-      // The id (DID) is stable and doesn't change between sessions, ensuring consistent decryption
-      if (!encryptionService) {
-        setError('Encryption service not available');
-        return;
-      }
-
       // Parse the encrypted package from the blob
       const encryptedPackageText = await encryptedBlob.text();
       const encryptedPackage = JSON.parse(encryptedPackageText);
@@ -289,10 +278,7 @@ export function useDriveFileActions({
       let decryptedBlob: Blob;
       let metadata: any;
       try {
-        const result = await encryptionService.decryptFileFromDownload(
-          encryptedPackage,
-          session
-        );
+        const result = await decryptPrivateFileBlob(encryptedPackage, session);
         decryptedBlob = result.decryptedBlob;
         metadata = result.metadata;
       } catch (decryptError: any) {
