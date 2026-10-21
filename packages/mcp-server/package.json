@@ -1,0 +1,25 @@
+{
+  "name": "@par-noir/mcp-server",
+  "version": "0.1.0",
+  "description": "Local read-only MCP server: an AI agent sub-pN reads your published par Noir files and Pen docs",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/cli.ts serve",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@napi-rs/keyring": "^2.1.2",
+    "@par-noir/standard-data-points": "^1.0.0",
+    "tsx": "^4.23.15",
+    "zod": "^3.25.76"
+  }
+}
