@@ -34,6 +34,25 @@ import {
   revokeAllAiAgents,
 } from '../services/ownedAssetsApi';
 
+const statementFor = (scopes: string[], nonce = 'nonce-abcdefghijklmnop') => ({
+  v: 1 as const,
+  rootPublicKey: 'root-pk',
+  agentPnIdentifier: 'pn-agent',
+  agentPublicKey: 'pk-agent',
+  scopes: scopes as never,
+  attestations: [] as never[],
+  issuedAt: '2026-10-21T13:00:00.000Z',
+  expiresAt: null,
+  nonce,
+});
+
+const signedAgent = (scopes: string[]) => ({
+  agentPnIdentifier: 'pn-agent',
+  agentPublicKey: 'pk-agent',
+  statement: statementFor(scopes),
+  signature: 'sig-b64',
+});
+
 const respond = (status: number, body: unknown) => ({
   ok: status >= 200 && status < 300,
   status,
@@ -74,9 +93,7 @@ describe('registerAiAgent', () => {
 
     const asset = await registerAiAgent('tok', 'pn-root', {
       label: 'Cursor',
-      scopes: ['ai:files.published', 'ai:pen.published'],
-      agentPnIdentifier: 'pn-agent',
-      agentPublicKey: 'pk-agent',
+      ...signedAgent(['ai:files.published', 'ai:pen.published']),
     });
 
     expect(order).toEqual(['sheet-asset', 'POST /api/owned-assets/agents', 'sheet-delegation', 'sheet-delegation']);
@@ -84,7 +101,15 @@ describe('registerAiAgent', () => {
     expect(asset.metadata).toEqual({ label: 'Cursor', scopes: ['ai:files.published', 'ai:pen.published'] });
 
     const apiBody = ownerFetch.mock.calls[0][3] as Record<string, unknown>;
-    expect(apiBody).toMatchObject({ assetId: asset.id, subjectPnIdentifier: 'pn-agent', subjectPublicKey: 'pk-agent' });
+    expect(apiBody).toMatchObject({
+      assetId: asset.id,
+      subjectPnIdentifier: 'pn-agent',
+      subjectPublicKey: 'pk-agent',
+      scopes: ['ai:files.published', 'ai:pen.published'],
+      expiresAt: null,
+      statement: statementFor(['ai:files.published', 'ai:pen.published']),
+      signature: 'sig-b64',
+    });
 
     const rows = upsertDeviceAssetDelegation.mock.calls.map((c) => c[2] as Record<string, unknown>);
     expect(rows.map((r) => r.id)).toEqual(['del-1', 'del-2']);
@@ -101,12 +126,7 @@ describe('registerAiAgent', () => {
     ownerFetch.mockResolvedValue(respond(409, { error: 'conflict' }));
 
     await expect(
-      registerAiAgent('tok', 'pn-root', {
-        label: 'Cursor',
-        scopes: ['ai:files.published'],
-        agentPnIdentifier: 'pn-agent',
-        agentPublicKey: 'pk-agent',
-      })
+      registerAiAgent('tok', 'pn-root', { label: 'Cursor', ...signedAgent(['ai:files.published']) })
     ).rejects.toThrow();
     expect(stored).toMatchObject({ status: 'revoked' });
     expect(upsertDeviceAssetDelegation).not.toHaveBeenCalled();
@@ -157,16 +177,47 @@ describe('revokeAllAiAgents', () => {
 });
 
 describe('agentFromShellSession', () => {
-  const ok = { op: 'agent', did: 'root-id', result: { agentPnIdentifier: 'pn-agent', agentPublicKey: 'pk' } };
+  const statement = statementFor(['ai:files.published']);
+  const draft = {
+    scopes: statement.scopes,
+    attestations: [],
+    issuedAt: statement.issuedAt,
+    expiresAt: null,
+    nonce: statement.nonce,
+  };
+  const ok = {
+    op: 'agent',
+    did: 'root-id',
+    result: {
+      agentPnIdentifier: 'pn-agent',
+      agentPublicKey: 'pk-agent',
+      statement: JSON.stringify(statement),
+      signature: 'sig-b64',
+    },
+  };
 
-  it('returns only the agent public ids', () => {
-    expect(agentFromShellSession(ok, 'root-id')).toEqual({ agentPnIdentifier: 'pn-agent', agentPublicKey: 'pk' });
+  it('returns the agent public ids and the signed statement', () => {
+    expect(agentFromShellSession(ok, 'root-id', draft)).toEqual({
+      agentPnIdentifier: 'pn-agent',
+      agentPublicKey: 'pk-agent',
+      statement,
+      signature: 'sig-b64',
+    });
   });
 
   it('rejects a different op, a different owner, or a missing result', () => {
-    expect(() => agentFromShellSession({ ...ok, op: 'sub_pn' }, 'root-id')).toThrow();
-    expect(() => agentFromShellSession(ok, 'other-root')).toThrow();
-    expect(() => agentFromShellSession(ok, undefined)).toThrow();
-    expect(() => agentFromShellSession({ ...ok, result: {} }, 'root-id')).toThrow();
+    expect(() => agentFromShellSession({ ...ok, op: 'sub_pn' }, 'root-id', draft)).toThrow();
+    expect(() => agentFromShellSession(ok, 'other-root', draft)).toThrow();
+    expect(() => agentFromShellSession(ok, undefined, draft)).toThrow();
+    expect(() => agentFromShellSession({ ...ok, result: {} as never }, 'root-id', draft)).toThrow();
+  });
+
+  it('rejects an unsigned result or one that answers a different draft', () => {
+    const unsigned = { ...ok.result, signature: '' };
+    expect(() => agentFromShellSession({ ...ok, result: unsigned as never }, 'root-id', draft)).toThrow(/sign/);
+    expect(() => agentFromShellSession(ok, 'root-id', { ...draft, nonce: 'another-nonce-abcdefg' })).toThrow(
+      /different/
+    );
+    expect(() => agentFromShellSession(ok, 'root-id', null)).toThrow(/different/);
   });
 });

@@ -8,7 +8,17 @@ import {
   normalizeAgentLabel,
   type HostedShellSession,
 } from '@par-noir/oauth-ui';
-import { AI_DATA_DISCLOSURE, AI_SCOPES, AI_SCOPE_LABELS, type AiScope } from '@par-noir/standard-data-points';
+import {
+  AI_DATA_DISCLOSURE,
+  AI_SCOPES,
+  AI_SCOPE_LABELS,
+  ATTESTABLE_DATA_POINT_IDS,
+  STANDARD_DATA_POINTS,
+  type AgentAttestation,
+  type AgentDelegationDraft,
+  type AiScope,
+} from '@par-noir/standard-data-points';
+import { buildAgentDelegationDraft, loadAgentAttestations } from '../../services/agentAttestations';
 import {
   buildSealedSubExportFile,
   isSubKindExportable,
@@ -129,6 +139,9 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [isIdentityVerified, setIsIdentityVerified] = useState(false);
   const [agentScopes, setAgentScopes] = useState<AiScope[]>([AI_SCOPES.filesPublished]);
   const [agentAck, setAgentAck] = useState(false);
+  const [heldAttestations, setHeldAttestations] = useState<AgentAttestation[] | null>(null);
+  const [agentProofs, setAgentProofs] = useState<string[]>([]);
+  const agentDraftRef = React.useRef<AgentDelegationDraft | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const creatableKinds: SubKind[] = isIdentityVerified
@@ -290,10 +303,42 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   };
 
   const agentLabel = normalizeAgentLabel(label);
-  const canAddAgent = !!accessToken && !!agentLabel && agentScopes.length > 0 && agentAck && !loading;
+  const wantsProofs = agentScopes.includes(AI_SCOPES.proofs);
+  const proofsReady = !wantsProofs || (heldAttestations !== null && agentProofs.length > 0);
+  const canAddAgent =
+    !!accessToken && !!agentLabel && agentScopes.length > 0 && proofsReady && agentAck && !loading;
 
   const toggleAgentScope = (scope: AiScope, on: boolean) => {
     setAgentScopes((prev) => (on ? [...new Set([...prev, scope])] : prev.filter((s) => s !== scope)));
+  };
+
+  const toggleAgentProof = (id: string, on: boolean) => {
+    setAgentProofs((prev) => (on ? [...new Set([...prev, id])] : prev.filter((p) => p !== id)));
+  };
+
+  useEffect(() => {
+    if (!wantsProofs || heldAttestations !== null || !accessToken || !pnIdentifier) return;
+    let cancelled = false;
+    void loadAgentAttestations(pnIdentifier, accessToken)
+      .then((list) => {
+        if (!cancelled) setHeldAttestations(list);
+      })
+      .catch(() => {
+        if (!cancelled) setHeldAttestations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsProofs, heldAttestations, accessToken, pnIdentifier]);
+
+  const agentDelegationDraft = (): AgentDelegationDraft => {
+    const draft = buildAgentDelegationDraft({
+      scopes: agentScopes,
+      held: heldAttestations ?? [],
+      picked: agentProofs,
+    });
+    agentDraftRef.current = draft;
+    return draft;
   };
 
   const onAgentSession = async (session: HostedShellSession) => {
@@ -302,14 +347,15 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     setNotice(null);
     setLoading(true);
     try {
-      const agent = agentFromShellSession(session, sessionId);
+      const agent = agentFromShellSession(session, sessionId, agentDraftRef.current);
       const asset = await registerAiAgent(accessToken, pnIdentifier, {
         label: agentLabel,
-        scopes: agentScopes,
         ...agent,
       });
+      agentDraftRef.current = null;
       setLabel('');
       setAgentAck(false);
+      setAgentProofs([]);
       await load({ force: true });
       setSelectedId(asset.id);
       setNotice(`AI agent "${agentLabel}" added. Run pn-mcp login on this Mac to connect it.`);
@@ -704,6 +750,40 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                   </label>
                 ))}
               </fieldset>
+              {wantsProofs ? (
+                <fieldset className="space-y-2">
+                  <legend className="text-sm text-text-secondary">Proofs it may ask about</legend>
+                  <p className="text-xs text-text-secondary">
+                    Checked on this device. The agent only gets yes or no, the level and the expiry.
+                  </p>
+                  {heldAttestations === null ? (
+                    <p className="text-xs text-text-secondary">Checking your proofs…</p>
+                  ) : (
+                    ATTESTABLE_DATA_POINT_IDS.map((id) => {
+                      const held = heldAttestations.find((a) => a.dataPointId === id);
+                      return (
+                        <label key={id} className="flex items-start gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            disabled={!held}
+                            checked={!!held && agentProofs.includes(id)}
+                            onChange={(e) => toggleAgentProof(id, e.target.checked)}
+                          />
+                          <span>
+                            {STANDARD_DATA_POINTS[id]?.name || id}
+                            <span className="text-xs text-text-secondary">
+                              {held
+                                ? ` — answers ${held.satisfied ? 'yes' : 'no'}${held.level === 'verified' ? ', verified' : ''}`
+                                : ' — not on file'}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </fieldset>
+              ) : null}
               <div className="p-3 rounded-md border border-amber-700 bg-amber-900/20 text-xs space-y-2">
                 <p>{AI_DATA_DISCLOSURE}</p>
                 <label className="flex items-start gap-2">
@@ -719,6 +799,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               <HostedShellLaunch
                 op="agent"
                 agentLabel={agentLabel}
+                agentDelegation={agentDelegationDraft}
                 buttonOnly
                 disabled={!canAddAgent}
                 label="Approve in par Noir Unlock"

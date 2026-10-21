@@ -12,7 +12,12 @@ import {
   type DeviceAssetDelegation,
   type DeviceOwnedAsset,
 } from '@par-noir/device-cloud-credentials';
-import { AGENT_MCP_CLIENT_ID } from '@par-noir/standard-data-points';
+import {
+  AGENT_MCP_CLIENT_ID,
+  parseAgentDelegationStatement,
+  type AgentDelegationDraft,
+  type AgentDelegationStatement,
+} from '@par-noir/standard-data-points';
 import { ownerFetch } from './ownerApiService';
 import { sessionDriveFor } from './sessionDrive';
 import { isDriveLayoutInitActive } from './storage/driveLayoutInitGate';
@@ -248,17 +253,45 @@ async function agentApi(
   return json;
 }
 
-/** Unlock's op=agent result: the owner who approved, plus the new agent's public ids only. */
+export interface SignedAgentFromShell {
+  agentPnIdentifier: string;
+  agentPublicKey: string;
+  statement: AgentDelegationStatement;
+  signature: string;
+}
+
+/**
+ * Unlock's op=agent result: the owner who approved, the new agent's public ids, and the
+ * delegation the owner signed. The statement must answer the draft this tab sent.
+ */
 export function agentFromShellSession(
   session: { op: string; did: string; result?: Record<string, string> },
-  ownerDid: string | undefined
-): { agentPnIdentifier: string; agentPublicKey: string } {
+  ownerDid: string | undefined,
+  draft: AgentDelegationDraft | null
+): SignedAgentFromShell {
   if (session.op !== 'agent') throw new Error('Unlock returned a different action');
   if (!ownerDid || session.did !== ownerDid) throw new Error('Unlock did not match this pN.');
   const agentPnIdentifier = session.result?.agentPnIdentifier || '';
   const agentPublicKey = session.result?.agentPublicKey || '';
   if (!agentPnIdentifier || !agentPublicKey) throw new Error('Unlock did not return the new AI agent');
-  return { agentPnIdentifier, agentPublicKey };
+  let raw: unknown = null;
+  try {
+    raw = JSON.parse(session.result?.statement || 'null');
+  } catch {
+    raw = null;
+  }
+  const statement = parseAgentDelegationStatement(raw);
+  const signature = session.result?.signature || '';
+  if (!statement || !signature) throw new Error('Unlock did not sign the AI agent delegation');
+  if (
+    !draft ||
+    statement.nonce !== draft.nonce ||
+    statement.agentPnIdentifier !== agentPnIdentifier ||
+    statement.agentPublicKey !== agentPublicKey
+  ) {
+    throw new Error('Unlock signed a different AI agent delegation');
+  }
+  return { agentPnIdentifier, agentPublicKey, statement, signature };
 }
 
 /** AI agents the API currently honors for this root. */
@@ -274,12 +307,13 @@ export async function fetchAiAgents(accessToken: string, pnIdentifier: string): 
 export async function registerAiAgent(
   accessToken: string,
   pnIdentifier: string,
-  body: { label: string; scopes: string[]; agentPnIdentifier: string; agentPublicKey: string }
+  body: { label: string } & SignedAgentFromShell
 ): Promise<OwnedAssetDto> {
+  const scopes = [...body.statement.scopes];
   const asset = await createOwnedAsset(accessToken, pnIdentifier, {
     kind: 'ai_agent',
     subjectPnIdentifier: body.agentPnIdentifier,
-    metadata: { label: body.label, scopes: body.scopes },
+    metadata: { label: body.label, scopes },
   });
   let json: Record<string, unknown>;
   try {
@@ -288,7 +322,10 @@ export async function registerAiAgent(
       subjectPnIdentifier: body.agentPnIdentifier,
       subjectPublicKey: body.agentPublicKey,
       label: body.label,
-      scopes: body.scopes,
+      scopes,
+      expiresAt: body.statement.expiresAt,
+      statement: body.statement,
+      signature: body.signature,
     });
   } catch (e) {
     await revokeOwnedAsset(accessToken, pnIdentifier, asset.id).catch(() => undefined);

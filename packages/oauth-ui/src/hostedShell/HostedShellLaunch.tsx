@@ -50,8 +50,8 @@ export type HostedShellLaunchProps = {
   vaultPayload?: string;
   /** op=agent: name for the AI agent Unlock creates. */
   agentLabel?: string;
-  /** op=agent: scopes and on-device yes/no attestations Unlock signs with the owner's key. */
-  agentDelegation?: AgentDelegationDraft;
+  /** op=agent: scopes and on-device yes/no attestations Unlock signs. Built at click time. */
+  agentDelegation?: () => AgentDelegationDraft;
   disabled?: boolean;
   /** Button only. The caller prints the explanation once for several actions. */
   buttonOnly?: boolean;
@@ -142,6 +142,13 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
     } catch {
       /* ignore */
     }
+    let agentDelegation: string | undefined;
+    try {
+      agentDelegation = props.agentDelegation ? encodeAgentDelegationDraft(props.agentDelegation()) : undefined;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Invalid AI agent delegation');
+      return;
+    }
     const state = createShellState();
     const launch = {
       returnTo,
@@ -152,7 +159,7 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
       vaultPayload: props.vaultPayload,
       handoffPk: bindHandoffKem(state).publicKey,
       agentLabel: props.agentLabel,
-      agentDelegation: props.agentDelegation ? encodeAgentDelegationDraft(props.agentDelegation) : undefined,
+      agentDelegation,
     };
     void (async () => {
       const choice = await tryPreferUnlockApp(buildShellLaunchUrl(launch));
