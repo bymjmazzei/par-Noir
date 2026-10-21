@@ -198,6 +198,28 @@ async function metadataService() {
 }
 
 export function registerAgentRoutes(app: Application): void {
+  /**
+   * For Unlock's local custody bridge: is this agent still delegated, and for which scopes.
+   * Exactly `{active, scopes}`; never the owner, statement or attestations.
+   */
+  app.get('/api/agent/delegation-status', async (req: Request, res: Response) => {
+    const payload = getBearerTokenPayload(req);
+    if (!payload?.pnIdentifier) return deny(res, 401, 'unauthorized');
+    if (payload.clientId !== AGENT_MCP_CLIENT_ID) return deny(res, 403, 'agent_client_required');
+    const tokenScopes = Array.isArray(payload.scope) ? payload.scope : [];
+    try {
+      const delegation = await OwnedAssetService.resolveAgentDelegation(normalizePn(payload.pnIdentifier));
+      if (!delegation) return res.json({ active: false, scopes: [] });
+      const scopes = (delegation.scopes as AiScope[]).filter((s) => tokenScopes.includes(s));
+      return res.json({ active: true, scopes });
+    } catch (e) {
+      safeLogger.warn('[agent] delegation status failed', {
+        err: e instanceof Error ? e.message : 'unknown'
+      });
+      return deny(res, 503, 'delegation_unavailable');
+    }
+  });
+
   app.get('/api/agent/delegation', requireAgentDelegation(), (req: AgentRequest, res: Response) => {
     const agent = req.agent!;
     return res.json({ delegation: projectDelegation(agent.statement, agent.scopes) });

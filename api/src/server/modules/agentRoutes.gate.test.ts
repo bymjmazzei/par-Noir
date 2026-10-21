@@ -225,6 +225,45 @@ describe('GET /api/agent/delegation', () => {
   });
 });
 
+describe('GET /api/agent/delegation-status', () => {
+  it('returns only {active, scopes}, narrowed to the token', async () => {
+    agentToken(['openid', 'ai:files.private', 'ai:files.published']);
+    delegate(['ai:files.published', 'ai:files.private', 'ai:pen.private']);
+    const res = await request(app()).get('/api/agent/delegation-status').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ active: true, scopes: ['ai:files.published', 'ai:files.private'] });
+    const raw = JSON.stringify(res.body);
+    for (const leak of [ROOT, ROOT_PUBLIC_KEY, 'agent-pk', 'nonce', 'over_18']) {
+      expect(raw).not.toContain(leak);
+    }
+  });
+
+  it('reports inactive once the owner revokes', async () => {
+    agentToken();
+    resolveAgentDelegation.mockResolvedValue(null);
+    const res = await request(app()).get('/api/agent/delegation-status').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ active: false, scopes: [] });
+  });
+
+  it('401 without a bearer and 403 for a first-party token', async () => {
+    validateAccessToken.mockReturnValue(null);
+    expect((await request(app()).get('/api/agent/delegation-status')).status).toBe(401);
+    validateAccessToken.mockReturnValue({ pnIdentifier: ROOT, clientId: 'browser-app', scope: ['openid'] });
+    const res = await request(app()).get('/api/agent/delegation-status').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(403);
+    expect(resolveAgentDelegation).not.toHaveBeenCalled();
+  });
+
+  it('503 fails closed when the lookup errors', async () => {
+    agentToken();
+    resolveAgentDelegation.mockRejectedValue(new Error('db down'));
+    const res = await request(app()).get('/api/agent/delegation-status').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'delegation_unavailable' });
+  });
+});
+
 describe('agent routes data', () => {
   beforeEach(() => {
     agentToken();
