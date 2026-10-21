@@ -270,5 +270,38 @@ export type {
   DeviceRecoveryRequest,
   DeviceCustodian,
 } from './deviceProduct.js';
+export {
+  downloadDriveText,
+  penRootFolderId,
+  readLibraryIndex,
+  readDocTree,
+  ensurePenRoot,
+  ensureDocChildFolder,
+  writeLibraryIndex,
+  upsertLibrarySummary,
+  writePenDocFiles,
+  writeLiveSnapshotFile,
+  readLiveSnapshotFile,
+  removePenDoc,
+} from './penDriveTree.js';
+export type { PenCloudSectionFile, PenDocTree } from './penDriveTree.js';
+export {
+  encryptSectionJson,
+  decryptSectionPayload,
+  sectionsToEncryptedMap,
+  envelopeToWireB64,
+  wireB64ToEnvelope,
+  sectionsToWireCipherMap,
+  readPenCloudDoc,
+  decryptCloudDoc,
+  openWrappedDocKey,
+  openDocKeysFromGroups,
+} from './penCloudDoc.js';
+export type {
+  CloudSectionPayload,
+  CloudDocRaw,
+  DecryptedCloudDoc,
+  OpenedDocKey,
+} from './penCloudDoc.js';
 export { deviceDropboxCall, deviceOneDriveCall } from './deviceProviderCall.js';
 export type { DeviceProviderInit } from './deviceProviderCall.js';

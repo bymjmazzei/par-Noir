@@ -10,11 +10,7 @@ import {
 } from '@par-noir/pen-live';
 import type { PenTipTapNode } from '@par-noir/pen-protocol';
 
-vi.mock('./penDriveLibrary', () => ({
-  penSessionDrive: vi.fn(),
-  readLiveSnapshotFile: vi.fn(),
-  writeLiveSnapshotFile: vi.fn()
-}));
+vi.mock('./penDriveLibrary', () => ({ penSessionDrive: vi.fn() }));
 
 import {
   applyLiveSnapshots,

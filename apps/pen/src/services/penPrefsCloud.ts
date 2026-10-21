@@ -10,7 +10,8 @@ import {
   encryptMediaBytes
 } from '@par-noir/dm-crypto';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
-import { ensurePenRoot, penSessionDrive } from './penDriveLibrary';
+import { ensurePenRoot } from '@par-noir/device-cloud-credentials';
+import { penSessionDrive } from './penDriveLibrary';
 import {
   isStarterMirror,
   listPersonalTemplates,

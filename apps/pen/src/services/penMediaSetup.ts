@@ -1,6 +1,7 @@
 import { configurePenMedia } from '@par-noir/pen-media';
 import { loadDocKey, mintDocKey } from './penDocCrypto';
-import { ensureDocChildFolder, penSessionDrive } from './penDriveLibrary';
+import { ensureDocChildFolder } from '@par-noir/device-cloud-credentials';
+import { penSessionDrive } from './penDriveLibrary';
 
 configurePenMedia({
   loadDocKey,

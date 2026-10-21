@@ -197,7 +197,8 @@ import {
   ActivityLedger,
   type DocSnapshot
 } from '../../services/penActivityLedger';
-import { encryptSectionJson, envelopeToWireB64, mintDocKey } from '../../services/penDocCrypto';
+import { encryptSectionJson, envelopeToWireB64 } from '@par-noir/device-cloud-credentials';
+import { mintDocKey } from '../../services/penDocCrypto';
 import {
   bodyFromSections,
   openMessagingWithCorrespondence

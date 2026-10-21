@@ -579,7 +579,10 @@ async function publicFolderFor(
   explicit?: string
 ): Promise<string> {
   if (explicit) return explicit;
-  const { ensureDocChildFolder, penSessionDrive } = await import('./penDriveLibrary');
+  const [{ ensureDocChildFolder }, { penSessionDrive }] = await Promise.all([
+    import('@par-noir/device-cloud-credentials'),
+    import('./penDriveLibrary')
+  ]);
   const drive = await penSessionDrive(pnIdentifier);
   return ensureDocChildFolder(drive.accessToken, drive.index.pnFolderId, docId, 'public');
 }

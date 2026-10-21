@@ -4,75 +4,31 @@
 
 import type { PenSession } from './penSession';
 import { loadLocalDoc, saveLocalDoc, type LocalDocBundle } from './penLocalStore';
-import { decryptCloudDoc, fetchDocFromDrive } from './penCloudStore';
+import { fetchDocFromDrive } from './penCloudStore';
 import { loadDocKey, saveDocKey } from './penDocCrypto';
 import {
-  isSocialEnvelope,
-  openSocialEnvelope,
-  unwrapChatKeyForOwner
-} from '@par-noir/dm-crypto';
-import { listDeviceGroups } from '@par-noir/device-cloud-credentials';
+  decryptCloudDoc,
+  openDocKeysFromGroups,
+  type DecryptedCloudDoc,
+  type OpenedDocKey
+} from '@par-noir/device-cloud-credentials';
 import { penSessionDrive } from './penDriveLibrary';
 import { loadLiveClaimSecret, saveLiveClaimSecret } from './penLiveStore';
 
-type OpenedGroupRow = { docKey: string; liveClaimSecret: string | null; keyEpoch: number | null };
-
-async function openWrappedKey(
-  wrapped: string,
-  mlKemSecretKey: string,
-  groupId: string
-): Promise<OpenedGroupRow | null> {
-  if (!wrapped) return null;
-  try {
-    const parsed = JSON.parse(wrapped) as unknown;
-    if (isSocialEnvelope(parsed)) {
-      const opened = await openSocialEnvelope<{
-        docKey?: string;
-        liveClaimSecret?: string;
-        keyEpoch?: number;
-      }>(parsed, mlKemSecretKey, groupId);
-      return opened.docKey
-        ? {
-            docKey: opened.docKey,
-            liveClaimSecret: opened.liveClaimSecret || null,
-            keyEpoch: Number.isInteger(opened.keyEpoch) ? (opened.keyEpoch as number) : null
-          }
-        : null;
-    }
-  } catch {
-    /* not a social envelope — try owner wrap */
-  }
-  try {
-    return {
-      docKey: await unwrapChatKeyForOwner(wrapped, mlKemSecretKey, groupId),
-      liveClaimSecret: null,
-      keyEpoch: null
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Every group row this member can open (owner wrap or sealed peer invite), newest first.
- * A re-key appends rows, so the first entry carries the current docKey.
- */
-async function openGroupRows(params: { session: PenSession; groupId: string }): Promise<OpenedGroupRow[]> {
+/** Every group row this member can open (owner wrap or sealed peer invite), newest first. */
+async function openGroupRows(params: { session: PenSession; groupId: string }): Promise<OpenedDocKey[]> {
   const secret = params.session.mlKemSecretKey;
   if (!secret) return [];
   try {
     const drive = await penSessionDrive(params.session.pnIdentifier);
     const sheetId = drive.index.sheetIds.groups;
     if (!sheetId) return [];
-    const rows = (await listDeviceGroups(drive.accessToken, sheetId))
-      .filter((g) => g.groupId === params.groupId)
-      .reverse();
-    const out: OpenedGroupRow[] = [];
-    for (const row of rows) {
-      const opened = await openWrappedKey(row.wrappedChatKey || '', secret, params.groupId);
-      if (opened && !out.some((o) => o.docKey === opened.docKey)) out.push(opened);
-    }
-    return out;
+    return await openDocKeysFromGroups({
+      accessToken: drive.accessToken,
+      groupsSheetId: sheetId,
+      groupId: params.groupId,
+      mlKemSecretKey: secret
+    });
   } catch {
     return [];
   }
@@ -163,7 +119,7 @@ export async function hydrateDocFromCloud(params: {
     });
   }
 
-  let cloud: Awaited<ReturnType<typeof decryptCloudDoc>>;
+  let cloud: DecryptedCloudDoc;
   try {
     cloud = await decryptCloudDoc({ raw, docKey });
   } catch {

@@ -12,7 +12,8 @@ import {
   type PenLiveRolesUpdate,
   type PenLiveSealedSnapshot
 } from '@par-noir/pen-live';
-import { penSessionDrive, readLiveSnapshotFile, writeLiveSnapshotFile } from './penDriveLibrary';
+import { readLiveSnapshotFile, writeLiveSnapshotFile } from '@par-noir/device-cloud-credentials';
+import { penSessionDrive } from './penDriveLibrary';
 
 /** Window event: a peer snapshot arrived by mailbox; detail `{ docId, sealed }`. */
 export const PEN_LIVE_SNAPSHOT_EVENT = 'pen-live-snapshot';

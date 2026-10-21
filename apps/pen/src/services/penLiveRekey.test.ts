@@ -6,11 +6,7 @@ import { bytesToBase64, signRekey } from '@par-noir/pen-live';
 import { hashPnIdentifier } from '@par-noir/pen-protocol';
 import type { PenSession } from './penSession';
 
-vi.mock('./penDriveLibrary', () => ({
-  penSessionDrive: vi.fn(),
-  readLiveSnapshotFile: vi.fn(),
-  writeLiveSnapshotFile: vi.fn()
-}));
+vi.mock('./penDriveLibrary', () => ({ penSessionDrive: vi.fn() }));
 vi.mock('./penOwnerFetch', () => ({ ownerFetch: vi.fn(), ownerGet: vi.fn() }));
 
 import { applyPenLiveRekey } from './penCollab';
