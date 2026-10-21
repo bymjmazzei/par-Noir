@@ -19,6 +19,8 @@ export interface ConsentUnlockParams {
   handoffPk: string;
   /** op=agent: display name for the new AI agent. */
   agentLabel: string;
+  /** op=agent: base64url delegation draft Unlock signs with the owner's root key. */
+  agentDelegation: string;
   /** RFC 7636 S256 challenge passed through to authenticate. */
   codeChallenge: string;
   codeChallengeMethod: string;
@@ -58,6 +60,7 @@ export function parseConsentUnlockParams(
     vaultPayload: readParam(params, 'vault_payload'),
     handoffPk: readParam(params, 'handoff_pk'),
     agentLabel: readParam(params, 'agent_label'),
+    agentDelegation: readParam(params, 'agent_delegation'),
     codeChallenge: readParam(params, 'code_challenge'),
     codeChallengeMethod: readParam(params, 'code_challenge_method'),
   };

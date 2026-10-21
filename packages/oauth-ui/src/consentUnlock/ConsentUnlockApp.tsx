@@ -374,8 +374,10 @@ function ConsentUnlockInner(props: {
           passcode: factors.passcode,
           vaultPayload: active.vaultPayload,
           agentLabel: active.agentLabel,
+          agentDelegation: active.agentDelegation,
           saveAgentIdentity,
           unlocked: {
+            did: unlocked.did,
             publicKey: unlocked.publicKey,
             decryptedIdentity: unlocked.decryptedIdentity as unknown as Record<string, unknown>,
             encryptedIdentity: unlocked.encryptedIdentity as unknown as Record<string, unknown>,

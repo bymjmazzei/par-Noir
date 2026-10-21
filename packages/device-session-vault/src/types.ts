@@ -33,6 +33,8 @@ export type UnlockKeysPayload = {
   encryptedIdentityJson: string;
   /** Optional display nickname (never Key 1). */
   nickname?: string;
+  /** AI agent entries: vault identityId of the owner who added the agent on this device. */
+  ownerIdentityId?: string;
 };
 
 /**

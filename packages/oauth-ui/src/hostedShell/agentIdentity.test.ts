@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { canonicalDelegationBytes, parseAgentDelegationStatement } from '@par-noir/standard-data-points';
+import { base64ToBytes, bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
+import { mlDsa65Keygen, mlDsa65Verify } from '@par-noir/pqc-crypto/ml-dsa';
 
 const createIdentity = vi.fn();
 const authenticateIdentity = vi.fn();
@@ -20,6 +23,7 @@ import {
   vaultEntriesForClient,
   type AgentVaultEntry,
 } from './agentIdentity';
+import { decodeAgentDelegationDraft, encodeAgentDelegationDraft } from './agentDelegation';
 import { buildShellResult } from './shellResult';
 import { assertFactorFree, buildShellLaunchUrl, encodeShellReturn, parseShellReturn } from './session';
 
@@ -32,26 +36,52 @@ beforeEach(() => {
   authenticateIdentity.mockResolvedValue({ id: 'did:agent', publicKey: 'agent-pk' });
 });
 
+const ownerKeys = mlDsa65Keygen(new Uint8Array(32).fill(7));
+const ownerPublicKey = bytesToBase64(ownerKeys.publicKey);
+const ownerSecretB64 = bytesToBase64(ownerKeys.secretKey);
+
 const unlocked = {
-  publicKey: 'owner-pk',
-  decryptedIdentity: { id: 'did:owner' },
+  did: 'did:owner',
+  publicKey: ownerPublicKey,
+  decryptedIdentity: { id: 'did:owner', pqcSecrets: { mlDsaSecretKey: ownerSecretB64 } },
   encryptedIdentity: { id: 'did:owner' },
 };
 
+const draft = {
+  scopes: ['ai:files.published', 'ai:proofs'] as const,
+  attestations: [
+    { dataPointId: 'over_18' as const, satisfied: true, level: 'attested' as const, expiresAt: null },
+  ],
+  issuedAt: '2026-10-21T13:00:00.000Z',
+  expiresAt: null,
+  nonce: 'nonce-abcdefghijklmnop',
+};
+const encodedDraft = encodeAgentDelegationDraft({ ...draft, scopes: [...draft.scopes] });
+
 describe('AI agent identity', () => {
   it('fails closed without a device vault', async () => {
-    await expect(createAgentIdentity({ label: 'Cursor' })).rejects.toThrow(/Touch ID/);
+    await expect(createAgentIdentity({ label: 'Cursor', ownerIdentityId: 'did:owner' })).rejects.toThrow(/Touch ID/);
     expect(createIdentity).not.toHaveBeenCalled();
   });
 
   it('needs a label', async () => {
-    await expect(createAgentIdentity({ label: '  ', saveAgentIdentity: vi.fn() })).rejects.toThrow(/Name/);
+    await expect(
+      createAgentIdentity({ label: '  ', ownerIdentityId: 'did:owner', saveAgentIdentity: vi.fn() })
+    ).rejects.toThrow(/Name/);
   });
 
-  it('seals random factors to the vault and returns public ids only', async () => {
+  it('needs the owner it belongs to', async () => {
+    await expect(
+      createAgentIdentity({ label: 'Cursor', ownerIdentityId: ' ', saveAgentIdentity: vi.fn() })
+    ).rejects.toThrow(/Unlock your pN/);
+    expect(createIdentity).not.toHaveBeenCalled();
+  });
+
+  it('seals random factors and the owner id to the vault and returns public ids only', async () => {
     const saved: AgentVaultEntry[] = [];
     const result = await createAgentIdentity({
       label: 'Cursor',
+      ownerIdentityId: 'did:owner',
       saveAgentIdentity: async (entry) => {
         saved.push(entry);
       },
@@ -60,6 +90,7 @@ describe('AI agent identity', () => {
     expect(() => assertFactorFree(result)).not.toThrow();
     expect(saved).toHaveLength(1);
     expect(saved[0].nickname).toBe('AI agent: Cursor');
+    expect(saved[0].ownerIdentityId).toBe('did:owner');
     expect(saved[0].pnName).toMatch(/^agent-/);
     expect(saved[0].passcode.length).toBeGreaterThanOrEqual(40);
     expect(saved[0].encryptedIdentityJson).toContain('sealed-for-');
@@ -72,8 +103,8 @@ describe('AI agent identity', () => {
     const save = async (entry: AgentVaultEntry) => {
       saved.push(entry);
     };
-    await createAgentIdentity({ label: 'A', saveAgentIdentity: save });
-    await createAgentIdentity({ label: 'B', saveAgentIdentity: save });
+    await createAgentIdentity({ label: 'A', ownerIdentityId: 'did:owner', saveAgentIdentity: save });
+    await createAgentIdentity({ label: 'B', ownerIdentityId: 'did:owner', saveAgentIdentity: save });
     expect(saved[0].passcode).not.toBe(saved[1].passcode);
     expect(saved[0].pnName).not.toBe(saved[1].pnName);
   });
@@ -91,39 +122,119 @@ describe('AI agent identity', () => {
   });
 });
 
+describe('agent delegation draft', () => {
+  it('round-trips through the launch URL encoding', () => {
+    expect(decodeAgentDelegationDraft(encodedDraft)).toEqual({
+      ...draft,
+      scopes: ['ai:files.published', 'ai:proofs'],
+    });
+  });
+
+  it('rejects tampered or unknown drafts', () => {
+    expect(decodeAgentDelegationDraft('not-base64-json')).toBeNull();
+    expect(decodeAgentDelegationDraft(undefined)).toBeNull();
+    expect(() => encodeAgentDelegationDraft({ ...draft, scopes: ['cloud:read' as never] })).toThrow();
+  });
+});
+
 describe('agent shell op', () => {
   it('requires the owner to unlock first', async () => {
     await expect(
-      buildShellResult({ op: 'agent', pnName: '', passcode: '', agentLabel: 'Cursor', saveAgentIdentity: vi.fn() })
+      buildShellResult({
+        op: 'agent',
+        pnName: '',
+        passcode: '',
+        agentLabel: 'Cursor',
+        agentDelegation: encodedDraft,
+        saveAgentIdentity: vi.fn(),
+      })
     ).rejects.toThrow(/Unlock your pN/);
   });
 
-  it('returns a factor-free fragment with the agent ids', async () => {
+  it('refuses to create an agent without a valid delegation draft', async () => {
+    const save = vi.fn();
+    await expect(
+      buildShellResult({
+        op: 'agent',
+        pnName: 'owner-key1',
+        passcode: 'owner-key2',
+        unlocked,
+        agentLabel: 'Cursor',
+        saveAgentIdentity: save,
+      })
+    ).rejects.toThrow(/dashboard/);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('signs the delegation with the owner root key in the same unlock', async () => {
+    const save = vi.fn(async () => undefined);
     const result = await buildShellResult({
       op: 'agent',
       pnName: 'owner-key1',
       passcode: 'owner-key2',
       unlocked,
       agentLabel: 'Cursor',
+      agentDelegation: encodedDraft,
+      saveAgentIdentity: save,
+    });
+    expect(result?.agentPnIdentifier).toBe('pn-of-agent-pk');
+    const statement = parseAgentDelegationStatement(JSON.parse(result!.statement));
+    expect(statement).toMatchObject({
+      rootPublicKey: ownerPublicKey,
+      agentPnIdentifier: 'pn-of-agent-pk',
+      agentPublicKey: 'agent-pk',
+      scopes: ['ai:files.published', 'ai:proofs'],
+      attestations: draft.attestations,
+      nonce: draft.nonce,
+    });
+    expect(
+      mlDsa65Verify(base64ToBytes(result!.signature), canonicalDelegationBytes(statement!), ownerKeys.publicKey)
+    ).toBe(true);
+    const tampered = { ...statement!, scopes: ['ai:files.published', 'ai:proofs', 'ai:pen.drafts'] as never };
+    expect(
+      mlDsa65Verify(base64ToBytes(result!.signature), canonicalDelegationBytes(tampered), ownerKeys.publicKey)
+    ).toBe(false);
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ ownerIdentityId: 'did:owner' }));
+  });
+
+  it('returns a factor-free fragment with no owner secrets', async () => {
+    const result = await buildShellResult({
+      op: 'agent',
+      pnName: 'owner-key1',
+      passcode: 'owner-key2',
+      unlocked,
+      agentLabel: 'Cursor',
+      agentDelegation: encodedDraft,
       saveAgentIdentity: vi.fn(async () => undefined),
     });
     const fragment = encodeShellReturn({
       v: 1,
       op: 'agent',
       did: 'did:owner',
-      publicKey: 'owner-pk',
+      publicKey: ownerPublicKey,
       accessToken: '',
       result,
     });
     const parsed = parseShellReturn(fragment);
-    expect(parsed?.result).toEqual({ agentPnIdentifier: 'pn-of-agent-pk', agentPublicKey: 'agent-pk' });
-    expect(fragment).not.toContain('owner-key');
+    expect(parsed?.result?.agentPnIdentifier).toBe('pn-of-agent-pk');
+    expect(Object.keys(parsed?.result || {}).sort()).toEqual(
+      ['agentPnIdentifier', 'agentPublicKey', 'signature', 'statement'].sort()
+    );
+    const serialized = JSON.stringify(parsed);
+    expect(serialized).not.toContain('owner-key');
+    expect(serialized).not.toContain(ownerSecretB64.slice(0, 64));
+    expect(serialized).not.toContain('mlDsaSecretKey');
   });
 
-  it('carries the agent label on the launch URL', () => {
-    const url = buildShellLaunchUrl({ returnTo: 'https://pn.parnoir.com/', op: 'agent', agentLabel: 'Cursor' });
-    expect(new URL(url.replace('com.parnoir.unlock://', 'https://x/')).searchParams.get('agent_label')).toBe(
-      'Cursor'
-    );
+  it('carries the agent label and delegation draft on the launch URL', () => {
+    const url = buildShellLaunchUrl({
+      returnTo: 'https://pn.parnoir.com/',
+      op: 'agent',
+      agentLabel: 'Cursor',
+      agentDelegation: encodedDraft,
+    });
+    const params = new URL(url.replace('com.parnoir.unlock://', 'https://x/')).searchParams;
+    expect(params.get('agent_label')).toBe('Cursor');
+    expect(params.get('agent_delegation')).toBe(encodedDraft);
   });
 });

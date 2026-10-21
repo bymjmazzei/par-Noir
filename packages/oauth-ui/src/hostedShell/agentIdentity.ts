@@ -18,6 +18,8 @@ export type AgentVaultEntry = {
   passcode: string;
   encryptedIdentityJson: string;
   nickname: string;
+  /** Vault identityId of the owner who added this agent on this device. */
+  ownerIdentityId: string;
 };
 
 export type SaveAgentIdentity = (entry: AgentVaultEntry) => Promise<void>;
@@ -67,11 +69,14 @@ function randomFactor(bytes: number): string {
 /** Create the agent identity and seal it to the vault. Fails closed without a vault. */
 export async function createAgentIdentity(args: {
   label: string;
+  ownerIdentityId: string;
   saveAgentIdentity?: SaveAgentIdentity;
 }): Promise<AgentIdentityResult> {
   if (!args.saveAgentIdentity) throw new Error(AGENT_VAULT_REQUIRED_MESSAGE);
   const label = normalizeAgentLabel(args.label);
   if (!label) throw new Error('Name this AI agent first');
+  const ownerIdentityId = args.ownerIdentityId.trim();
+  if (!ownerIdentityId) throw new Error('Unlock your pN to add an AI agent');
 
   const nickname = agentVaultNickname(label);
   const pnName = `agent-${randomFactor(18)}`;
@@ -86,6 +91,7 @@ export async function createAgentIdentity(args: {
     passcode,
     encryptedIdentityJson: JSON.stringify(created.identity),
     nickname,
+    ownerIdentityId,
   });
 
   return {

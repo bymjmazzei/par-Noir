@@ -183,6 +183,8 @@ export function buildShellLaunchUrl(args: {
   handoffPk?: string;
   /** op=agent: display name for the new AI agent. */
   agentLabel?: string;
+  /** op=agent: base64url delegation draft Unlock signs. Scopes and yes/no answers only. */
+  agentDelegation?: string;
 }): string {
   const params = new URLSearchParams({
     flow: 'shell',
@@ -197,6 +199,7 @@ export function buildShellLaunchUrl(args: {
   if (args.vaultPayload) params.set('vault_payload', args.vaultPayload);
   if (args.handoffPk) params.set('handoff_pk', args.handoffPk);
   if (args.agentLabel) params.set('agent_label', args.agentLabel);
+  if (args.agentDelegation) params.set('agent_delegation', args.agentDelegation);
   return `${UNLOCK_CUSTOM_SCHEME}://oauth/consent?${params.toString()}`;
 }
 
@@ -209,6 +212,7 @@ export type ShellLaunchArgs = {
   vaultPayload?: string;
   handoffPk?: string;
   agentLabel?: string;
+  agentDelegation?: string;
 };
 
 /** Same shell query on the web unlock page. Factors stay there, not on the hosted site. */

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { pollUnlockDesktopBrokerOnce } from '../unlockDesktopBrokerPoll';
 import { tryPreferUnlockApp } from '../unlockPreferApp';
 import { bindHandoffKem } from '../handoffSeal';
+import type { AgentDelegationDraft } from '@par-noir/standard-data-points';
+import { encodeAgentDelegationDraft } from './agentDelegation';
 import {
   buildShellLaunchUrl,
   buildShellWebUrl,
@@ -48,6 +50,8 @@ export type HostedShellLaunchProps = {
   vaultPayload?: string;
   /** op=agent: name for the AI agent Unlock creates. */
   agentLabel?: string;
+  /** op=agent: scopes and on-device yes/no attestations Unlock signs with the owner's key. */
+  agentDelegation?: AgentDelegationDraft;
   disabled?: boolean;
   /** Button only. The caller prints the explanation once for several actions. */
   buttonOnly?: boolean;
@@ -148,6 +152,7 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
       vaultPayload: props.vaultPayload,
       handoffPk: bindHandoffKem(state).publicKey,
       agentLabel: props.agentLabel,
+      agentDelegation: props.agentDelegation ? encodeAgentDelegationDraft(props.agentDelegation) : undefined,
     };
     void (async () => {
       const choice = await tryPreferUnlockApp(buildShellLaunchUrl(launch));
