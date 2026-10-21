@@ -71,9 +71,21 @@ export class AgentApiClient {
   }
 
   async requireScope(scope: string): Promise<void> {
+    await this.requireAnyScope([scope]);
+  }
+
+  async requireAnyScope(scopes: readonly string[]): Promise<void> {
     const tokens = await this.store.load();
     if (!tokens) throw new McpToolError('not_signed_in');
-    if (!tokens.scopes.includes(scope)) throw new McpToolError('insufficient_scope');
+    if (!scopes.some((s) => tokens.scopes.includes(s))) throw new McpToolError('insufficient_scope');
+  }
+
+  /** A current access token for par Noir Unlock to verify locally. Refreshed like API calls; never logged. */
+  async accessToken(): Promise<string> {
+    let tokens = await this.store.load();
+    if (!tokens) throw new McpToolError('not_signed_in');
+    if (tokens.expiresAt - EXPIRY_SKEW_MS <= this.now()) tokens = await this.refresh(tokens);
+    return tokens.accessToken;
   }
 
   /** `route` is a fixed label for logs; `path` may carry ids and never gets logged. */

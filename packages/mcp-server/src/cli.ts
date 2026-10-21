@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { AI_SCOPE_LABELS, isKnownAiScope } from '@par-noir/standard-data-points';
 import { AgentApiClient } from './apiClient';
 import { resolveApiUrl } from './config';
+import { AgentCustodyClient, defaultAgentSocketPath } from './custodyClient';
 import { ERROR_MESSAGES, McpToolError, toErrorCode } from './errors';
 import { createLogger } from './log';
 import { login, logout } from './login';
@@ -54,7 +55,12 @@ async function main(command: string): Promise<number> {
       return 0;
     }
     case 'serve': {
-      const server = await createPnMcpServer({ client: new AgentApiClient({ store, logger }), logger });
+      const client = new AgentApiClient({ store, logger });
+      const custody = new AgentCustodyClient({
+        socketPath: defaultAgentSocketPath(),
+        accessToken: () => client.accessToken(),
+      });
+      const server = await createPnMcpServer({ client, logger, custody });
       await server.connect(new StdioServerTransport());
       logger.info('serving');
       return -1;

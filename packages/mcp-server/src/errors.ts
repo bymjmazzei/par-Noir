@@ -14,6 +14,12 @@ export const ERROR_MESSAGES = {
   unavailable: 'par Noir is unavailable right now. Try again shortly.',
   login_failed: 'Sign-in did not finish. Run pn-mcp login again.',
   login_timeout: 'Sign-in timed out waiting for par Noir Unlock. Run pn-mcp login again.',
+  unlock_not_running: 'par Noir Unlock is not running on this Mac. Open it, then try again.',
+  owner_declined: 'The owner did not approve this on their Mac. Ask them before trying again.',
+  agent_not_on_this_mac: 'This AI agent was added on a different Mac. Private reads only work on the Mac that added it.',
+  private_not_found: 'No private file or Pen document with that id.',
+  unsupported_type: 'Only text files can be read: plain text, Markdown, CSV, JSON and similar.',
+  file_too_large: 'That file is too large to read here.',
 } as const;
 
 export type McpErrorCode = keyof typeof ERROR_MESSAGES;

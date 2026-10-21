@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { AgentApiClient, type FetchLike } from '../apiClient';
+import { AgentCustodyClient } from '../custodyClient';
 import { createLogger } from '../log';
 import { createPnMcpServer } from '../server';
 import { MemoryTokenStore, type StoredTokens } from '../tokenStore';
@@ -67,11 +68,19 @@ export function fakeFetch(route: Route) {
   return { fetch, calls };
 }
 
-export async function connect(opts: { store: MemoryTokenStore; fetch: FetchLike }) {
+export async function connect(opts: {
+  store: MemoryTokenStore;
+  fetch: FetchLike;
+  /** Socket path for par Noir Unlock; omitted means remote-style deps with no custody at all. */
+  unlockSocket?: string;
+}) {
   const logs: string[] = [];
   const logger = createLogger((line) => logs.push(line));
   const client = new AgentApiClient({ store: opts.store, logger, fetch: opts.fetch, now: () => NOW });
-  const server = await createPnMcpServer({ client, logger });
+  const custody = opts.unlockSocket
+    ? new AgentCustodyClient({ socketPath: opts.unlockSocket, accessToken: () => client.accessToken(), timeoutMs: 2000 })
+    : undefined;
+  const server = await createPnMcpServer({ client, logger, custody });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   const mcp = new Client({ name: 'test', version: '0.0.0' });
   await Promise.all([server.connect(serverSide), mcp.connect(clientSide)]);
