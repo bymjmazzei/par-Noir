@@ -453,6 +453,58 @@ describe('POST /api/mailbox/route — claiming and convergence', () => {
   });
 });
 
+describe('AI agent drafts wait for Pen, not the flush workers', () => {
+  function typesFilterOf(fragment: string): string[] | null {
+    const call = mockQuery.mock.calls.find(([sql]) => String(sql).includes(fragment));
+    return call ? (call[1][2] as string[] | null) : null;
+  }
+
+  it('the default drain never lists pen_agent_draft', async () => {
+    dbWithBobsClaimedRoute();
+    await request(buildApp())
+      .get(`/api/mailbox/pending?pnIdentifier=${BOB}&routeKey=${BOB_MINTED_ROUTE}`)
+      .expect(200);
+    const types = typesFilterOf('FROM social_mailbox');
+    expect(types).toEqual(expect.arrayContaining(['message_append', 'pen.comment']));
+    expect(types).not.toContain('pen_agent_draft');
+  });
+
+  it('Pen asks for drafts by jobType and gets only drafts', async () => {
+    dbWithBobsClaimedRoute();
+    await request(buildApp())
+      .get(`/api/mailbox/pending?pnIdentifier=${BOB}&routeKey=${BOB_MINTED_ROUTE}&jobType=pen_agent_draft`)
+      .expect(200);
+    expect(typesFilterOf('FROM social_mailbox')).toEqual(['pen_agent_draft']);
+  });
+
+  it('refuses a jobType the device may not drain', async () => {
+    dbWithBobsClaimedRoute();
+    await request(buildApp())
+      .get(`/api/mailbox/pending?pnIdentifier=${BOB}&routeKey=${BOB_MINTED_ROUTE}&jobType=nope`)
+      .expect(400);
+  });
+
+  it('the owner can ack a draft, and nobody can enqueue one through the mailbox', async () => {
+    dbWithBobsClaimedRoute();
+    await request(buildApp())
+      .post('/api/mailbox/ack')
+      .send({ pnIdentifier: BOB, routeKey: BOB_MINTED_ROUTE, jobIds: ['11111111-1111-1111-1111-111111111111'] })
+      .expect(200);
+    expect(typesFilterOf('DELETE FROM social_mailbox')).toContain('pen_agent_draft');
+
+    await request(buildApp())
+      .post('/api/mailbox/enqueue')
+      .send({
+        pnIdentifier: BOB,
+        routeKey: BOB_MINTED_ROUTE,
+        jobType: 'pen_agent_draft',
+        callerKey: 'k',
+        payload: { envelope: { kemCiphertext: 'k', ciphertext: 'c' }, envelopeContext: 'pen-agent-draft:draft_0001' },
+      })
+      .expect(400);
+  });
+});
+
 describe('enqueue requires opaque routeKey', () => {
   it('refuses recipientIdentityId-only addressing', async () => {
     await request(buildApp())

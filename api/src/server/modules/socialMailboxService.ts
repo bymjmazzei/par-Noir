@@ -38,7 +38,9 @@ export type SocialMailboxJobType =
   | 'pen.font_upsert'
   | 'pen.poll_vote'
   | 'pen.widget_action'
-  | 'pen.doc_invite_claim';
+  | 'pen.doc_invite_claim'
+  /** Enqueued only by POST /api/agent/pen/drafts; drained only by Pen's AI drafts inbox. */
+  | 'pen_agent_draft';
 
 export interface SocialMailboxJob {
   id: string;

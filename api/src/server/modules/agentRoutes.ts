@@ -13,8 +13,14 @@ import {
   type AgentDelegationStatement,
   type AiScope
 } from '@par-noir/standard-data-points';
+import {
+  PEN_AGENT_DRAFT_MAX_BYTES,
+  parsePenAgentDraftSubmission,
+  penAgentDraftSubmissionBytes
+} from '@par-noir/pen-protocol';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { OwnedAssetService } from './ownedAssetService';
+import { getOwnerMlKemPublicKey, submitAgentPenDraft } from './agentPenDraftService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 const SEARCH_LIMIT_MAX = 50;
@@ -210,6 +216,58 @@ export function registerAgentRoutes(app: Application): void {
         return res.status(410).json({ error: 'expired' });
       }
       return res.json(projectAttestation(attestation));
+    }
+  );
+
+  /** The owner's published ML-KEM key, so the agent can seal a draft. Never the owner's pN. */
+  app.get(
+    '/api/agent/owner-key',
+    requireAgentDelegation(AI_SCOPES.penDrafts),
+    async (req: AgentRequest, res: Response) => {
+      try {
+        const key = await getOwnerMlKemPublicKey(req.agent!.rootPnIdentifier);
+        if (!key) return res.status(404).json({ error: 'owner_key_missing' });
+        return res.json({ mlKemPublicKey: key });
+      } catch (e) {
+        safeLogger.warn('[agent] owner key failed', { err: e instanceof Error ? e.message : 'unknown' });
+        return res.status(500).json({ error: 'owner_key_failed' });
+      }
+    }
+  );
+
+  /** Accepts only `{draftId, envelope}` sealed to the owner; Pen opens it, the owner decides. */
+  app.post(
+    '/api/agent/pen/drafts',
+    requireAgentDelegation(AI_SCOPES.penDrafts),
+    async (req: AgentRequest, res: Response) => {
+      const submission = parsePenAgentDraftSubmission(req.body);
+      if (!submission) return res.status(400).json({ error: 'sealed_draft_required' });
+      if (penAgentDraftSubmissionBytes(submission) > PEN_AGENT_DRAFT_MAX_BYTES) {
+        return res.status(413).json({ error: 'draft_too_large' });
+      }
+      const agent = req.agent!;
+      try {
+        const result = await submitAgentPenDraft({
+          agentPnIdentifier: agent.agentPnIdentifier,
+          rootPnIdentifier: agent.rootPnIdentifier,
+          submission
+        });
+        if (!result.ok) {
+          safeLogger.info('[agent] draft refused', {
+            agentHash: hashIdentifier(agent.agentPnIdentifier),
+            reason: result.reason
+          });
+          return res
+            .status(result.reason === 'draft_rate_limited' ? 429 : 409)
+            .json({ error: result.reason });
+        }
+        return res
+          .status(result.created ? 201 : 200)
+          .json({ draftId: submission.draftId, status: 'awaiting_owner' });
+      } catch (e) {
+        safeLogger.warn('[agent] draft enqueue failed', { err: e instanceof Error ? e.message : 'unknown' });
+        return res.status(500).json({ error: 'draft_failed' });
+      }
     }
   );
 

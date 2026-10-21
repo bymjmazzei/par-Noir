@@ -67,6 +67,13 @@ const SOCIAL_JOB_TYPES: SocialMailboxJobType[] = [
 
 const JOB_TYPES: SocialMailboxJobType[] = [...MESSAGING_JOB_TYPES, ...SOCIAL_JOB_TYPES];
 
+/**
+ * AI agent drafts wait for the owner. They are left out of the default drain, so no flush
+ * worker is handed a kind it cannot apply; Pen's drafts inbox asks for them by jobType.
+ * Only /api/agent/pen/drafts enqueues them, so they are not in JOB_TYPES.
+ */
+const OWNER_CONFIRMED_JOB_TYPES: SocialMailboxJobType[] = ['pen_agent_draft'];
+
 function isSocialJobType(jobType: SocialMailboxJobType): boolean {
   return SOCIAL_JOB_TYPES.includes(jobType);
 }
@@ -134,6 +141,7 @@ async function gateMailboxRead(
       if (!allowed.includes(t)) allowed.push(t);
     }
   }
+  allowed.push(...OWNER_CONFIRMED_JOB_TYPES);
   return allowed;
 }
 
@@ -176,8 +184,16 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       }
       if (!(await gateRouteOwnership(res, routeKey, pnIdentifier))) return;
 
+      const onlyType = typeof req.query.jobType === 'string' ? req.query.jobType : undefined;
+      if (onlyType !== undefined && !allowedTypes.includes(onlyType as SocialMailboxJobType)) {
+        return res.status(400).json({ error: 'invalid jobType' });
+      }
+      const types = onlyType
+        ? [onlyType as SocialMailboxJobType]
+        : allowedTypes.filter((t) => !OWNER_CONFIRMED_JOB_TYPES.includes(t));
+
       const limit = parseInt(String(req.query.limit || '100'), 10) || 100;
-      const jobs = await listPendingMailboxJobs(routeKey, limit, allowedTypes);
+      const jobs = await listPendingMailboxJobs(routeKey, limit, types);
       return res.json({
         success: true,
         deviceCloudCustody: isDeviceCloudCustodyEnabled(),
