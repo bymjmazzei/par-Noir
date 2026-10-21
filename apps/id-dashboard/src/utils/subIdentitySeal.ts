@@ -45,6 +45,27 @@ export async function sealSubExportPayload(plaintextUtf8: string, passphrase: st
   });
 }
 
+/** Downloadable backup: the sealed blob as-is. Opening it needs the export passphrase. */
+export function buildSealedSubExportFile(assetId: string, sealedJson: string): string {
+  const sealed = JSON.parse(sealedJson) as { v: number; salt: string; iv: string; ct: string };
+  if (sealed.v !== 1 || !sealed.salt || !sealed.iv || !sealed.ct) throw new Error('Invalid sealed payload');
+  return JSON.stringify(
+    {
+      version: 2,
+      type: 'par-noir-sub-identity-sealed',
+      assetId,
+      sealed: { v: sealed.v, salt: sealed.salt, iv: sealed.iv, ct: sealed.ct },
+    },
+    null,
+    2
+  );
+}
+
+/** AI agents live in the Unlock vault on the Mac that added them; there is nothing to export. */
+export function isSubKindExportable(kind: string): boolean {
+  return kind !== 'ai_agent';
+}
+
 export async function unsealSubExportPayload(sealedJson: string, passphrase: string): Promise<string> {
   const o = JSON.parse(sealedJson) as { v: number; salt: string; iv: string; ct: string };
   if (o.v !== 1 || !o.salt || !o.iv || !o.ct) throw new Error('Invalid sealed payload');

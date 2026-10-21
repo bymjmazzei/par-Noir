@@ -2,8 +2,19 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
 import { SectionInfo } from '../common/SectionInfo';
 import { IdentityCrypto, VolumeIdGenerator, type EncryptedIdentity } from '@par-noir/identity-crypto';
-import { HostedShellLaunch, PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
-import { sealSubExportPayload, unsealSubExportPayload } from '../../utils/subIdentitySeal';
+import {
+  HostedShellLaunch,
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
+  normalizeAgentLabel,
+  type HostedShellSession,
+} from '@par-noir/oauth-ui';
+import { AI_DATA_DISCLOSURE, AI_SCOPES, AI_SCOPE_LABELS, type AiScope } from '@par-noir/standard-data-points';
+import {
+  buildSealedSubExportFile,
+  isSubKindExportable,
+  sealSubExportPayload,
+  unsealSubExportPayload,
+} from '../../utils/subIdentitySeal';
 import {
   createOwnedAsset,
   revokeOwnedAsset,
@@ -12,6 +23,9 @@ import {
   fetchDelegations,
   createDelegation,
   revokeDelegation,
+  agentFromShellSession,
+  registerAiAgent,
+  revokeAiAgent,
   type OwnedAssetDto
 } from '../../services/ownedAssetsApi';
 import {
@@ -113,6 +127,9 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [delegationBusyScope, setDelegationBusyScope] = useState<string | null>(null);
   const [showFeedCreator, setShowFeedCreator] = useState(false);
   const [isIdentityVerified, setIsIdentityVerified] = useState(false);
+  const [agentScopes, setAgentScopes] = useState<AiScope[]>([AI_SCOPES.filesPublished]);
+  const [agentAck, setAgentAck] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const creatableKinds: SubKind[] = isIdentityVerified
     ? ['feed', ...BASE_SUB_KINDS]
@@ -227,6 +244,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       setShowFeedCreator(true);
       return;
     }
+    if (createKind === 'ai_agent') return;
     if (!accessToken) {
       setErr('Sign in with par Noir (OAuth) to register subs.');
       return;
@@ -271,6 +289,72 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     }
   };
 
+  const agentLabel = normalizeAgentLabel(label);
+  const canAddAgent = !!accessToken && !!agentLabel && agentScopes.length > 0 && agentAck && !loading;
+
+  const toggleAgentScope = (scope: AiScope, on: boolean) => {
+    setAgentScopes((prev) => (on ? [...new Set([...prev, scope])] : prev.filter((s) => s !== scope)));
+  };
+
+  const onAgentSession = async (session: HostedShellSession) => {
+    if (!accessToken || !pnIdentifier) return;
+    setErr(null);
+    setNotice(null);
+    setLoading(true);
+    try {
+      const agent = agentFromShellSession(session, sessionId);
+      const asset = await registerAiAgent(accessToken, pnIdentifier, {
+        label: agentLabel,
+        scopes: agentScopes,
+        ...agent,
+      });
+      setLabel('');
+      setAgentAck(false);
+      await load({ force: true });
+      setSelectedId(asset.id);
+      setNotice(`AI agent "${agentLabel}" added. Run pn-mcp login on this Mac to connect it.`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not add the AI agent');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const revokeSelected = async () => {
+    if (!accessToken || !selected || !pnIdentifier) return;
+    const isAgent = selected.kind === 'ai_agent';
+    if (!confirm(isAgent ? 'Revoke this AI agent? Its access stops immediately.' : 'Revoke this asset on the network?')) {
+      return;
+    }
+    setErr(null);
+    setNotice(null);
+    try {
+      if (isAgent) {
+        const result = await revokeAiAgent(accessToken, pnIdentifier, selected.id);
+        if (!result.sheetSynced) {
+          setNotice('Access revoked. Reconnect Google Drive to update this list.');
+        }
+      } else {
+        await revokeOwnedAsset(accessToken, pnIdentifier, selected.id);
+        localStorage.removeItem(`${STORAGE_SEAL_PREFIX}${selected.id}`);
+      }
+      setSelectedId(null);
+      await load({ force: true });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Revoke failed');
+    }
+  };
+
+  const downloadSealedBackup = (assetId: string, sealed: string) => {
+    const blob = new Blob([buildSealedSubExportFile(assetId, sealed)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sub-pn-${assetId.slice(0, 8)}.sealed.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const closeExportAuthModal = () => {
     if (authLoading) return;
     setRotatePending(false);
@@ -303,6 +387,10 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
 
   const doDownloadExport = async () => {
     if (!selected || !accessToken) return;
+    if (!isSubKindExportable(selected.kind)) {
+      setErr('AI agents live in par Noir Unlock on the Mac that added them and cannot be exported.');
+      return;
+    }
     const ep = exportPassConfirm.trim();
     if (!ep) {
       setErr('Enter your export passphrase.');
@@ -314,37 +402,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       return;
     }
     try {
-      const raw = await unsealSubExportPayload(sealed, ep);
-      const parsed = JSON.parse(raw) as {
-        encryptedIdentity: EncryptedIdentity;
-        pnName: string;
-        passcode: string;
-      };
-      const blob = new Blob(
-        [
-          JSON.stringify(
-            {
-              version: 1,
-              type: 'par-noir-sub-identity',
-              publicKey: parsed.encryptedIdentity.publicKey,
-              encryptedData: parsed.encryptedIdentity.encryptedData,
-              iv: parsed.encryptedIdentity.iv,
-              salt: parsed.encryptedIdentity.salt,
-              pnName: parsed.pnName,
-              passcode: parsed.passcode
-            },
-            null,
-            2
-          )
-        ],
-        { type: 'application/json' }
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `sub-pn-${selected.id.slice(0, 8)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await unsealSubExportPayload(sealed, ep);
+      downloadSealedBackup(selected.id, sealed);
       if (!pnIdentifier) throw new Error('Missing pn identifier');
       await auditSubExport(accessToken, pnIdentifier, selected.id);
       setExportPassConfirm('');
@@ -364,6 +423,10 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     }
     if (!sessionId) {
       setAuthError('No active root identity session. Unlock again.');
+      return;
+    }
+    if (!isSubKindExportable(selected.kind)) {
+      setAuthError('Revoke this AI agent and add a new one instead of rotating.');
       return;
     }
 
@@ -413,14 +476,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       const sealed = await sealSubExportPayload(portable, pass);
       localStorage.removeItem(`${STORAGE_SEAL_PREFIX}${selected.id}`);
       localStorage.setItem(`${STORAGE_SEAL_PREFIX}${newAsset.id}`, sealed);
-
-      const blob = new Blob([portable], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `sub-pn-${newAsset.id.slice(0, 8)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadSealedBackup(newAsset.id, sealed);
 
       closeExportAuthModal();
       setRotatePending(false);
@@ -564,6 +620,11 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
           {err}
         </div>
       )}
+      {notice && (
+        <div className="p-3 rounded-lg bg-secondary border border-border text-sm" role="status">
+          {notice}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -616,6 +677,56 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               >
                 Subscribe and register feed — $5 / month
               </button>
+            </>
+          ) : createKind === 'ai_agent' ? (
+            <>
+              <label className="block text-sm">
+                <span className="text-text-secondary">Name</span>
+                <input
+                  className="mt-1 w-full rounded-md bg-secondary border border-border px-3 py-2"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="Cursor, Claude Desktop…"
+                  maxLength={40}
+                />
+              </label>
+              <fieldset className="space-y-2">
+                <legend className="text-sm text-text-secondary">What it can read</legend>
+                {(Object.values(AI_SCOPES) as AiScope[]).map((scope) => (
+                  <label key={scope} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={agentScopes.includes(scope)}
+                      onChange={(e) => toggleAgentScope(scope, e.target.checked)}
+                    />
+                    <span>{AI_SCOPE_LABELS[scope]}</span>
+                  </label>
+                ))}
+              </fieldset>
+              <div className="p-3 rounded-md border border-amber-700 bg-amber-900/20 text-xs space-y-2">
+                <p>{AI_DATA_DISCLOSURE}</p>
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={agentAck}
+                    onChange={(e) => setAgentAck(e.target.checked)}
+                  />
+                  <span>I understand</span>
+                </label>
+              </div>
+              <HostedShellLaunch
+                op="agent"
+                agentLabel={agentLabel}
+                buttonOnly
+                disabled={!canAddAgent}
+                label="Approve in par Noir Unlock"
+                onSession={(session) => void onAgentSession(session)}
+              />
+              <p className="text-xs text-text-secondary">
+                Unlock creates the agent and keeps its keys in Touch ID on this Mac. Nothing to download.
+              </p>
             </>
           ) : (
             <>
@@ -680,7 +791,10 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 Mini dashboard — {String(selected.metadata?.label || selected.kind)}
                 <SectionInfo title="About this sub type">
                   {selected.kind === 'ai_agent' && (
-                    <p>Use Delegations below to scope ZKP or integrations when enforcement lands on those routes.</p>
+                    <p>
+                      An AI tool signs in as this agent through par Noir Unlock on the Mac that added it. The API checks
+                      these scopes on every request; revoke stops access immediately.
+                    </p>
                   )}
                   {selected.kind === 'feed' && (
                     <p>
@@ -708,20 +822,28 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
             <button
               type="button"
               className="text-sm px-3 py-1 rounded-md border border-red-700 text-red-400 hover:bg-red-900/20"
-              onClick={async () => {
-                if (!accessToken) return;
-                if (!confirm('Revoke this asset on the network?')) return;
-                if (!pnIdentifier) throw new Error('Missing pn identifier');
-                await revokeOwnedAsset(accessToken, pnIdentifier, selected.id);
-                localStorage.removeItem(`${STORAGE_SEAL_PREFIX}${selected.id}`);
-                setSelectedId(null);
-                await load({ force: true });
-              }}
+              onClick={() => void revokeSelected()}
             >
-              Revoke on API
+              {selected.kind === 'ai_agent' ? 'Revoke AI agent' : 'Revoke on API'}
             </button>
           </div>
 
+          {selected.kind === 'ai_agent' ? (
+            <div className="border-t border-border pt-4 space-y-2 text-sm">
+              <h5 className="font-medium">Can read</h5>
+              <ul className="list-disc pl-5 text-text-secondary">
+                {(Array.isArray(selected.metadata?.scopes) ? (selected.metadata.scopes as string[]) : [])
+                  .filter((s): s is AiScope => s in AI_SCOPE_LABELS)
+                  .map((s) => (
+                    <li key={s}>{AI_SCOPE_LABELS[s]}</li>
+                  ))}
+              </ul>
+              <p className="text-xs text-text-secondary">
+                Not exportable. To change what it can read, revoke it and add a new agent.
+              </p>
+            </div>
+          ) : (
+          <>
           <div className="border-t border-border pt-4 space-y-3">
             <h5 className="font-medium flex items-center gap-2">
               <Shield className="w-4 h-4" />
@@ -902,6 +1024,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               ))}
             </ul>
           </div>
+          </>
+          )}
 
           <div className="border-t border-border pt-4 flex items-center gap-2 text-xs text-text-secondary">
             <Shield className="w-4 h-4" />

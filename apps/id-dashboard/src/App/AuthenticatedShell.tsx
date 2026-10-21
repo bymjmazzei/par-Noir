@@ -9,6 +9,7 @@ import { isIdentityVerificationAvailable } from '../config/verification';
 import { FileStorageAggregator } from '../components/storage/FileStorageAggregator';
 import { SectionInfo } from '../components/common/SectionInfo';
 import { PrivacyDataPointsPanel } from '../components/privacy/PrivacyDataPointsPanel';
+import { AiAgentsPrivacyRow } from '../components/privacy/AiAgentsPrivacyRow';
 import { AdvancedPrivacySettingsBody } from '../components/privacy/AdvancedPrivacySettingsBody';
 import { PublicNamesSection } from '../components/privacy/PublicNamesSection';
 import { SharePnCard } from '../components/SharePnCard';
@@ -644,6 +645,11 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                             </div>
                           )}
                         </div>
+
+                        <AiAgentsPrivacyRow
+                          accessToken={apiToken}
+                          pnIdentifier={recoveryVaultPnId}
+                        />
 
                         {/* Global Settings — attested/verified points + third-party disable */}
                         <div className="bg-secondary rounded-lg">

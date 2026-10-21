@@ -12,6 +12,7 @@ import {
   type DeviceAssetDelegation,
   type DeviceOwnedAsset,
 } from '@par-noir/device-cloud-credentials';
+import { AGENT_MCP_CLIENT_ID } from '@par-noir/standard-data-points';
 import { ownerFetch } from './ownerApiService';
 import { sessionDriveFor } from './sessionDrive';
 import { isDriveLayoutInitActive } from './storage/driveLayoutInitGate';
@@ -216,6 +217,171 @@ export async function createDelegation(
   };
   await upsertDeviceAssetDelegation(book.accessToken, book.spreadsheetId, row);
   return row.id;
+}
+
+export interface AiAgentDto {
+  id: string;
+  subjectPnIdentifier: string;
+  label: string;
+  scopes: string[];
+  createdAt: string;
+}
+
+async function agentApi(
+  accessToken: string,
+  pnIdentifier: string,
+  method: 'GET' | 'POST',
+  path: string,
+  body?: unknown
+): Promise<Record<string, unknown>> {
+  const res = await ownerFetch(accessToken, method, `/api/owned-assets/agents${path}`, body, {
+    pnIdentifier: pnKey(pnIdentifier),
+  });
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const err = new Error(
+      typeof json.error_description === 'string' ? json.error_description : 'AI agent request failed'
+    );
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
+  return json;
+}
+
+/** Unlock's op=agent result: the owner who approved, plus the new agent's public ids only. */
+export function agentFromShellSession(
+  session: { op: string; did: string; result?: Record<string, string> },
+  ownerDid: string | undefined
+): { agentPnIdentifier: string; agentPublicKey: string } {
+  if (session.op !== 'agent') throw new Error('Unlock returned a different action');
+  if (!ownerDid || session.did !== ownerDid) throw new Error('Unlock did not match this pN.');
+  const agentPnIdentifier = session.result?.agentPnIdentifier || '';
+  const agentPublicKey = session.result?.agentPublicKey || '';
+  if (!agentPnIdentifier || !agentPublicKey) throw new Error('Unlock did not return the new AI agent');
+  return { agentPnIdentifier, agentPublicKey };
+}
+
+/** AI agents the API currently honors for this root. */
+export async function fetchAiAgents(accessToken: string, pnIdentifier: string): Promise<AiAgentDto[]> {
+  const json = await agentApi(accessToken, pnIdentifier, 'GET', '');
+  return Array.isArray(json.agents) ? (json.agents as AiAgentDto[]) : [];
+}
+
+/**
+ * Sheet row first (the owner always sees what exists), then the API authz cache,
+ * then one sheet delegation per scope with the ids the API issued.
+ */
+export async function registerAiAgent(
+  accessToken: string,
+  pnIdentifier: string,
+  body: { label: string; scopes: string[]; agentPnIdentifier: string; agentPublicKey: string }
+): Promise<OwnedAssetDto> {
+  const asset = await createOwnedAsset(accessToken, pnIdentifier, {
+    kind: 'ai_agent',
+    subjectPnIdentifier: body.agentPnIdentifier,
+    metadata: { label: body.label, scopes: body.scopes },
+  });
+  let json: Record<string, unknown>;
+  try {
+    json = await agentApi(accessToken, pnIdentifier, 'POST', '', {
+      assetId: asset.id,
+      subjectPnIdentifier: body.agentPnIdentifier,
+      subjectPublicKey: body.agentPublicKey,
+      label: body.label,
+      scopes: body.scopes,
+    });
+  } catch (e) {
+    await revokeOwnedAsset(accessToken, pnIdentifier, asset.id).catch(() => undefined);
+    throw e;
+  }
+  const agent = json.agent as { delegations?: Array<{ id: string; scope: string }> } | undefined;
+  const book = await ownedAssetsWorkbook(accessToken, pnIdentifier);
+  const now = new Date().toISOString();
+  for (const d of agent?.delegations ?? []) {
+    await upsertDeviceAssetDelegation(book.accessToken, book.spreadsheetId, {
+      id: d.id,
+      ownedAssetId: asset.id,
+      delegateePnIdentifier: null,
+      delegateeClientId: AGENT_MCP_CLIENT_ID,
+      scope: d.scope,
+      expiresAt: null,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+  return asset;
+}
+
+async function revokeSheetAgents(
+  accessToken: string,
+  pnIdentifier: string,
+  match: (asset: DeviceOwnedAsset) => boolean
+): Promise<void> {
+  const book = await ownedAssetsWorkbook(accessToken, pnIdentifier);
+  const now = new Date().toISOString();
+  const assets = (await listDeviceOwnedAssets(book.accessToken, book.spreadsheetId)).filter(
+    (a) => a.kind === 'ai_agent' && a.status === 'active' && match(a)
+  );
+  const ids = new Set(assets.map((a) => a.id));
+  for (const a of assets) {
+    await upsertDeviceOwnedAsset(book.accessToken, book.spreadsheetId, {
+      ...a,
+      status: 'revoked',
+      revokedAt: now,
+      updatedAt: now,
+    });
+  }
+  const dels = await listDeviceAssetDelegations(book.accessToken, book.spreadsheetId);
+  for (const d of dels.filter((row) => ids.has(row.ownedAssetId) && row.status === 'active')) {
+    await upsertDeviceAssetDelegation(book.accessToken, book.spreadsheetId, {
+      ...d,
+      status: 'revoked',
+      updatedAt: now,
+    });
+  }
+}
+
+export interface AiAgentRevokeResult {
+  revoked: number;
+  /** False when access is cut but the Drive list could not be updated. */
+  sheetSynced: boolean;
+}
+
+async function syncSheetAfterRevoke(
+  accessToken: string,
+  pnIdentifier: string,
+  match: (asset: DeviceOwnedAsset) => boolean
+): Promise<boolean> {
+  try {
+    await revokeSheetAgents(accessToken, pnIdentifier, match);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** API first so access stops immediately; a missing API row still revokes the sheet. */
+export async function revokeAiAgent(
+  accessToken: string,
+  pnIdentifier: string,
+  assetId: string
+): Promise<AiAgentRevokeResult> {
+  let revoked = 1;
+  try {
+    await agentApi(accessToken, pnIdentifier, 'POST', `/${encodeURIComponent(assetId)}/revoke`);
+  } catch (e) {
+    if ((e as { status?: number }).status !== 404) throw e;
+    revoked = 0;
+  }
+  const sheetSynced = await syncSheetAfterRevoke(accessToken, pnIdentifier, (a) => a.id === assetId);
+  return { revoked, sheetSynced };
+}
+
+export async function revokeAllAiAgents(accessToken: string, pnIdentifier: string): Promise<AiAgentRevokeResult> {
+  const json = await agentApi(accessToken, pnIdentifier, 'POST', '/revoke-all');
+  const sheetSynced = await syncSheetAfterRevoke(accessToken, pnIdentifier, () => true);
+  return { revoked: typeof json.revoked === 'number' ? json.revoked : 0, sheetSynced };
 }
 
 export async function revokeDelegation(
