@@ -47,6 +47,18 @@ export {
   applyStaticContract
 } from './clientContracts';
 export {
+  type AiScope,
+  AGENT_MCP_CLIENT_ID,
+  AGENT_MCP_CLIENT,
+  AI_SCOPE_PREFIX,
+  AI_SCOPES,
+  AI_SCOPE_LABELS,
+  AI_DATA_DISCLOSURE,
+  isAiScope,
+  isKnownAiScope,
+  filterKnownAiScopes
+} from './agentClient';
+export {
   type PermissionManifestItem,
   type PermissionManifestItemType,
   type IntegratorPermissionManifest,

@@ -2,6 +2,8 @@
  * L5 integrator permission manifest — declared at registration, shown at OAuth consent.
  */
 
+import { AI_SCOPE_LABELS, isKnownAiScope } from './agentClient';
+
 export type PermissionManifestItemType = 'scope' | 'data_point' | 'storage' | 'indexing';
 
 export interface PermissionManifestItem {
@@ -25,6 +27,7 @@ const SCOPE_LABELS: Record<string, string> = {
 
 export function defaultLabelForScope(scope: string): string {
   if (SCOPE_LABELS[scope]) return SCOPE_LABELS[scope];
+  if (isKnownAiScope(scope)) return AI_SCOPE_LABELS[scope];
   if (scope.startsWith('zkp:') || scope.startsWith('data_point:')) {
     return `Access verified data: ${scope.replace(/^(zkp:|data_point:)/, '')}`;
   }
