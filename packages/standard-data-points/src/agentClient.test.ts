@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AGENT_CONNECTOR_CLIENT_ID_PREFIX,
   AGENT_MCP_CLIENT,
   AGENT_MCP_CLIENT_ID,
   AI_DATA_DISCLOSURE,
+  REMOTE_AI_SCOPES,
+  isAgentClassClientId,
+  isAgentConnectorClientId,
   AI_SCOPE_LABELS,
   AI_SCOPES,
   ATTESTABLE_DATA_POINT_IDS,
@@ -30,6 +34,21 @@ describe('AI agent client contract', () => {
     }
     expect(AGENT_MCP_CLIENT.scopes).not.toContain('cloud:read');
     expect(AGENT_MCP_CLIENT.scopes).not.toContain('cloud:app');
+  });
+
+  it('remote connectors get every ai: scope except the local-only private reads', () => {
+    expect([...REMOTE_AI_SCOPES].sort()).toEqual(['ai:files.published', 'ai:pen.drafts', 'ai:pen.published', 'ai:proofs']);
+    expect(REMOTE_AI_SCOPES.some(isLocalOnlyAiScope)).toBe(false);
+  });
+
+  it('recognizes agent-class clients: the MCP client and prefixed connectors only', () => {
+    expect(isAgentClassClientId(AGENT_MCP_CLIENT_ID)).toBe(true);
+    expect(isAgentConnectorClientId(`${AGENT_CONNECTOR_CLIENT_ID_PREFIX}3f9a`)).toBe(true);
+    expect(isAgentClassClientId(`${AGENT_CONNECTOR_CLIENT_ID_PREFIX}3f9a`)).toBe(true);
+    expect(isAgentConnectorClientId(AGENT_CONNECTOR_CLIENT_ID_PREFIX)).toBe(false);
+    for (const id of ['browser-app', 'pen-app', 'x-pn-connector-1', 'pn-agent-mcp-2']) {
+      expect(isAgentClassClientId(id)).toBe(false);
+    }
   });
 
   it('seeds every ai: scope on the MCP client so the API can narrow to the delegation', () => {

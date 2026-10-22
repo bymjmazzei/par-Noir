@@ -60,6 +60,24 @@ export function isLocalOnlyAiScope(scope: string): boolean {
   return LOCAL_ONLY_AI_SCOPES.has(scope);
 }
 
+/** What a remote connector may hold: every `ai:` scope except the local-only ones. */
+export const REMOTE_AI_SCOPES: readonly AiScope[] = Object.values(AI_SCOPES).filter((s) => !isLocalOnlyAiScope(s));
+
+/**
+ * Hosted AI apps (claude.ai, ChatGPT) register through RFC 7591 dynamic client registration.
+ * Only that route issues ids with this prefix, so Unlock can tell a connector apart offline.
+ */
+export const AGENT_CONNECTOR_CLIENT_ID_PREFIX = 'pn-connector-';
+
+export function isAgentConnectorClientId(clientId: string): boolean {
+  return clientId.startsWith(AGENT_CONNECTOR_CLIENT_ID_PREFIX) && clientId.length > AGENT_CONNECTOR_CLIENT_ID_PREFIX.length;
+}
+
+/** Clients that sign in AI agent sub-pNs only: the local MCP server and registered connectors. */
+export function isAgentClassClientId(clientId: string): boolean {
+  return clientId === AGENT_MCP_CLIENT_ID || isAgentConnectorClientId(clientId);
+}
+
 export function filterKnownAiScopes(scopes: readonly string[]): AiScope[] {
   return [...new Set(scopes.filter(isKnownAiScope))];
 }
