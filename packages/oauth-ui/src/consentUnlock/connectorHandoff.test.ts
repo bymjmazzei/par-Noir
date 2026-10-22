@@ -34,8 +34,13 @@ function pending(over: Record<string, unknown>) {
 
 function harness(polls: Array<unknown>, opened = true) {
   const navigate = vi.fn();
-  const openApp = vi.fn(async () => (opened ? { opened: true, mode: 'app' } : { opened: false, mode: 'fallback' }) as never);
-  const poll = vi.fn(async () => (polls.length > 0 ? polls.shift() : null) as never);
+  const openApp = vi.fn(
+    async (_appUrl: string) => (opened ? { opened: true, mode: 'app' } : { opened: false, mode: 'fallback' }) as never
+  );
+  const poll = vi.fn(
+    async (_state: string, _opts: { apiEndpoint: string; clientId: string }) =>
+      (polls.length > 0 ? polls.shift() : null) as never
+  );
   let t = 0;
   return {
     navigate,

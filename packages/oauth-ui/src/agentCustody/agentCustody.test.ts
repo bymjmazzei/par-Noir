@@ -202,7 +202,7 @@ describe('session window', () => {
     vi.setSystemTime(NOW);
     const wipe = vi.fn();
     const sessions = new AgentCustodySessions<{ n: number }>({ wipe });
-    const open = vi.fn(async () => ({ n: open.mock.calls.length }));
+    const open = vi.fn(async (): Promise<{ n: number }> => ({ n: open.mock.calls.length }));
     const [a, b] = await Promise.all([sessions.acquire('pn-a', open), sessions.acquire('pn-a', open)]);
     expect(a).toBe(b);
     await sessions.acquire('pn-a', open);
