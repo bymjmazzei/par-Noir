@@ -995,6 +995,44 @@ export class OwnedAssetService {
     });
   }
 
+  /**
+   * Apps signed in as one of this root's active agents: the local pn-mcp and any hosted
+   * connector with a live refresh token. Null when the agent is not this root's.
+   * Last used is the newest refresh-token row, since every refresh rotates a new one in.
+   */
+  static async listAgentConnectors(rootPn: string, assetId: string): Promise<AiAgentConnector[] | null> {
+    if (!UUID_RE.test(assetId)) return null;
+    const root = normalizePn(rootPn);
+    const pool = getDatabasePool();
+    const owned = await pool.query(
+      `SELECT subject_public_key FROM pn_owned_assets
+       WHERE id = $1 AND root_pn_identifier = $2 AND kind = 'ai_agent' AND status = 'active'`,
+      [assetId, root]
+    );
+    if (owned.rows.length === 0) return null;
+    const publicKey = String((owned.rows[0] as Record<string, unknown>).subject_public_key || '');
+    if (!publicKey) return [];
+    const r = await pool.query(
+      `SELECT t.client_id, c.name AS client_name, MAX(t.created_at) AS last_used_at
+       FROM oauth_refresh_tokens t
+       LEFT JOIN oauth_clients c ON c.client_id = t.client_id
+       WHERE t.public_key = $1 AND (t.client_id = $2 OR t.client_id LIKE $3)
+       GROUP BY t.client_id, c.name
+       HAVING bool_or(t.revoked_at IS NULL AND t.used_at IS NULL AND t.expires_at > NOW())
+       ORDER BY last_used_at DESC`,
+      [publicKey, AGENT_MCP_CLIENT_ID, `${AGENT_CONNECTOR_CLIENT_ID_PREFIX}%`]
+    );
+    return (r.rows as Record<string, unknown>[]).map((row) => {
+      const local = String(row.client_id) === AGENT_MCP_CLIENT_ID;
+      const name = typeof row.client_name === 'string' ? row.client_name.trim() : '';
+      return {
+        kind: local ? 'local' : 'connector',
+        name: local ? 'pn-mcp on your Mac' : name || 'AI connector',
+        lastUsedAt: row.last_used_at ? new Date(String(row.last_used_at)).toISOString() : null
+      };
+    });
+  }
+
   /** Revoke one agent: cache rows go revoked and its refresh tokens are deleted. */
   static async revokeAgent(rootPn: string, assetId: string): Promise<boolean> {
     const root = normalizePn(rootPn);
@@ -1164,6 +1202,12 @@ export interface AiAgentSummary {
   label: string;
   scopes: string[];
   createdAt: string;
+}
+
+export interface AiAgentConnector {
+  kind: 'local' | 'connector';
+  name: string;
+  lastUsedAt: string | null;
 }
 
 export interface AiAgentDelegation {

@@ -175,6 +175,23 @@ export function registerOwnedAssetRoutes(app: Application): void {
     }
   });
 
+  app.get('/api/owned-assets/agents/:id/connectors', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pn = req.user?.pnIdentifier?.trim();
+      if (!pn) return res.status(400).json({ error: 'invalid_request' });
+      if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, pn))) return;
+      const connectors = await OwnedAssetService.listAgentConnectors(pn, req.params.id);
+      if (!connectors) return res.status(404).json({ error: 'not_found' });
+      return res.json({ connectors });
+    } catch (e: unknown) {
+      console.error('[owned-assets] agent connectors:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
   app.post('/api/owned-assets/agents/revoke-all', ...chain, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pn = req.user?.pnIdentifier?.trim();
