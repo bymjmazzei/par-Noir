@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { AI_SCOPE_LABELS, isKnownAiScope } from '@par-noir/standard-data-points';
 import { AgentApiClient } from './apiClient';
+import { createApiSource } from './apiSource';
 import { resolveApiUrl } from './config';
 import { AgentCustodyClient, defaultAgentSocketPath } from './custodyClient';
 import { ERROR_MESSAGES, McpToolError, toErrorCode } from './errors';
@@ -60,7 +61,7 @@ async function main(command: string): Promise<number> {
         socketPath: defaultAgentSocketPath(),
         accessToken: () => client.accessToken(),
       });
-      const server = await createPnMcpServer({ client, logger, custody });
+      const server = await createPnMcpServer({ source: createApiSource(client, custody), mode: 'local', logger });
       await server.connect(new StdioServerTransport());
       logger.info('serving');
       return -1;

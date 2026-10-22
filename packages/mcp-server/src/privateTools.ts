@@ -1,4 +1,5 @@
-import { z } from 'zod';
+// The MCP SDK's types import zod/v3; plain 'zod' resolves to other declarations in the CommonJS build.
+import { z } from 'zod/v3';
 import {
   AGENT_CUSTODY_TOOL_SCOPES,
   projectPrivateFileText,
@@ -8,8 +9,8 @@ import {
   type PrivatePenText,
   type PrivateSearchResult,
 } from '@par-noir/standard-data-points';
-import type { AgentCustodyClient } from './custodyClient';
 import { McpToolError } from './errors';
+import type { PnPrivateSource } from './source';
 
 const idInput = z.string().trim().min(1).max(200);
 
@@ -68,26 +69,26 @@ export const PRIVATE_TOOL_DEFS = {
 export type PrivateToolName = keyof typeof PRIVATE_TOOL_DEFS;
 
 export async function searchPrivateFiles(
-  custody: AgentCustodyClient,
+  source: PnPrivateSource,
   args: { query: string }
 ): Promise<PrivateSearchResult> {
-  return projectPrivateSearch(await custody.call('search_private_files', { query: args.query }));
+  return projectPrivateSearch(await source.searchPrivate({ query: args.query }));
 }
 
 export async function readPrivateFile(
-  custody: AgentCustodyClient,
+  source: PnPrivateSource,
   args: { fileId: string }
 ): Promise<{ file: PrivateFileText }> {
-  const file = projectPrivateFileText(await custody.call('read_private_file', { fileId: args.fileId }));
+  const file = projectPrivateFileText(await source.readPrivateFile({ fileId: args.fileId }));
   if (!file) throw new McpToolError('unavailable');
   return { file };
 }
 
 export async function readPrivatePenDocument(
-  custody: AgentCustodyClient,
+  source: PnPrivateSource,
   args: { docId: string }
 ): Promise<{ document: PrivatePenText }> {
-  const document = projectPrivatePenText(await custody.call('read_private_pen_document', { docId: args.docId }));
+  const document = projectPrivatePenText(await source.readPrivatePen({ docId: args.docId }));
   if (!document) throw new McpToolError('unavailable');
   return { document };
 }

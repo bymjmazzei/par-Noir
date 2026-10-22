@@ -1,14 +1,17 @@
-import { z } from 'zod';
+// The MCP SDK's types import zod/v3; plain 'zod' resolves to other declarations in the CommonJS build.
+import { z } from 'zod/v3';
 import {
   AI_SCOPES,
   ATTESTABLE_DATA_POINT_IDS,
   isAttestableDataPointId,
   type AgentAttestation,
 } from '@par-noir/standard-data-points';
-import type { PenAgentBuild } from '@par-noir/pen-protocol';
-import type { AgentApiClient } from './apiClient';
 import { McpToolError } from './errors';
 import { sealPenAgentDraft } from './penDraft';
+import type { PnMcpSource } from './source';
+
+/** Canonical public address of a published file; ChatGPT shows it as the citation. */
+export const PUBLIC_RESOURCE_URL_BASE = 'https://parnoir.com/resource/';
 
 const fileSummaryShape = {
   fileId: z.string(),
@@ -133,6 +136,26 @@ const draftStatusShape = {
   status: z.literal('awaiting_owner'),
 };
 
+const searchResultShape = { id: z.string(), title: z.string(), url: z.string() };
+
+const fetchResultShape = {
+  id: z.string(),
+  title: z.string(),
+  text: z.string(),
+  url: z.string(),
+  metadata: z.object({
+    description: z.string(),
+    fileType: z.string(),
+    contentClass: z.string(),
+    tags: z.array(z.string()),
+    publishedAt: z.string(),
+    textTruncated: z.boolean(),
+  }),
+};
+
+export type SearchResult = z.infer<z.ZodObject<typeof searchResultShape>>;
+export type FetchResult = z.infer<z.ZodObject<typeof fetchResultShape>>;
+
 export const TOOL_DEFS = {
   search_my_files: {
     scope: AI_SCOPES.filesPublished,
@@ -184,55 +207,88 @@ export const TOOL_DEFS = {
     },
     outputSchema: draftStatusShape,
   },
+  search: {
+    scope: AI_SCOPES.filesPublished,
+    title: 'Search published files',
+    description:
+      'Search files the owner has published publicly on par Noir. Returns ids, titles and public URLs; use fetch for the text.',
+    inputSchema: { query: z.string().max(200).describe('Words to match in title, description or tags') },
+    outputSchema: { results: z.array(z.object(searchResultShape)) },
+  },
+  fetch: {
+    scope: AI_SCOPES.filesPublished,
+    title: 'Fetch a published file',
+    description: 'Fetch one published file by id from search: its text (text posts only, capped at 20,000 characters) and details.',
+    inputSchema: { id: idInput.describe('id from search') },
+    outputSchema: fetchResultShape,
+  },
 } as const;
 
 export type ToolName = keyof typeof TOOL_DEFS;
 
+const SEARCH_ALIAS_LIMIT = 20;
+
 export async function searchMyFiles(
-  client: AgentApiClient,
+  source: PnMcpSource,
   args: { query: string; limit: number }
 ): Promise<{ files: FileSummary[] }> {
-  const q = new URLSearchParams({ q: args.query, limit: String(args.limit) });
-  const body = await client.get('files.search', `/api/agent/files/search?${q.toString()}`);
-  const files = Array.isArray(body.files) ? body.files : [];
-  return { files: files.slice(0, args.limit).map(projectFileSummary) };
+  const files = await source.searchFiles({ query: args.query, limit: args.limit });
+  return { files: (Array.isArray(files) ? files : []).slice(0, args.limit).map(projectFileSummary) };
 }
 
-export async function readFile(client: AgentApiClient, args: { fileId: string }): Promise<{ file: AgentFile }> {
-  const body = await client.get('files.read', `/api/agent/files/${encodeURIComponent(args.fileId)}`);
-  return { file: projectFile(body.file) };
+export async function readFile(source: PnMcpSource, args: { fileId: string }): Promise<{ file: AgentFile }> {
+  return { file: projectFile(await source.readFile(args.fileId)) };
 }
 
-export async function readPenDocument(
-  client: AgentApiClient,
-  args: { docId: string }
-): Promise<{ document: PenDocument }> {
-  const body = await client.get('pen.read', `/api/agent/pen/${encodeURIComponent(args.docId)}`);
-  return { document: projectPenDocument(body.document) };
+export async function readPenDocument(source: PnMcpSource, args: { docId: string }): Promise<{ document: PenDocument }> {
+  return { document: projectPenDocument(await source.readPen(args.docId)) };
 }
 
-export async function proveDataPoint(
-  client: AgentApiClient,
-  args: { dataPointId: string }
-): Promise<AgentAttestation> {
-  const body = await client.get('proofs.get', `/api/agent/proofs/${encodeURIComponent(args.dataPointId)}`);
-  return projectProof(body, args.dataPointId);
+export async function proveDataPoint(source: PnMcpSource, args: { dataPointId: string }): Promise<AgentAttestation> {
+  return projectProof(await source.prove(args.dataPointId), args.dataPointId);
 }
 
+/** Seals here, before the source carries anything, so no transport ever holds the plaintext build. */
 export async function proposePenDraft(
-  client: AgentApiClient,
+  source: PnMcpSource,
   args: { draftId: string; build: z.infer<typeof penAgentBuildSchema> }
 ): Promise<{ draftId: string; status: 'awaiting_owner' }> {
   const submission = await sealPenAgentDraft({
     draftId: args.draftId,
-    build: args.build as PenAgentBuild,
-    ownerMlKemPublicKey: async () => {
-      const body = await client.get('agent.owner_key', '/api/agent/owner-key');
-      if (typeof body.mlKemPublicKey !== 'string' || !body.mlKemPublicKey) throw new McpToolError('unavailable');
-      return body.mlKemPublicKey;
-    },
+    build: args.build,
+    ownerMlKemPublicKey: () => source.ownerMlKemPublicKey(),
   });
-  const body = await client.post('pen.drafts', '/api/agent/pen/drafts', submission);
+  const body = record(await source.proposeDraft(submission));
   if (body.draftId !== args.draftId || body.status !== 'awaiting_owner') throw new McpToolError('unavailable');
   return { draftId: args.draftId, status: 'awaiting_owner' };
+}
+
+const resourceUrl = (fileId: string) => `${PUBLIC_RESOURCE_URL_BASE}${encodeURIComponent(fileId)}`;
+
+/** ChatGPT's `search` shape over the same published files as search_my_files. */
+export async function searchAlias(source: PnMcpSource, args: { query: string }): Promise<{ results: SearchResult[] }> {
+  const { files } = await searchMyFiles(source, { query: args.query, limit: SEARCH_ALIAS_LIMIT });
+  return {
+    results: files.filter((f) => f.fileId).map((f) => ({ id: f.fileId, title: f.title, url: resourceUrl(f.fileId) })),
+  };
+}
+
+/** ChatGPT's `fetch` shape over the same published file as read_file. */
+export async function fetchAlias(source: PnMcpSource, args: { id: string }): Promise<FetchResult> {
+  const { file } = await readFile(source, { fileId: args.id });
+  if (!file.fileId) throw new McpToolError('not_found');
+  return {
+    id: file.fileId,
+    title: file.title,
+    text: file.text ?? '',
+    url: resourceUrl(file.fileId),
+    metadata: {
+      description: file.description,
+      fileType: file.fileType,
+      contentClass: file.contentClass,
+      tags: file.tags,
+      publishedAt: file.publishedAt,
+      textTruncated: file.textTruncated,
+    },
+  };
 }

@@ -1,3 +1,5 @@
+import type { PnMcpMode } from './source';
+
 /** Every failure the AI tool sees is one of these. API bodies are never echoed. */
 export const ERROR_MESSAGES = {
   not_signed_in: 'Not signed in. Run pn-mcp login.',
@@ -23,6 +25,16 @@ export const ERROR_MESSAGES = {
 } as const;
 
 export type McpErrorCode = keyof typeof ERROR_MESSAGES;
+
+/** A hosted AI app has no pn-mcp CLI; the owner reconnects par Noir in that app instead. */
+const REMOTE_MESSAGES: Partial<Record<McpErrorCode, string>> = {
+  not_signed_in: 'Not connected to par Noir. Reconnect par Noir in this app.',
+  access_revoked: 'Access revoked or expired. Reconnect par Noir in this app.',
+};
+
+export function errorMessage(code: McpErrorCode, mode: PnMcpMode = 'local'): string {
+  return (mode === 'remote' && REMOTE_MESSAGES[code]) || ERROR_MESSAGES[code];
+}
 
 export class McpToolError extends Error {
   readonly code: McpErrorCode;

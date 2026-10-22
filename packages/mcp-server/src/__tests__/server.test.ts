@@ -48,9 +48,11 @@ describe('tool listing and schemas', () => {
     const { mcp, close } = await connect({ store: new MemoryTokenStore(tokens()), fetch: okApi.fetch });
     const { tools } = await mcp.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'fetch',
       'prove_data_point',
       'read_file',
       'read_pen_document',
+      'search',
       'search_my_files',
     ]);
     for (const tool of tools) {
@@ -74,7 +76,7 @@ describe('tool listing and schemas', () => {
     const store = new MemoryTokenStore(tokens({ scopes: ['openid', 'ai:files.published'] }));
     const { mcp, close } = await connect({ store, fetch: okApi.fetch });
     const { tools } = await mcp.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['read_file', 'search_my_files']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['fetch', 'read_file', 'search', 'search_my_files']);
     await close();
   });
 

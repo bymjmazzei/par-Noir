@@ -93,7 +93,7 @@ export class AgentCustodyClient {
         else resolve(out);
       };
       const timer = setTimeout(() => finish(new McpToolError('unavailable')), this.timeoutMs);
-      const conn = net.createConnection(this.socketPath, () => conn.write(`${line}\n`));
+      const conn: net.Socket = net.createConnection(this.socketPath, () => conn.write(`${line}\n`));
       conn.setEncoding('utf8');
       conn.on('data', (chunk: string) => {
         buffered += chunk;

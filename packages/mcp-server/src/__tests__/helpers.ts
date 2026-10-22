@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { AgentApiClient, type FetchLike } from '../apiClient';
+import { createApiSource } from '../apiSource';
 import { AgentCustodyClient } from '../custodyClient';
 import { createLogger } from '../log';
 import { createPnMcpServer } from '../server';
@@ -80,7 +81,7 @@ export async function connect(opts: {
   const custody = opts.unlockSocket
     ? new AgentCustodyClient({ socketPath: opts.unlockSocket, accessToken: () => client.accessToken(), timeoutMs: 2000 })
     : undefined;
-  const server = await createPnMcpServer({ client, logger, custody });
+  const server = await createPnMcpServer({ source: createApiSource(client, custody), mode: 'local', logger });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   const mcp = new Client({ name: 'test', version: '0.0.0' });
   await Promise.all([server.connect(serverSide), mcp.connect(clientSide)]);

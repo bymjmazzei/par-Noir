@@ -1,8 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { AgentApiClient } from './apiClient';
-import type { AgentCustodyClient } from './custodyClient';
-import { ERROR_MESSAGES, toErrorCode } from './errors';
+import { errorMessage, toErrorCode } from './errors';
 import type { Logger } from './log';
 import {
   PRIVATE_TOOL_DEFS,
@@ -11,12 +9,15 @@ import {
   searchPrivateFiles,
   type PrivateToolName,
 } from './privateTools';
+import type { PnMcpMode, PnMcpSource } from './source';
 import {
   TOOL_DEFS,
+  fetchAlias,
   proposePenDraft,
   proveDataPoint,
   readFile,
   readPenDocument,
+  searchAlias,
   searchMyFiles,
   type ToolName,
 } from './tools';
@@ -38,11 +39,32 @@ const OWNER_CONFIRMED_WRITE = {
   openWorldHint: false,
 } as const;
 
-export interface PnMcpDeps {
-  client: AgentApiClient;
+interface ToolDef {
+  title: string;
+  description: string;
+  inputSchema: unknown;
+  outputSchema: unknown;
+}
+
+/** Generic over the definition object (not the tool name) so each registerTool call infers its args. */
+function toolConfig<D extends ToolDef>(
+  { title, description, inputSchema, outputSchema }: D,
+  hints: typeof READ_ONLY | typeof OWNER_CONFIRMED_WRITE = READ_ONLY
+) {
+  return {
+    title,
+    description,
+    inputSchema: inputSchema as D['inputSchema'],
+    outputSchema: outputSchema as D['outputSchema'],
+    annotations: { ...hints, title },
+  };
+}
+
+export interface CreatePnMcpServerOptions {
+  source: PnMcpSource;
+  /** Remote never registers a private tool, whatever the source or token holds. */
+  mode: PnMcpMode;
   logger: Logger;
-  /** Local mode only: par Noir Unlock on this Mac. Without it no private tool exists. */
-  custody?: AgentCustodyClient;
 }
 
 function scopesFor(name: ToolName | PrivateToolName): readonly string[] {
@@ -51,32 +73,31 @@ function scopesFor(name: ToolName | PrivateToolName): readonly string[] {
     : [TOOL_DEFS[name as ToolName].scope];
 }
 
-async function run(
-  name: ToolName | PrivateToolName,
-  deps: PnMcpDeps,
-  call: () => Promise<Record<string, unknown>>
-): Promise<CallToolResult> {
-  try {
-    await deps.client.requireAnyScope(scopesFor(name));
-    const structuredContent = await call();
-    deps.logger.info('tool_ok', { tool: name });
-    return { content: [{ type: 'text', text: JSON.stringify(structuredContent) }], structuredContent };
-  } catch (err) {
-    const code = toErrorCode(err);
-    deps.logger.warn('tool_error', { tool: name, code });
-    return { isError: true, content: [{ type: 'text', text: ERROR_MESSAGES[code] }] };
-  }
-}
-
 /** Lists only the tools the agent's token grants; each call checks the scope again. */
-export async function createPnMcpServer(deps: PnMcpDeps): Promise<McpServer> {
-  const granted = new Set(await deps.client.grantedScopes());
-  if (granted.size === 0) deps.logger.warn('no_tools', { reason: 'not_signed_in' });
+export async function createPnMcpServer({ source, mode, logger }: CreatePnMcpServerOptions): Promise<McpServer> {
+  const granted = new Set(await source.grantedScopes());
+  if (granted.size === 0) logger.warn('no_tools', { reason: 'not_signed_in' });
   const allowed = (name: ToolName) => granted.has(TOOL_DEFS[name].scope);
-  const custody = deps.custody?.available() ? deps.custody : null;
+  const priv = mode === 'local' && source.private?.available() ? source.private : null;
   const privateAllowed = (name: PrivateToolName) =>
-    Boolean(custody) && PRIVATE_TOOL_DEFS[name].scopes.some((s) => granted.has(s));
+    Boolean(priv) && PRIVATE_TOOL_DEFS[name].scopes.some((s) => granted.has(s));
   const anyPrivate = (Object.keys(PRIVATE_TOOL_DEFS) as PrivateToolName[]).some(privateAllowed);
+
+  const run = async (
+    name: ToolName | PrivateToolName,
+    call: () => Promise<Record<string, unknown>>
+  ): Promise<CallToolResult> => {
+    try {
+      await source.requireAnyScope(scopesFor(name));
+      const structuredContent = await call();
+      logger.info('tool_ok', { tool: name });
+      return { content: [{ type: 'text', text: JSON.stringify(structuredContent) }], structuredContent };
+    } catch (err) {
+      const code = toErrorCode(err);
+      logger.warn('tool_error', { tool: name, code });
+      return { isError: true, content: [{ type: 'text', text: errorMessage(code, mode) }] };
+    }
+  };
 
   const server = new McpServer(
     { name: 'par-noir', version: SERVER_VERSION },
@@ -90,54 +111,53 @@ export async function createPnMcpServer(deps: PnMcpDeps): Promise<McpServer> {
           : 'Nothing private is available.'),
     }
   );
-  const config = (name: ToolName, hints: typeof READ_ONLY | typeof OWNER_CONFIRMED_WRITE = READ_ONLY) => {
-    const { title, description, inputSchema, outputSchema } = TOOL_DEFS[name];
-    return { title, description, inputSchema, outputSchema, annotations: { ...hints, title } };
-  };
-
   if (allowed('search_my_files')) {
-    server.registerTool('search_my_files', config('search_my_files'), (args) =>
-      run('search_my_files', deps, () => searchMyFiles(deps.client, args))
+    server.registerTool('search_my_files', toolConfig(TOOL_DEFS.search_my_files), (args) =>
+      run('search_my_files', () => searchMyFiles(source, args))
     );
   }
   if (allowed('read_file')) {
-    server.registerTool('read_file', config('read_file'), (args) =>
-      run('read_file', deps, () => readFile(deps.client, args))
+    server.registerTool('read_file', toolConfig(TOOL_DEFS.read_file), (args) =>
+      run('read_file', () => readFile(source, args))
     );
   }
   if (allowed('read_pen_document')) {
-    server.registerTool('read_pen_document', config('read_pen_document'), (args) =>
-      run('read_pen_document', deps, () => readPenDocument(deps.client, args))
+    server.registerTool('read_pen_document', toolConfig(TOOL_DEFS.read_pen_document), (args) =>
+      run('read_pen_document', () => readPenDocument(source, args))
+    );
+  }
+  if (allowed('search')) {
+    server.registerTool('search', toolConfig(TOOL_DEFS.search), (args) => run('search', () => searchAlias(source, args)));
+  }
+  if (allowed('fetch')) {
+    server.registerTool('fetch', toolConfig(TOOL_DEFS.fetch), (args) =>
+      run('fetch', async () => ({ ...(await fetchAlias(source, args)) }))
     );
   }
   if (allowed('prove_data_point')) {
-    server.registerTool('prove_data_point', config('prove_data_point'), (args) =>
-      run('prove_data_point', deps, async () => ({ ...(await proveDataPoint(deps.client, args)) }))
+    server.registerTool('prove_data_point', toolConfig(TOOL_DEFS.prove_data_point), (args) =>
+      run('prove_data_point', async () => ({ ...(await proveDataPoint(source, args)) }))
     );
   }
   if (allowed('propose_pen_draft')) {
-    server.registerTool('propose_pen_draft', config('propose_pen_draft', OWNER_CONFIRMED_WRITE), (args) =>
-      run('propose_pen_draft', deps, async () => ({ ...(await proposePenDraft(deps.client, args)) }))
+    server.registerTool('propose_pen_draft', toolConfig(TOOL_DEFS.propose_pen_draft, OWNER_CONFIRMED_WRITE), (args) =>
+      run('propose_pen_draft', async () => ({ ...(await proposePenDraft(source, args)) }))
     );
   }
-  if (custody) {
-    const privateConfig = (name: PrivateToolName) => {
-      const { title, description, inputSchema, outputSchema } = PRIVATE_TOOL_DEFS[name];
-      return { title, description, inputSchema, outputSchema, annotations: { ...READ_ONLY, title } };
-    };
+  if (priv) {
     if (privateAllowed('search_private_files')) {
-      server.registerTool('search_private_files', privateConfig('search_private_files'), (args) =>
-        run('search_private_files', deps, async () => ({ ...(await searchPrivateFiles(custody, args)) }))
+      server.registerTool('search_private_files', toolConfig(PRIVATE_TOOL_DEFS.search_private_files), (args) =>
+        run('search_private_files', async () => ({ ...(await searchPrivateFiles(priv, args)) }))
       );
     }
     if (privateAllowed('read_private_file')) {
-      server.registerTool('read_private_file', privateConfig('read_private_file'), (args) =>
-        run('read_private_file', deps, () => readPrivateFile(custody, args))
+      server.registerTool('read_private_file', toolConfig(PRIVATE_TOOL_DEFS.read_private_file), (args) =>
+        run('read_private_file', () => readPrivateFile(priv, args))
       );
     }
     if (privateAllowed('read_private_pen_document')) {
-      server.registerTool('read_private_pen_document', privateConfig('read_private_pen_document'), (args) =>
-        run('read_private_pen_document', deps, () => readPrivatePenDocument(custody, args))
+      server.registerTool('read_private_pen_document', toolConfig(PRIVATE_TOOL_DEFS.read_private_pen_document), (args) =>
+        run('read_private_pen_document', () => readPrivatePenDocument(priv, args))
       );
     }
   }
