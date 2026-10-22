@@ -8,7 +8,7 @@ import {
   postOAuthBrokerComplete,
   postBrokerLaunched,
   vaultEntriesForClient,
-  AGENT_SIGN_IN_CLIENT_ID,
+  isAgentSignInClient,
   AGENT_VAULT_REQUIRED_MESSAGE,
   type AgentVaultEntry,
   type ConsentVaultEnrollMaterial,
@@ -210,7 +210,7 @@ export default function App(): React.ReactElement {
       const entries = vaultEntriesForClient(await unlockSessionVaultEntries(), clientId);
       if (entries.length === 0) {
         setVaultError(
-          clientId === AGENT_SIGN_IN_CLIENT_ID
+          isAgentSignInClient(clientId)
             ? 'No AI agent is saved on this Mac. Add one in Dashboard, Sub-pNs.'
             : 'No sealed unlock session'
         );

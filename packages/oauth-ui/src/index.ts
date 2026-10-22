@@ -283,6 +283,7 @@ export {
   AGENT_VAULT_NICKNAME_PREFIX,
   AGENT_VAULT_REQUIRED_MESSAGE,
   agentVaultNickname,
+  isAgentSignInClient,
   isAgentVaultNickname,
   normalizeAgentLabel,
   vaultEntriesForClient,

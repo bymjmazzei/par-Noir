@@ -53,6 +53,13 @@ import { buildShellResult } from '../hostedShell/shellResult';
 import type { SaveAgentIdentity } from '../hostedShell/agentIdentity';
 import { consentUnlockCss, consentUnlockBrokerCssExtras, resolveConsentAssetBase } from './consentUnlockStyles';
 import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
+import {
+  connectorConsentProblem,
+  connectorReturnUrl,
+  isConnectorConsent,
+  runConnectorHandoff,
+  type ConnectorHandoffResult,
+} from './connectorHandoff';
 
 /** Factors + sealed identity for biometric vault re-mint (never sent to API). */
 export type ConsentVaultFactors = {
@@ -182,6 +189,101 @@ function FileDrop(props: {
   );
 }
 
+const CONNECTOR_STATUS_TEXT: Record<Exclude<ConnectorHandoffResult, 'cancelled'> | 'waiting', string> = {
+  waiting: 'Choose the AI agent in par Noir Unlock. This page returns you to the app when you are done.',
+  returned: 'Signed in. Returning you to the app…',
+  app_missing: 'par Noir Unlock did not open. Install it on this Mac, then try again.',
+  timeout: 'Did not hear back from par Noir Unlock. Try again.',
+};
+
+/** Web page for a hosted AI connector: the agent signs in from the Unlock app's vault only. */
+function ConnectorConsent(props: {
+  params: ConsentUnlockParams;
+  assetBase?: string;
+  logoUrl?: string;
+  backgroundUrl?: string;
+}): React.ReactElement {
+  const { params, assetBase, logoUrl, backgroundUrl } = props;
+  const problem = useMemo(() => connectorConsentProblem(params), [params]);
+  const [status, setStatus] = useState<'idle' | 'waiting' | Exclude<ConnectorHandoffResult, 'cancelled'>>('idle');
+  const cancelled = useRef(false);
+  useEffect(
+    () => () => {
+      cancelled.current = true;
+    },
+    []
+  );
+
+  const start = useCallback(async () => {
+    cancelled.current = false;
+    setStatus('waiting');
+    const result = await runConnectorHandoff({
+      params,
+      consentHref: window.location.href,
+      navigate: (url) => window.location.assign(url),
+      isCancelled: () => cancelled.current,
+    });
+    if (result !== 'cancelled') setStatus(result);
+  }, [params]);
+
+  const deny = useCallback(() => {
+    cancelled.current = true;
+    window.location.assign(connectorReturnUrl(params.redirectUri, params.state, { error: 'access_denied' }));
+  }, [params]);
+
+  const resolvedAssetBase = resolveConsentAssetBase(assetBase);
+  const logoSrc = logoUrl || `${resolvedAssetBase}/branding/Par-Noir-Logo-White.png`;
+  let appHost = params.redirectUri;
+  try {
+    appHost = new URL(params.redirectUri).hostname;
+  } catch {
+    /* keep */
+  }
+  const scopes = params.scope.split(/\s+/).filter(Boolean);
+
+  return (
+    <div className="pn-consent-page">
+      {backgroundUrl ? <img className="pn-consent-bg" src={backgroundUrl} alt="" aria-hidden="true" /> : null}
+      <style>{consentUnlockCss(resolvedAssetBase, backgroundUrl)}</style>
+      <div className="container">
+        <div className="header">
+          <div className="logo-container">
+            <img src={logoSrc} alt="par Noir" />
+          </div>
+        </div>
+        <div className="form-container">
+          <div className="step-indicator">Sign an AI agent in to {appHost}</div>
+          {problem ? (
+            <div className="error">{problem}</div>
+          ) : (
+            <>
+              <p className="physical-hint">
+                The agent gets only what you delegated to it: {scopes.join(', ') || 'no access yet'}. Your pN
+                name and passcode never leave this device.
+              </p>
+              {status !== 'idle' ? (
+                <div className={status === 'returned' ? 'handoff-done' : 'physical-hint'} role="status">
+                  {CONNECTOR_STATUS_TEXT[status]}
+                </div>
+              ) : null}
+              {status !== 'waiting' && status !== 'returned' ? (
+                <button type="button" className="btn-primary btn-full" onClick={() => void start()}>
+                  Open par Noir Unlock
+                </button>
+              ) : null}
+              {status !== 'returned' ? (
+                <button type="button" className="btn-cancel" onClick={deny}>
+                  Cancel
+                </button>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactElement {
   const params = useMemo(
     () =>
@@ -191,6 +293,17 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
       }),
     [props.search, props.apiEndpointDefault]
   );
+
+  if (isConnectorConsent(params) && !isDesktopUnlockApp()) {
+    return (
+      <ConnectorConsent
+        params={params}
+        assetBase={props.assetBase}
+        logoUrl={props.logoUrl}
+        backgroundUrl={props.backgroundUrl}
+      />
+    );
+  }
 
   return (
     <ConsentUnlockInner

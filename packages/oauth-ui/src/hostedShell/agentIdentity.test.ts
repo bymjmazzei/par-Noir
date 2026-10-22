@@ -120,6 +120,12 @@ describe('AI agent identity', () => {
     expect(vaultEntriesForClient(entries, 'pn-agent-mcp')).toEqual([{ nickname: 'AI agent: Cursor' }]);
     expect(vaultEntriesForClient(entries, 'browser-app')).toEqual([{ nickname: 'Me' }, {}]);
   });
+
+  it('offers only agents to hosted AI connectors', () => {
+    const entries = [{ nickname: 'Me' }, { nickname: 'AI agent: Claude' }];
+    expect(vaultEntriesForClient(entries, 'pn-connector-0123456789abcdef')).toEqual([{ nickname: 'AI agent: Claude' }]);
+    expect(vaultEntriesForClient(entries, 'pn-connector-')).toEqual([{ nickname: 'Me' }]);
+  });
 });
 
 describe('agent delegation draft', () => {

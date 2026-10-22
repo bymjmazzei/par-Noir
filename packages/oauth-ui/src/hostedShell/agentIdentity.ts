@@ -5,7 +5,7 @@
 
 import { IdentityCrypto } from '@par-noir/identity-crypto';
 import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
-import { AGENT_SIGN_IN_CLIENT_ID } from '../consentUnlock/constants';
+import { isAgentClassClientId } from '@par-noir/standard-data-points';
 
 export const AGENT_VAULT_NICKNAME_PREFIX = 'AI agent: ';
 const AGENT_LABEL_MAX = 40;
@@ -49,12 +49,18 @@ export function isAgentVaultNickname(nickname: string | undefined): boolean {
   return typeof nickname === 'string' && nickname.startsWith(AGENT_VAULT_NICKNAME_PREFIX);
 }
 
+/** The local MCP or a hosted AI connector: signs in AI agent sub-pNs only. */
+export function isAgentSignInClient(clientId: string): boolean {
+  return isAgentClassClientId(clientId);
+}
+
 /**
- * Saved identities offered for a sign-in. The MCP client only sees agents; every other
- * client only sees people, so a person never signs an AI tool in as themselves.
+ * Saved identities offered for a sign-in. AI clients (the local MCP and hosted connectors)
+ * only see agents; every other client only sees people, so a person never signs an AI tool
+ * in as themselves.
  */
 export function vaultEntriesForClient<T extends { nickname?: string }>(entries: T[], clientId: string): T[] {
-  const wantAgents = clientId === AGENT_SIGN_IN_CLIENT_ID;
+  const wantAgents = isAgentSignInClient(clientId);
   return entries.filter((entry) => isAgentVaultNickname(entry.nickname) === wantAgents);
 }
 
