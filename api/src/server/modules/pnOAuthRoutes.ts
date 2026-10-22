@@ -11,6 +11,9 @@ import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { requireAdminApiKey } from './adminDeveloperRoutes';
 import { brokerPrivateKeyName } from './brokerPrivateKeys';
+import { isAgentClassClientId, isAgentConnectorClientId } from '@par-noir/standard-data-points';
+import { resolveConnectorAuthorize } from './agentConnectorOAuth';
+import { isMcpResource } from './mcpResource';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -123,6 +126,12 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
     // Client should redirect user here with: client_id, redirect_uri, response_type=code, scope, state
     app.get('/oauth/authorize', async (req, res) => {
       const { client_id, redirect_uri, response_type, scope, state, nonce } = req.query;
+
+      if (typeof client_id === 'string' && isAgentConnectorClientId(client_id)) {
+        const outcome = await resolveConnectorAuthorize(req.query as Record<string, unknown>);
+        if (outcome.kind === 'redirect') return res.redirect(302, outcome.location);
+        return res.status(outcome.status).json(outcome.body);
+      }
 
       // Validate required parameters
       if (!client_id || !redirect_uri || !response_type) {
@@ -651,7 +660,38 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
     // Use lenient rate limiter for OAuth token exchange (users may unlock multiple times during setup)
     app.post('/oauth/token', oauthTokenLimiter, async (req, res) => {
       try {
-        const { code, client_id, redirect_uri, grant_type, granted_data_points, code_verifier } = req.body;
+        const { code, client_id, redirect_uri, grant_type, granted_data_points, code_verifier, resource } =
+          req.body || {};
+        res.set('Cache-Control', 'no-store');
+
+        // RFC 8707: only connectors hold /mcp tokens, and their audience is fixed by client type.
+        if (
+          resource !== undefined &&
+          !(typeof client_id === 'string' && isAgentConnectorClientId(client_id) && isMcpResource(resource))
+        ) {
+          return res.status(400).json({
+            error: 'invalid_target',
+            error_description: 'resource must be the par Noir MCP endpoint, for connector clients only'
+          });
+        }
+
+        if (grant_type === 'refresh_token') {
+          const refreshToken = req.body?.refresh_token;
+          if (typeof refreshToken !== 'string' || !refreshToken || typeof client_id !== 'string' || !client_id) {
+            return res.status(400).json({
+              error: 'invalid_request',
+              error_description: 'Missing required parameters: refresh_token, client_id'
+            });
+          }
+          const refreshed = await PNOAuthService.refreshAccessToken(refreshToken, client_id);
+          if (!refreshed) {
+            return res.status(400).json({
+              error: 'invalid_grant',
+              error_description: 'Invalid or expired refresh token'
+            });
+          }
+          return res.json(refreshed);
+        }
 
         if (!code || !client_id || !redirect_uri) {
           return res.status(400).json({
@@ -663,7 +703,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         if (grant_type !== 'authorization_code') {
           return res.status(400).json({
             error: 'unsupported_grant_type',
-            error_description: 'Only authorization_code grant type is supported'
+            error_description: 'Supported grant types: authorization_code, refresh_token'
           });
         }
 
@@ -682,8 +722,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         }
 
         // AI agents hold no cloud of their own; their grant is the owner's delegation.
-        const { AGENT_MCP_CLIENT_ID } = await import('@par-noir/standard-data-points');
-        if (client_id === AGENT_MCP_CLIENT_ID) {
+        if (isAgentClassClientId(client_id)) {
           return res.json(tokenResponse);
         }
 

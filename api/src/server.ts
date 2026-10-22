@@ -32,6 +32,8 @@ import { registerPlatformRegistryRoutes } from './server/modules/platformRegistr
 import { PlatformRegistrySyncService } from './server/modules/platformRegistrySyncService';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerAgentRoutes } from './server/modules/agentRoutes';
+import { registerAgentConnectorRoutes } from './server/modules/agentConnectorOAuth';
+import { isAgentConnectorCorsOrigin, isAgentConnectorPath } from './server/utils/agentConnectorRequest';
 import { registerPublicNameRoutes } from './server/modules/publicNameRoutes';
 import {
   registerVerificationRoutes,
@@ -267,6 +269,16 @@ const oauthTokenLimiter = rateLimit({
   ...rateLimitSkip,
 });
 
+// Dynamic client registration is unauthenticated, so each IP gets a small hourly budget.
+const connectorRegisterLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  message: 'Too many client registrations, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  ...rateLimitSkip,
+});
+
 // Unlock pages poll these until the desktop app claims the state. A 250ms poll
 // on the general 100/15min bucket 429s the rest of the IP, including Pen unlock.
 const brokerPollLimiter = rateLimit({
@@ -496,6 +508,9 @@ class ProductionServer {
       if (publicNoOriginAlways.some((p) => path === p || path.startsWith(p))) {
         return true;
       }
+      if (isAgentConnectorPath(path, method)) {
+        return true;
+      }
       const methodUpper = (method || 'GET').toUpperCase();
       if (methodUpper === 'GET' || methodUpper === 'HEAD') {
         return publicNoOriginGetOnlyPrefixes.some((p) => path === p || path.startsWith(p));
@@ -564,6 +579,8 @@ class ProductionServer {
             }
             callback(null, true);
           } else if (isSameOriginAsApiHost(origin, req)) {
+            callback(null, true);
+          } else if (isAgentConnectorCorsOrigin(origin, pathForCors, req.method)) {
             callback(null, true);
           } else {
             console.error(`[CORS] Blocked origin: ${origin}. Allowed origins:`, ALLOWED_ORIGINS);
@@ -982,6 +999,7 @@ class ProductionServer {
     registerPlatformRegistryRoutes(this.app);
     registerOwnedAssetRoutes(this.app);
     registerAgentRoutes(this.app);
+    registerAgentConnectorRoutes(this.app, { registerLimiter: connectorRegisterLimiter });
     registerPublicNameRoutes(this.app);
     registerVerificationRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);

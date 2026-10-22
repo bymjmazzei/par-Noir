@@ -845,6 +845,21 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const fs = await import('fs');
       const path = await import('path');
+      const clientTypePath = path.join(__dirname, '../../migrations/add_oauth_client_type.sql');
+      const clientTypeSql = fs.readFileSync(clientTypePath, 'utf-8');
+      await db.query(clientTypeSql);
+      console.log('✅ oauth_clients.client_type migration executed');
+    } catch (migrationError: unknown) {
+      console.error(
+        '❌ oauth_clients.client_type migration failed:',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+      throw migrationError;
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
       const platformPath = path.join(__dirname, '../../migrations/add_platform_registry_cache.sql');
       const platformSql = fs.readFileSync(platformPath, 'utf-8');
       await db.query(platformSql);

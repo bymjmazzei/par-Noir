@@ -186,14 +186,15 @@ describe('OwnedAssetService AI agents', () => {
     });
   });
 
-  it('revoke marks rows revoked and deletes the agent refresh tokens', async () => {
+  it('revoke marks rows revoked and deletes the agent refresh tokens of every agent-class client', async () => {
     responder = (sql) =>
       sql.includes('RETURNING id, subject_public_key')
         ? { rows: [{ id: 'asset-1', subject_public_key: 'pk-agent1' }] }
         : { rows: [] };
     expect(await OwnedAssetService.revokeAgent(ROOT, 'asset-1')).toBe(true);
     const del = queries.find((q) => q.sql.includes('DELETE FROM oauth_refresh_tokens'));
-    expect(del?.params).toEqual(['pn-agent-mcp', ['pk-agent1']]);
+    expect(del?.sql).toContain('client_id = $2 OR client_id LIKE $3');
+    expect(del?.params).toEqual([['pk-agent1'], 'pn-agent-mcp', 'pn-connector-%']);
     expect(queries.some((q) => q.sql.includes("UPDATE pn_asset_delegations SET status = 'revoked'"))).toBe(true);
   });
 
@@ -214,7 +215,7 @@ describe('OwnedAssetService AI agents', () => {
         : { rows: [] };
     expect(await OwnedAssetService.revokeAllAgents(ROOT)).toBe(2);
     const del = queries.find((q) => q.sql.includes('DELETE FROM oauth_refresh_tokens'));
-    expect(del?.params).toEqual(['pn-agent-mcp', ['pk-1', 'pk-2']]);
+    expect(del?.params).toEqual([['pk-1', 'pk-2'], 'pn-agent-mcp', 'pn-connector-%']);
   });
 });
 

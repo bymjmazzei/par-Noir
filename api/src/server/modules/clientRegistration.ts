@@ -10,9 +10,13 @@ import {
   CLIENT_CONTRACTS,
   MESSAGING_APP_CLIENT_ID,
   type IntegratorPermissionManifest,
+  isAgentConnectorClientId,
   normalizePermissionManifest,
   validatePermissionManifest
 } from '@par-noir/standard-data-points';
+
+/** `agent_connector`: a hosted AI app registered through POST /oauth/register. It signs in AI agents only. */
+export type OAuthClientType = 'standard' | 'agent_connector';
 
 export interface OAuthClient {
   clientId: string;
@@ -28,6 +32,7 @@ export interface OAuthClient {
   createdAt: number;
   updatedAt: number;
   isActive: boolean;
+  clientType?: OAuthClientType;
 }
 
 function rowToClient(row: Record<string, unknown>): OAuthClient {
@@ -46,7 +51,8 @@ function rowToClient(row: Record<string, unknown>): OAuthClient {
     ownerPnId: ownerRaw != null && String(ownerRaw).length > 0 ? String(ownerRaw) : undefined,
     createdAt: new Date(row.created_at as string).getTime(),
     updatedAt: new Date(row.updated_at as string).getTime(),
-    isActive: Boolean(row.is_active)
+    isActive: Boolean(row.is_active),
+    clientType: row.client_type === 'agent_connector' ? 'agent_connector' : 'standard'
   };
 }
 
@@ -208,6 +214,11 @@ export class ClientRegistrationService {
   static async registerClient(
     client: Omit<OAuthClient, 'createdAt' | 'updatedAt'>
   ): Promise<OAuthClient> {
+    const clientType: OAuthClientType = client.clientType === 'agent_connector' ? 'agent_connector' : 'standard';
+    if (isAgentConnectorClientId(client.clientId) !== (clientType === 'agent_connector')) {
+      throw new Error('Connector client ids are issued only by dynamic client registration');
+    }
+
     const { getDatabasePool } = await import('../utils/database');
     const pool = getDatabasePool();
 
@@ -226,8 +237,8 @@ export class ClientRegistrationService {
     );
 
     const result = await pool.query(
-      `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, permission_manifest, client_secret_hash, is_active, owner_pn_id)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8, $9)
+      `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, permission_manifest, client_secret_hash, is_active, owner_pn_id, client_type, registry_source)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         client.clientId,
@@ -238,11 +249,20 @@ export class ClientRegistrationService {
         permissionManifest,
         clientSecretHash,
         client.isActive !== false,
-        ownerPnId
+        ownerPnId,
+        clientType,
+        clientType === 'agent_connector' ? 'dcr' : 'seed'
       ]
     );
 
     return rowToClient(result.rows[0]);
+  }
+
+  /** A registered, still-active connector. The id prefix alone is never enough. */
+  static async isActiveAgentConnector(clientId: string): Promise<boolean> {
+    if (!isAgentConnectorClientId(clientId)) return false;
+    const client = await this.getClient(clientId);
+    return Boolean(client && client.isActive && client.clientType === 'agent_connector');
   }
 
   static async getClient(clientId: string): Promise<OAuthClient | null> {

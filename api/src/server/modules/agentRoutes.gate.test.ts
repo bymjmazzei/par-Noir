@@ -34,9 +34,16 @@ jest.mock('./aggregatorMetadataServiceDB', () => ({
   },
 }));
 
+const isActiveAgentConnector = jest.fn();
+jest.mock('./clientRegistration', () => ({
+  ClientRegistrationService: {
+    isActiveAgentConnector: (...args: unknown[]) => isActiveAgentConnector(...args),
+  },
+}));
+
 import express from 'express';
 import request from 'supertest';
-import { registerAgentRoutes } from './agentRoutes';
+import { registerAgentRoutes, resolveAgentContext } from './agentRoutes';
 
 const ROOT = 'pn-root';
 
@@ -93,6 +100,7 @@ function row(fileId: string, meta: Record<string, unknown>, pn = ROOT) {
 beforeEach(() => {
   validateAccessToken.mockReset();
   resolveAgentDelegation.mockReset();
+  isActiveAgentConnector.mockReset();
   searchMetadata.mockReset();
   getFileMetadata.mockReset();
 });
@@ -141,6 +149,38 @@ describe('agent routes gate', () => {
     resolveAgentDelegation.mockRejectedValue(new Error('db down'));
     const res = await request(app()).get('/api/agent/files/f1').set('Authorization', 'Bearer t');
     expect(res.status).toBe(503);
+  });
+});
+
+describe('agent-class gate', () => {
+  const CONNECTOR = 'pn-connector-0123456789abcdef';
+  const connectorPayload = { pnIdentifier: 'pn-agent1', clientId: CONNECTOR, scope: ['ai:files.published'] };
+
+  it('a registered, active connector reaches the delegation check', async () => {
+    isActiveAgentConnector.mockResolvedValue(true);
+    delegate();
+    const result = await resolveAgentContext(connectorPayload, 'ai:files.published');
+    expect(result).toMatchObject({ ok: true, agent: { agentPnIdentifier: 'pn-agent1', rootPnIdentifier: ROOT } });
+    expect(isActiveAgentConnector).toHaveBeenCalledWith(CONNECTOR);
+  });
+
+  it('an unregistered or deactivated connector id is not an agent client', async () => {
+    isActiveAgentConnector.mockResolvedValue(false);
+    delegate();
+    expect(await resolveAgentContext(connectorPayload)).toEqual({ ok: false, status: 403, error: 'agent_client_required' });
+    expect(resolveAgentDelegation).not.toHaveBeenCalled();
+  });
+
+  it('first-party clients never hit the connector registry', async () => {
+    const result = await resolveAgentContext({ pnIdentifier: ROOT, clientId: 'browser-app', scope: ['openid'] });
+    expect(result).toEqual({ ok: false, status: 403, error: 'agent_client_required' });
+    expect(isActiveAgentConnector).not.toHaveBeenCalled();
+  });
+
+  it('a connector whose owner revoked the agent is refused', async () => {
+    isActiveAgentConnector.mockResolvedValue(true);
+    resolveAgentDelegation.mockResolvedValue(null);
+    expect(await resolveAgentContext(connectorPayload)).toEqual({ ok: false, status: 403, error: 'delegation_revoked' });
   });
 });
 

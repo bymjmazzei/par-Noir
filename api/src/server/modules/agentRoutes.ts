@@ -1,5 +1,5 @@
 /**
- * Read routes for AI agent sub-pNs (pn-agent-mcp). Every request re-checks the owner's
+ * Read routes for AI agent sub-pNs (pn-agent-mcp and registered connectors). Every request re-checks the owner's
  * live delegation in Postgres, so revoke takes effect on the next call. Public data only:
  * responses are allowlist projections of published rows authored by the owning root pN.
  */
@@ -22,6 +22,7 @@ import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { OwnedAssetService } from './ownedAssetService';
 import { getOwnerMlKemPublicKey, submitAgentPenDraft } from './agentPenDraftService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { isAgentClassClient } from './agentConnectorOAuth';
 
 const SEARCH_LIMIT_MAX = 50;
 const PEN_SCAN_LIMIT = 200;
@@ -100,35 +101,51 @@ function deny(res: Response, status: number, error: string): void {
   res.status(status).json({ error });
 }
 
+export type AgentContextResult =
+  | { ok: true; agent: AgentRequestContext }
+  | { ok: false; status: 401 | 403; error: 'unauthorized' | 'agent_client_required' | 'insufficient_scope' | 'delegation_revoked' };
+
 /**
- * Bearer must be a pn-agent-mcp token whose agent sub-pN still holds an owner-signed
- * delegation, and `scope` when given. Fails closed: unknown, revoked, unsigned or expired
- * delegation → 403 delegation_revoked.
+ * The token must belong to an agent-class client (pn-agent-mcp or a registered connector)
+ * whose agent sub-pN still holds an owner-signed delegation, and `scope` when given. Fails
+ * closed: unknown, revoked, unsigned or expired delegation → delegation_revoked. Throws only
+ * when the delegation store is unreachable.
  */
+export async function resolveAgentContext(
+  payload: { pnIdentifier?: string; clientId?: string; scope?: unknown } | null | undefined,
+  scope?: AiScope
+): Promise<AgentContextResult> {
+  if (!payload?.pnIdentifier) return { ok: false, status: 401, error: 'unauthorized' };
+  if (!(await isAgentClassClient(payload.clientId))) return { ok: false, status: 403, error: 'agent_client_required' };
+  const tokenScopes = Array.isArray(payload.scope) ? payload.scope : [];
+  if (scope && !tokenScopes.includes(scope)) return { ok: false, status: 403, error: 'insufficient_scope' };
+
+  const agentPn = normalizePn(payload.pnIdentifier);
+  const delegation = await OwnedAssetService.resolveAgentDelegation(agentPn);
+  if (!delegation) {
+    safeLogger.info('[agent] delegation missing or revoked', { agentHash: hashIdentifier(agentPn) });
+    return { ok: false, status: 403, error: 'delegation_revoked' };
+  }
+  if (scope && !delegation.scopes.includes(scope)) return { ok: false, status: 403, error: 'insufficient_scope' };
+
+  return {
+    ok: true,
+    agent: {
+      agentPnIdentifier: agentPn,
+      rootPnIdentifier: normalizePn(delegation.rootPnIdentifier),
+      scopes: delegation.scopes as AiScope[],
+      attestations: delegation.attestations,
+      statement: delegation.statement
+    }
+  };
+}
+
 export function requireAgentDelegation(scope?: AiScope) {
   return async (req: AgentRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const payload = getBearerTokenPayload(req);
-      if (!payload?.pnIdentifier) return deny(res, 401, 'unauthorized');
-      if (payload.clientId !== AGENT_MCP_CLIENT_ID) return deny(res, 403, 'agent_client_required');
-      const tokenScopes = Array.isArray(payload.scope) ? payload.scope : [];
-      if (scope && !tokenScopes.includes(scope)) return deny(res, 403, 'insufficient_scope');
-
-      const agentPn = normalizePn(payload.pnIdentifier);
-      const delegation = await OwnedAssetService.resolveAgentDelegation(agentPn);
-      if (!delegation) {
-        safeLogger.info('[agent] delegation missing or revoked', { agentHash: hashIdentifier(agentPn) });
-        return deny(res, 403, 'delegation_revoked');
-      }
-      if (scope && !delegation.scopes.includes(scope)) return deny(res, 403, 'insufficient_scope');
-
-      req.agent = {
-        agentPnIdentifier: agentPn,
-        rootPnIdentifier: normalizePn(delegation.rootPnIdentifier),
-        scopes: delegation.scopes as AiScope[],
-        attestations: delegation.attestations,
-        statement: delegation.statement
-      };
+      const result = await resolveAgentContext(getBearerTokenPayload(req), scope);
+      if (!result.ok) return deny(res, result.status, result.error);
+      req.agent = result.agent;
       next();
     } catch (e) {
       safeLogger.warn('[agent] delegation check failed', {

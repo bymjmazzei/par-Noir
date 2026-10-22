@@ -12,7 +12,8 @@ import {
   deriveDidFromPublicKey,
   verifyOauthUnlockProof,
 } from '@par-noir/pqc-crypto/oauth-unlock-proof';
-import { AGENT_MCP_CLIENT_ID } from '@par-noir/standard-data-points';
+import { AGENT_MCP_CLIENT_ID, isAgentConnectorClientId } from '@par-noir/standard-data-points';
+import { mcpResourceUrl } from './mcpResource';
 import { getDatabasePool } from '../utils/database';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
 import { appendSecurityAuditEvent } from './auditService';
@@ -59,7 +60,7 @@ const PKCE_CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/;
 const PKCE_VERIFIER_RE = /^[A-Za-z0-9._~-]{43,128}$/;
 
 export function clientRequiresPkce(clientId: string): boolean {
-  return PKCE_REQUIRED_CLIENT_IDS.has(clientId);
+  return PKCE_REQUIRED_CLIENT_IDS.has(clientId) || isAgentConnectorClientId(clientId);
 }
 
 /** Validate an S256 code_challenge; plain is not accepted. */
@@ -783,7 +784,7 @@ export class PNOAuthService {
       expiresAt: Date.now() + this.ACCESS_TOKEN_EXPIRY,
       jti: crypto.randomUUID(),
       iss: this.TOKEN_ISSUER,
-      aud: this.TOKEN_AUDIENCE,
+      aud: this.audienceFor(params.clientId),
       nbf: now
     };
     const token = await this.signJwt({
@@ -969,11 +970,20 @@ export class PNOAuthService {
   }
 
   /**
-   * Validate access token
+   * Connector tokens are bound to the /mcp resource (RFC 8707), so every other route,
+   * which validates against the default audience, refuses them.
    */
-  static validateAccessToken(token: string): TokenPayload | null {
+  static audienceFor(clientId: string): string {
+    return isAgentConnectorClientId(clientId) ? mcpResourceUrl() : this.TOKEN_AUDIENCE;
+  }
+
+  /**
+   * Validate access token for `audience` (default: every API route except /mcp).
+   */
+  static validateAccessToken(token: string, audience: string = this.TOKEN_AUDIENCE): TokenPayload | null {
     // Check in-memory cache first
     const cached = accessTokens.get(token);
+    if (cached && cached.aud !== audience) return null;
     if (cached && cached.expiresAt > Date.now()) {
       if (isPnRevokedForNetwork(cached.pnIdentifier) || isDidRevokedForNetwork(cached.did)) {
         accessTokens.delete(token);
@@ -988,7 +998,7 @@ export class PNOAuthService {
       const decoded = jwt.verify(token, this.JWT_PUBLIC_KEY, {
         algorithms: ['RS256'],
         issuer: this.TOKEN_ISSUER,
-        audience: this.TOKEN_AUDIENCE,
+        audience,
       }) as JwtPayload & TokenPayload;
 
       const payload: TokenPayload = {

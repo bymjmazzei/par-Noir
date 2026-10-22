@@ -11,6 +11,7 @@ import {
 import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import { mlDsa65Verify } from '@par-noir/pqc-crypto/ml-dsa';
 import {
+  AGENT_CONNECTOR_CLIENT_ID_PREFIX,
   AGENT_MCP_CLIENT_ID,
   canonicalDelegationBytes,
   filterKnownAiScopes,
@@ -1185,9 +1186,11 @@ async function cutAgentAccess(rows: Record<string, unknown>[]): Promise<void> {
     .map((row) => (row.subject_public_key ? String(row.subject_public_key) : ''))
     .filter(Boolean);
   if (keys.length > 0) {
+    // Every agent-class client holding the key: the local CLI and any hosted connector.
     await pool.query(
-      `DELETE FROM oauth_refresh_tokens WHERE client_id = $1 AND public_key = ANY($2::text[])`,
-      [AGENT_MCP_CLIENT_ID, keys]
+      `DELETE FROM oauth_refresh_tokens
+       WHERE public_key = ANY($1::text[]) AND (client_id = $2 OR client_id LIKE $3)`,
+      [keys, AGENT_MCP_CLIENT_ID, `${AGENT_CONNECTOR_CLIENT_ID_PREFIX}%`]
     );
   }
 }
