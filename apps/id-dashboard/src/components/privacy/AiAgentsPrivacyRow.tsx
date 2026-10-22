@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Bot, ChevronDown } from 'lucide-react';
 import { AI_SCOPE_LABELS, isKnownAiScope } from '@par-noir/standard-data-points';
 import { fetchAiAgents, revokeAllAiAgents, type AiAgentDto } from '../../services/ownedAssetsApi';
+import { AiAgentConnectCard, AiAgentConnectorList } from '../subpn/AiAgentConnect';
 
 interface AiAgentsPrivacyRowProps {
   accessToken: string | null | undefined;
@@ -30,7 +31,7 @@ export const AiAgentsPrivacyRow: React.FC<AiAgentsPrivacyRowProps> = ({ accessTo
 
   const revokeAll = async () => {
     if (!accessToken || !pnIdentifier) return;
-    if (!confirm('Revoke every AI agent? Their access stops immediately.')) return;
+    if (!confirm('Revoke every AI agent? Every connected app is signed out immediately.')) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -73,10 +74,14 @@ export const AiAgentsPrivacyRow: React.FC<AiAgentsPrivacyRowProps> = ({ accessTo
                   <p className="text-xs text-text-secondary">
                     {a.scopes.filter(isKnownAiScope).map((s) => AI_SCOPE_LABELS[s]).join(' · ') || 'No access'}
                   </p>
+                  <div className="mt-2">
+                    <AiAgentConnectorList accessToken={accessToken} pnIdentifier={pnIdentifier} agentId={a.id} />
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+          {agents.length > 0 && <AiAgentConnectCard />}
           <button
             type="button"
             onClick={() => void revokeAll()}

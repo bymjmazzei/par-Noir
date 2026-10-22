@@ -44,6 +44,7 @@ import {
 } from '../../services/dashboardSessionCache';
 import { republishOwnedAssetsManifest } from '../../services/ownedAssetsManifestService';
 import { FeedCreator } from '../feeds/FeedCreator';
+import { AiAgentConnectCard, AiAgentConnectorList } from './AiAgentConnect';
 
 const SUB_KINDS = ['feed', 'device', 'ai_agent', 'smart_device'] as const;
 type SubKind = (typeof SUB_KINDS)[number];
@@ -358,7 +359,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       setAgentProofs([]);
       await load({ force: true });
       setSelectedId(asset.id);
-      setNotice(`AI agent "${agentLabel}" added. Run pn-mcp login on this Mac to connect it.`);
+      setNotice(`AI agent "${agentLabel}" added. Connect an app from its panel below.`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not add the AI agent');
     } finally {
@@ -922,6 +923,10 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               <p className="text-xs text-text-secondary">
                 Not exportable. To change what it can read, revoke it and add a new agent.
               </p>
+              <h5 className="font-medium pt-2">Connected apps</h5>
+              <AiAgentConnectorList accessToken={accessToken} pnIdentifier={pnIdentifier} agentId={selected.id} />
+              <p className="text-xs text-text-secondary">Revoking this agent signs every app out.</p>
+              <AiAgentConnectCard />
             </div>
           ) : (
           <>

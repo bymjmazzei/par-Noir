@@ -300,6 +300,22 @@ export async function fetchAiAgents(accessToken: string, pnIdentifier: string): 
   return Array.isArray(json.agents) ? (json.agents as AiAgentDto[]) : [];
 }
 
+export interface AiAgentConnectorDto {
+  kind: 'local' | 'connector';
+  name: string;
+  lastUsedAt: string | null;
+}
+
+/** Apps holding a live sign-in as this agent: the local pn-mcp and hosted connectors. */
+export async function fetchAiAgentConnectors(
+  accessToken: string,
+  pnIdentifier: string,
+  assetId: string
+): Promise<AiAgentConnectorDto[]> {
+  const json = await agentApi(accessToken, pnIdentifier, 'GET', `/${encodeURIComponent(assetId)}/connectors`);
+  return Array.isArray(json.connectors) ? (json.connectors as AiAgentConnectorDto[]) : [];
+}
+
 /**
  * Sheet row first (the owner always sees what exists), then the API authz cache,
  * then one sheet delegation per scope with the ids the API issued.
