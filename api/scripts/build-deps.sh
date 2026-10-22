@@ -29,6 +29,8 @@ PACKAGES=(
   identity-migration
   storage-migration
   pen-protocol
+  # Last: imports dm-crypto, pen-protocol and standard-data-points.
+  mcp-server
 )
 
 for pkg in "${PACKAGES[@]}"; do

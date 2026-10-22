@@ -214,6 +214,93 @@ async function metadataService() {
   return AggregatorMetadataServiceDB.getInstance();
 }
 
+/*
+ * One implementation per agent capability, shared by /api/agent/* and the remote /mcp
+ * endpoint. Each answers only from the agent's owning root and its published rows.
+ */
+
+export async function searchAgentFiles(
+  agent: AgentRequestContext,
+  query: string,
+  limit: number
+): Promise<AgentFileSummary[]> {
+  const root = agent.rootPnIdentifier;
+  const q = query.trim().slice(0, 200);
+  const capped = Math.min(Math.max(Math.floor(limit) || 20, 1), SEARCH_LIMIT_MAX);
+  const service = await metadataService();
+  const result = await service.searchMetadata(q, { authorDid: root, limit: capped, offset: 0 });
+  return result.files
+    .filter((entry) => normalizePn(String(entry.pnIdentifier || '')) === root)
+    .filter((entry) => isPublished(entry.metadata as unknown as Meta))
+    .map((entry) => projectFileSummary(entry.fileId, entry.metadata as unknown as Meta));
+}
+
+export async function readAgentFile(agent: AgentRequestContext, fileId: string): Promise<AgentFile | null> {
+  const service = await metadataService();
+  const entry = await service.getFileMetadata(fileId);
+  const meta = entry?.metadata as unknown as Meta | undefined;
+  if (!entry || !meta || normalizePn(String(entry.pnIdentifier || '')) !== agent.rootPnIdentifier || !isPublished(meta)) {
+    return null;
+  }
+  return projectFile(entry.fileId, meta);
+}
+
+/** Pen docs live on the owner's device cloud; the published post row is the public copy. */
+export async function readAgentPenDocument(
+  agent: AgentRequestContext,
+  docId: string
+): Promise<AgentPenDocument | null> {
+  const root = agent.rootPnIdentifier;
+  const service = await metadataService();
+  const result = await service.searchMetadata('', { authorDid: root, limit: PEN_SCAN_LIMIT, offset: 0 });
+  const entry = result.files.find((e) => {
+    const meta = e.metadata as unknown as Meta;
+    return str(meta.penDocId) === docId && normalizePn(String(e.pnIdentifier || '')) === root && isPublished(meta);
+  });
+  return entry ? projectPenDocument(entry.fileId, entry.metadata as unknown as Meta) : null;
+}
+
+export type AgentProofResult =
+  | { ok: true; attestation: AgentAttestation }
+  | { ok: false; error: 'invalid_request' | 'not_attested' | 'expired' };
+
+/** Answers only from the owner-signed attestations; never opens Drive or a proof. */
+export function agentProof(agent: AgentRequestContext, dataPointId: string): AgentProofResult {
+  if (!isAttestableDataPointId(dataPointId)) return { ok: false, error: 'invalid_request' };
+  const attestation = agent.attestations.find((a) => a.dataPointId === dataPointId);
+  if (!attestation) return { ok: false, error: 'not_attested' };
+  if (attestation.expiresAt && Date.parse(attestation.expiresAt) <= Date.now()) {
+    return { ok: false, error: 'expired' };
+  }
+  return { ok: true, attestation: projectAttestation(attestation) };
+}
+
+export type AgentDraftResult =
+  | { ok: true; created: boolean; draftId: string }
+  | { ok: false; error: 'sealed_draft_required' | 'draft_too_large' | 'owner_inbox_unavailable' | 'draft_rate_limited' };
+
+/** Accepts only `{draftId, envelope}` sealed to the owner; Pen opens it, the owner decides. */
+export async function proposeAgentPenDraft(agent: AgentRequestContext, body: unknown): Promise<AgentDraftResult> {
+  const submission = parsePenAgentDraftSubmission(body);
+  if (!submission) return { ok: false, error: 'sealed_draft_required' };
+  if (penAgentDraftSubmissionBytes(submission) > PEN_AGENT_DRAFT_MAX_BYTES) {
+    return { ok: false, error: 'draft_too_large' };
+  }
+  const result = await submitAgentPenDraft({
+    agentPnIdentifier: agent.agentPnIdentifier,
+    rootPnIdentifier: agent.rootPnIdentifier,
+    submission
+  });
+  if (!result.ok) {
+    safeLogger.info('[agent] draft refused', {
+      agentHash: hashIdentifier(agent.agentPnIdentifier),
+      reason: result.reason
+    });
+    return { ok: false, error: result.reason };
+  }
+  return { ok: true, created: result.created, draftId: submission.draftId };
+}
+
 export function registerAgentRoutes(app: Application): void {
   /**
    * For Unlock's local custody bridge: is this agent still delegated, and for which scopes.
@@ -242,19 +329,14 @@ export function registerAgentRoutes(app: Application): void {
     return res.json({ delegation: projectDelegation(agent.statement, agent.scopes) });
   });
 
-  /** Answers only from the owner-signed attestations; never opens Drive or a proof. */
   app.get(
     '/api/agent/proofs/:dataPointId',
     requireAgentDelegation(AI_SCOPES.proofs),
     (req: AgentRequest, res: Response) => {
-      const id = String(req.params.dataPointId || '');
-      if (!isAttestableDataPointId(id)) return res.status(400).json({ error: 'invalid_request' });
-      const attestation = req.agent!.attestations.find((a) => a.dataPointId === id);
-      if (!attestation) return res.status(404).json({ error: 'not_attested' });
-      if (attestation.expiresAt && Date.parse(attestation.expiresAt) <= Date.now()) {
-        return res.status(410).json({ error: 'expired' });
-      }
-      return res.json(projectAttestation(attestation));
+      const result = agentProof(req.agent!, String(req.params.dataPointId || ''));
+      if (result.ok) return res.json(result.attestation);
+      const status = result.error === 'invalid_request' ? 400 : result.error === 'expired' ? 410 : 404;
+      return res.status(status).json({ error: result.error });
     }
   );
 
@@ -274,35 +356,24 @@ export function registerAgentRoutes(app: Application): void {
     }
   );
 
-  /** Accepts only `{draftId, envelope}` sealed to the owner; Pen opens it, the owner decides. */
   app.post(
     '/api/agent/pen/drafts',
     requireAgentDelegation(AI_SCOPES.penDrafts),
     async (req: AgentRequest, res: Response) => {
-      const submission = parsePenAgentDraftSubmission(req.body);
-      if (!submission) return res.status(400).json({ error: 'sealed_draft_required' });
-      if (penAgentDraftSubmissionBytes(submission) > PEN_AGENT_DRAFT_MAX_BYTES) {
-        return res.status(413).json({ error: 'draft_too_large' });
-      }
-      const agent = req.agent!;
       try {
-        const result = await submitAgentPenDraft({
-          agentPnIdentifier: agent.agentPnIdentifier,
-          rootPnIdentifier: agent.rootPnIdentifier,
-          submission
-        });
+        const result = await proposeAgentPenDraft(req.agent!, req.body);
         if (!result.ok) {
-          safeLogger.info('[agent] draft refused', {
-            agentHash: hashIdentifier(agent.agentPnIdentifier),
-            reason: result.reason
-          });
-          return res
-            .status(result.reason === 'draft_rate_limited' ? 429 : 409)
-            .json({ error: result.reason });
+          const status = {
+            sealed_draft_required: 400,
+            draft_too_large: 413,
+            draft_rate_limited: 429,
+            owner_inbox_unavailable: 409
+          }[result.error];
+          return res.status(status).json({ error: result.error });
         }
         return res
           .status(result.created ? 201 : 200)
-          .json({ draftId: submission.draftId, status: 'awaiting_owner' });
+          .json({ draftId: result.draftId, status: 'awaiting_owner' });
       } catch (e) {
         safeLogger.warn('[agent] draft enqueue failed', { err: e instanceof Error ? e.message : 'unknown' });
         return res.status(500).json({ error: 'draft_failed' });
@@ -315,15 +386,8 @@ export function registerAgentRoutes(app: Application): void {
     requireAgentDelegation(AI_SCOPES.filesPublished),
     async (req: AgentRequest, res: Response) => {
       try {
-        const root = req.agent!.rootPnIdentifier;
-        const q = String(req.query.q || '').trim().slice(0, 200);
-        const limit = Math.min(parseInt(String(req.query.limit || '20'), 10) || 20, SEARCH_LIMIT_MAX);
-        const service = await metadataService();
-        const result = await service.searchMetadata(q, { authorDid: root, limit, offset: 0 });
-        const files = result.files
-          .filter((entry) => normalizePn(String(entry.pnIdentifier || '')) === root)
-          .filter((entry) => isPublished(entry.metadata as unknown as Meta))
-          .map((entry) => projectFileSummary(entry.fileId, entry.metadata as unknown as Meta));
+        const limit = parseInt(String(req.query.limit || '20'), 10) || 20;
+        const files = await searchAgentFiles(req.agent!, String(req.query.q || ''), limit);
         return res.json({ files });
       } catch (e) {
         safeLogger.warn('[agent] search failed', { err: e instanceof Error ? e.message : 'unknown' });
@@ -337,14 +401,9 @@ export function registerAgentRoutes(app: Application): void {
     requireAgentDelegation(AI_SCOPES.filesPublished),
     async (req: AgentRequest, res: Response) => {
       try {
-        const root = req.agent!.rootPnIdentifier;
-        const service = await metadataService();
-        const entry = await service.getFileMetadata(String(req.params.fileId || ''));
-        const meta = entry?.metadata as unknown as Meta | undefined;
-        if (!entry || !meta || normalizePn(String(entry.pnIdentifier || '')) !== root || !isPublished(meta)) {
-          return res.status(404).json({ error: 'not_found' });
-        }
-        return res.json({ file: projectFile(entry.fileId, meta) });
+        const file = await readAgentFile(req.agent!, String(req.params.fileId || ''));
+        if (!file) return res.status(404).json({ error: 'not_found' });
+        return res.json({ file });
       } catch (e) {
         safeLogger.warn('[agent] read file failed', { err: e instanceof Error ? e.message : 'unknown' });
         return res.status(500).json({ error: 'read_failed' });
@@ -352,31 +411,16 @@ export function registerAgentRoutes(app: Application): void {
     }
   );
 
-  /** Pen docs live on the owner's device cloud; the published post row is the public copy. */
   app.get(
     '/api/agent/pen/:docId',
     requireAgentDelegation(AI_SCOPES.penPublished),
     async (req: AgentRequest, res: Response) => {
       try {
-        const root = req.agent!.rootPnIdentifier;
         const docId = String(req.params.docId || '').trim();
         if (!docId) return res.status(400).json({ error: 'invalid_request' });
-        const service = await metadataService();
-        const result = await service.searchMetadata('', {
-          authorDid: root,
-          limit: PEN_SCAN_LIMIT,
-          offset: 0
-        });
-        const entry = result.files.find((e) => {
-          const meta = e.metadata as unknown as Meta;
-          return (
-            str(meta.penDocId) === docId &&
-            normalizePn(String(e.pnIdentifier || '')) === root &&
-            isPublished(meta)
-          );
-        });
-        if (!entry) return res.status(404).json({ error: 'not_found' });
-        return res.json({ document: projectPenDocument(entry.fileId, entry.metadata as unknown as Meta) });
+        const document = await readAgentPenDocument(req.agent!, docId);
+        if (!document) return res.status(404).json({ error: 'not_found' });
+        return res.json({ document });
       } catch (e) {
         safeLogger.warn('[agent] read pen failed', { err: e instanceof Error ? e.message : 'unknown' });
         return res.status(500).json({ error: 'read_failed' });

@@ -33,6 +33,7 @@ import { PlatformRegistrySyncService } from './server/modules/platformRegistrySy
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerAgentRoutes } from './server/modules/agentRoutes';
 import { registerAgentConnectorRoutes } from './server/modules/agentConnectorOAuth';
+import { registerMcpRemoteRoutes } from './server/modules/mcpRemoteRoutes';
 import { isAgentConnectorCorsOrigin, isAgentConnectorPath } from './server/utils/agentConnectorRequest';
 import { registerPublicNameRoutes } from './server/modules/publicNameRoutes';
 import {
@@ -605,8 +606,11 @@ class ProductionServer {
           'X-PN-Cloud-Access-Token',
           // Anonymous feed view metering (browse public-media)
           'X-PN-Anon-Id',
+          // Remote MCP (Streamable HTTP) from connector web origins
+          'Mcp-Protocol-Version',
         ],
-        exposedHeaders: ['Content-Type'],
+        // WWW-Authenticate carries the /mcp resource metadata URL to browser connectors.
+        exposedHeaders: ['Content-Type', 'WWW-Authenticate'],
         maxAge: 86400, // 24 hours
         preflightContinue: false, // Handle preflight immediately
       })(req, res, next);
@@ -653,6 +657,10 @@ class ProductionServer {
       }
       // OAuth token exchange has oauthTokenLimiter; avoid double-counting on the general limiter
       if (req.path === '/oauth/token' && req.method === 'POST') {
+        return next();
+      }
+      // Connector backends share egress IPs across many owners; /mcp is limited per agent instead.
+      if (req.path === '/mcp') {
         return next();
       }
       // Public config is needed before unlock / Drive connect; keep it off the strict IP bucket
@@ -1000,6 +1008,7 @@ class ProductionServer {
     registerOwnedAssetRoutes(this.app);
     registerAgentRoutes(this.app);
     registerAgentConnectorRoutes(this.app, { registerLimiter: connectorRegisterLimiter });
+    registerMcpRemoteRoutes(this.app);
     registerPublicNameRoutes(this.app);
     registerVerificationRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);

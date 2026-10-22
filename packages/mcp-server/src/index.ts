@@ -1,5 +1,6 @@
 /** For hosts that serve the tools in-process (the API's /mcp). The pn-mcp CLI is src/cli.ts. */
 export { createPnMcpServer, SERVER_VERSION, type CreatePnMcpServerOptions } from './server';
+export { handleRemoteMcpRequest } from './remote';
 export type { PnMcpMode, PnMcpSource, PnPrivateSource } from './source';
 export { ERROR_MESSAGES, McpToolError, errorMessage, toErrorCode, type McpErrorCode } from './errors';
 export { createLogger, hashId, type LogFields, type Logger } from './log';

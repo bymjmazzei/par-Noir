@@ -1,7 +1,7 @@
 /**
- * Request policy for hosted AI connectors. Their OAuth discovery, registration and token
- * calls come server-to-server (no Origin) or from the connector's own web origin, and carry
- * no cookies, so these paths may skip the production Origin requirement.
+ * Request policy for hosted AI connectors. Their OAuth discovery, registration, token and
+ * /mcp calls come server-to-server (no Origin) or from the connector's own web origin, and
+ * carry no cookies, so these paths may skip the production Origin requirement.
  */
 
 /** Web origins of hosted AI apps that call the connector endpoints from a browser. */
@@ -15,6 +15,7 @@ const DISCOVERY_PATHS = ['/.well-known/oauth-protected-resource', '/.well-known/
 
 export function isAgentConnectorPath(path: string, method: string): boolean {
   const m = (method || 'GET').toUpperCase();
+  if (path === '/mcp') return true;
   if (DISCOVERY_PATHS.some((p) => path === p || path.startsWith(`${p}/`))) {
     return m === 'GET' || m === 'HEAD' || m === 'OPTIONS';
   }

@@ -14,6 +14,8 @@ describe('agent connector request policy', () => {
     expect(isAgentConnectorPath('/oauth/authorize', 'GET')).toBe(true);
     expect(isAgentConnectorPath('/oauth/register', 'POST')).toBe(true);
     expect(isAgentConnectorPath('/oauth/token', 'POST')).toBe(true);
+    expect(isAgentConnectorPath('/mcp', 'POST')).toBe(true);
+    expect(isAgentConnectorPath('/mcp', 'OPTIONS')).toBe(true);
 
     expect(isAgentConnectorPath('/.well-known/oauth-authorization-server', 'POST')).toBe(false);
     expect(isAgentConnectorPath('/oauth/authorize/authenticate', 'POST')).toBe(false);
