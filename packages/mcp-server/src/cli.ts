@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { execFile } from 'node:child_process';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { AI_SCOPE_LABELS, isKnownAiScope } from '@par-noir/standard-data-points';

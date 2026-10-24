@@ -42,6 +42,10 @@ Hosted apps (claude.ai, ChatGPT) never get private data. par Noir's servers neve
 2. Paste `https://api.parnoir.com/mcp` and choose **OAuth**.
 3. Approve in par Noir Unlock on your Mac and pick the agent.
 
+### Install `pn-mcp`
+
+From the repo, run `cd packages/mcp-server && npm install && npm run build && npm link`. Check with `pn-mcp status`.
+
 ### Cursor (local `pn-mcp`)
 
 1. In a terminal on the Mac that added the agent, run `pn-mcp login` and pick the agent in par Noir Unlock.
