@@ -73,10 +73,12 @@ async function requireMcpBearer(req: Request, res: Response, next: NextFunction)
       // Revoked or expired delegation: the connector must send the owner through sign-in again.
       return unauthorized(res, 'invalid_token');
     }
+    const agentHash = hashIdentifier(result.agent.agentPnIdentifier);
+    if (!agentHash) return unauthorized(res, 'invalid_token');
     const locals: McpLocals = {
       agent: result.agent,
       tokenScopes: Array.isArray(payload.scope) ? payload.scope : [],
-      agentHash: hashIdentifier(result.agent.agentPnIdentifier),
+      agentHash,
     };
     res.locals.mcp = locals;
     next();
