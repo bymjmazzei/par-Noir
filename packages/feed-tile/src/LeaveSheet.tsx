@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { LINK_WARNING_MESSAGES, type PenActionEffect } from '@par-noir/pen-protocol';
 
 export type LeaveEffect = Extract<PenActionEffect, { kind: 'open' | 'mailto' | 'messaging' }>;
@@ -12,7 +13,10 @@ function destination(effect: LeaveEffect): string {
   return effect.to ? `${effect.to} in Messaging` : 'the creator in Messaging';
 }
 
-/** Shown before every external link or form send. Nothing leaves until Continue. */
+/**
+ * Shown before every external link or form send. Nothing leaves until Continue.
+ * Portaled to body: host feeds stack captions and rails above the tile.
+ */
 export function LeaveSheet({
   effect,
   onContinue,
@@ -26,13 +30,14 @@ export function LeaveSheet({
 }) {
   const open = effect.kind === 'open' ? effect : null;
   const warned = Boolean(open?.warnings.length);
-  return (
+  const sheet = (
     <div
-      className="absolute inset-0 z-[60] flex items-end justify-center bg-black/70 p-3"
+      className="fixed inset-0 z-[210] flex items-end justify-center bg-black/70 p-3"
       role="dialog"
       aria-modal="true"
       aria-label={open ? 'Leaving par Noir' : 'Send your answers'}
       data-pen-leave-sheet={effect.kind}
+      onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
         onCancel();
@@ -84,4 +89,5 @@ export function LeaveSheet({
       </div>
     </div>
   );
+  return typeof document === 'undefined' ? sheet : createPortal(sheet, document.body);
 }

@@ -54,7 +54,7 @@ function click(el: Element | null) {
 }
 
 function buttonByText(text: string) {
-  return Array.from(host.querySelectorAll('button')).find((b) => b.textContent === text) || null;
+  return Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent === text) || null;
 }
 
 describe('LeaveSheet on PenFeedPageStage', () => {
@@ -63,13 +63,13 @@ describe('LeaveSheet on PenFeedPageStage', () => {
     render({ onEffect });
     click(host.querySelector('[data-pen-layer="b"]'));
     expect(onEffect).not.toHaveBeenCalled();
-    expect(host.querySelector('[data-pen-leave-host]')?.textContent).toBe('example.com');
-    expect(host.querySelector('[data-pen-leave-warning="download"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-pen-leave-host]')?.textContent).toBe('example.com');
+    expect(document.body.querySelector('[data-pen-leave-warning="download"]')).not.toBeNull();
     click(buttonByText('Continue'));
     expect(onEffect).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'open', url: 'https://example.com/setup.exe' })
     );
-    expect(host.querySelector('[data-pen-leave-sheet]')).toBeNull();
+    expect(document.body.querySelector('[data-pen-leave-sheet]')).toBeNull();
   });
 
   it('Cancel drops the press', () => {
@@ -78,7 +78,26 @@ describe('LeaveSheet on PenFeedPageStage', () => {
     click(host.querySelector('[data-pen-layer="b"]'));
     click(buttonByText('Cancel'));
     expect(onEffect).not.toHaveBeenCalled();
-    expect(host.querySelector('[data-pen-leave-sheet]')).toBeNull();
+    expect(document.body.querySelector('[data-pen-leave-sheet]')).toBeNull();
+  });
+
+  it('renders outside the tile so host overlays cannot cover it', () => {
+    const onHostPointerDown = vi.fn();
+    act(() => {
+      root.render(
+        <div onPointerDown={onHostPointerDown}>
+          <PenFeedPageStage penFeedPage={page([openButton])} externalClockSec={0} onEffect={vi.fn()} />
+        </div>
+      );
+    });
+    click(host.querySelector('[data-pen-layer="b"]'));
+    const sheet = document.body.querySelector('[data-pen-leave-sheet]');
+    expect(sheet).not.toBeNull();
+    expect(host.contains(sheet)).toBe(false);
+    act(() => {
+      buttonByText('Cancel')!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    });
+    expect(onHostPointerDown).not.toHaveBeenCalled();
   });
 
   it('Report link only shows when the host can report', () => {
