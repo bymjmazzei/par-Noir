@@ -6,7 +6,6 @@ import { getDatabasePool } from '../utils/database';
 import type { PollCounts, PollOption, PollStructure } from '@par-noir/pen-protocol';
 import {
   emptyPollCounts,
-  hashPnIdentifier,
   pollIsClosed,
   pollResultsFromCounts,
   widgetViewPhase,
@@ -15,6 +14,7 @@ import {
   type WidgetResultsPublic,
   type WidgetViewPayload
 } from '@par-noir/pen-protocol';
+import { widgetPnHash } from './widgetPnHash';
 
 export type WidgetStructureRow = {
   widgetId: string;
@@ -229,7 +229,7 @@ export async function buildWidgetView(input: {
 }): Promise<WidgetViewPayload | null> {
   const row = await readWidgetStructure(input.widgetId);
   if (!row) return null;
-  const viewerHash = input.viewerPn ? hashPnIdentifier(input.viewerPn) : null;
+  const viewerHash = input.viewerPn ? widgetPnHash(input.viewerPn) : null;
   const myResponse = viewerHash ? await readWidgetResponse(input.widgetId, viewerHash) : null;
   const hasResponded = Boolean(myResponse);
   const phase = widgetViewPhase({

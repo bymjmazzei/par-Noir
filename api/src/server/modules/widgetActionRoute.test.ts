@@ -113,7 +113,7 @@ describe('POST /api/pen/widgets/respond widget_row', () => {
       widgetId: 'doc-1:g1',
       actionId: 'a1',
       trigger: 'widget.rank',
-      actorId: 'pnhash:9:np-reweiv',
+      actorId: 'pnhash:12:np-reweiv-np',
       headers: ['A', 'B'],
       cells: ['2', '1']
     });

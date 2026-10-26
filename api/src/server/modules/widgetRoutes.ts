@@ -5,7 +5,6 @@
 import crypto from 'crypto';
 import type { Application, Request, Response } from 'express';
 import {
-  hashPnIdentifier,
   isSheetTrigger,
   normalizeWriteIn,
   parseWidgetId,
@@ -32,6 +31,7 @@ import {
   readWidgetStructure,
   upsertWidgetStructure
 } from './widgetCache';
+import { widgetPnHash } from './widgetPnHash';
 
 const MAX_ROW_CELLS = 64;
 const MAX_CELL_CHARS = 2000;
@@ -112,7 +112,7 @@ export function setupWidgetRoutes(app: Application): void {
       await upsertWidgetStructure({
         widgetId,
         docId,
-        ownerPnHash: hashPnIdentifier(ownerPn),
+        ownerPnHash: widgetPnHash(ownerPn),
         kind,
         structure,
         revealPolicy,
@@ -162,10 +162,10 @@ export function setupWidgetRoutes(app: Application): void {
       }
       const row = await readWidgetStructure(widgetId);
       if (!row) return res.status(404).json({ error: 'widget_not_found' });
-      if (hashPnIdentifier(viewerPn) === row.ownerPnHash) {
+      if (widgetPnHash(viewerPn) === row.ownerPnHash) {
         return res.status(409).json({ error: 'owner_cannot_respond' });
       }
-      const actorHash = hashPnIdentifier(viewerPn);
+      const actorHash = widgetPnHash(viewerPn);
 
       if (respondKind === 'vote') {
         const optionId = String(req.body?.optionId || '').trim();
@@ -305,10 +305,10 @@ export function setupWidgetRoutes(app: Application): void {
       }
       const row = await readWidgetStructure(widgetId);
       if (!row) return res.status(404).json({ error: 'widget_not_found' });
-      if (hashPnIdentifier(ownerPn) !== row.ownerPnHash) {
+      if (widgetPnHash(ownerPn) !== row.ownerPnHash) {
         return res.status(403).json({ error: 'widget_owner_mismatch' });
       }
-      const actorHash = viewerPn ? hashPnIdentifier(viewerPn) : ANONYMOUS_TAP_ACTOR;
+      const actorHash = viewerPn ? widgetPnHash(viewerPn) : ANONYMOUS_TAP_ACTOR;
       if (actorHash === row.ownerPnHash) return res.json({ ok: true, ignored: 'owner' });
       const who = viewerPn ? actorHash : `ip:${req.ip || 'unknown'}`;
       if (!tapAllowed(`${who}|${widgetId}`, TAP_LIMIT) || !tapAllowed(who, TAP_LIMIT_ALL_WIDGETS)) {

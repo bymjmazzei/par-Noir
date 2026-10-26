@@ -107,6 +107,19 @@ describe('POST /api/pen/widgets/tap', () => {
     expect(mockInsertTap).not.toHaveBeenCalled();
   });
 
+  it('matches the owner whether or not browse strips the pn- prefix', async () => {
+    const res = await request(app()).post('/api/pen/widgets/tap').send(tap({ ownerPnIdentifier: 'owner' }));
+    expect(res.status).toBe(200);
+    expect(mockInsertTap).toHaveBeenCalledTimes(1);
+
+    mockInsertTap.mockClear();
+    const own = await request(app())
+      .post('/api/pen/widgets/tap')
+      .send(tap({ ownerPnIdentifier: 'owner', userPnIdentifier: 'owner' }));
+    expect(own.body.ignored).toBe('owner');
+    expect(mockInsertTap).not.toHaveBeenCalled();
+  });
+
   it('rate limits anonymous taps per IP and widget', async () => {
     const server = app();
     for (let i = 0; i < 30; i += 1) {
