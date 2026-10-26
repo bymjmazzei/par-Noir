@@ -138,44 +138,15 @@ export async function migrateRecoveryGoogleToPortable(
       pnIdentifier,
       ctx.accountId
     );
-    const pending = await RecoverySheetsService.listPendingShares(
-      ctx.token,
-      sheetId,
-      pnIdentifier,
-      ctx.accountId,
-      true
-    );
-    const requests = await RecoverySheetsService.listRecoveryRequests(
-      ctx.token,
-      sheetId,
-      pnIdentifier,
-      ctx.accountId
-    );
     await portableTableReplaceAll(
       pnIdentifier,
       RECOVERY_CUSTODIANS_SCHEMA,
       custodians as unknown as Record<string, unknown>[],
       accountId
     );
-    await portableTableReplaceAll(
-      pnIdentifier,
-      RECOVERY_PENDING_SCHEMA,
-      pending.map((p) => ({
-        shareIndex: String(p.shareIndex),
-        encryptedShare: p.encryptedShare,
-        createdAt: p.createdAt
-      })),
-      accountId
-    );
-    await portableTableReplaceAll(
-      pnIdentifier,
-      RECOVERY_REQUESTS_SCHEMA,
-      requests as unknown as Record<string, unknown>[],
-      accountId
-    );
-    report = recordMigrationOutcome(report, path, 'migrated', {
-      bytes: custodians.length + pending.length + requests.length
-    });
+    await portableTableReplaceAll(pnIdentifier, RECOVERY_PENDING_SCHEMA, [], accountId);
+    await portableTableReplaceAll(pnIdentifier, RECOVERY_REQUESTS_SCHEMA, [], accountId);
+    report = recordMigrationOutcome(report, path, 'migrated', { bytes: custodians.length });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     report = recordMigrationOutcome(report, path, 'failed', { error: msg });
@@ -192,31 +163,19 @@ export async function migrateRecoveryPortableToGoogle(
   let report = createEmptyMigrationReport(jobId);
   const path = '_metadata/recovery';
   try {
-    const custodians = await portableTableScan(pnIdentifier, RECOVERY_CUSTODIANS_SCHEMA, accountId);
-    const pending = await portableTableScan(pnIdentifier, RECOVERY_PENDING_SCHEMA, accountId);
-    const requests = await portableTableScan(pnIdentifier, RECOVERY_REQUESTS_SCHEMA, accountId);
-    const { RecoverySheetsService } = await import('../recoverySheetsService');
+    const { RecoverySheetsService, toRosterRow } = await import('../recoverySheetsService');
+    const custodians = (
+      await portableTableScan<Record<string, unknown>>(pnIdentifier, RECOVERY_CUSTODIANS_SCHEMA, accountId)
+    )
+      .map(toRosterRow)
+      .filter((c) => c.custodianId);
     const sheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
       ctx.token,
       ctx.metadataFolderId,
       pnIdentifier,
       ctx.accountId
     );
-    await RecoverySheetsService.setAllRecoveryData(
-      ctx.token,
-      sheetId,
-      {
-        custodians: custodians as never[],
-        pending: pending.map((p) => ({
-          shareIndex: parseInt(String(p.shareIndex), 10),
-          encryptedShare: String(p.encryptedShare ?? ''),
-          createdAt: String(p.createdAt ?? '')
-        })),
-        requests: requests as never[]
-      },
-      pnIdentifier,
-      ctx.accountId
-    );
+    await RecoverySheetsService.replaceRoster(ctx.token, sheetId, custodians, pnIdentifier, ctx.accountId);
     report = recordMigrationOutcome(report, path, 'migrated', { bytes: custodians.length });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

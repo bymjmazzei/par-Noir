@@ -316,5 +316,7 @@ export {
   recoveryDriveProofHash,
   writeRecoveryDriveProof,
   readRecoveryDriveProof,
+  readLegacyRecoveryRoster,
+  deleteLegacyRecoveryWorkbook,
 } from './recoveryCustody.js';
 export type { RecoveryCustodyEntry, RecoveryDriveOpts } from './recoveryCustody.js';

@@ -378,6 +378,7 @@ export type DeviceCustodian = {
   status: string;
   createdAt: string;
   custodianPnIdentifier?: string;
+  unrevokable?: boolean;
 };
 
 export async function listDeviceCustodians(
@@ -395,6 +396,7 @@ export async function listDeviceCustodians(
       status: row[6] || row[4] || 'invited',
       createdAt: row[7] || row[5] || '',
       custodianPnIdentifier: row[10] || undefined,
+      unrevokable: row[8] === 'true',
     }));
 }
 

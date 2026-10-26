@@ -942,7 +942,12 @@ This invitation expires in 24 hours.`;
 
     if (vaultRow && apiToken) {
       void revokeRecoveryCustodian(apiToken, custodianId)
-        .then(() => refreshRecoveryVault())
+        .then(async (result) => {
+          if (result.resplitRequired && recoveryVaultPnId) {
+            (await import('../services/recoveryResecure')).markRecoveryResplitRequired(recoveryVaultPnId);
+          }
+          await refreshRecoveryVault();
+        })
         .catch((error) => {
           logError('Failed to revoke custodian on vault:', error);
         });

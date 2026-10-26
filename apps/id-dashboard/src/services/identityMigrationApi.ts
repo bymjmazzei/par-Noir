@@ -112,18 +112,6 @@ export async function rewrapGroupKeys(
   if (!res.ok) throw new Error('Failed to rewrap group keys');
 }
 
-export async function batchRecoveryCustodians(
-  authToken: string,
-  migrationId: string,
-  userPnIdentifier: string,
-  custodians: Array<Record<string, unknown>>
-): Promise<void> {
-  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/recovery/custodians`;
-  const body = { userPnIdentifier, custodians };
-  const res = await migrationDriveFetch(authToken, userPnIdentifier, 'POST', path, body);
-  if (!res.ok) throw new Error('Failed to update recovery custodians');
-}
-
 export async function completeIdentityMigration(
   authToken: string,
   migrationId: string,

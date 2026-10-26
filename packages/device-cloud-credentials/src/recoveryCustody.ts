@@ -7,6 +7,7 @@
 import { METADATA_DIR } from '@par-noir/user-owned-storage';
 import { deviceDriveCall } from './deviceDriveCall.js';
 import { findFolderByName, findOrCreateFolder, findPnRootFolderId } from './deviceDriveFind.js';
+import { findRecoveryWorkbookId, listDeviceCustodians, type DeviceCustodian } from './deviceProduct.js';
 
 export const RECOVERY_CUSTODY_FILE = 'recovery-custody.json';
 export const RECOVERY_DRIVE_PROOF_FILE = 'recovery-release-proof.json';
@@ -147,4 +148,29 @@ export async function writeRecoveryDriveProof(opts: RecoveryDriveOpts & { secret
 export async function readRecoveryDriveProof(opts: RecoveryDriveOpts): Promise<string | null> {
   const file = await readJson<{ v?: number; secret?: unknown }>(opts, RECOVERY_DRIVE_PROOF_FILE);
   return typeof file?.secret === 'string' && file.secret ? file.secret : null;
+}
+
+/**
+ * Pre-relay recovery workbook (`_metadata/recovery.xlsx`). It also stored encrypted shares, so
+ * after re-securing it is deleted rather than kept as a roster.
+ */
+export async function readLegacyRecoveryRoster(
+  opts: RecoveryDriveOpts
+): Promise<{ workbookId: string; custodians: DeviceCustodian[] } | null> {
+  const folder = await metadataFolder(opts, false);
+  if (!folder) return null;
+  const workbookId = await findRecoveryWorkbookId(opts.accessToken, folder, opts.fetchImpl);
+  if (!workbookId) return null;
+  const custodians = (await listDeviceCustodians(opts.accessToken, workbookId, opts.fetchImpl)).filter(
+    (c) => c.status !== 'revoked' && c.custodianType !== 'vault' && !c.custodianId.startsWith('vault_share_')
+  );
+  return { workbookId, custodians };
+}
+
+export async function deleteLegacyRecoveryWorkbook(opts: RecoveryDriveOpts & { workbookId: string }): Promise<void> {
+  const res = await deviceDriveCall('DELETE', `/api/drive/files/${encodeURIComponent(opts.workbookId)}`, undefined, {
+    accessToken: opts.accessToken,
+    fetchImpl: opts.fetchImpl,
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`drive_delete_failed_${res.status}`);
 }

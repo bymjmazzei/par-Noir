@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   createRecoveryDriveProofSecret,
+  deleteLegacyRecoveryWorkbook,
   findRecoveryCustody,
+  readLegacyRecoveryRoster,
   readRecoveryCustody,
   readRecoveryDriveProof,
   recoveryDriveProofHash,
@@ -13,7 +15,7 @@ import {
 type FakeFile = { id: string; name: string; mimeType: string; parents: string[]; content: string };
 
 /** Minimal Google Drive v3 double: list by q, read media, create folder/multipart, update media. */
-function fakeDrive(seed: FakeFile[]) {
+function fakeDrive(seed: FakeFile[], sheetRows: Record<string, string[][]> = {}) {
   const files = new Map(seed.map((f) => [f.id, f]));
   let next = 1;
   const json = (body: unknown) =>
@@ -60,6 +62,13 @@ function fakeDrive(seed: FakeFile[]) {
       const f = files.get(update[1])!;
       f.content = bodyText(init?.body);
       return json({ id: f.id, name: f.name });
+    }
+    if (method === 'DELETE' && media) {
+      return files.delete(media[1]) ? new Response(null, { status: 204 }) : new Response('', { status: 404 });
+    }
+    const values = url.pathname.match(/^\/v4\/spreadsheets\/([^/]+)\/values\//);
+    if (method === 'GET' && values) {
+      return json({ values: sheetRows[decodeURIComponent(values[1])] ?? [] });
     }
     return new Response('unsupported', { status: 500 });
   }) as unknown as typeof fetch;
@@ -127,6 +136,35 @@ describe('recovery custody on the custodian Drive', () => {
     expect(await recoveryDriveProofHash('abc')).toBe(
       'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
     );
+  });
+
+  it('reads the legacy workbook roster without shares and deletes the workbook', async () => {
+    const SHEET = 'application/vnd.google-apps.spreadsheet';
+    const drive = fakeDrive(
+      [
+        { id: 'root', name: 'par-noir-pn-owner', mimeType: FOLDER, parents: [], content: '' },
+        { id: 'meta', name: '_metadata', mimeType: FOLDER, parents: ['root'], content: '' },
+        { id: 'wb', name: 'recovery.xlsx', mimeType: SHEET, parents: ['meta'], content: '' },
+      ],
+      {
+        wb: [
+          ['c1', 'Alice', 'person', 'enc-share', '1', 'cred', 'accepted', '2025-01-01', 'true'],
+          ['c2', 'Bob', 'person', 'enc-share', '2', 'cred', 'revoked', '2025-01-01', 'false'],
+          ['vault_share_3', 'vault', 'vault', 'enc-share', '3', '', 'vault', '2025-01-01', 'false'],
+        ],
+      }
+    );
+    const opts = { accessToken: 'at', pnIdentifier: 'pn-owner', fetchImpl: drive.fetchImpl };
+    const roster = await readLegacyRecoveryRoster(opts);
+    expect(roster?.workbookId).toBe('wb');
+    expect(roster?.custodians).toEqual([
+      expect.objectContaining({ custodianId: 'c1', name: 'Alice', status: 'accepted', unrevokable: true }),
+    ]);
+    expect(JSON.stringify(roster)).not.toContain('enc-share');
+
+    await deleteLegacyRecoveryWorkbook({ ...opts, workbookId: 'wb' });
+    expect(drive.files.has('wb')).toBe(false);
+    expect(await readLegacyRecoveryRoster(opts)).toBeNull();
   });
 
   it('refuses to write when the pN root folder is missing', async () => {

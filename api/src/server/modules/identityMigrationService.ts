@@ -555,62 +555,6 @@ export function registerIdentityMigrationRoutes(app: Application): void {
     }
   });
 
-  /** POST /api/identity/migration/:id/recovery/custodians */
-  app.post('/api/identity/migration/:id/recovery/custodians', async (req: Request, res: Response) => {
-    try {
-      if (!(await gateMigration(req, res))) return;
-      const auth = bearerPn(req);
-      if (!auth) return res.status(401).json({ error: 'unauthorized' });
-
-      const { userPnIdentifier, custodians } = req.body ?? {};
-      if (!userPnIdentifier || !Array.isArray(custodians)) {
-        return res.status(400).json({ error: 'userPnIdentifier and custodians array required' });
-      }
-
-      const drive = await resolveMigrationDriveAccess(req, req.params.id);
-
-      const pn = normalizePn(String(userPnIdentifier));
-      const { RecoverySheetsService } = await import('./recoverySheetsService');
-      const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
-        drive.token,
-        drive.folders.metadataFolderId,
-        pn,
-        drive.accountId
-      );
-
-      let count = 0;
-      for (const c of custodians) {
-        if (!c?.custodianId) continue;
-        const status = c.status || 'invited';
-        if ((status === 'invited' || status === 'accepted') && !c.custodianshipCredential) {
-          return res.status(400).json({ error: 'custodianshipCredential required for custodian rows' });
-        }
-        await RecoverySheetsService.upsertCustodian(
-          drive.token,
-          spreadsheetId,
-          {
-            custodianId: c.custodianId,
-            name: c.name || c.custodianId,
-            custodianType: c.custodianType || c.type || 'person',
-            status: c.status === 'accepted' ? 'accepted' : 'invited',
-            shareIndex: Number(c.shareIndex) || 0,
-            custodianshipCredential: c.custodianshipCredential || '',
-            encryptedShare: c.encryptedShare || '',
-            createdAt: c.createdAt || new Date().toISOString(),
-            unrevokable: c.unrevokable === true,
-          },
-          pn,
-          drive.accountId
-        );
-        count++;
-      }
-
-      return res.json({ success: true, updated: count });
-    } catch (error: unknown) {
-      return migrationDriveError(res, error);
-    }
-  });
-
   /** PATCH /api/identity/migration/:id/drive/progress */
   app.patch('/api/identity/migration/:id/drive/progress', async (req: Request, res: Response) => {
     try {

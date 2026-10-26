@@ -4,6 +4,7 @@ import { SectionInfo } from '../common/SectionInfo';
 import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 import { RecoveryAuthGate } from './RecoveryAuthGate';
 import { CustodianList } from './CustodianList';
+import { RecoveryResecurePanel } from './RecoveryResecurePanel';
 import { resolveRecoverySetupPhase } from './recoverySetupPhase';
 import type { RecoveryCustodianSummary } from '../../services/recoveryApiService';
 import { getRecoveryAuthSession, recoveryAuthRequiredMessage } from '../../services/recoveryAuthSession';
@@ -136,6 +137,18 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
 
       {phase === 'auth_required' && (
         <p className="text-sm text-text-secondary">Unlock above to set up recovery custodians.</p>
+      )}
+
+      {phase !== 'auth_required' && (
+        <RecoveryResecurePanel
+          apiToken={apiToken}
+          userPnIdentifier={userPnIdentifier}
+          identityId={authenticatedUser?.id ?? null}
+          recoveryThreshold={recoveryThreshold}
+          canManage={canManageCustodians && recoveryMutationAllowed}
+          onResecured={onSummaryChanged}
+          setError={setError}
+        />
       )}
 
       {(phase === 'needs_custodians' || phase === 'managing' || phase === 'ready') && (
