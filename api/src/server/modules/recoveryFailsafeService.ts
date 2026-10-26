@@ -11,6 +11,8 @@ export interface RecoveryFailsafeRecord {
   keyHash: string;
   publicKey: string;
   envelope: RecoveryEnvelope;
+  /** Peppered digest of the owner-Drive release proof; release requires reading it back from Drive. */
+  driveProofDigest: string | null;
   createdAt: string;
 }
 
@@ -37,6 +39,7 @@ async function ensureTable(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS pn_recovery_failsafe_key_hash_idx
       ON pn_recovery_failsafe (key_hash)
   `);
+  await db.query(`ALTER TABLE pn_recovery_failsafe ADD COLUMN IF NOT EXISTS drive_proof_digest TEXT`);
   ensured = true;
 }
 
@@ -45,19 +48,21 @@ export async function upsertRecoveryFailsafe(params: {
   keyHash: string;
   publicKey: string;
   envelope: RecoveryEnvelope;
+  driveProofDigest?: string;
 }): Promise<void> {
   await ensureTable();
   const db = getDatabasePool();
   const pn = normalizePn(params.pnIdentifier);
   await db.query(
-    `INSERT INTO pn_recovery_failsafe (pn_identifier, key_hash, public_key, envelope_json, created_at)
-     VALUES ($1, $2, $3, $4, NOW())
+    `INSERT INTO pn_recovery_failsafe (pn_identifier, key_hash, public_key, envelope_json, drive_proof_digest, created_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
      ON CONFLICT (pn_identifier) DO UPDATE SET
        key_hash = EXCLUDED.key_hash,
        public_key = EXCLUDED.public_key,
        envelope_json = EXCLUDED.envelope_json,
+       drive_proof_digest = COALESCE(EXCLUDED.drive_proof_digest, pn_recovery_failsafe.drive_proof_digest),
        created_at = NOW()`,
-    [pn, params.keyHash, params.publicKey, JSON.stringify(params.envelope)]
+    [pn, params.keyHash, params.publicKey, JSON.stringify(params.envelope), params.driveProofDigest ?? null]
   );
 }
 
@@ -66,6 +71,7 @@ export async function upsertRecoveryEnvelopeOnly(params: {
   pnIdentifier: string;
   publicKey: string;
   envelope: RecoveryEnvelope;
+  driveProofDigest?: string;
 }): Promise<void> {
   await ensureTable();
   const db = getDatabasePool();
@@ -76,33 +82,36 @@ export async function upsertRecoveryEnvelopeOnly(params: {
   );
   const keyHash = existing.rows[0]?.key_hash || '';
   await db.query(
-    `INSERT INTO pn_recovery_failsafe (pn_identifier, key_hash, public_key, envelope_json, created_at)
-     VALUES ($1, $2, $3, $4, NOW())
+    `INSERT INTO pn_recovery_failsafe (pn_identifier, key_hash, public_key, envelope_json, drive_proof_digest, created_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
      ON CONFLICT (pn_identifier) DO UPDATE SET
        public_key = EXCLUDED.public_key,
        envelope_json = EXCLUDED.envelope_json,
+       drive_proof_digest = COALESCE(EXCLUDED.drive_proof_digest, pn_recovery_failsafe.drive_proof_digest),
        created_at = NOW()`,
-    [pn, keyHash, params.publicKey, JSON.stringify(params.envelope)]
+    [pn, keyHash, params.publicKey, JSON.stringify(params.envelope), params.driveProofDigest ?? null]
   );
 }
 
 export async function getFailsafeStatus(pnIdentifier: string): Promise<{
   hasKey: boolean;
   hasEnvelope: boolean;
+  hasDriveProof: boolean;
   createdAt?: string;
 }> {
   await ensureTable();
   const db = getDatabasePool();
   const pn = normalizePn(pnIdentifier);
   const r = await db.query(
-    `SELECT key_hash, envelope_json, created_at FROM pn_recovery_failsafe WHERE pn_identifier = $1`,
+    `SELECT key_hash, envelope_json, drive_proof_digest, created_at FROM pn_recovery_failsafe WHERE pn_identifier = $1`,
     [pn]
   );
-  if (!r.rows[0]) return { hasKey: false, hasEnvelope: false };
+  if (!r.rows[0]) return { hasKey: false, hasEnvelope: false, hasDriveProof: false };
   const row = r.rows[0];
   return {
     hasKey: Boolean(row.key_hash),
     hasEnvelope: Boolean(row.envelope_json),
+    hasDriveProof: Boolean(row.drive_proof_digest),
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
   };
 }
@@ -115,16 +124,17 @@ export async function resolveRecoveryFailsafe(params: {
   const db = getDatabasePool();
   const hash = params.keyHash.trim();
   let r;
+  if (!hash) return null;
   if (params.pnIdentifier) {
     r = await db.query(
-      `SELECT pn_identifier, key_hash, public_key, envelope_json, created_at
+      `SELECT pn_identifier, key_hash, public_key, envelope_json, drive_proof_digest, created_at
        FROM pn_recovery_failsafe
        WHERE pn_identifier = $1 AND key_hash = $2`,
       [normalizePn(params.pnIdentifier), hash]
     );
   } else {
     r = await db.query(
-      `SELECT pn_identifier, key_hash, public_key, envelope_json, created_at
+      `SELECT pn_identifier, key_hash, public_key, envelope_json, drive_proof_digest, created_at
        FROM pn_recovery_failsafe
        WHERE key_hash = $1`,
       [hash]
@@ -143,6 +153,7 @@ export async function resolveRecoveryFailsafe(params: {
     keyHash: row.key_hash,
     publicKey: row.public_key,
     envelope,
+    driveProofDigest: row.drive_proof_digest || null,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
   };
 }

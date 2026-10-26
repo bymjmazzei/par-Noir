@@ -22,6 +22,12 @@ import {
   requireKeyedDevice,
 } from './deviceCapabilityService';
 import { consumePairingNonce, storePairingNonce } from './devicePairingNonceStore';
+import {
+  evaluateRequestQuorum,
+  getRecoveryRelayStore,
+  recoveryOwnerHash,
+  refreshRequestExpiry,
+} from './recoveryRelayService';
 import { extractCloudAccessToken } from './cloudAccessToken';
 import { isProduction, securityFlags } from '../utils/securityFlags';
 
@@ -309,30 +315,17 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'requestId required' });
       }
 
-      const { getRecoveryDriveContext } = await import('./recoveryDriveContext');
-      const cloudTok = extractCloudAccessToken(req);
-      const ctx = await getRecoveryDriveContext(pn, cloudTok ? { accessToken: cloudTok } : undefined);
-      if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
-
-      const { RecoverySheetsService } = await import('./recoverySheetsService');
-      const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
-        ctx.token,
-        ctx.metadataFolderId,
-        ctx.pnIdentifier,
-        ctx.accountId
-      );
-      const requests = await RecoverySheetsService.listRecoveryRequests(
-        ctx.token,
-        spreadsheetId,
-        ctx.pnIdentifier,
-        ctx.accountId
-      );
-      const row = requests.find((r) => r.requestId === requestId);
-      if (!row) return res.status(404).json({ error: 'request_not_found' });
-      if (row.requestType !== 'device_registry_reset') {
+      const store = getRecoveryRelayStore();
+      const found = await store.getRequest(requestId);
+      if (!found || found.ownerHash !== recoveryOwnerHash(pn)) {
+        return res.status(404).json({ error: 'request_not_found' });
+      }
+      if (found.requestType !== 'device_registry_reset') {
         return res.status(400).json({ error: 'wrong_request_type' });
       }
-      if (row.status !== 'ready') {
+      const row = await refreshRequestExpiry(store, found);
+      const quorum = evaluateRequestQuorum(row, await store.listCustodians(row.ownerHash));
+      if (row.status !== 'ready' || !quorum.ready) {
         return res.status(403).json({
           error: 'quorum_not_met',
           error_description: 'Custodian quorum not reached for this device registry reset.',
@@ -348,13 +341,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
       }
 
       const result = await resetDeviceRegistry(bundle);
-      await RecoverySheetsService.upsertRecoveryRequest(
-        ctx.token,
-        spreadsheetId,
-        { ...row, status: 'completed' },
-        ctx.pnIdentifier,
-        ctx.accountId
-      );
+      await store.updateRequest(row.requestId, { status: 'completed' });
       return res.json({ success: true, ...result });
     } catch (e) {
       console.error('[devices] registry reset finalize:', e);

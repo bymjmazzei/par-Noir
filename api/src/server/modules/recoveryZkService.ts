@@ -2,9 +2,7 @@ import {
   RECOVERY_APPROVAL_CONTEXT,
   RECOVERY_CUSTODIAN_CONTEXT,
   RECOVERY_ZKP_TYPES,
-  parseApprovalBinding,
   parseUnrevokableFlag,
-  verifyRecoveryApprovalBinding,
   type RecoveryZkApprovalPayload,
 } from '@par-noir/recovery-crypto';
 import { decodeEnvelopeFromProofString, verifyZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
@@ -52,43 +50,38 @@ export function verifyCustodianshipCredential(zkp: string): { ok: boolean; reaso
   };
 }
 
-export async function verifyRecoveryApprovalPayload(
-  payload: RecoveryZkApprovalPayload,
-  custodianPasscode?: string
-): Promise<{ ok: boolean; reason?: string; requestId?: string }> {
+/** Only a ZK v2 approval signed by the custodian's unlocked identity is accepted. */
+export function verifyRecoveryApprovalPayload(
+  payload: RecoveryZkApprovalPayload
+): { ok: boolean; reason?: string; requestId?: string; identityPublicKey?: string } {
   const cust = verifyCustodianshipCredential(payload.custodianshipZkp);
   if (!cust.ok || !cust.data) return { ok: false, reason: cust.reason || 'invalid_custodianship' };
   if (cust.data.custodianId !== payload.custodianId) return { ok: false, reason: 'custodian_id_mismatch' };
   if (cust.data.shareIndex !== payload.shareIndex) return { ok: false, reason: 'share_index_mismatch' };
 
   const approvalEnv = decodeEnvelopeFromProofString(payload.approvalZkp);
-  if (approvalEnv && typeof approvalEnv === 'object' && (approvalEnv as { context?: string }).context === RECOVERY_APPROVAL_CONTEXT) {
-    const verified = verifyZkProofEnvelopeV2(payload.approvalZkp);
-    if (!verified.ok) return verified;
-    const publicInputs = (approvalEnv as { public_inputs?: Record<string, unknown> }).public_inputs || {};
-    if (publicInputs.zkp_type !== RECOVERY_ZKP_TYPES.approval) {
-      return { ok: false, reason: 'wrong_approval_zkp_type' };
-    }
-    if (String(publicInputs.custodian_id) !== payload.custodianId) {
-      return { ok: false, reason: 'approval_custodian_mismatch' };
-    }
-    if (Number(publicInputs.share_index) !== payload.shareIndex) {
-      return { ok: false, reason: 'approval_share_index_mismatch' };
-    }
-    return { ok: true, requestId: String(publicInputs.request_id || '') };
-  }
-
-  try {
-    const binding = parseApprovalBinding(payload.approvalZkp);
-    if (binding.custodianId !== payload.custodianId) return { ok: false, reason: 'binding_custodian_mismatch' };
-    if (binding.shareIndex !== payload.shareIndex) return { ok: false, reason: 'binding_share_index_mismatch' };
-    if (binding.custodianshipZkp !== payload.custodianshipZkp) return { ok: false, reason: 'binding_custodianship_mismatch' };
-    if (custodianPasscode) {
-      const ok = await verifyRecoveryApprovalBinding(binding, custodianPasscode);
-      if (!ok) return { ok: false, reason: 'binding_verify_failed' };
-    }
-    return { ok: true, requestId: binding.requestId };
-  } catch {
+  if (
+    !approvalEnv
+    || typeof approvalEnv !== 'object'
+    || (approvalEnv as { context?: string }).context !== RECOVERY_APPROVAL_CONTEXT
+  ) {
     return { ok: false, reason: 'invalid_approval' };
   }
+  const verified = verifyZkProofEnvelopeV2(payload.approvalZkp);
+  if (!verified.ok) return verified;
+  const publicInputs = (approvalEnv as { public_inputs?: Record<string, unknown> }).public_inputs || {};
+  if (publicInputs.zkp_type !== RECOVERY_ZKP_TYPES.approval) {
+    return { ok: false, reason: 'wrong_approval_zkp_type' };
+  }
+  if (String(publicInputs.custodian_id) !== payload.custodianId) {
+    return { ok: false, reason: 'approval_custodian_mismatch' };
+  }
+  if (Number(publicInputs.share_index) !== payload.shareIndex) {
+    return { ok: false, reason: 'approval_share_index_mismatch' };
+  }
+  const identityPublicKey = String(publicInputs.identity_public_key || '');
+  if (identityPublicKey !== cust.data.identityPublicKey) {
+    return { ok: false, reason: 'approval_identity_mismatch' };
+  }
+  return { ok: true, requestId: String(publicInputs.request_id || ''), identityPublicKey };
 }

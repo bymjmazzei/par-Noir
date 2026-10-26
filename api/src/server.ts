@@ -25,7 +25,7 @@ import { generateChallenge } from './server/utils/identifierGenerators';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 import { registerIdentityMigrationRoutes } from './server/modules/identityMigrationService';
 import { registerDeviceAuthRoutes } from './server/modules/deviceAuthRoutes';
-import { registerRecoveryVaultRoutes } from './server/modules/recoveryVaultRoutes';
+import { registerRecoveryRoutes } from './server/modules/recoveryRoutes';
 import { registerRecoveryFailsafeRoutes } from './server/modules/recoveryFailsafeRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerPlatformRegistryRoutes } from './server/modules/platformRegistryRoutes';
@@ -66,7 +66,6 @@ import { registerCreatorSubscriberRoutes } from './server/modules/creatorSubscri
 import { setupActivityLedgerRoutes } from './server/modules/activityLedgerRoutes';
 import { setupNotificationRoutes } from './server/modules/notificationRoutes';
 import { setupProfileRoutes } from './server/modules/profileRoutes';
-import { setupRecoveryRequestRoutes } from './server/modules/recoveryRequestRoutes';
 import { setupMessageRoutes } from './server/modules/messageRoutes';
 import { setupGroupRoutes } from './server/modules/groupRoutes';
 import { setupPenRoutes } from './server/modules/penRoutes';
@@ -1001,7 +1000,7 @@ class ProductionServer {
     registerAdminDeveloperRoutes(this.app);
     registerIdentityMigrationRoutes(this.app);
     registerDeviceAuthRoutes(this.app);
-    registerRecoveryVaultRoutes(this.app);
+    registerRecoveryRoutes(this.app);
     registerRecoveryFailsafeRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
     registerPlatformRegistryRoutes(this.app);
@@ -1038,11 +1037,6 @@ class ProductionServer {
     registerPersonalSearchRoute(this.app);
 
     setupStorageVolumeMigrationRoute(this.app);
-
-    setupRecoveryRequestRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-    });
 
     setupGroupRoutes(this.app, {
       extractAccountId: (account) => this.extractAccountId(account),

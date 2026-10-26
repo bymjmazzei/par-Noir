@@ -1,5 +1,5 @@
 /**
- * Recovery failsafe routes: register key hash + envelope; public resolve by key hash.
+ * Recovery failsafe routes: register key hash + envelope + Drive proof; public recovery start.
  */
 
 import type { Application, Request, Response } from 'express';
@@ -11,7 +11,20 @@ import {
   upsertRecoveryEnvelopeOnly,
   upsertRecoveryFailsafe,
 } from './recoveryFailsafeService';
+import {
+  ACTIVE_REQUEST_STATUSES,
+  eligibleCustodians,
+  getRecoveryRelayStore,
+  isMlKem768PublicKey,
+  recoveryDriveProofDigest,
+  recoveryOwnerHash,
+  recoveryReleaseDelayMs,
+  recoveryRequestIdForKey,
+  recoveryRequestTtlMs,
+} from './recoveryRelayService';
 import { safeClientErrorMessage } from '../utils/safeError';
+
+const SHA256_HEX = /^[0-9a-fA-F]{64}$/;
 
 function bearerPn(req: Request): string | null {
   const authHeader = req.headers.authorization;
@@ -35,7 +48,7 @@ export function registerRecoveryFailsafeRoutes(app: Application): void {
       const authPn = bearerPn(req);
       if (!authPn) return res.status(401).json({ error: 'unauthorized' });
 
-      const { userPnIdentifier, keyHash, publicKey, envelope } = req.body ?? {};
+      const { userPnIdentifier, keyHash, publicKey, envelope, driveProofHash } = req.body ?? {};
       const pnRaw = String(userPnIdentifier || authPn);
       const pn = pnRaw.startsWith('pn-') ? pnRaw : `pn-${pnRaw}`;
       if (pn !== authPn) {
@@ -47,6 +60,12 @@ export function registerRecoveryFailsafeRoutes(app: Application): void {
       if (!envelope || typeof envelope !== 'object') {
         return res.status(400).json({ error: 'envelope required' });
       }
+      if (driveProofHash !== undefined && !SHA256_HEX.test(String(driveProofHash))) {
+        return res.status(400).json({ error: 'invalid_drive_proof_hash' });
+      }
+      const driveProofDigest = driveProofHash
+        ? recoveryDriveProofDigest(String(driveProofHash).toLowerCase())
+        : undefined;
 
       if (typeof keyHash === 'string' && keyHash.trim()) {
         await upsertRecoveryFailsafe({
@@ -54,12 +73,14 @@ export function registerRecoveryFailsafeRoutes(app: Application): void {
           keyHash: keyHash.trim(),
           publicKey,
           envelope,
+          driveProofDigest,
         });
       } else {
         await upsertRecoveryEnvelopeOnly({
           pnIdentifier: pn,
           publicKey,
           envelope,
+          driveProofDigest,
         });
       }
       return res.json({ success: true });
@@ -89,85 +110,69 @@ export function registerRecoveryFailsafeRoutes(app: Application): void {
   });
 
   /**
-   * Public resolve: paste recovery key hash → envelope + publicKey for Shamir start.
-   * Does not require owner session (unlock screen).
-   */
-  app.post('/api/recovery/failsafe/resolve', async (req: Request, res: Response) => {
-    try {
-      const { keyHash, pnIdentifier } = req.body ?? {};
-      if (!keyHash || typeof keyHash !== 'string') {
-        return res.status(400).json({ error: 'keyHash required' });
-      }
-      const record = await resolveRecoveryFailsafe({
-        keyHash: keyHash.trim(),
-        pnIdentifier: typeof pnIdentifier === 'string' ? pnIdentifier : undefined,
-      });
-      if (!record) {
-        return res.status(404).json({ error: 'not_found', message: 'Invalid recovery key' });
-      }
-      return res.json({
-        pnIdentifier: record.pnIdentifier,
-        publicKey: record.publicKey,
-        envelope: record.envelope,
-      });
-    } catch (error: unknown) {
-      console.error('[recovery] failsafe resolve:', error);
-      return res.status(500).json({ error: 'server_error' });
-    }
-  });
-
-  /**
-   * Public: start custodian recovery with a registered failsafe key (no .pn / no owner session).
-   * Best-effort persists the request on Drive when server credentials exist.
+   * Public: start custodian recovery with the failsafe key (no owner session).
+   * Approved shares are sealed to `temporaryPublicKey`, which only the claimant device holds.
    */
   app.post('/api/recovery/failsafe/start', async (req: Request, res: Response) => {
     try {
-      const { keyHash, pnIdentifier, threshold, claimantContact } = req.body ?? {};
+      const { keyHash, temporaryPublicKey, claimantContact } = req.body ?? {};
       if (!keyHash || typeof keyHash !== 'string') {
         return res.status(400).json({ error: 'keyHash required' });
       }
-      const record = await resolveRecoveryFailsafe({
-        keyHash: keyHash.trim(),
-        pnIdentifier: typeof pnIdentifier === 'string' ? pnIdentifier : undefined,
-      });
+      if (!isMlKem768PublicKey(temporaryPublicKey)) {
+        return res.status(400).json({ error: 'invalid_temporary_public_key' });
+      }
+      const record = await resolveRecoveryFailsafe({ keyHash: keyHash.trim() });
       if (!record) {
         return res.status(404).json({ error: 'not_found', message: 'Invalid recovery key' });
       }
+      if (!record.driveProofDigest) {
+        return res.status(409).json({ error: 'drive_proof_not_registered' });
+      }
 
-      const requestId = `recovery-${Date.now()}`;
-      const thr = Number(threshold) > 0 ? Number(threshold) : 2;
-      let persisted = false;
-      try {
-        const { getRecoveryDriveContext } = await import('./recoveryDriveContext');
-        const { RecoverySheetsService } = await import('./recoverySheetsService');
-        const ctx = await getRecoveryDriveContext(record.pnIdentifier, { softMissingToken: true });
-        if (ctx) {
-          const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
-            ctx.token,
-            ctx.metadataFolderId,
-            ctx.pnIdentifier,
-            ctx.accountId
-          );
-          await RecoverySheetsService.upsertRecoveryRequest(
-            ctx.token,
-            spreadsheetId,
-            {
-              requestId,
-              publicKey: record.publicKey,
-              status: 'pending',
-              threshold: thr,
-              sharesJson: '[]',
-              claimantName: typeof claimantContact === 'string' ? claimantContact : '',
-              createdAt: new Date().toISOString(),
-              requestType: 'identity_recovery',
-            },
-            ctx.pnIdentifier,
-            ctx.accountId
-          );
-          persisted = true;
+      const store = getRecoveryRelayStore();
+      const ownerHash = recoveryOwnerHash(record.pnIdentifier);
+      const owner = await store.getOwner(ownerHash);
+      if (!owner) return res.status(409).json({ error: 'recovery_not_configured' });
+      const eligible = eligibleCustodians(await store.listCustodians(ownerHash), owner.epoch);
+      if (eligible.length < owner.threshold) {
+        return res.status(409).json({ error: 'custodians_not_ready' });
+      }
+      if (!eligible.some((c) => c.unrevokable)) {
+        return res.status(409).json({ error: 'protected_custodian_missing' });
+      }
+
+      const tempKey = String(temporaryPublicKey).trim();
+      const requestId = recoveryRequestIdForKey(tempKey);
+      let request = await store.getRequest(requestId);
+      if (request && (request.ownerHash !== ownerHash || !ACTIVE_REQUEST_STATUSES.includes(request.status))) {
+        return res.status(409).json({ error: 'request_key_reused' });
+      }
+      if (!request) {
+        const now = Date.now();
+        request = {
+          requestId,
+          requestType: 'identity_recovery',
+          ownerHash,
+          ownerPublicKey: owner.ownerPublicKey,
+          temporaryPublicKey: tempKey,
+          threshold: owner.threshold,
+          epoch: owner.epoch,
+          claimantContact: typeof claimantContact === 'string' ? claimantContact.slice(0, 200) : '',
+          status: 'pending',
+          approvals: [],
+          releaseAfter: new Date(now + recoveryReleaseDelayMs()).toISOString(),
+          expiresAt: new Date(now + recoveryRequestTtlMs()).toISOString(),
+          createdAt: new Date(now).toISOString(),
+          updatedAt: new Date(now).toISOString(),
+        };
+        await store.insertRequest(request);
+        try {
+          const { emitNewNotification } = await import('./realtimeEvents');
+          emitNewNotification(record.pnIdentifier, 'recovery_request');
+        } catch (err) {
+          console.warn('[recovery] owner recovery notice not sent:', (err as Error)?.message);
         }
-      } catch (err) {
-        console.warn('[recovery] failsafe start Drive persist skipped:', err);
       }
 
       return res.json({
@@ -175,8 +180,9 @@ export function registerRecoveryFailsafeRoutes(app: Application): void {
         pnIdentifier: record.pnIdentifier,
         publicKey: record.publicKey,
         envelope: record.envelope,
-        threshold: thr,
-        persisted,
+        threshold: request.threshold,
+        releaseAfter: request.releaseAfter,
+        expiresAt: request.expiresAt,
       });
     } catch (error: unknown) {
       console.error('[recovery] failsafe start:', error);
