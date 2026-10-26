@@ -22,6 +22,7 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@noble/post-quantum": "^0.5.4",
     "secrets.js-grempe": "^2.0.0"
   },
   "devDependencies": {

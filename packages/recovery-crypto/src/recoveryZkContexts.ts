@@ -29,7 +29,7 @@ export interface RecoveryApprovalPublicInputs {
 export interface RecoveryZkApprovalPayload {
   custodianId: string;
   shareIndex: number;
-  /** ZK v2 envelope (custodian-signed approval or passcode-bound binding). */
+  /** ZK v2 envelope signed by the custodian's unlocked identity. */
   approvalZkp: string;
   /** Owner-issued custodianship credential presented with approval. */
   custodianshipZkp: string;
