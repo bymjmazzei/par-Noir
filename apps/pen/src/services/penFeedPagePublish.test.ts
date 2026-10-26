@@ -31,6 +31,13 @@ describe('penFeedPageForSection', () => {
     const page = penFeedPageForSection(section, manifest);
     expect(page.slug).toBe('page-2');
     expect(page.canvas).toEqual({ w: 360, h: 640 });
+    expect(page.contentInsetPx).toBe(40);
+    expect(
+      penFeedPageForSection(section, {
+        ...manifest,
+        pagePresentation: { padding: 16 } as PenDocManifest['pagePresentation']
+      }).contentInsetPx
+    ).toBe(16);
     expect(page.actionSection.layers.some((l) => l.id === 'btn')).toBe(true);
     expect(penPresentationFields({ ...manifest, pageView: 'screen' })).toEqual({
       pageView: 'screen',

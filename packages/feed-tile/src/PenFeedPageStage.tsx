@@ -72,13 +72,15 @@ function faceFontPx(layer: PenPageLayer, basePx: number): string | undefined {
   return scale === 1 ? undefined : `${basePx * scale}px`;
 }
 
-function layerShellStyle(layer: PenPageLayer, canvas: { w: number; h: number }): CSSProperties {
+type StageCanvas = { w: number; h: number; inset: number };
+
+function layerShellStyle(layer: PenPageLayer, canvas: StageCanvas): CSSProperties {
   const scale = layer.contentScale ?? 1;
   return {
     position: 'absolute',
     boxSizing: 'border-box',
-    left: `${(layer.x / canvas.w) * 100}%`,
-    top: `${(layer.y / canvas.h) * 100}%`,
+    left: `${((layer.x + canvas.inset) / canvas.w) * 100}%`,
+    top: `${((layer.y + canvas.inset) / canvas.h) * 100}%`,
     width: `${(layer.w / canvas.w) * 100}%`,
     height: `${(layer.h / canvas.h) * 100}%`,
     zIndex: layer.zIndex,
@@ -125,7 +127,7 @@ function OverlayLayer({
   onInput
 }: {
   layer: PenPageLayer;
-  canvas: { w: number; h: number };
+  canvas: StageCanvas;
   state: PenViewerState;
   allLayers: PenPageLayer[];
   docId: string;
@@ -291,7 +293,7 @@ export function PenFeedPageStage({
     setViewer(next);
   };
   const duration = penFeedPage.timelineDurationSec ?? penFeedPage.actionSection.timelineDurationSec ?? 5;
-  const canvas = penFeedPage.canvas;
+  const canvas: StageCanvas = { ...penFeedPage.canvas, inset: penFeedPage.contentInsetPx ?? 0 };
 
   useEffect(() => {
     if (externalClockSec != null) return;

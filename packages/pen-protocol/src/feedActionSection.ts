@@ -20,6 +20,8 @@ export type PenFeedActionSection = {
 export type PenFeedPagePayload = {
   slug: string;
   canvas: { w: number; h: number };
+  /** Body padding. Layer x/y are measured from inside it, so the stage adds it back. */
+  contentInsetPx?: number;
   timelineDurationSec?: number;
   actionSection: PenFeedActionSection;
 };

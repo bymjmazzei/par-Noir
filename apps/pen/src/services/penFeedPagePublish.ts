@@ -2,9 +2,12 @@
 
 import {
   canvasSizeForAspect,
+  defaultEditorPagePresentation,
   exportActionSectionForFeed,
+  mergePagePresentation,
   normalizeGalleryAspect,
   normalizeSection,
+  resolvePagePaddingPx,
   resolveTimelineDuration,
   type PenTimelineContext,
   type PenDocManifest,
@@ -38,9 +41,13 @@ export function penFeedPageForSection(
   const ctx = timelineCtxFromManifest(manifest);
   const actionSection = exportActionSectionForFeed(sec, ctx);
   const timelineDurationSec = resolveTimelineDuration(sec, undefined, ctx);
+  const contentInsetPx = resolvePagePaddingPx(
+    mergePagePresentation(defaultEditorPagePresentation(), manifest.pagePresentation).padding
+  );
   return {
     slug: sec.slug,
     canvas,
+    contentInsetPx,
     ...(timelineDurationSec > 0 ? { timelineDurationSec } : {}),
     actionSection
   };
