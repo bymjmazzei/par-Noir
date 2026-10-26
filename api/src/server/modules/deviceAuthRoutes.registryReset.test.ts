@@ -147,6 +147,13 @@ describe('device registry reset finalize', () => {
     expect(resetDeviceRegistry).not.toHaveBeenCalled();
   });
 
+  it('rejects an identity recovery request', async () => {
+    await store.insertRequest(request({ requestType: 'identity_recovery', temporaryPublicKey: 'tmp' }));
+    const res = await finalize('device-reset-1');
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(resetDeviceRegistry).not.toHaveBeenCalled();
+  });
+
   it("does not finalize another owner's request", async () => {
     await store.insertRequest(request({ ownerHash: recoveryOwnerHash('pn-someone') }));
     const res = await finalize('device-reset-1');
