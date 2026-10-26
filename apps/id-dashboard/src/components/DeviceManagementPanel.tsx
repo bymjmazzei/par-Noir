@@ -13,11 +13,15 @@ import {
   completePairingFromNonce,
   createPairingNonce,
   finalizeDeviceRegistryReset,
-  initiateDeviceRegistryResetRequest,
   resetDeviceRegistryDev,
   revokeDeviceOnServer,
   updateDevicePolicy,
 } from '../services/deviceApiService';
+import {
+  fetchOwnerRecoveryRequests,
+  startDeviceRegistryReset,
+  type OwnerRecoveryRequest,
+} from '../services/recoveryApiService';
 import { clearPendingDevicePairing } from '../hooks/useDeviceAuthState';
 import { clearDeviceRegistration } from '../services/deviceKeyStorage';
 import { PN_SHOW_DEVICE_PAIRING_QR_EVENT } from '../constants/deviceEvents';
@@ -177,30 +181,42 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
       await clearDeviceRegistration(pnIdentifier);
     });
 
+  const [resetRequests, setResetRequests] = useState<OwnerRecoveryRequest[]>([]);
+  const showResetControls = hasKeyedDevices && !isKeyedSession && Boolean(authToken && pnIdentifier);
+
+  const loadResetRequests = useCallback(async () => {
+    if (!authToken || !showResetControls) return;
+    try {
+      const rows = await fetchOwnerRecoveryRequests(authToken);
+      setResetRequests(
+        rows.filter(
+          (r) =>
+            r.requestType === 'device_registry_reset'
+            && (r.status === 'pending' || r.status === 'ready')
+        )
+      );
+    } catch (err) {
+      console.warn('[devices] reset requests unavailable:', err instanceof Error ? err.message : err);
+    }
+  }, [authToken, showResetControls]);
+
+  useEffect(() => {
+    void loadResetRequests();
+  }, [loadResetRequests]);
+
   const handleInitiateShamirDeviceReset = () =>
     run(async () => {
-      if (!authToken || !pnIdentifier || !sessionId) {
-        throw new Error('Unlock and reconnect Drive first');
-      }
-      if (!ownerPublicKey) throw new Error('Identity public key required');
-      const { requestId } = await initiateDeviceRegistryResetRequest({
-        userPnIdentifier: pnIdentifier,
-        authToken,
-        publicKey: ownerPublicKey,
-        threshold: 2,
-      });
-      window.alert(
-        `Device registry reset request ${requestId} created. Custodians must approve. When status is ready, use Finalize reset.`
-      );
+      if (!authToken) throw new Error('Session required');
+      await startDeviceRegistryReset(authToken);
+      await loadResetRequests();
     });
 
-  const handleFinalizeShamirDeviceReset = () =>
+  const handleFinalizeShamirDeviceReset = (requestId: string) =>
     run(async () => {
       if (!authToken || !pnIdentifier) throw new Error('Session required');
-      const requestId = window.prompt('Paste the device_registry_reset request id to finalize:');
-      if (!requestId?.trim()) return;
-      await finalizeDeviceRegistryReset(pnIdentifier, authToken, requestId.trim());
+      await finalizeDeviceRegistryReset(pnIdentifier, authToken, requestId);
       await clearDeviceRegistration(pnIdentifier);
+      await loadResetRequests();
     });
 
   const handleCompletePairing = () =>
@@ -390,24 +406,44 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
             Download the app to key a device
           </a>
         )}
-        {hasKeyedDevices && !isKeyedSession && authToken && pnIdentifier && (
+        {showResetControls && (
           <>
-            <button
-              type="button"
-              disabled={busy || !sessionId}
-              onClick={handleInitiateShamirDeviceReset}
-              className="px-3 py-1.5 rounded text-sm border border-amber-500/50 text-amber-200 disabled:opacity-50"
-            >
-              Reset keyed devices (custodians)
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={handleFinalizeShamirDeviceReset}
-              className="px-3 py-1.5 rounded text-sm border border-border text-text-secondary disabled:opacity-50"
-            >
-              Finalize reset
-            </button>
+            {resetRequests.length === 0 && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleInitiateShamirDeviceReset}
+                className="px-3 py-1.5 rounded text-sm border border-amber-500/50 text-amber-200 disabled:opacity-50"
+              >
+                Reset keyed devices (custodians)
+              </button>
+            )}
+            {resetRequests.map((r) => {
+              const waitMs = Date.parse(r.releaseAfter) - Date.now();
+              const ready = r.status === 'ready' && waitMs <= 0;
+              return (
+                <button
+                  key={r.requestId}
+                  type="button"
+                  disabled={busy || !ready}
+                  onClick={() => handleFinalizeShamirDeviceReset(r.requestId)}
+                  className="px-3 py-1.5 rounded text-sm border border-border text-text-secondary disabled:opacity-50"
+                  title={
+                    r.status !== 'ready'
+                      ? `${r.approvalCount}/${r.threshold} custodian approvals`
+                      : waitMs > 0
+                        ? `Available after ${new Date(r.releaseAfter).toLocaleString()}`
+                        : undefined
+                  }
+                >
+                  {ready
+                    ? 'Finalize device reset'
+                    : r.status === 'ready'
+                      ? `Reset approved, available ${new Date(r.releaseAfter).toLocaleString()}`
+                      : `Reset waiting: ${r.approvalCount}/${r.threshold} approvals`}
+                </button>
+              );
+            })}
             <button
               type="button"
               disabled={busy}

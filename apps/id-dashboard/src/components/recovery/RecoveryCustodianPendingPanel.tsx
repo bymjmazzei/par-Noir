@@ -1,101 +1,102 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { API_ENDPOINT } from '../../config/api';
-import { resolveOwnerApiToken } from '../../services/ownerApiToken';
+import {
+  fetchCustodianRecoveryRequests,
+  type CustodianRecoveryRequest,
+} from '../../services/recoveryApiService';
+import { syncCustodianCustody } from '../../services/recoveryRelayFlows';
 
-export interface RemoteRecoveryRequest {
-  requestId: string;
-  publicKey: string;
-  status: string;
-  threshold: number;
-  sharesJson: string;
-  claimantName: string;
-  createdAt: string;
-}
+const POLL_MS = 60_000;
 
 interface RecoveryCustodianPendingPanelProps {
-  apiToken?: string | null;
-  custodianships: Array<{
-    id: string;
-    identityId: string;
-    identityName: string;
-    identityUsername: string;
-    identityPublicKey?: string;
-    canApprove: boolean;
-  }>;
-  onApprove: (requestId: string, custodianshipId: string, identityPublicKey: string) => void;
+  apiToken: string | null;
+  /** This custodian's own pN id (Drive folder for held shares). */
+  custodianPn: string | null;
+  custodianIdentityId: string | null;
+  custodianPublicKey?: string | null;
+  onReview: (request: CustodianRecoveryRequest) => void;
 }
 
+/**
+ * Custodian side of the relay: stores newly delivered shares on this pN's Drive and lists
+ * recovery requests from pNs this identity protects.
+ */
 export const RecoveryCustodianPendingPanel: React.FC<RecoveryCustodianPendingPanelProps> = ({
   apiToken,
-  custodianships,
-  onApprove
+  custodianPn,
+  custodianIdentityId,
+  custodianPublicKey,
+  onReview,
 }) => {
-  const [requests, setRequests] = useState<Array<RemoteRecoveryRequest & { identityPublicKey: string }>>([]);
-  const [loading, setLoading] = useState(false);
-  const authToken = apiToken || resolveOwnerApiToken();
+  const [requests, setRequests] = useState<CustodianRecoveryRequest[]>([]);
+  const [custodyError, setCustodyError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!authToken) return;
-    setLoading(true);
-    try {
-      const all: Array<RemoteRecoveryRequest & { identityPublicKey: string }> = [];
-      for (const cs of custodianships.filter((c) => c.canApprove && c.identityPublicKey)) {
-        const pnId = cs.identityPublicKey!;
-        const { fetchRecoveryRequests } = await import('../../services/recoveryApiService');
-        const requests = await fetchRecoveryRequests(pnId, authToken);
-        if (requests.length) {
-          const pending = requests.filter(
-            (r: RemoteRecoveryRequest) => r.status === 'pending' || r.status === 'ready'
-          );
-          for (const r of pending) {
-            all.push({ ...r, identityPublicKey: pnId });
-          }
-        }
+    if (!apiToken) return;
+    if (custodianPn && custodianIdentityId) {
+      try {
+        await syncCustodianCustody({
+          authToken: apiToken,
+          custodianPn,
+          custodianIdentityId,
+          custodianPublicKey,
+        });
+        setCustodyError(null);
+      } catch (err) {
+        setCustodyError(err instanceof Error ? err.message : 'Could not store recovery shares you protect.');
       }
-      setRequests(all);
-    } finally {
-      setLoading(false);
     }
-  }, [authToken, custodianships]);
+    try {
+      const rows = await fetchCustodianRecoveryRequests(apiToken);
+      setRequests(rows.filter((r) => r.status === 'pending' || r.status === 'ready'));
+    } catch (err) {
+      console.warn('[recovery] custodian requests unavailable:', err instanceof Error ? err.message : err);
+    }
+  }, [apiToken, custodianPn, custodianIdentityId, custodianPublicKey]);
 
   useEffect(() => {
-    load();
+    void load();
+    const id = window.setInterval(() => void load(), POLL_MS);
+    return () => window.clearInterval(id);
   }, [load]);
 
-  if (!custodianships.length) return null;
+  if (!requests.length && !custodyError) return null;
 
   return (
-    <div className="bg-secondary rounded-lg p-4 mb-4">
-      <h3 className="font-medium text-text-primary mb-2">Pending recovery requests</h3>
-      {loading && <p className="text-sm text-text-secondary">Loading…</p>}
-      {!loading && requests.length === 0 && (
-        <p className="text-sm text-text-secondary">No pending recovery requests for your custodianships.</p>
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold text-text-primary">Acting as custodian</h3>
+      {custodyError && (
+        <p className="text-sm text-yellow-400 bg-secondary rounded-lg p-3">{custodyError}</p>
       )}
-      <ul className="space-y-2">
-        {requests.map((r) => {
-          const cs = custodianships.find((c) => c.identityPublicKey === r.identityPublicKey);
-          const approvals = JSON.parse(r.sharesJson || '[]') as unknown[];
-          return (
-            <li key={`${r.identityPublicKey}-${r.requestId}`} className="flex items-center justify-between text-sm border border-border rounded p-2">
-              <div>
-                <div className="font-medium">{r.claimantName || 'Recovery request'}</div>
-                <div className="text-text-secondary text-xs">
-                  {cs?.identityName} · {approvals.length}/{r.threshold} approvals
+      {requests.length > 0 && (
+        <div className="bg-secondary rounded-lg p-4">
+          <h4 className="font-medium text-text-primary mb-2">Recovery requests waiting for you</h4>
+          <ul className="space-y-2">
+            {requests.map((r) => (
+              <li
+                key={`${r.requestId}-${r.custodianId}`}
+                className="flex items-center justify-between text-sm border border-border rounded p-2"
+              >
+                <div>
+                  <div className="font-medium">
+                    {r.requestType === 'device_registry_reset' ? 'Device reset' : 'Identity recovery'}
+                    {r.claimantContact ? ` · ${r.claimantContact}` : ''}
+                  </div>
+                  <div className="text-text-secondary text-xs">
+                    {r.approvalCount}/{r.threshold} approvals · expires {new Date(r.expiresAt).toLocaleDateString()}
+                  </div>
                 </div>
-              </div>
-              {r.status === 'pending' && cs && (
                 <button
                   type="button"
                   className="px-3 py-1 modal-button rounded text-xs"
-                  onClick={() => onApprove(r.requestId, cs.id, r.identityPublicKey)}
+                  onClick={() => onReview(r)}
                 >
                   Review
                 </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

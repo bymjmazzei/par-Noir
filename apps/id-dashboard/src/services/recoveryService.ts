@@ -5,9 +5,7 @@
 import {
   combineShares,
   decryptRecoveryEnvelope,
-  decryptOwnerVaultShare,
   normalizeShare,
-  parseOwnerVaultShare,
   sealRecoveryShares,
   type RecoveryEnvelope,
   type ShamirShare
@@ -26,7 +24,8 @@ export interface RecoveryCompletionInput {
   newPnName: string;
   /** New Key 2 (internal: passcode) */
   newPasscode: string;
-  existingIdentity: EncryptedIdentity;
+  /** Identity public key the relay released shares for. */
+  expectedPublicKey: string;
 }
 
 export interface RecoveryCompletionResult {
@@ -50,8 +49,8 @@ export async function completeRecoveryWithShares(
   const master = combineShares(input.shares.map((s) => normalizeShare(s)));
   const payload = await decryptRecoveryEnvelope(master, input.envelope);
 
-  if (payload.publicKey !== input.existingIdentity.publicKey) {
-    throw new Error('Recovery envelope does not match this identity file');
+  if (payload.publicKey !== input.expectedPublicKey) {
+    throw new Error('Recovery envelope does not match this pN');
   }
 
   const identityData: Record<string, unknown> = {
@@ -92,96 +91,4 @@ export async function completeRecoveryWithShares(
       recoverySharesSealed
     }
   };
-}
-
-export async function decryptVaultSharesForRecovery(
-  vaultShares: Array<{ encryptedShare: string; shareIndex: number }>,
-  identityPublicKey: string
-): Promise<ShamirShare[]> {
-  const shares: ShamirShare[] = [];
-  for (const row of vaultShares) {
-    const enc = parseOwnerVaultShare(row.encryptedShare);
-    shares.push(await decryptOwnerVaultShare(enc, identityPublicKey));
-  }
-  return shares;
-}
-
-const PENDING_SHARES_KEY = 'pn_pending_recovery_shares';
-const RECOVERY_REQUESTS_KEY = 'pn_recovery_requests';
-
-export interface PendingRecoveryShares {
-  publicKey: string;
-  shares: ShamirShare[];
-  threshold: number;
-}
-
-/** @deprecated Use getPendingRecoverySharesBuffer from recoveryVaultService */
-export function getPendingRecoveryShares(): PendingRecoveryShares | null {
-  try {
-    const raw = sessionStorage.getItem(PENDING_SHARES_KEY);
-    return raw ? (JSON.parse(raw) as PendingRecoveryShares) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** @deprecated Use setPendingRecoverySharesBuffer — flush to Drive via initializeRecoveryVaultOnDrive */
-export function setPendingRecoveryShares(data: PendingRecoveryShares): void {
-  sessionStorage.setItem(PENDING_SHARES_KEY, JSON.stringify(data));
-}
-
-/** @deprecated Shares come from Drive pending pool via assignCustodianVaultAndIssueCredential */
-export function takeShareForCustodianAssignment(): { share: ShamirShare; shareIndex: number } | null {
-  const pending = getPendingRecoveryShares();
-  if (!pending?.shares?.length) return null;
-  const share = pending.shares.shift()!;
-  setPendingRecoveryShares(pending);
-  return { share, shareIndex: share.index };
-}
-
-export interface StoredRecoveryRequest {
-  id: string;
-  status: 'pending' | 'ready' | 'completed';
-  approvalCount: number;
-  requiredThreshold: number;
-  publicKey: string;
-  createdAt: string;
-}
-
-export function saveRecoveryRequest(req: StoredRecoveryRequest): void {
-  const list = listRecoveryRequests().filter((r) => r.id !== req.id);
-  list.push(req);
-  localStorage.setItem(RECOVERY_REQUESTS_KEY, JSON.stringify(list));
-}
-
-export function listRecoveryRequests(): StoredRecoveryRequest[] {
-  try {
-    const raw = localStorage.getItem(RECOVERY_REQUESTS_KEY);
-    return raw ? (JSON.parse(raw) as StoredRecoveryRequest[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function appendApprovalToRecoveryRequest(requestId: string): StoredRecoveryRequest | null {
-  const list = listRecoveryRequests();
-  const req = list.find((r) => r.id === requestId);
-  if (!req) return null;
-  req.approvalCount += 1;
-  if (req.approvalCount >= req.requiredThreshold) req.status = 'ready';
-  saveRecoveryRequest(req);
-  return req;
-}
-
-export function markRecoveryRequestCompleted(requestId: string): void {
-  const list = listRecoveryRequests();
-  const req = list.find((r) => r.id === requestId);
-  if (!req) return;
-  req.status = 'completed';
-  saveRecoveryRequest(req);
-}
-
-export function markRecoveryRequestExpired(requestId: string): void {
-  const list = listRecoveryRequests().filter((r) => r.id !== requestId);
-  localStorage.setItem(RECOVERY_REQUESTS_KEY, JSON.stringify(list));
 }

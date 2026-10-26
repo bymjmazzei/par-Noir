@@ -2,8 +2,6 @@ import {
   RECOVERY_APPROVAL_CONTEXT,
   RECOVERY_CUSTODIAN_CONTEXT,
   RECOVERY_ZKP_TYPES,
-  createRecoveryApprovalBinding,
-  serializeApprovalBinding,
   type RecoveryCustodianshipPublicInputs,
   type RecoveryApprovalPublicInputs,
 } from '@par-noir/recovery-crypto';
@@ -52,6 +50,7 @@ export async function issueCustodianshipCredential(params: {
   });
 }
 
+/** Approval signed by the custodian's unlocked identity; throws when the identity is locked. */
 export async function issueRecoveryApprovalZkp(params: {
   identityId: string;
   encryptedIdentity: EncryptedIdentity;
@@ -59,63 +58,24 @@ export async function issueRecoveryApprovalZkp(params: {
   requestId: string;
   custodianId: string;
   shareIndex: number;
-  custodianshipZkp: string;
 }): Promise<string> {
-  try {
-    const { mlDsaSecretKey, mlDsaPublicKey } = await loadMlDsaKeypairForZk(
-      params.identityId,
-      params.encryptedIdentity
-    );
-    const public_inputs = {
-      zkp_type: RECOVERY_ZKP_TYPES.approval,
-      identity_public_key: params.identityPublicKey,
-      request_id: params.requestId,
-      custodian_id: params.custodianId,
-      share_index: params.shareIndex,
-    } satisfies RecoveryApprovalPublicInputs;
-    const expiresAtMs = Date.now() + APPROVAL_EXPIRY_HOURS * 60 * 60 * 1000;
-    return generateZkEnvelope({
-      mlDsaSecretKey,
-      mlDsaPublicKey,
-      context: RECOVERY_APPROVAL_CONTEXT,
-      public_inputs: public_inputs as Record<string, unknown>,
-      expiresAtMs,
-    });
-  } catch {
-    return '';
-  }
-}
-
-export async function issueRecoveryApproval(params: {
-  identityPublicKey: string;
-  requestId: string;
-  custodianId: string;
-  shareIndex: number;
-  custodianshipZkp: string;
-  custodianPasscode: string;
-  /** When custodian has unlocked pN, prefer ML-DSA approval. */
-  custodianIdentityId?: string;
-  custodianEncryptedIdentity?: EncryptedIdentity;
-}): Promise<string> {
-  if (params.custodianIdentityId && params.custodianEncryptedIdentity) {
-    const zkp = await issueRecoveryApprovalZkp({
-      identityId: params.custodianIdentityId,
-      encryptedIdentity: params.custodianEncryptedIdentity,
-      identityPublicKey: params.identityPublicKey,
-      requestId: params.requestId,
-      custodianId: params.custodianId,
-      shareIndex: params.shareIndex,
-      custodianshipZkp: params.custodianshipZkp,
-    });
-    if (zkp) return zkp;
-  }
-  const binding = await createRecoveryApprovalBinding({
-    identityPublicKey: params.identityPublicKey,
-    requestId: params.requestId,
-    custodianId: params.custodianId,
-    shareIndex: params.shareIndex,
-    custodianshipZkp: params.custodianshipZkp,
-    custodianPasscode: params.custodianPasscode,
+  const { mlDsaSecretKey, mlDsaPublicKey } = await loadMlDsaKeypairForZk(
+    params.identityId,
+    params.encryptedIdentity
+  );
+  const public_inputs = {
+    zkp_type: RECOVERY_ZKP_TYPES.approval,
+    identity_public_key: params.identityPublicKey,
+    request_id: params.requestId,
+    custodian_id: params.custodianId,
+    share_index: params.shareIndex,
+  } satisfies RecoveryApprovalPublicInputs;
+  const expiresAtMs = Date.now() + APPROVAL_EXPIRY_HOURS * 60 * 60 * 1000;
+  return generateZkEnvelope({
+    mlDsaSecretKey,
+    mlDsaPublicKey,
+    context: RECOVERY_APPROVAL_CONTEXT,
+    public_inputs: public_inputs as Record<string, unknown>,
+    expiresAtMs,
   });
-  return serializeApprovalBinding(binding);
 }

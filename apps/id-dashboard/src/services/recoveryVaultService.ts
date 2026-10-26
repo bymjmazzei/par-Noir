@@ -1,16 +1,8 @@
 import type { ShamirShare } from '@par-noir/recovery-crypto';
-import {
-  encryptSharesForVault,
-  fetchPendingVaultShares,
-  initializeRecoveryVault,
-  reconcileRecoveryVault,
-} from './recoveryApiService';
-import { resolveRecoveryShares } from './recoveryShareResolver';
-import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 const PENDING_SHARES_KEY = 'pn_pending_recovery_shares';
-const RECOVERY_REQUESTS_KEY = 'pn_recovery_requests';
 
+/** Shares of a freshly split identity, held in this tab until the .pn carries them sealed. */
 export interface PendingRecoveryShares {
   publicKey: string;
   shares: ShamirShare[];
@@ -33,100 +25,3 @@ export function setPendingRecoverySharesBuffer(data: PendingRecoveryShares): voi
 export function clearPendingRecoverySharesBuffer(): void {
   sessionStorage.removeItem(PENDING_SHARES_KEY);
 }
-
-/** Persist all Shamir shares to Drive pending pool; clears session buffer on success. */
-export async function initializeRecoveryVaultOnDrive(params: {
-  userPnIdentifier: string;
-  authToken: string;
-  publicKey: string;
-  shares: ShamirShare[];
-  threshold: number;
-}): Promise<{ inserted: number; skipped: number }> {
-  const encrypted = await encryptSharesForVault(params.shares, params.publicKey);
-  const result = await initializeRecoveryVault(params.userPnIdentifier, params.authToken, encrypted);
-  if (result.inserted > 0 || result.skipped > 0) {
-    clearPendingRecoverySharesBuffer();
-  }
-  return result;
-}
-
-/** Flush sessionStorage buffer to Drive if present (legacy create-session fast path). */
-export async function flushPendingRecoverySharesToDrive(params: {
-  userPnIdentifier: string;
-  authToken: string;
-  publicKey: string;
-}): Promise<{ flushed: boolean; inserted?: number; skipped?: number }> {
-  const buffer = getPendingRecoverySharesBuffer();
-  if (!buffer?.shares?.length || buffer.publicKey !== params.publicKey) {
-    return { flushed: false };
-  }
-  const result = await initializeRecoveryVaultOnDrive({
-    userPnIdentifier: params.userPnIdentifier,
-    authToken: params.authToken,
-    publicKey: params.publicKey,
-    shares: buffer.shares,
-    threshold: buffer.threshold,
-  });
-  return { flushed: true, ...result };
-}
-
-/** Seed Drive pending vault from sealed shares in .pn (Recovery tab — explicit user action). */
-export async function seedRecoveryVaultFromMaterial(params: {
-  encryptedIdentity: EncryptedIdentity;
-  pnName: string;
-  passcode: string;
-  userPnIdentifier: string;
-  authToken: string;
-  publicKey: string;
-  threshold?: number;
-}): Promise<{ inserted: number; skipped: number }> {
-  const shares = await resolveRecoveryShares({
-    encryptedIdentity: params.encryptedIdentity,
-    pnName: params.pnName,
-    passcode: params.passcode,
-    publicKey: params.publicKey,
-  });
-  const result = await initializeRecoveryVaultOnDrive({
-    userPnIdentifier: params.userPnIdentifier,
-    authToken: params.authToken,
-    publicKey: params.publicKey,
-    shares,
-    threshold: params.threshold ?? 2,
-  });
-
-  const envelope = params.encryptedIdentity.recoveryEnvelope;
-  if (envelope) {
-    try {
-      const { registerRecoveryFailsafe } = await import('./recoveryApiService');
-      await registerRecoveryFailsafe(params.authToken, {
-        userPnIdentifier: params.userPnIdentifier,
-        publicKey: params.publicKey,
-        envelope,
-      });
-    } catch (err) {
-      console.warn('Failed to persist recovery envelope for failsafe key path:', err);
-    }
-  }
-
-  return result;
-}
-
-/** Normalize legacy custodian rows and report share indices still missing from Drive vault. */
-export async function reconcileRecoveryVaultOnDrive(params: {
-  userPnIdentifier: string;
-  authToken: string;
-  totalShares: number;
-}): Promise<{ normalized: number; missingIndices: number[] }> {
-  return reconcileRecoveryVault(params.userPnIdentifier, params.authToken, params.totalShares);
-}
-
-export async function pickLowestPendingShareIndex(
-  userPnIdentifier: string,
-  authToken: string
-): Promise<number | null> {
-  const pending = await fetchPendingVaultShares(userPnIdentifier, authToken, false);
-  if (!pending.length) return null;
-  return pending.map((p) => p.shareIndex).sort((a, b) => a - b)[0] ?? null;
-}
-
-export { RECOVERY_REQUESTS_KEY };

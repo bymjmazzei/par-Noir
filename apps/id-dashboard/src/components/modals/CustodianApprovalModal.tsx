@@ -1,20 +1,11 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
+import type { RecoveryRequest } from '../../types/app';
 
 interface CustodianApprovalModalProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedRecoveryRequest: {
-    id: string;
-    requestingUser: string;
-    timestamp: number | string;
-    claimantContactType?: 'email' | 'phone';
-    claimantContactValue?: string;
-    status: 'pending' | 'approved' | 'denied' | 'expired';
-    signatures: unknown[];
-    proofs?: unknown[];
-    approvals: unknown[];
-  } | null;
+  selectedRecoveryRequest: RecoveryRequest | null;
   selectedCustodianship: {
     id: string;
     identityName: string;
@@ -23,7 +14,6 @@ interface CustodianApprovalModalProps {
   } | null;
   recoveryThreshold: number;
   onApproveRecovery: (recoveryRequestId: string, custodianshipId: string) => void;
-  onSuccess: (message: string) => void;
 }
 
 export function CustodianApprovalModal({
@@ -33,38 +23,46 @@ export function CustodianApprovalModal({
   selectedCustodianship,
   recoveryThreshold,
   onApproveRecovery,
-  onSuccess
 }: CustodianApprovalModalProps) {
-  if (!isOpen || !selectedRecoveryRequest || !selectedCustodianship) return null;
+  if (!isOpen || !selectedRecoveryRequest) return null;
 
-  const approvalCount = selectedRecoveryRequest.proofs?.length ?? selectedRecoveryRequest.approvals.length;
+  const relay = selectedRecoveryRequest.relay;
+  const isDeviceReset = relay?.requestType === 'device_registry_reset';
+  const approvalCount = relay?.approvalCount ?? selectedRecoveryRequest.approvals.length;
+  const threshold = relay?.threshold ?? recoveryThreshold;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
       <div className="bg-modal-bg rounded-lg p-6 max-w-lg w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Recovery Approval Request</h2>
+          <h2 className="text-xl font-semibold">
+            {isDeviceReset ? 'Device Reset Approval' : 'Recovery Approval Request'}
+          </h2>
           <button onClick={onClose} className="modal-close-button">
             ✕
           </button>
         </div>
 
         <div className="space-y-6">
-          <div className="bg-secondary p-4 rounded-lg">
-            <h3 className="font-medium text-text-primary mb-2">Identity Details</h3>
-            <div className="space-y-2 text-sm">
-              <div><span className="text-text-secondary">Name:</span> <span className="font-medium">{selectedCustodianship.identityName}</span></div>
-              <div><span className="text-text-secondary">Username:</span> <span className="font-medium">{selectedCustodianship.identityUsername}</span></div>
+          {selectedCustodianship && (
+            <div className="bg-secondary p-4 rounded-lg">
+              <h3 className="font-medium text-text-primary mb-2">Identity Details</h3>
+              <div className="space-y-2 text-sm">
+                <div><span className="text-text-secondary">Name:</span> <span className="font-medium">{selectedCustodianship.identityName}</span></div>
+                {selectedCustodianship.identityUsername && (
+                  <div><span className="text-text-secondary">Username:</span> <span className="font-medium">{selectedCustodianship.identityUsername}</span></div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-secondary p-4 rounded-lg">
-            <h3 className="font-medium text-text-primary mb-2">Recovery Request</h3>
+            <h3 className="font-medium text-text-primary mb-2">Request</h3>
             <div className="space-y-2 text-sm">
               <div><span className="text-text-secondary">Requested by:</span> <span className="font-medium">{selectedRecoveryRequest.requestingUser}</span></div>
               <div><span className="text-text-secondary">Requested at:</span> <span className="font-medium">{new Date(selectedRecoveryRequest.timestamp).toLocaleString()}</span></div>
-              {selectedRecoveryRequest.claimantContactType && (
-                <div><span className="text-text-secondary">Contact:</span> <span className="font-medium">{selectedRecoveryRequest.claimantContactValue} ({selectedRecoveryRequest.claimantContactType})</span></div>
+              {selectedRecoveryRequest.expiresAt && (
+                <div><span className="text-text-secondary">Expires:</span> <span className="font-medium">{new Date(selectedRecoveryRequest.expiresAt).toLocaleString()}</span></div>
               )}
             </div>
           </div>
@@ -72,10 +70,12 @@ export function CustodianApprovalModal({
           <div className="bg-secondary p-4 rounded-lg">
             <h3 className="font-medium text-text-primary mb-2">Authorization Status</h3>
             <div className="space-y-2 text-sm">
-              <div><span className="text-text-secondary">ZK approvals:</span> <span className="font-medium text-green-600">{approvalCount}</span></div>
-              <div><span className="text-text-secondary">Required:</span> <span className="font-medium">{recoveryThreshold} custodian authorizations</span></div>
+              <div><span className="text-text-secondary">Approvals:</span> <span className="font-medium text-green-600">{approvalCount}</span></div>
+              <div><span className="text-text-secondary">Required:</span> <span className="font-medium">{threshold} custodians, including a protected one</span></div>
               <div className="text-xs text-text-secondary mt-2">
-                Your approval submits a ZK authorization proof only. Shamir shares stay on the owner&apos;s Drive — you never hold secret material.
+                {isDeviceReset
+                  ? 'Your approval lets the owner clear their registered devices. No recovery share is sent.'
+                  : 'Approving reads the share you hold from your cloud storage and re-encrypts it so only the requesting device can open it. par Noir relays it but cannot read it.'}
               </div>
             </div>
           </div>
@@ -86,9 +86,9 @@ export function CustodianApprovalModal({
               Security Notice
             </h4>
             <div className="text-sm text-text-secondary space-y-1">
-              <p>• Only approve if you recognize the claimant</p>
+              <p>• Only approve if you have confirmed with the owner through a channel you trust</p>
               <p>• Verify their contact information matches your records</p>
-              <p>• Your ZK approval authorizes release of vault shares to the claimant</p>
+              <p>• The owner can still cancel during the safety delay</p>
             </div>
           </div>
 
@@ -100,11 +100,7 @@ export function CustodianApprovalModal({
               Close
             </button>
             <button
-              onClick={() => {
-                onApproveRecovery(selectedRecoveryRequest.id, selectedCustodianship.id);
-                onClose();
-                onSuccess('Recovery authorization submitted');
-              }}
+              onClick={() => onApproveRecovery(selectedRecoveryRequest.id, selectedCustodianship?.id ?? '')}
               className="flex-1 px-4 py-2 modal-button rounded-md"
             >
               Approve

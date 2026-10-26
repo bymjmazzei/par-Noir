@@ -61,7 +61,7 @@ function validSplit(threshold: unknown, totalShares: unknown): { threshold: numb
   return { threshold: t, totalShares: n };
 }
 
-function custodianSummary(c: RecoveryCustodianRow, owner: RecoveryOwnerRow | null) {
+function custodianSummary(c: RecoveryCustodianRow, owner: RecoveryOwnerRow | null, custodyPending: boolean) {
   return {
     custodianId: c.custodianId,
     name: c.name,
@@ -69,9 +69,10 @@ function custodianSummary(c: RecoveryCustodianRow, owner: RecoveryOwnerRow | nul
     shareIndex: c.shareIndex,
     status: normalizeCustodianStatus(c.status),
     unrevokable: c.unrevokable,
-    hasKey: Boolean(c.mlKemPublicKey),
+    mlKemPublicKey: c.mlKemPublicKey,
     custodyEpoch: c.custodyEpoch,
     custodyCurrent: Boolean(owner && c.custodyEpoch === owner.epoch),
+    custodyPending,
     custodianshipCredential: c.custodianshipCredential,
     createdAt: c.createdAt,
   };
@@ -157,12 +158,19 @@ export function registerRecoveryRoutes(app: Application): void {
       const custodians = await store.listCustodians(ownerHash);
       const live = custodians.filter((c) => normalizeCustodianStatus(c.status) !== 'revoked');
       const ready = owner ? eligibleCustodians(custodians, owner.epoch) : [];
+      const rows = [];
+      for (const c of live) {
+        const pending = owner
+          ? (await store.listCustodyDeliveries(ownerHash, c.custodianId)).some((d) => d.epoch === owner.epoch)
+          : false;
+        rows.push(custodianSummary(c, owner, pending));
+      }
       return res.json({
         configured: Boolean(owner),
         epoch: owner?.epoch ?? null,
         threshold: owner?.threshold ?? null,
         totalShares: owner?.totalShares ?? null,
-        custodians: live.map((c) => custodianSummary(c, owner)),
+        custodians: rows,
         counts: {
           accepted: live.filter((c) => normalizeCustodianStatus(c.status) === 'accepted').length,
           acceptedUnrevokable: live.filter(
@@ -500,6 +508,7 @@ export function registerRecoveryRoutes(app: Application): void {
             ownerPublicKey: r.ownerPublicKey,
             custodianId: c.custodianId,
             shareIndex: c.shareIndex,
+            custodianshipCredential: c.custodianshipCredential,
             epoch: r.epoch,
             temporaryPublicKey: r.temporaryPublicKey,
           });

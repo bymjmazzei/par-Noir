@@ -2,6 +2,7 @@ import React from 'react';
 import { CheckCircle, Smartphone, Edit3, Settings, ChevronDown, Users, Layers, Wallet, Lock } from 'lucide-react';
 import { DataPointRequestsPanel } from '../components/DataPointRequestsPanel';
 import { RecoveryTab } from '../components/recovery/RecoveryTab';
+import { OwnerRecoveryRequestsBanner } from '../components/recovery/OwnerRecoveryRequestsBanner';
 import { ThemeAwareProfileImage } from '../components/ThemeAwareProfileImage';
 import { MonetizationTab } from '../components/monetization/MonetizationTab';
 import { SubPnTab } from '../components/subpn/SubPnTab';
@@ -344,6 +345,8 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                   </div>
                 </div>
               </div>
+
+              <OwnerRecoveryRequestsBanner apiToken={apiToken || null} />
 
               {/* Tabbed Interface */}
               <div className="bg-modal-bg rounded-lg shadow p-4 sm:p-6 lg:p-8 text-text-primary w-full max-w-4xl min-w-0">

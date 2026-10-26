@@ -34,6 +34,12 @@ module.exports = {
       tsconfig: {
         jsx: 'react-jsx'
       }
+    }],
+    '^.+\\.js$': ['ts-jest', {
+      tsconfig: { allowJs: true, module: 'commonjs', esModuleInterop: true },
+      isolatedModules: true,
     }]
-  }
+  },
+  // `@noble/*` ship ESM only and are pulled in by @par-noir/recovery-crypto.
+  transformIgnorePatterns: ['/node_modules/(?!@noble/)']
 };

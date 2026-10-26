@@ -22,6 +22,7 @@ export {
 } from './envelope';
 export {
   generateRecoveryKeyPair,
+  recoveryPublicKeyFromSecret,
   recoveryRequestIdFor,
   custodyAad,
   releaseAad,

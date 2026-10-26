@@ -1,16 +1,6 @@
 import { API_ENDPOINT } from '../config/api';
-import type { RecoveryZkApprovalPayload, ShamirShare } from '@par-noir/recovery-crypto';
-import {
-  encryptOwnerVaultShare,
-  serializeOwnerVaultShare,
-} from '@par-noir/recovery-crypto';
-import {
-  findRecoveryWorkbookId,
-  listDeviceRecoveryRequests,
-  readSheetValues,
-} from '@par-noir/device-cloud-credentials';
+import type { RecoveryEnvelope, RecoveryZkApprovalPayload } from '@par-noir/recovery-crypto';
 import { ownerFetch, ownerGet } from './ownerApiService';
-import { sessionDriveFor } from './sessionDrive';
 
 export interface RecoveryCustodianApiRow {
   custodianId: string;
@@ -21,226 +11,108 @@ export interface RecoveryCustodianApiRow {
   status: string;
   createdAt: string;
   unrevokable: boolean;
-  custodianPublicKey?: string;
-  custodianPnIdentifier?: string;
+  /** Published by the custodian on accept; shares are sealed to it. */
+  mlKemPublicKey: string | null;
+  /** Custodian holds the share for the current epoch. */
+  custodyCurrent: boolean;
+  /** A share delivery for the current epoch is waiting for the custodian. */
+  custodyPending: boolean;
 }
 
 export interface RecoveryCustodianSummary {
+  configured: boolean;
+  epoch: number | null;
+  threshold: number | null;
+  totalShares: number | null;
   custodians: RecoveryCustodianApiRow[];
-  pending: Array<{ shareIndex: number; createdAt: string }>;
-  counts: { accepted: number; acceptedUnrevokable: number; invited: number };
-}
-
-function authHeaders(authToken: string, extra?: Record<string, string>) {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${authToken}`,
-    ...extra,
+  counts: {
+    accepted: number;
+    acceptedUnrevokable: number;
+    invited: number;
+    /** Accepted and holding the current-epoch share. */
+    ready: number;
+    readyUnrevokable: number;
   };
 }
 
-async function ownerMutatingFetch(
-  authToken: string,
-  method: string,
-  path: string,
-  body?: unknown
-): Promise<Response> {
-  return ownerFetch(authToken, method, path, body);
-}
+export type RecoveryRequestType = 'identity_recovery' | 'device_registry_reset';
 
-export async function persistRecoveryRequest(
-  userPnIdentifier: string,
-  authToken: string,
-  payload: {
-    requestId: string;
-    publicKey: string;
-    threshold: number;
-    claimantName?: string;
-    claimantContact?: string;
-  }
-): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/requests`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({
-      userPnIdentifier,
-      ...payload,
-      claimantName: payload.claimantContact || payload.claimantName || '',
-      status: 'pending',
-    }),
-  });
-  if (!res.ok) throw new Error('Failed to persist recovery request');
-}
-
-export async function submitRecoveryApproval(
-  userPnIdentifier: string,
-  authToken: string,
-  requestId: string,
-  approval: RecoveryZkApprovalPayload,
-  threshold?: number
-): Promise<{ status: string; approvalCount: number; includesUnrevokableShare?: boolean; reason?: string }> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/requests/${encodeURIComponent(requestId)}/approvals`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ userPnIdentifier, approval, threshold }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'Failed to submit recovery approval');
-  }
-  return res.json();
-}
-
-export async function fetchRecoveryRequests(
-  userPnIdentifier: string,
-  authToken?: string | null
-): Promise<Array<{
+export interface OwnerRecoveryRequest {
   requestId: string;
-  publicKey: string;
+  requestType: RecoveryRequestType;
   status: string;
-  threshold: number;
-  sharesJson: string;
-  claimantName: string;
-  createdAt: string;
-}>> {
-  if (!authToken) return [];
-  try {
-    const drive = await sessionDriveFor(userPnIdentifier, authToken);
-    const workbook = await findRecoveryWorkbookId(drive.accessToken, drive.index.metadataFolderId);
-    if (!workbook) return [];
-    return listDeviceRecoveryRequests(drive.accessToken, workbook);
-  } catch {
-    return [];
-  }
-}
-
-export async function fetchRecoveryRequest(
-  userPnIdentifier: string,
-  authToken: string | null | undefined,
-  requestId: string
-): Promise<{
-  requestId: string;
-  publicKey: string;
-  status: string;
-  threshold: number;
-  sharesJson: string;
-  claimantName: string;
-  createdAt: string;
-} | null> {
-  const rows = await fetchRecoveryRequests(userPnIdentifier, authToken);
-  return rows.find((row) => row.requestId === requestId) || null;
-}
-
-export async function fetchVaultShares(
-  userPnIdentifier: string,
-  authToken: string | null | undefined,
-  requestId: string
-): Promise<{
-  vaultShares: Array<{ custodianId: string; shareIndex: number; encryptedShare: string }>;
   approvalCount: number;
   threshold: number;
   includesUnrevokableShare: boolean;
-}> {
-  const request = await fetchRecoveryRequest(userPnIdentifier, authToken, requestId);
-  let vaultShares: Array<{ custodianId: string; shareIndex: number; encryptedShare: string }> = [];
-  try {
-    const parsed = request?.sharesJson ? JSON.parse(request.sharesJson) : [];
-    if (Array.isArray(parsed)) vaultShares = parsed;
-  } catch {
-    vaultShares = [];
-  }
-  return {
-    vaultShares,
-    approvalCount: 0,
-    threshold: request?.threshold || 0,
-    includesUnrevokableShare: false,
-  };
+  claimantContact: string;
+  createdAt: string;
+  releaseAfter: string;
+  expiresAt: string;
 }
 
-export async function reconcileRecoveryVault(
-  userPnIdentifier: string,
-  authToken: string,
-  totalShares?: number
-): Promise<{ normalized: number; missingIndices: number[] }> {
-  const path = '/api/recovery/vault/reconcile';
-  const body = { userPnIdentifier, totalShares };
-  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
-  if (!res.ok) throw new Error('Failed to reconcile recovery vault');
-  return res.json();
+export interface CustodianRecoveryRequest extends OwnerRecoveryRequest {
+  ownerPublicKey: string;
+  custodianId: string;
+  shareIndex: number;
+  custodianshipCredential: string;
+  epoch: number;
+  temporaryPublicKey: string | null;
 }
 
-export async function initializeRecoveryVault(
-  userPnIdentifier: string,
-  authToken: string,
-  shares: Array<{ shareIndex: number; encryptedShare: string }>
-): Promise<{ inserted: number; skipped: number }> {
-  const path = '/api/recovery/vault/initialize';
-  const body = { userPnIdentifier, shares };
-  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
-  if (!res.ok) throw new Error('Failed to initialize recovery vault');
-  return res.json();
+export interface CustodyDelivery {
+  deliveryId: string;
+  ownerPublicKey: string;
+  custodianId: string;
+  shareIndex: number;
+  epoch: number;
+  sealedShare: string;
 }
 
-export async function fetchPendingVaultShares(
-  userPnIdentifier: string,
+async function errorFrom(res: Response, fallback: string): Promise<Error> {
+  const err = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+  return new Error(err.message || err.error || fallback);
+}
+
+async function ownerJson<T>(authToken: string, method: string, path: string, body?: unknown): Promise<T> {
+  const res = method === 'GET' ? await ownerGet(authToken, path) : await ownerFetch(authToken, method, path, body);
+  if (!res.ok) throw await errorFrom(res, `Request failed (${res.status})`);
+  return res.json() as Promise<T>;
+}
+
+async function publicJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_ENDPOINT}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw await errorFrom(res, `Request failed (${res.status})`);
+  return res.json() as Promise<T>;
+}
+
+// ---------------------------------------------------------------------------
+// Owner
+// ---------------------------------------------------------------------------
+
+export function setupRecoveryEpoch(
   authToken: string,
-  includeEncrypted = false
-): Promise<Array<{ shareIndex: number; createdAt: string; encryptedShare?: string }>> {
-  const q = includeEncrypted ? '?includeEncrypted=true' : '';
-  const path = `/api/recovery/${encodeURIComponent(userPnIdentifier)}/vault/pending${q}`;
-  const res = await ownerGet(authToken, path);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.pending || [];
+  payload: { ownerPublicKey: string; threshold: number; totalShares: number; rotate?: boolean }
+): Promise<{ epoch: number; threshold: number; totalShares: number }> {
+  return ownerJson(authToken, 'POST', '/api/recovery/owner/epoch', payload);
 }
 
 export async function fetchRecoveryCustodianSummary(
-  userPnIdentifier: string,
+  _userPnIdentifier: string,
   authToken: string
 ): Promise<RecoveryCustodianSummary | null> {
   try {
-    const drive = await sessionDriveFor(userPnIdentifier, authToken);
-    const workbook = await findRecoveryWorkbookId(drive.accessToken, drive.index.metadataFolderId);
-    if (!workbook) {
-      return {
-        custodians: [],
-        pending: [],
-        counts: { accepted: 0, acceptedUnrevokable: 0, invited: 0 },
-      };
-    }
-    const rows = await readSheetValues(drive.accessToken, workbook, 'Custodians!A2:K');
-    const custodians: RecoveryCustodianApiRow[] = rows
-      .filter((row) => row[0])
-      .map((row) => ({
-        custodianId: row[0],
-        name: row[1] || '',
-        custodianType: row[2] || '',
-        shareIndex: Number(row[4] || 0),
-        custodianshipCredential: row[5] || '',
-        status: row[6] || 'invited',
-        createdAt: row[7] || '',
-        unrevokable: row[8] === 'true' || row[8] === 'TRUE',
-        custodianPublicKey: row[9] || undefined,
-        custodianPnIdentifier: row[10] || undefined,
-      }));
-    const accepted = custodians.filter((c) => c.status === 'accepted').length;
-    const acceptedUnrevokable = custodians.filter((c) => c.status === 'accepted' && c.unrevokable).length;
-    const invited = custodians.filter((c) => c.status === 'invited').length;
-    const pendingRows = await readSheetValues(drive.accessToken, workbook, 'PendingShares!A2:C');
-    return {
-      custodians,
-      pending: pendingRows
-        .filter((row) => row[0])
-        .map((row) => ({ shareIndex: Number(row[0] || 0), createdAt: row[2] || '' })),
-      counts: { accepted, acceptedUnrevokable, invited },
-    };
-  } catch {
+    return await ownerJson<RecoveryCustodianSummary>(authToken, 'GET', '/api/recovery/owner/summary');
+  } catch (err) {
+    console.warn('[recovery] custodian summary unavailable:', err instanceof Error ? err.message : err);
     return null;
   }
 }
 
-export async function assignRecoveryCustodian(
-  userPnIdentifier: string,
+export function registerRecoveryCustodian(
   authToken: string,
   payload: {
     custodianId: string;
@@ -248,100 +120,115 @@ export async function assignRecoveryCustodian(
     custodianType: string;
     shareIndex: number;
     custodianshipCredential: string;
-    encryptedShare: string;
-    unrevokable?: boolean;
+    unrevokable: boolean;
   }
-): Promise<void> {
-  const path = '/api/recovery/custodians/assign';
-  const body = { userPnIdentifier, ...payload };
-  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'Failed to assign custodian');
-  }
+): Promise<{ custodianId: string; shareIndex: number }> {
+  return ownerJson(authToken, 'POST', '/api/recovery/owner/custodians', payload);
 }
 
-export async function resendRecoveryCustodianInvitation(
-  userPnIdentifier: string,
-  authToken: string,
-  custodianId: string
-): Promise<{
-  custodianId: string;
-  name: string;
-  custodianType: string;
-  shareIndex: number;
-  custodianshipCredential: string;
-  unrevokable: boolean;
-}> {
-  const path = `/api/recovery/custodians/${encodeURIComponent(custodianId)}/resend`;
-  const body = { userPnIdentifier };
-  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
-  if (!res.ok) throw new Error('Failed to resend custodian invitation');
-  return res.json();
-}
-
-export async function revokeRecoveryCustodian(
-  userPnIdentifier: string,
+export function sendCustodyDelivery(
   authToken: string,
   custodianId: string,
-  threshold?: number
-): Promise<void> {
-  const path = `/api/recovery/custodians/${encodeURIComponent(custodianId)}/revoke`;
-  const body = { userPnIdentifier, threshold };
-  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'Failed to revoke custodian');
-  }
+  payload: { epoch: number; sealedShare: string }
+): Promise<{ success: boolean }> {
+  return ownerJson(
+    authToken,
+    'POST',
+    `/api/recovery/owner/custodians/${encodeURIComponent(custodianId)}/custody`,
+    payload
+  );
 }
+
+export function revokeRecoveryCustodian(
+  authToken: string,
+  custodianId: string
+): Promise<{ success: boolean; resplitRequired: boolean }> {
+  return ownerJson(
+    authToken,
+    'POST',
+    `/api/recovery/owner/custodians/${encodeURIComponent(custodianId)}/revoke`,
+    {}
+  );
+}
+
+export async function fetchOwnerRecoveryRequests(authToken: string): Promise<OwnerRecoveryRequest[]> {
+  const data = await ownerJson<{ requests: OwnerRecoveryRequest[] }>(authToken, 'GET', '/api/recovery/owner/requests');
+  return data.requests || [];
+}
+
+export function cancelOwnerRecoveryRequest(authToken: string, requestId: string): Promise<{ status: string }> {
+  return ownerJson(
+    authToken,
+    'POST',
+    `/api/recovery/owner/requests/${encodeURIComponent(requestId)}/cancel`,
+    {}
+  );
+}
+
+export function startDeviceRegistryReset(
+  authToken: string
+): Promise<{ requestId: string; threshold: number }> {
+  return ownerJson(authToken, 'POST', '/api/recovery/owner/device-reset', {});
+}
+
+// ---------------------------------------------------------------------------
+// Custodian
+// ---------------------------------------------------------------------------
 
 export async function acceptRecoveryCustodianship(
   ownerPnIdentifier: string,
   authToken: string,
   custodianId: string,
-  custodianshipZkp: string
+  custodianshipZkp: string,
+  mlKemPublicKey: string
 ): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/custodians/accept`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ ownerPnIdentifier, custodianId, custodianshipZkp }),
+  await ownerJson(authToken, 'POST', '/api/recovery/custodian/accept', {
+    ownerPnIdentifier,
+    custodianId,
+    custodianshipZkp,
+    mlKemPublicKey,
   });
-  if (!res.ok) throw new Error('Failed to accept custodianship on owner vault');
 }
 
-export async function encryptSharesForVault(
-  shares: ShamirShare[],
-  identityPublicKey: string
-): Promise<Array<{ shareIndex: number; encryptedShare: string }>> {
-  const out: Array<{ shareIndex: number; encryptedShare: string }> = [];
-  for (const share of shares) {
-    const encrypted = await encryptOwnerVaultShare(share, identityPublicKey);
-    out.push({
-      shareIndex: share.index,
-      encryptedShare: serializeOwnerVaultShare(encrypted),
-    });
-  }
-  return out;
+export async function fetchCustodyDeliveries(authToken: string): Promise<CustodyDelivery[]> {
+  const data = await ownerJson<{ deliveries: CustodyDelivery[] }>(authToken, 'GET', '/api/recovery/custodian/custody');
+  return data.deliveries || [];
 }
 
-export async function migrateVolumeId(
+export async function ackCustodyDeliveries(authToken: string, deliveryIds: string[]): Promise<number> {
+  const data = await ownerJson<{ acked: number }>(authToken, 'POST', '/api/recovery/custodian/custody/ack', {
+    deliveryIds,
+  });
+  return data.acked;
+}
+
+export async function fetchCustodianRecoveryRequests(authToken: string): Promise<CustodianRecoveryRequest[]> {
+  const data = await ownerJson<{ requests: CustodianRecoveryRequest[] }>(
+    authToken,
+    'GET',
+    '/api/recovery/custodian/requests'
+  );
+  return data.requests || [];
+}
+
+export function submitRecoveryApproval(
   authToken: string,
-  payload: {
-    legacyPnIdentifier: string;
-    canonicalPnIdentifier: string;
-    publicKey: string;
-    driveFolderId?: string;
-  }
-): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/storage/migrate-volume-id`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error('Failed to migrate platform id');
+  requestId: string,
+  payload: { custodianId: string; approval: RecoveryZkApprovalPayload; sealedShare?: string }
+): Promise<{ status: string; approvalCount: number; includesUnrevokableShare: boolean; reason?: string }> {
+  return ownerJson(
+    authToken,
+    'POST',
+    `/api/recovery/custodian/requests/${encodeURIComponent(requestId)}/approve`,
+    payload
+  );
 }
 
-/** SHA-256 hex of the recovery key string (for failsafe registration / resolve). */
+// ---------------------------------------------------------------------------
+// Failsafe key + claimant (no pN session)
+// ---------------------------------------------------------------------------
+
+/** SHA-256 hex of the recovery key string (failsafe registration / start / release). */
 export async function hashRecoveryKey(recoveryKey: string): Promise<string> {
   const data = new TextEncoder().encode(recoveryKey.trim());
   const digest = await crypto.subtle.digest('SHA-256', data);
@@ -357,19 +244,16 @@ export async function registerRecoveryFailsafe(
     publicKey: string;
     envelope: unknown;
     keyHash?: string;
+    driveProofHash?: string;
   }
 ): Promise<void> {
-  const res = await ownerMutatingFetch(authToken, 'POST', '/api/recovery/failsafe/register', payload);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'Failed to register recovery failsafe');
-  }
+  await ownerJson(authToken, 'POST', '/api/recovery/failsafe/register', payload);
 }
 
 export async function fetchRecoveryFailsafeStatus(
   userPnIdentifier: string,
   authToken: string
-): Promise<{ hasKey: boolean; hasEnvelope: boolean; createdAt?: string }> {
+): Promise<{ hasKey: boolean; hasEnvelope: boolean; hasDriveProof?: boolean; createdAt?: string }> {
   const res = await fetch(
     `${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/failsafe`,
     { headers: { Authorization: `Bearer ${authToken}` } }
@@ -378,34 +262,59 @@ export async function fetchRecoveryFailsafeStatus(
   return res.json();
 }
 
-export async function startRecoveryWithFailsafeKey(payload: {
-  recoveryKey: string;
-  pnIdentifier?: string;
-  threshold?: number;
+export function startRecoveryWithFailsafeKey(payload: {
+  keyHash: string;
+  temporaryPublicKey: string;
   claimantContact?: string;
 }): Promise<{
   requestId: string;
   pnIdentifier: string;
   publicKey: string;
-  envelope: unknown;
+  envelope: RecoveryEnvelope;
   threshold: number;
-  persisted: boolean;
+  releaseAfter: string;
+  expiresAt: string;
 }> {
-  const keyHash = await hashRecoveryKey(payload.recoveryKey);
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/failsafe/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      keyHash,
-      pnIdentifier: payload.pnIdentifier,
-      threshold: payload.threshold,
-      claimantContact: payload.claimantContact,
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { message?: string; error?: string }).message || (err as { error?: string }).error || 'Invalid recovery key');
-  }
-  return res.json();
+  return publicJson('POST', '/api/recovery/failsafe/start', payload);
 }
 
+export function fetchRecoveryRequestStatus(requestId: string): Promise<{
+  requestType: RecoveryRequestType;
+  status: string;
+  approvalCount: number;
+  threshold: number;
+  includesUnrevokableShare: boolean;
+  releaseAfter: string;
+  expiresAt: string;
+}> {
+  return publicJson('GET', `/api/recovery/requests/${encodeURIComponent(requestId)}/status`);
+}
+
+export function releaseRecoveryShares(
+  requestId: string,
+  payload: { keyHash: string; driveProof: string }
+): Promise<{
+  pnIdentifier: string;
+  publicKey: string;
+  envelope: RecoveryEnvelope;
+  shares: Array<{ custodianId: string; shareIndex: number; epoch: number; sealedShare: string }>;
+}> {
+  return publicJson('POST', `/api/recovery/requests/${encodeURIComponent(requestId)}/release`, payload);
+}
+
+export async function migrateVolumeId(
+  authToken: string,
+  payload: {
+    legacyPnIdentifier: string;
+    canonicalPnIdentifier: string;
+    publicKey: string;
+    driveFolderId?: string;
+  }
+): Promise<void> {
+  const res = await fetch(`${API_ENDPOINT}/api/storage/migrate-volume-id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to migrate platform id');
+}

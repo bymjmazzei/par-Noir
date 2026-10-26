@@ -25,7 +25,6 @@ export function useMigrationState() {
 
   // Recovery key input
   const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
-  const [activeRecoveryMethod, setActiveRecoveryMethod] = useState<'pn' | 'key'>('pn');
   const [recoveryKeyContactInfo, setRecoveryKeyContactInfo] = useState({
     contactType: 'email' as 'email' | 'phone',
     contactValue: '',
@@ -81,8 +80,6 @@ export function useMigrationState() {
     // Recovery key
     recoveryKeyInput,
     setRecoveryKeyInput,
-    activeRecoveryMethod,
-    setActiveRecoveryMethod,
     recoveryKeyContactInfo,
     setRecoveryKeyContactInfo,
 

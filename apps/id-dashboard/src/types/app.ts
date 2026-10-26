@@ -1,3 +1,5 @@
+import type { CustodianRecoveryRequest } from '../services/recoveryApiService';
+
 export interface DIDInfo {
   id: string;
   pnName: string;
@@ -53,6 +55,8 @@ export interface RecoveryRequest {
   requiredApprovals?: number;
   currentApprovals?: number;
   oldIdentityHash?: string; // Hash of the old identity for license transfer
+  /** Relay row this custodian can approve. */
+  relay?: CustodianRecoveryRequest;
 }
 
 export interface RecoveryKey {

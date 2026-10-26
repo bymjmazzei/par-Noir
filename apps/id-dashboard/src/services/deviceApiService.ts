@@ -483,43 +483,6 @@ export async function resetDeviceRegistryDev(
   return res.json();
 }
 
-export async function initiateDeviceRegistryResetRequest(params: {
-  userPnIdentifier: string;
-  authToken: string;
-  publicKey: string;
-  threshold?: number;
-}): Promise<{ requestId: string }> {
-  const requestId = `device-reset-${Date.now()}`;
-  const { appendDeviceCloudRow, getCloudAccessTokenFromSession, layoutSheetId } = await import(
-    '@par-noir/device-cloud-credentials'
-  );
-  const cloudToken = getCloudAccessTokenFromSession(params.userPnIdentifier);
-  const spreadsheetId = layoutSheetId(params.userPnIdentifier, 'recovery_request');
-  const payload: Record<string, unknown> = {
-    userPnIdentifier: params.userPnIdentifier,
-    requestId,
-    publicKey: params.publicKey,
-    threshold: params.threshold ?? 2,
-    claimantName: 'device-registry-reset',
-    requestType: 'device_registry_reset',
-    status: 'pending',
-    ...(spreadsheetId ? { spreadsheetId } : {}),
-  };
-  if (cloudToken && spreadsheetId) {
-    payload.deviceCloudResult = await appendDeviceCloudRow(cloudToken, payload);
-  }
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/requests`, {
-    method: 'POST',
-    headers: authHeaders(params.authToken, await cloudTokenHeadersAsync(params.userPnIdentifier)),
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'Failed to start device registry reset');
-  }
-  return { requestId };
-}
-
 export async function finalizeDeviceRegistryReset(
   userPnIdentifier: string,
   authToken: string,

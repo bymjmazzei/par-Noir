@@ -12,13 +12,13 @@ export class RecoverySharesUnavailableError extends Error {
 
 export async function resolveRecoveryShares(params: {
   encryptedIdentity: EncryptedIdentity;
-  pnName: string;
-  passcode: string;
+  pnName?: string;
+  passcode?: string;
   publicKey?: string;
 }): Promise<ShamirShare[]> {
   const { encryptedIdentity, pnName, passcode, publicKey } = params;
 
-  if (encryptedIdentity.recoverySharesSealed) {
+  if (encryptedIdentity.recoverySharesSealed && pnName && passcode) {
     return unsealRecoveryShares(encryptedIdentity.recoverySharesSealed as RecoverySharesSealed, pnName, passcode);
   }
 

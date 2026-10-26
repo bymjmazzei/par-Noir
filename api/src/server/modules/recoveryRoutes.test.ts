@@ -375,6 +375,24 @@ describe('custodian-held recovery', () => {
     expect(second.body.error).toBe('revoke_would_break_threshold');
   });
 
+  it('owner summary reports custody delivery state per custodian', async () => {
+    await call('POST', '/api/recovery/owner/epoch', {
+      pn: OWNER,
+      body: { ownerPublicKey: OWNER_PK, threshold: 2, totalShares: 3, rotate: true },
+    });
+    await call('POST', '/api/recovery/owner/custodians/:custodianId/custody', {
+      pn: OWNER,
+      params: { custodianId: 'c1' },
+      body: { epoch: 2, sealedShare: sealed(1) },
+    });
+    const summary = await call('GET', '/api/recovery/owner/summary', { pn: OWNER });
+    const c1 = summary.body.custodians.find((c: { custodianId: string }) => c.custodianId === 'c1');
+    const c2 = summary.body.custodians.find((c: { custodianId: string }) => c.custodianId === 'c2');
+    expect(c1).toEqual(expect.objectContaining({ custodyPending: true, custodyCurrent: false, mlKemPublicKey: ML_KEM_PK }));
+    expect(c2).toEqual(expect.objectContaining({ custodyPending: false, custodyCurrent: false }));
+    expect(summary.body.counts.ready).toBe(0);
+  });
+
   it('validates recovery start and owner key binding', async () => {
     const badKey = await call('POST', '/api/recovery/failsafe/start', {
       body: { keyHash: 'good-key', temporaryPublicKey: 'short' },

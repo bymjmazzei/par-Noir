@@ -1,10 +1,9 @@
 /**
  * Recovery and custodian handlers for the dashboard.
  *
- * This is the single hook App.tsx calls for recovery/custodian behavior. The pure
- * authorization primitives it drives live in `components/recovery/useRecoveryHandlers`
- * (initiate from .pn file, ZK approval, vault share fetch); this hook wires those into
- * dashboard state, cloud sync and the UI modals.
+ * This is the single hook App.tsx calls for recovery/custodian behavior. The device-side
+ * relay steps (seal, hold on Drive, re-seal to the claimant, open) live in
+ * `services/recoveryRelayFlows`; this hook wires them into dashboard state and the modals.
  */
 import type React from 'react';
 import QRCode from 'qrcode';
@@ -14,14 +13,17 @@ import type { RecoveryEnvelope, ShamirShare } from '@par-noir/recovery-crypto';
 import { QRCodeManager } from '../utils/qrCode';
 import { cloudSyncManager } from '../utils/cloudSync';
 import { LicenseVerification } from '../utils/licenseVerification';
-import { completeRecoveryWithShares, markRecoveryRequestCompleted, markRecoveryRequestExpired } from '../services/recoveryService';
-import { revokeRecoveryCustodian, acceptRecoveryCustodianship } from '../services/recoveryApiService';
+import { completeRecoveryWithShares } from '../services/recoveryService';
+import {
+  revokeRecoveryCustodian,
+  acceptRecoveryCustodianship,
+  fetchRecoveryRequestStatus,
+} from '../services/recoveryApiService';
 import { getRecoveryAuthSession, recoveryAuthRequiredMessage } from '../services/recoveryAuthSession';
 import {
   clearRecoveryActiveSession,
   getRecoveryActiveSession,
   setRecoveryActiveSession,
-  touchRecoveryActiveSession,
   updateRecoveryActiveSession,
 } from '../services/recoveryActiveSession';
 import { storeCustodianshipCredential } from '../services/recoveryCredentialStorage';
@@ -50,7 +52,7 @@ export interface CustodianshipEntry {
 export interface PendingRecoveryCompletion {
   requestId: string;
   envelope: RecoveryEnvelope;
-  existingIdentity: EncryptedIdentity;
+  publicKey: string;
   shares: ShamirShare[];
 }
 
@@ -216,82 +218,6 @@ export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandler
     logDebug,
     logError
   } = params;
-
-  // Recovery functions
-  const handleInitiateRecovery = async (recoveryData: {
-    pnName: string;
-    passcode: string;
-    nickname: string;
-    emailOrPhone: string;
-  }) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Initialize storage if not already done
-      await storage.init();
-
-      // Get stored identities
-      const storedIdentities = await storage.getIdentities();
-
-      // Find the identity to recover
-      const foundIdentity = storedIdentities.find(stored => {
-        try {
-          // Try to decrypt and verify the identity
-          const decryptedData = JSON.parse(stored.encryptedData);
-          return (
-            decryptedData.pnName === recoveryData.pnName &&
-            decryptedData.nickname === recoveryData.nickname &&
-            (decryptedData.recoveryEmail === recoveryData.emailOrPhone ||
-             decryptedData.recoveryPhone === recoveryData.emailOrPhone)
-          );
-        } catch {
-          return false;
-        }
-      });
-
-      if (!foundIdentity) {
-        throw new Error('No matching PN found. Please check your information.');
-      }
-
-      // Verify passcode cryptographically
-      const isValidPasscode = await IdentityCrypto.verifyPasscode(
-        recoveryData.passcode,
-        foundIdentity.encryptedData,
-        foundIdentity.salt
-      );
-
-      if (!isValidPasscode) {
-        throw new Error('Invalid passcode. Please check your information.');
-      }
-
-      // Create recovery request with old identity hash for license transfer
-      const recoveryRequest: RecoveryRequest = {
-        id: `recovery-${Date.now()}`,
-        requestingDid: foundIdentity.publicKey, // Use public key since ID is encrypted
-        requestingUser: recoveryData.pnName,
-        timestamp: new Date().toISOString(),
-        status: 'pending',
-        approvals: [],
-        denials: [],
-        signatures: [], // ZK proof signatures will be added here
-        expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(), // 72 hours
-        requiredApprovals: recoveryThreshold,
-        currentApprovals: 0,
-        oldIdentityHash: foundIdentity.publicKey // In real implementation, this would be the actual old identity hash
-      };
-
-      setRecoveryRequests(prev => [...prev, recoveryRequest]);
-      setShowRecoveryModal(false);
-      setSuccessWithTimeout('Recovery request initiated! Notifying custodians...');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to initiate recovery');
-      setTimeout(() => setError(null), 9000);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const generateCustodianQRCode = async (custodianData: CustodianInvitationForm & { id?: string }) => {
     try {
@@ -520,6 +446,21 @@ This invitation expires in 24 hours.`;
       if (!invitation.custodianshipZkp || !invitation.custodianId || !invitation.identityPublicKey) {
         throw new Error('Invitation is missing custodianship credential. Ask the owner to resend the invitation.');
       }
+      if (!apiToken || !authenticatedUser?.id) {
+        throw new Error('Unlock your pN and sign in to accept custodianship.');
+      }
+
+      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+      const { loadIdentityRecoveryKeys } = await import('../services/recoveryRelayFlows');
+      const ownerPn = await VolumeIdGenerator.generateCanonicalVolumeId(invitation.identityPublicKey);
+      const keys = await loadIdentityRecoveryKeys(authenticatedUser.id, authenticatedUser.publicKey);
+      await acceptRecoveryCustodianship(
+        ownerPn,
+        apiToken,
+        invitation.custodianId,
+        invitation.custodianshipZkp,
+        keys.publicKey
+      );
 
       storeCustodianshipCredential({
         custodianId: invitation.custodianId,
@@ -531,12 +472,6 @@ This invitation expires in 24 hours.`;
         custodianPasscode: acceptancePasscode,
         acceptedAt: new Date().toISOString()
       });
-
-      if (apiToken && invitation.identityPublicKey) {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const ownerPn = await VolumeIdGenerator.generateCanonicalVolumeId(invitation.identityPublicKey);
-        await acceptRecoveryCustodianship(ownerPn, apiToken, invitation.custodianId, invitation.custodianshipZkp);
-      }
 
       const newCustodianship = {
         id: `custodianship-${invitation.custodianId}`,
@@ -559,7 +494,9 @@ This invitation expires in 24 hours.`;
       setPendingCustodianInvitationData(null);
       setCustodianAcceptanceData({ contactType: 'email', contactValue: '', passcode: '' });
 
-      setSuccessWithTimeout('Custodianship accepted. You hold an authorization credential only — no secret shares.');
+      setSuccessWithTimeout(
+        'Custodianship accepted. Their recovery share will be stored, encrypted, on your cloud storage once they send it.'
+      );
       setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'Failed to accept custodianship');
@@ -567,62 +504,30 @@ This invitation expires in 24 hours.`;
     }
   };
 
-  // ZK authorization recovery approval (custodian never submits share bytes)
-  const handleApproveRecovery = async (requestId: string, custodianshipId: string) => {
+  // Custodian approval: signed proof, plus the held share re-sealed to the claimant's key.
+  const handleApproveRecovery = async (requestId: string, _custodianshipId: string) => {
     try {
       setLoading(true);
       setError(null);
 
-      const recoveryRequest = recoveryRequests.find((req) => req.id === requestId);
-      const custodianship = custodianships.find((c) => c.id === custodianshipId);
-      const identityPublicKey =
-        custodianship?.identityPublicKey || recoveryRequest?.requestingDid || '';
-
-      if (!recoveryRequest && !custodianship) {
-        throw new Error('Recovery request not found');
+      const relay = recoveryRequests.find((req) => req.id === requestId)?.relay;
+      if (!relay) throw new Error('Recovery request not found. Refresh the Recovery tab.');
+      if (!apiToken || !authenticatedUser?.id) {
+        throw new Error('Unlock your pN and sign in to approve recovery.');
       }
+      const custodianPublicKey = authenticatedUser.publicKey || authenticatedUser.id;
+      const encPartial = await getEncryptedIdentityForApiToken(custodianPublicKey);
+      if (!encPartial) throw new Error('Could not load your pN to sign the approval.');
+      const custodianPn = recoveryVaultPnId
+        || (await (await import('@par-noir/identity-crypto')).VolumeIdGenerator.generateCanonicalVolumeId(custodianPublicKey));
 
-      const cred = (await import('../services/recoveryCredentialStorage')).getCustodianshipCredential(
-        identityPublicKey,
-        custodianshipId.replace('custodianship-', '')
-      ) || (await import('../services/recoveryCredentialStorage')).getCustodianshipCredential(
-        identityPublicKey,
-        custodianship?.identityId || ''
-      );
-
-      const custodianId = cred?.custodianId || custodianshipId.replace('custodianship-', '');
-      const custodianPasscode = cred?.custodianPasscode || '';
-
-      const { approveRecoveryWithZkp } = await import('../components/recovery/useRecoveryHandlers');
-      let userPnIdentifier = identityPublicKey;
-      if (apiToken && identityPublicKey) {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        userPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(identityPublicKey);
-      }
-
-      let custodianEncryptedIdentity: EncryptedIdentity | undefined;
-      if (authenticatedUser?.id) {
-        const encPartial = await getEncryptedIdentityForApiToken(authenticatedUser.publicKey || authenticatedUser.id);
-        if (encPartial) {
-          custodianEncryptedIdentity = {
-            publicKey: authenticatedUser.publicKey || authenticatedUser.id,
-            encryptedData: encPartial.encryptedData,
-            iv: encPartial.iv,
-            salt: encPartial.salt
-          };
-        }
-      }
-
-      const { stored, thresholdMet } = await approveRecoveryWithZkp({
-        requestId,
-        custodianId,
-        identityPublicKey,
-        custodianPasscode,
-        threshold: recoveryThreshold,
-        authToken: apiToken || undefined,
-        userPnIdentifier,
-        custodianIdentityId: authenticatedUser?.id,
-        custodianEncryptedIdentity
+      const { approveRelayRecoveryRequest } = await import('../services/recoveryRelayFlows');
+      const result = await approveRelayRecoveryRequest({
+        authToken: apiToken,
+        request: relay,
+        custodianPn,
+        custodianIdentityId: authenticatedUser.id,
+        custodianEncryptedIdentity: { publicKey: custodianPublicKey, ...encPartial },
       });
 
       setRecoveryRequests((prev) =>
@@ -630,154 +535,23 @@ This invitation expires in 24 hours.`;
           req.id === requestId
             ? {
                 ...req,
-                approvals: [...req.approvals, custodianId],
-                proofs: [...(req.proofs || []), custodianId],
-                signatures: [...req.signatures, custodianId]
+                approvals: [...req.approvals, relay.custodianId],
+                currentApprovals: result.approvalCount,
+                relay: { ...relay, status: result.status, approvalCount: result.approvalCount },
               }
             : req
         )
       );
+      setShowCustodianApprovalModal(false);
 
-      if (thresholdMet) {
-        const active = getRecoveryActiveSession();
-        if (active?.requestId === requestId) {
-          updateRecoveryActiveSession({ status: 'ready' });
-          if (active.callbackContact) {
-            notifyCallbackContactReady(active.callbackContact);
-          }
-        }
-        setSuccessWithTimeout(
-          'Threshold met. The owner should Continue on their Recover session to set Key 1 and Key 2.'
-        );
-        setTimeout(() => setSuccessWithTimeout(null), 6000);
-      } else {
-        setSuccessWithTimeout('Recovery authorization submitted. Waiting for more custodians…');
-        setTimeout(() => setSuccessWithTimeout(null), 5000);
-      }
+      setSuccessWithTimeout(
+        result.status === 'ready'
+          ? 'Approved. Enough custodians have approved; the requester can finish after the safety delay.'
+          : 'Approval submitted. Waiting for more custodians.'
+      );
+      setTimeout(() => setSuccessWithTimeout(null), 6000);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'Recovery approval failed');
-      setTimeout(() => setError(null), 9000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const notifyCallbackContactReady = (contact: string) => {
-    const message =
-      'Your par Noir recovery is ready. Open Recover within 20 minutes and Continue to set new Key 1 and Key 2.';
-    const looksEmail = contact.includes('@');
-    if (looksEmail) {
-      window.open(
-        `mailto:${encodeURIComponent(contact)}?subject=${encodeURIComponent('par Noir recovery ready')}&body=${encodeURIComponent(message)}`
-      );
-    } else {
-      window.open(`sms:${contact}?body=${encodeURIComponent(message)}`);
-    }
-  };
-
-  const notifyCustodiansOfRecovery = (opts: {
-    requestId: string;
-    callbackContact?: string;
-  }) => {
-    const dashboardUrl = `${window.location.origin}`;
-    const message = `A par Noir recovery request (${opts.requestId}) needs your approval. Open the dashboard Recovery tab: ${dashboardUrl}`;
-    const contacts: Array<{ type: 'email' | 'phone'; value: string }> = [];
-    for (const c of custodians) {
-      if (c.contactValue && c.status === 'active') {
-        contacts.push({
-          type: c.contactValue.includes('@') ? 'email' : 'phone',
-          value: c.contactValue,
-        });
-      }
-    }
-    if (recoveryVaultSummary?.custodians) {
-      for (const c of recoveryVaultSummary.custodians) {
-        const anyC = c as { contactValue?: string; status?: string; name?: string };
-        if (anyC.contactValue && anyC.status === 'accepted') {
-          contacts.push({
-            type: anyC.contactValue.includes('@') ? 'email' : 'phone',
-            value: anyC.contactValue,
-          });
-        }
-      }
-    }
-    const seen = new Set<string>();
-    let opened = 0;
-    for (const contact of contacts) {
-      if (seen.has(contact.value) || opened >= 2) continue;
-      seen.add(contact.value);
-      opened += 1;
-      if (contact.type === 'email') {
-        window.open(
-          `mailto:${encodeURIComponent(contact.value)}?subject=${encodeURIComponent('par Noir recovery approval needed')}&body=${encodeURIComponent(message)}`
-        );
-      } else {
-        window.open(`sms:${contact.value}?body=${encodeURIComponent(message)}`);
-      }
-    }
-    if (seen.size === 0) {
-      setSuccessWithTimeout(
-        'Recovery started. Ask your custodians to open the Recovery tab and approve. No custodian contacts were available to auto-notify.'
-      );
-    }
-  };
-
-  const handleInitiateRecoveryFromPn = async (file: File, emailOrPhone: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      if (!emailOrPhone.trim()) {
-        throw new Error('Callback contact is required');
-      }
-      const { initiateRecoveryFromPnFile } = await import('../components/recovery/useRecoveryHandlers');
-      const req = await initiateRecoveryFromPnFile({
-        file,
-        emailOrPhone,
-        threshold: recoveryThreshold,
-        authToken: apiToken
-      });
-      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-      const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(req.publicKey);
-      const envelopeRaw = sessionStorage.getItem(`pn_recovery_envelope_${req.id}`);
-      const identityRaw = sessionStorage.getItem(`pn_recovery_identity_${req.id}`);
-      if (!envelopeRaw) {
-        throw new Error('Recovery envelope missing after initiate');
-      }
-      setRecoveryActiveSession({
-        requestId: req.id,
-        publicKey: req.publicKey,
-        pnIdentifier,
-        callbackContact: emailOrPhone.trim(),
-        envelope: JSON.parse(envelopeRaw),
-        existingIdentity: identityRaw ? JSON.parse(identityRaw) : undefined,
-        threshold: recoveryThreshold,
-        approvalCount: 0,
-        status: 'pending',
-      });
-      setRecoveryRequests((prev) => [
-        ...prev,
-        {
-          id: req.id,
-          requestingDid: req.publicKey,
-          requestingUser: emailOrPhone || 'Claimant',
-          timestamp: new Date().toISOString(),
-          status: 'pending',
-          approvals: [],
-          denials: [],
-          signatures: [],
-          proofs: [],
-          expiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-          requiredApprovals: recoveryThreshold,
-          currentApprovals: 0,
-          oldIdentityHash: req.publicKey,
-          claimantContactValue: emailOrPhone
-        }
-      ]);
-      notifyCustodiansOfRecovery({ requestId: req.id, callbackContact: emailOrPhone });
-      setSuccessWithTimeout('Recovery started. Custodians will be notified to approve.');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Failed to start recovery');
       setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
@@ -794,7 +568,7 @@ This invitation expires in 24 hours.`;
         shares: completion.shares,
         newPnName,
         newPasscode,
-        existingIdentity: completion.existingIdentity
+        expectedPublicKey: completion.publicKey
       });
 
       const simpleStorage = (await import('../utils/simpleStorage')).SimpleStorage.getInstance();
@@ -819,7 +593,7 @@ This invitation expires in 24 hours.`;
       setRecoveredIdentityExport(result.identity);
       setShowRecoveryPasscodeModal(false);
       setPendingRecoveryCompletion(null);
-      markRecoveryRequestCompleted(completion.requestId);
+      (await import('../services/recoveryRelayFlows')).clearRelayRecoveryKey(completion.requestId);
       clearRecoveryActiveSession();
       setRecoveryRequests((prev) =>
         prev.filter((r) => r.id !== completion.requestId)
@@ -858,26 +632,25 @@ This invitation expires in 24 hours.`;
     try {
       setLoading(true);
       setError(null);
-      const { fetchSharesAfterThreshold } = await import('../components/recovery/useRecoveryHandlers');
-      const shares = await fetchSharesAfterThreshold({
-        userPnIdentifier: session.pnIdentifier,
-        authToken: apiToken || null,
+      if (Date.now() < session.releaseAfter) {
+        throw new Error(
+          `Recovery unlocks at ${new Date(session.releaseAfter).toLocaleString()}. This delay gives the owner time to cancel.`
+        );
+      }
+      const { connectGoogleForRecovery } = await import('../services/recoveryGoogleConnect');
+      const googleAccessToken = await connectGoogleForRecovery();
+      const { finishRelayRecovery } = await import('../services/recoveryRelayFlows');
+      const released = await finishRelayRecovery({
         requestId: session.requestId,
-        identityPublicKey: session.publicKey,
+        keyHash: session.keyHash,
+        pnIdentifier: session.pnIdentifier,
+        googleAccessToken,
       });
-      const existingIdentity: EncryptedIdentity =
-        session.existingIdentity ||
-        ({
-          publicKey: session.publicKey,
-          encryptedData: '',
-          iv: '',
-          salt: '',
-        } as EncryptedIdentity);
       setPendingRecoveryCompletion({
         requestId: session.requestId,
-        envelope: session.envelope,
-        existingIdentity,
-        shares,
+        envelope: released.envelope,
+        publicKey: released.publicKey,
+        shares: released.shares,
       });
       updateRecoveryActiveSession({ status: 'ready' });
       setShowRecoveryPasscodeModal(true);
@@ -889,25 +662,38 @@ This invitation expires in 24 hours.`;
     }
   };
 
-  const handleResendCustodianNotify = () => {
-    const session = touchRecoveryActiveSession();
-    if (!session) {
-      setError('No active recovery session');
-      setTimeout(() => setError(null), 9000);
-      return;
+  const handleRefreshActiveRecovery = async () => {
+    const session = getRecoveryActiveSession();
+    if (!session) return null;
+    try {
+      const status = await fetchRecoveryRequestStatus(session.requestId);
+      const releaseAfter = Date.parse(status.releaseAfter);
+      if (status.status === 'cancelled' || status.status === 'expired') {
+        clearRecoveryActiveSession();
+        setError(
+          status.status === 'cancelled'
+            ? 'This recovery was cancelled by the pN owner.'
+            : 'This recovery request expired. Start again.'
+        );
+        setTimeout(() => setError(null), 9000);
+        return null;
+      }
+      return updateRecoveryActiveSession({
+        approvalCount: status.approvalCount,
+        threshold: status.threshold,
+        releaseAfter: Number.isFinite(releaseAfter) ? releaseAfter : session.releaseAfter,
+        status: status.status === 'ready' || status.status === 'released' ? 'ready' : 'pending',
+      });
+    } catch (error) {
+      logError('Recovery status check failed:', error);
+      return session;
     }
-    notifyCustodiansOfRecovery({
-      requestId: session.requestId,
-      callbackContact: session.callbackContact,
-    });
-    setSuccessWithTimeout('Custodian notifications resent. Session timer refreshed.');
-    setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
   const handleCancelActiveRecovery = (opts?: { silent?: boolean }) => {
     const session = getRecoveryActiveSession();
     if (session) {
-      markRecoveryRequestExpired(session.requestId);
+      void import('../services/recoveryRelayFlows').then((m) => m.clearRelayRecoveryKey(session.requestId));
       setRecoveryRequests((prev) => prev.filter((r) => r.id !== session.requestId));
     }
     clearRecoveryActiveSession();
@@ -975,12 +761,15 @@ This invitation expires in 24 hours.`;
       }
 
       const { hashRecoveryKey, registerRecoveryFailsafe } = await import('../services/recoveryApiService');
+      const { ensureRecoveryDriveProof } = await import('../services/recoveryRelayFlows');
       const keyHash = await hashRecoveryKey(keyData);
+      const driveProofHash = await ensureRecoveryDriveProof(pnId);
       await registerRecoveryFailsafe(apiToken, {
         userPnIdentifier: pnId,
         publicKey,
         envelope,
         keyHash,
+        driveProofHash,
       });
 
       const recoveryKey: RecoveryKey = {
@@ -1086,57 +875,29 @@ This invitation expires in 24 hours.`;
         throw new Error('Callback contact is required');
       }
 
-      const { startRecoveryWithFailsafeKey } = await import('../services/recoveryApiService');
-      const started = await startRecoveryWithFailsafeKey({
+      const { startRelayRecovery } = await import('../services/recoveryRelayFlows');
+      const started = await startRelayRecovery({
         recoveryKey,
-        threshold: recoveryThreshold,
-        claimantContact: contactInfo.contactValue,
+        claimantContact: contactInfo.contactValue.trim(),
       });
-
-      sessionStorage.setItem(
-        `pn_recovery_envelope_${started.requestId}`,
-        JSON.stringify(started.envelope)
-      );
 
       setRecoveryActiveSession({
         requestId: started.requestId,
         publicKey: started.publicKey,
         pnIdentifier: started.pnIdentifier,
         callbackContact: contactInfo.contactValue.trim(),
-        envelope: started.envelope as RecoveryEnvelope,
+        envelope: started.envelope,
+        keyHash: started.keyHash,
         threshold: started.threshold,
         approvalCount: 0,
         status: 'pending',
-      });
-
-      setRecoveryRequests((prev) => [
-        ...prev,
-        {
-          id: started.requestId,
-          requestingDid: started.publicKey,
-          requestingUser: contactInfo.contactValue || 'Failsafe key',
-          timestamp: new Date().toISOString(),
-          status: 'pending',
-          approvals: [],
-          denials: [],
-          signatures: [],
-          proofs: [],
-          expiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-          requiredApprovals: started.threshold,
-          currentApprovals: 0,
-          oldIdentityHash: started.publicKey,
-          claimantContactValue: contactInfo.contactValue,
-        },
-      ]);
-      notifyCustodiansOfRecovery({
-        requestId: started.requestId,
-        callbackContact: contactInfo.contactValue,
+        releaseAfter: Date.parse(started.releaseAfter),
+        expiresAt: Date.parse(started.expiresAt),
       });
       setShowRecoveryKeyInputModal(false);
+      setShowRecoveryModal(true);
       setSuccessWithTimeout(
-        started.persisted
-          ? 'Recovery started with your failsafe key. Custodians will be notified.'
-          : 'Recovery started locally with your failsafe key. Custodians must approve to continue.'
+        'Recovery started. Custodians see the request in their Recovery tab; keep this device to finish.'
       );
       setTimeout(() => setSuccessWithTimeout(null), 6000);
     } catch (error: any) {
@@ -1179,8 +940,8 @@ This invitation expires in 24 hours.`;
     const removedCustodian = custodians.find(c => c.id === custodianId);
     setCustodians(prev => prev.filter(c => c.id !== custodianId));
 
-    if (removedCustodian && apiToken && recoveryVaultPnId) {
-      void revokeRecoveryCustodian(recoveryVaultPnId, apiToken, custodianId, recoveryThreshold)
+    if (vaultRow && apiToken) {
+      void revokeRecoveryCustodian(apiToken, custodianId)
         .then(() => refreshRecoveryVault())
         .catch((error) => {
           logError('Failed to revoke custodian on vault:', error);
@@ -1456,16 +1217,14 @@ This invitation expires in 24 hours.`;
   };
 
   return {
-    handleInitiateRecovery,
     generateCustodianQRCode,
     handleContactAction,
     handleAddCustodian,
     handleCustodianAcceptance,
     handleApproveRecovery,
-    handleInitiateRecoveryFromPn,
     handleRecoveryPasscodeSubmit,
     handleContinueReadyRecovery,
-    handleResendCustodianNotify,
+    handleRefreshActiveRecovery,
     handleCancelActiveRecovery,
     handleDenyRecovery,
     handleGenerateRecoveryKey,

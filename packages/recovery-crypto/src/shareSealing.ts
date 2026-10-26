@@ -29,6 +29,18 @@ export function generateRecoveryKeyPair(): RecoveryKeyPair {
   return { publicKey: bytesToB64(publicKey), secretKey: bytesToB64(secretKey) };
 }
 
+const ML_KEM_768_DK_PKE_BYTES = 1152;
+const ML_KEM_768_EK_BYTES = 1184;
+
+/** FIPS 203 decapsulation key embeds the encapsulation key right after dk_PKE. */
+export function recoveryPublicKeyFromSecret(secretKey: string): string {
+  const sk = b64ToBytes(secretKey);
+  if (sk.length !== ML_KEM_768_DK_PKE_BYTES + ML_KEM_768_EK_BYTES + 64) {
+    throw new Error('invalid ML-KEM-768 secret key');
+  }
+  return bytesToB64(sk.slice(ML_KEM_768_DK_PKE_BYTES, ML_KEM_768_DK_PKE_BYTES + ML_KEM_768_EK_BYTES));
+}
+
 async function sha256Hex(data: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
   return Array.from(new Uint8Array(digest))

@@ -55,7 +55,13 @@ export const CustodianList: React.FC<CustodianListProps> = ({
                 </div>
                 <div className="text-xs text-text-secondary">
                   {c.status} · share #{c.shareIndex}
-                  {c.custodianPnIdentifier ? ` · ${c.custodianPnIdentifier}` : ''}
+                  {c.status === 'accepted'
+                    ? c.custodyCurrent
+                      ? ' · holding share'
+                      : c.custodyPending
+                        ? ' · share sent, waiting for them to store it'
+                        : ' · share not sent yet'
+                    : ''}
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">

@@ -44,12 +44,7 @@ import {
   connectDriveBackendForMigration,
   runFullDriveMigration,
 } from './driveFileMigrationService';
-import { setPendingRecoveryShares } from './recoveryService';
-import {
-  initializeRecoveryVaultOnDrive,
-  setPendingRecoverySharesBuffer,
-  flushPendingRecoverySharesToDrive,
-} from './recoveryVaultService';
+import { setPendingRecoverySharesBuffer } from './recoveryVaultService';
 import { ownerGet } from './ownerApiService';
 import { republishOwnedAssetsManifest } from './ownedAssetsManifestService';
 
@@ -230,22 +225,12 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
   const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
   const shares = splitSecret(recoveryMaster, recoveryConfig.threshold, recoveryConfig.totalShares);
   const recoverySharesSealed = await sealRecoveryShares(shares, ctx.successor.pnName, ctx.successor.passcode);
+  // Custodians are registered under the successor pN in the re-invite step (successor session).
   setPendingRecoverySharesBuffer({
     publicKey: succMat.publicKey,
     shares,
     threshold: recoveryConfig.threshold,
   });
-  try {
-    await initializeRecoveryVaultOnDrive({
-      userPnIdentifier: succMat.pnIdentifier,
-      authToken: ctx.authToken,
-      publicKey: succMat.publicKey,
-      shares,
-      threshold: recoveryConfig.threshold,
-    });
-  } catch {
-    /* Drive init may retry on custodian step */
-  }
   ctx.successor.encryptedIdentity = {
     ...ctx.successor.encryptedIdentity,
     recoveryEnvelope,

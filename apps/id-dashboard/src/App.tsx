@@ -394,8 +394,6 @@ function App() {
     setCustodianships,
     recoveryKeyInput,
     setRecoveryKeyInput,
-    activeRecoveryMethod,
-    setActiveRecoveryMethod,
     recoveryKeyContactInfo,
     setRecoveryKeyContactInfo,
     licenseKey,
@@ -1188,10 +1186,9 @@ function App() {
     handleAddCustodian,
     handleCustodianAcceptance,
     handleApproveRecovery,
-    handleInitiateRecoveryFromPn,
     handleRecoveryPasscodeSubmit,
     handleContinueReadyRecovery,
-    handleResendCustodianNotify,
+    handleRefreshActiveRecovery,
     handleCancelActiveRecovery,
     handleGenerateRecoveryKey,
     handleDownloadRecoveryKey,
@@ -1506,12 +1503,9 @@ function App() {
           handleMigrationComplete={handleMigrationComplete}
           showRecoveryModal={showRecoveryModal}
           setShowRecoveryModal={setShowRecoveryModal}
-          activeRecoveryMethod={activeRecoveryMethod}
-          setActiveRecoveryMethod={setActiveRecoveryMethod}
-          handleInitiateRecoveryFromPn={handleInitiateRecoveryFromPn}
           handleInitiateRecoveryWithKey={handleInitiateRecoveryWithKey}
           handleContinueReadyRecovery={handleContinueReadyRecovery}
-          handleResendCustodianNotify={handleResendCustodianNotify}
+          handleRefreshActiveRecovery={handleRefreshActiveRecovery}
           handleCancelActiveRecovery={handleCancelActiveRecovery}
           recoveryKeys={recoveryKeys}
           recoveryVaultSummary={recoveryVaultSummary}

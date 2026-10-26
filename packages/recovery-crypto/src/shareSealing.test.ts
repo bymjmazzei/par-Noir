@@ -4,6 +4,7 @@ import {
   generateRecoveryKeyPair,
   openSealedShare,
   parseSealedShare,
+  recoveryPublicKeyFromSecret,
   recoveryRequestIdFor,
   releaseAad,
   sealShareToKey,
@@ -20,6 +21,12 @@ describe('shareSealing', () => {
     const sealed = await sealShareToKey(share, kp.publicKey, aad);
     const opened = await openSealedShare(parseSealedShare(serializeSealedShare(sealed)), kp.secretKey, aad);
     expect(opened).toEqual(share);
+  });
+
+  it('derives the public key from an ML-KEM secret key', () => {
+    const kp = generateRecoveryKeyPair();
+    expect(recoveryPublicKeyFromSecret(kp.secretKey)).toBe(kp.publicKey);
+    expect(() => recoveryPublicKeyFromSecret('AAAA')).toThrow('invalid ML-KEM-768 secret key');
   });
 
   it('fails with the wrong secret key', async () => {

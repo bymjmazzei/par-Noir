@@ -45,12 +45,9 @@ export interface AppModalsProps {
   handleMigrationComplete: any;
   showRecoveryModal: any;
   setShowRecoveryModal: any;
-  activeRecoveryMethod: any;
-  setActiveRecoveryMethod: any;
-  handleInitiateRecoveryFromPn: any;
   handleInitiateRecoveryWithKey: any;
   handleContinueReadyRecovery: any;
-  handleResendCustodianNotify: any;
+  handleRefreshActiveRecovery: any;
   handleCancelActiveRecovery: any;
   recoveryKeys: any;
   recoveryVaultSummary: any;
@@ -223,12 +220,9 @@ export function AppModals(props: AppModalsProps) {
     handleMigrationComplete,
     showRecoveryModal,
     setShowRecoveryModal,
-    activeRecoveryMethod,
-    setActiveRecoveryMethod,
-    handleInitiateRecoveryFromPn,
     handleInitiateRecoveryWithKey,
     handleContinueReadyRecovery,
-    handleResendCustodianNotify,
+    handleRefreshActiveRecovery,
     handleCancelActiveRecovery,
     recoveryKeys,
     recoveryVaultSummary,
@@ -409,20 +403,11 @@ export function AppModals(props: AppModalsProps) {
         <RecoveryModal
           isOpen={showRecoveryModal}
           onClose={() => setShowRecoveryModal(false)}
-          activeRecoveryMethod={activeRecoveryMethod}
-          setActiveRecoveryMethod={setActiveRecoveryMethod}
-          onInitiateRecoveryFromPn={handleInitiateRecoveryFromPn}
           onInitiateRecoveryWithKey={handleInitiateRecoveryWithKey}
           onContinueReadyRecovery={handleContinueReadyRecovery}
-          onResendCustodianNotify={handleResendCustodianNotify}
+          onRefreshActiveRecovery={handleRefreshActiveRecovery}
           onCancelActiveRecovery={handleCancelActiveRecovery}
           continueLoading={loading}
-          recoveryBlocked={
-            !!recoveryVaultSummary &&
-            (recoveryVaultSummary.counts.acceptedUnrevokable ?? 0) < 1 &&
-            (recoveryVaultSummary.counts.accepted ?? 0) > 0
-          }
-          recoveryBlockedMessage="Recovery requires at least one accepted protected custodian on the identity being recovered."
         />
 
         {/* Add Custodian Modal */}
@@ -500,10 +485,6 @@ export function AppModals(props: AppModalsProps) {
           selectedCustodianship={selectedCustodianship}
           recoveryThreshold={recoveryThreshold}
           onApproveRecovery={handleApproveRecovery}
-          onSuccess={(message) => {
-            setSuccessWithTimeout(message);
-                      setTimeout(() => setSuccessWithTimeout(null), 5000);
-                    }}
         />
 
         <RecoveryPasscodeModal

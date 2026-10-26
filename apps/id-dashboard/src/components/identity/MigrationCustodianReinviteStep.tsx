@@ -4,7 +4,16 @@ import { SectionInfo } from '../common/SectionInfo';
 import type { EncryptedIdentity } from '../../types/crypto';
 import type { PredecessorCustodian } from '../../services/identityMigrationOrchestrator';
 import { assignCustodianVaultAndIssueCredential } from '../../services/recoveryCustodianSetup';
-import { fetchRecoveryCustodianSummary } from '../../services/recoveryApiService';
+import {
+  fetchRecoveryCustodianSummary,
+  type RecoveryCustodianSummary,
+} from '../../services/recoveryApiService';
+
+function unassignedShareCount(summary: RecoveryCustodianSummary | null): number | null {
+  if (!summary?.configured || summary.totalShares == null) return null;
+  const assigned = summary.custodians.filter((c) => c.status !== 'revoked').length;
+  return Math.max(0, summary.totalShares - assigned);
+}
 import { buildCustodianInvitationPayload } from '@par-noir/recovery-crypto';
 
 interface MigrationCustodianReinviteStepProps {
@@ -58,7 +67,7 @@ export const MigrationCustodianReinviteStep: React.FC<MigrationCustodianReinvite
 
   useEffect(() => {
     void fetchRecoveryCustodianSummary(successorPnIdentifier, authToken).then((summary) => {
-      setPendingShareCount(summary?.pending.length ?? null);
+      setPendingShareCount(unassignedShareCount(summary));
     });
   }, [successorPnIdentifier, authToken, invitedCount]);
 
@@ -98,7 +107,7 @@ export const MigrationCustodianReinviteStep: React.FC<MigrationCustodianReinvite
       setInvitedCount((n) => n + 1);
       if (custodian.unrevokable) setProtectedCount((n) => n + 1);
       void fetchRecoveryCustodianSummary(successorPnIdentifier, authToken).then((summary) => {
-        setPendingShareCount(summary?.pending.length ?? null);
+        setPendingShareCount(unassignedShareCount(summary));
       });
       void migrationId;
     } catch (e) {
@@ -122,7 +131,7 @@ export const MigrationCustodianReinviteStep: React.FC<MigrationCustodianReinvite
       <p className="text-xs text-text-secondary">
         {invitedCount}/{recoveryThreshold} sent, {protectedCount} protected.
         {pendingShareCount != null && (
-          <span className="block mt-1">{pendingShareCount} share(s) still unassigned in the vault pool.</span>
+          <span className="block mt-1">{pendingShareCount} share(s) not yet assigned to a custodian.</span>
         )}
       </p>
 

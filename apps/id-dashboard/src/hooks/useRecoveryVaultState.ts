@@ -39,11 +39,11 @@ export function useRecoveryVaultState(params: {
     void refresh();
   }, [refresh]);
 
-  const threshold = params.recoveryThreshold ?? 2;
+  const threshold = summary?.threshold ?? params.recoveryThreshold ?? 2;
   const recoveryReady =
-    Boolean(summary)
-    && summary!.counts.accepted >= threshold
-    && summary!.counts.acceptedUnrevokable >= 1;
+    Boolean(summary?.configured)
+    && summary!.counts.ready >= threshold
+    && summary!.counts.readyUnrevokable >= 1;
 
   return { summary, loading, refresh, recoveryReady };
 }

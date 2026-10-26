@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { DeviceManagementPanel } from '../DeviceManagementPanel';
 import { RecoveryAuthProvider } from '../../contexts/RecoveryAuthContext';
 import { ShamirRecoverySection } from './ShamirRecoverySection';
@@ -6,6 +6,7 @@ import { RecoveryKeyFailsafeSection } from './RecoveryKeyFailsafeSection';
 import { RecoveryIdentityRotationSection } from './RecoveryAdvancedSection';
 import { RecoveryCustodianPendingPanel } from './RecoveryCustodianPendingPanel';
 import type { RecoveryCustodianSummary } from '../../services/recoveryApiService';
+import type { RecoveryRequest } from '../../types/app';
 
 export interface RecoveryTabProps {
   apiToken: string | null;
@@ -74,14 +75,14 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
     loadEncryptedIdentity,
   } = props;
 
+  const refreshRecoveryVaultCb = useCallback(() => {
+    void refreshRecoveryVault();
+  }, [refreshRecoveryVault]);
+
   const onSendInvitation = (custodianId: string, name: string) => {
     setSelectedCustodianForInvitation({ id: custodianId, name });
     setShowSendInvitationModal(true);
   };
-
-  const showActingAs =
-    (custodianships?.length ?? 0) > 0 ||
-    (recoveryRequests?.some((r: any) => r.status === 'pending') ?? false);
 
   return (
     <div className="space-y-8">
@@ -113,10 +114,7 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
           hasKeyedDevices={!!deviceAuth?.hasKeyedDevices}
           deviceRequiredMessage={deviceAuth?.deviceRequiredMessage || 'Keyed device required'}
           onAuthChange={bumpRecoveryAuthUi}
-          onSeeded={() => {
-            bumpRecoveryAuthUi();
-            void refreshRecoveryVault();
-          }}
+          onSummaryChanged={refreshRecoveryVaultCb}
           onAddCustodian={() => setShowAddCustodianModal(true)}
           onSendInvitation={onSendInvitation}
           onRemoveCustodian={handleRemoveCustodian}
@@ -147,71 +145,45 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
         />
       </RecoveryAuthProvider>
 
-      {authenticatedUser && showActingAs && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-text-primary">Acting as custodian</h3>
-          <RecoveryCustodianPendingPanel
-            apiToken={apiToken}
-            custodianships={custodianships}
-            onApprove={(requestId, custodianshipId, identityPublicKey) => {
-              const cs = custodianships.find((c: any) => c.id === custodianshipId);
-              if (cs) {
-                setSelectedCustodianship({ ...cs, identityPublicKey });
+      {authenticatedUser && (
+        <RecoveryCustodianPendingPanel
+          apiToken={apiToken}
+          custodianPn={recoveryVaultPnId}
+          custodianIdentityId={authenticatedUser.id ?? null}
+          custodianPublicKey={authenticatedUser.publicKey ?? null}
+          onReview={(relay) => {
+            const cs = custodianships.find((c: any) => c.identityPublicKey === relay.ownerPublicKey);
+            setSelectedCustodianship(
+              cs ?? {
+                id: `custodianship-${relay.custodianId}`,
+                identityId: relay.ownerPublicKey,
+                identityName: 'pN you protect',
+                identityUsername: '',
+                identityPublicKey: relay.ownerPublicKey,
+                status: 'active',
+                canApprove: true,
               }
-              const pending = recoveryRequests.find((r: any) => r.id === requestId);
-              if (pending) {
-                setSelectedRecoveryRequest(pending);
-                setShowCustodianApprovalModal(true);
-              } else {
-                const stub = {
-                  id: requestId,
-                  requestingDid: identityPublicKey,
-                  requestingUser: 'Recovery claimant',
-                  timestamp: new Date().toISOString(),
-                  status: 'pending',
-                  approvals: [],
-                  denials: [],
-                  signatures: [],
-                  proofs: [],
-                  expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
-                  requiredApprovals: recoveryThreshold,
-                  currentApprovals: 0,
-                  oldIdentityHash: identityPublicKey,
-                };
-                setRecoveryRequests((prev) => [...prev, stub]);
-                setSelectedRecoveryRequest(stub);
-                setShowCustodianApprovalModal(true);
-              }
-            }}
-          />
-          {(custodianships?.length ?? 0) > 0 && (
-            <div className="bg-secondary p-4 rounded-lg space-y-3">
-              <h4 className="font-medium text-text-primary">IDs you are a custodian of</h4>
-              {custodianships.map((cs: any) => {
-                const pendingRequest = recoveryRequests.find(
-                  (r: any) => r.requestingDid === cs.identityId && r.status === 'pending'
-                );
-                return (
-                  <div
-                    key={cs.id}
-                    className="flex items-center justify-between p-3 bg-input-bg rounded border border-border"
-                  >
-                    <div className="text-sm text-text-primary">{cs.identityName || cs.identityId}</div>
-                    {pendingRequest && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenCustodianApprovalModal(cs)}
-                        className="text-sm modal-button px-3 py-1 rounded"
-                      >
-                        Recover
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+            );
+            const request: RecoveryRequest = {
+              id: relay.requestId,
+              requestingDid: relay.ownerPublicKey,
+              requestingUser: relay.claimantContact || 'Recovery claimant',
+              timestamp: relay.createdAt,
+              status: 'pending',
+              approvals: [],
+              denials: [],
+              signatures: [],
+              expiresAt: relay.expiresAt,
+              requiredApprovals: relay.threshold,
+              currentApprovals: relay.approvalCount,
+              oldIdentityHash: relay.ownerPublicKey,
+              relay,
+            };
+            setRecoveryRequests((prev) => [...prev.filter((r) => r.id !== request.id), request]);
+            setSelectedRecoveryRequest(request);
+            setShowCustodianApprovalModal(true);
+          }}
+        />
       )}
     </div>
   );

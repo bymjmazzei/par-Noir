@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AlertTriangle, CheckCircle, Lock } from 'lucide-react';
 import { SectionInfo } from '../common/SectionInfo';
 import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 import { RecoveryAuthGate } from './RecoveryAuthGate';
-import { RecoveryVaultSetupPanel } from './RecoveryVaultSetupPanel';
 import { CustodianList } from './CustodianList';
 import { resolveRecoverySetupPhase } from './recoverySetupPhase';
 import type { RecoveryCustodianSummary } from '../../services/recoveryApiService';
-import { recoveryAuthRequiredMessage } from '../../services/recoveryAuthSession';
+import { getRecoveryAuthSession, recoveryAuthRequiredMessage } from '../../services/recoveryAuthSession';
+import { custodiansAwaitingShare, sendPendingCustody } from '../../services/recoveryRelayFlows';
+import { resolveRecoveryShares } from '../../services/recoveryShareResolver';
 
 export interface ShamirRecoverySectionProps {
   apiToken: string | null;
@@ -26,7 +27,8 @@ export interface ShamirRecoverySectionProps {
   hasKeyedDevices: boolean;
   deviceRequiredMessage: string;
   onAuthChange: () => void;
-  onSeeded: () => void;
+  /** Summary changed on the relay (shares sent to custodians). */
+  onSummaryChanged: () => void;
   onAddCustodian: () => void;
   onSendInvitation: (custodianId: string, name: string) => void;
   onRemoveCustodian: (custodianId: string) => void;
@@ -48,23 +50,50 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
   hasKeyedDevices,
   deviceRequiredMessage,
   onAuthChange,
-  onSeeded,
+  onSummaryChanged,
   onAddCustodian,
   onSendInvitation,
   onRemoveCustodian,
   setError,
 }) => {
   const { isAuthenticated } = useRecoveryAuth();
-  const pending = recoveryVaultSummary?.pending?.length ?? 0;
   const invited = recoveryVaultSummary?.counts.invited ?? 0;
   const accepted = recoveryVaultSummary?.counts.accepted ?? 0;
+  const awaiting = custodiansAwaitingShare(recoveryVaultSummary).length;
   const phase = resolveRecoverySetupPhase({
     recoveryAuthUnlocked: isAuthenticated,
     vaultRecoveryReady,
-    pendingShareCount: pending,
     invitedCount: invited,
     acceptedCount: accepted,
   });
+
+  const sendingRef = useRef(false);
+  useEffect(() => {
+    const auth = getRecoveryAuthSession();
+    if (!auth || !apiToken || !canManageCustodians || awaiting === 0 || sendingRef.current) return;
+    sendingRef.current = true;
+    void (async () => {
+      try {
+        const shares = await resolveRecoveryShares({
+          encryptedIdentity: auth.encryptedIdentity,
+          pnName: auth.pnName,
+          passcode: auth.passcode,
+        });
+        const sent = await sendPendingCustody({
+          authToken: apiToken,
+          ownerPublicKey: auth.encryptedIdentity.publicKey,
+          shares,
+          summary: recoveryVaultSummary,
+        });
+        if (sent > 0) onSummaryChanged();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not send recovery shares to custodians');
+        setTimeout(() => setError(null), 9000);
+      } finally {
+        sendingRef.current = false;
+      }
+    })();
+  }, [isAuthenticated, apiToken, canManageCustodians, awaiting, recoveryVaultSummary, onSummaryChanged, setError]);
 
   const disabledTitle = !recoveryMutationAllowed
     ? recoveryAuthRequiredMessage()
@@ -92,8 +121,8 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
         <h3 className="text-lg font-semibold text-text-primary">Recovery</h3>
         <SectionInfo title="Recovery">
           <p>
-            Shamir custodians protect your identity. Seed the vault, then invite trusted people (including
-            one protected custodian).
+            Shamir custodians protect your identity. Invite trusted people (including one protected
+            custodian). Each keeps one encrypted share on their own cloud storage; par Noir only relays it.
           </p>
         </SectionInfo>
       </div>
@@ -107,16 +136,6 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
 
       {phase === 'auth_required' && (
         <p className="text-sm text-text-secondary">Unlock above to set up recovery custodians.</p>
-      )}
-
-      {phase === 'needs_seed' && (
-        <RecoveryVaultSetupPanel
-          apiToken={apiToken}
-          userPnIdentifier={userPnIdentifier}
-          canCustodiansRead={canCustodiansRead}
-          pendingShareCount={pending}
-          onSeeded={onSeeded}
-        />
       )}
 
       {(phase === 'needs_custodians' || phase === 'managing' || phase === 'ready') && (
@@ -140,10 +159,11 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
                 <div>
                   <p className="font-medium text-yellow-400">Recovery not ready</p>
                   <p className="text-text-secondary">
-                    Need {recoveryThreshold} accepted custodians and at least 1 protected. Current:{' '}
-                    {accepted} accepted, {recoveryVaultSummary?.counts.acceptedUnrevokable ?? 0}{' '}
-                    protected
-                    {invited > 0 ? `, ${invited} invited` : ''}.
+                    Need {recoveryThreshold} custodians holding their share and at least 1 protected. Current:{' '}
+                    {recoveryVaultSummary?.counts.ready ?? 0} holding,{' '}
+                    {recoveryVaultSummary?.counts.readyUnrevokable ?? 0} protected
+                    {invited > 0 ? `, ${invited} invited` : ''}
+                    {awaiting > 0 ? `, ${awaiting} waiting for their share` : ''}.
                   </p>
                 </div>
               </div>
