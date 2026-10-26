@@ -306,3 +306,15 @@ export type {
 } from './penCloudDoc.js';
 export { deviceDropboxCall, deviceOneDriveCall } from './deviceProviderCall.js';
 export type { DeviceProviderInit } from './deviceProviderCall.js';
+export {
+  RECOVERY_CUSTODY_FILE,
+  RECOVERY_DRIVE_PROOF_FILE,
+  readRecoveryCustody,
+  findRecoveryCustody,
+  writeRecoveryCustody,
+  createRecoveryDriveProofSecret,
+  recoveryDriveProofHash,
+  writeRecoveryDriveProof,
+  readRecoveryDriveProof,
+} from './recoveryCustody.js';
+export type { RecoveryCustodyEntry, RecoveryDriveOpts } from './recoveryCustody.js';
