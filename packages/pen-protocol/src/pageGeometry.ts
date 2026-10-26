@@ -375,6 +375,23 @@ export function fittedPreviewPagePx(
   };
 }
 
+/**
+ * Page box layers are authored in. Fixed pages always use their own size so layer px
+ * mean the same thing in the editor, the feed, and the export; the preview fits it by scale.
+ * Open flow has no fixed size and returns null.
+ */
+export function designPagePx(
+  layout: PenPageLayout | undefined,
+  flow?: { widthPx?: number | null; heightPx?: number | null; sizeId?: string | null }
+): { width: number; height: number } | null {
+  const sheet = pageSheetDims(layout, flow);
+  if (sheet.fillWidth) return null;
+  return {
+    width: sheet.pageWidthPx ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
+    height: sheet.pageHeightPx ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
+  };
+}
+
 /** Where a content-box layer sits on a screen strip (page edge is the origin). */
 export function pageLayerToSheet(
   layer: { x: number; y: number },

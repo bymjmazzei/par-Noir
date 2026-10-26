@@ -8,6 +8,7 @@ import {
   pasteboardExtents,
   pasteboardGutterPx,
   contentBoxSize,
+  designPagePx,
   fittedPreviewPagePx,
   matchPageSize,
   orientPageSize,
@@ -33,7 +34,7 @@ import {
   sizeMediaLayerForAttach,
   wrapSideFromGeom
 } from './pageGeometry.js';
-import { pageSizeForGalleryAspect } from './aspectRemap.js';
+import { canvasSizeForAspect, pageSizeForGalleryAspect } from './aspectRemap.js';
 import { emptyTipTapDoc } from './richDoc.js';
 import type { PenSectionContent } from './types.js';
 import { attachMediaToLayer, createTextLayer, upsertLayer } from './layers.js';
@@ -150,6 +151,15 @@ describe('pageGeometry', () => {
     });
     const fixed = fittedPreviewPagePx('flow', 1000, 1000, { widthPx: 640, heightPx: 800 });
     expect(fixed.width / fixed.height).toBeCloseTo(640 / 800, 2);
+  });
+
+  it('authors fixed pages at their own size, whatever the pane', () => {
+    const social = { widthPx: 360, heightPx: 640, sizeId: 'ratio-9-16' };
+    expect(designPagePx('flow', social)).toEqual({ width: 360, height: 640 });
+    const feed = canvasSizeForAspect('9/16');
+    expect(designPagePx('flow', social)).toEqual({ width: feed.w, height: feed.h });
+    expect(designPagePx('letter', {})).toEqual({ width: LETTER_WIDTH_PX, height: LETTER_HEIGHT_PX });
+    expect(designPagePx('flow', { widthPx: null })).toBeNull();
   });
 
   it('screen layers use one strip and can sit in the page margin', () => {

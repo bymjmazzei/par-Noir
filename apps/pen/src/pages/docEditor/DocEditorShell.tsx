@@ -47,6 +47,7 @@ import {
   pageSwipeAxisForView,
   removeDocPage,
   reorderDocPages,
+  designPagePx,
   fittedPreviewPagePx,
   isFlowWorkspaceOpen,
   PREVIEW_PAGE_GUTTER_PX,
@@ -438,7 +439,12 @@ export function DocEditorShell(state: DocEditorReadyState) {
     };
   }
   const heldPage = previewLayoutRef.current;
-  const previewPageBox = heldPage ?? fittedPage ?? { width: 1, height: 1 };
+  const designPage = designPagePx(bundle.manifest.pageLayout, {
+    widthPx: bundle.manifest.flowWorkspaceWidthPx,
+    heightPx: bundle.manifest.flowWorkspaceHeightPx,
+    sizeId: bundle.manifest.pageSize
+  });
+  const previewPageBox = designPage ?? heldPage ?? fittedPage ?? { width: 1, height: 1 };
   const screenPageCount = Math.max(1, previewPages.length);
   const screenFullWidth = screenStripWidthPx(screenPageCount, previewPageBox.width);
   const screenFullHeight = previewPageBox.height;
