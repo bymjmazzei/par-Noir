@@ -39,8 +39,10 @@ import { setAttachPoster } from '../services/attachPosterCache';
 import {
   pickDeviceAudioFile,
   pickDeviceImageFile,
-  pickDeviceVideoFile
+  pickDeviceVideoFile,
+  probeMediaAspect
 } from '../services/penAttach';
+import { resolvePenMediaSrc } from '@par-noir/pen-media';
 import { attachOwnAudioTrack, soundHostLayer } from '../services/soundCatalog';
 import { ActionLayerMenu } from './ActionLayerMenu';
 import { SoundCatalogMenu } from './SoundCatalogMenu';
@@ -300,13 +302,20 @@ export function LayersPopover({
     closeMediaPicker();
   }
 
-  function attachPickedMedia(src: string, meta?: { blobUrl?: string }) {
+  async function attachPickedMedia(src: string, meta?: { blobUrl?: string }) {
     if (meta?.blobUrl) setAttachPoster(src, meta.blobUrl);
     const active = allLayers.find((layer) => layer.id === activeLayerId);
     const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
-    const placed = placeWidgetLayer(prepared, groupId, 'image');
     const layerKind = mediaKind === 'video' ? 'video' : 'image';
-    const attached = attachMediaToLayer(placed.section, placed.layerId, { kind: layerKind, src });
+    const playable = meta?.blobUrl || (await resolvePenMediaSrc(src)) || src;
+    const aspect = await probeMediaAspect(playable, layerKind);
+    const placed = placeWidgetLayer(prepared, groupId, 'image');
+    const attached = attachMediaToLayer(
+      placed.section,
+      placed.layerId,
+      { kind: layerKind, src },
+      { aspectRatio: aspect, pageWidth: contentWidthPx }
+    );
     const named =
       mediaKind === 'video'
         ? patchLayerStyle(attached, placed.layerId, { name: 'Video' })
@@ -774,7 +783,7 @@ export function LayersPopover({
         docId={docId}
         onPickMediaSrc={(src, meta) => {
           if (mediaKind === 'audio') attachPickedAudio(src);
-          else attachPickedMedia(src, meta);
+          else void attachPickedMedia(src, meta);
         }}
       />
 
