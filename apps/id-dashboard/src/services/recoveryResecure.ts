@@ -72,9 +72,6 @@ export async function resecureRecovery(params: {
 }): Promise<{ encryptedIdentity: EncryptedIdentity; invited: number }> {
   const { auth, authToken, pnIdentifier } = params;
   const { pnName, passcode } = auth;
-  if (!pnName || !passcode) {
-    throw new Error('Re-securing recovery needs Key 1 and Key 2 in this tab, which par Noir Unlock does not share yet.');
-  }
   const oldEnvelope = auth.encryptedIdentity.recoveryEnvelope as RecoveryEnvelope | undefined;
   if (!oldEnvelope) throw new Error('This pN has no recovery envelope. Download a fresh .pn and unlock with it.');
 

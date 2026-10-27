@@ -342,8 +342,6 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
       try {
         const { clearShellMlKem } = await import('../services/shellMlKem');
         clearShellMlKem();
-        const { clearShellRecoveryEnvelope } = await import('../services/shellRecoveryEnvelope');
-        clearShellRecoveryEnvelope();
       } catch {
         /* ignore */
       }
@@ -1335,11 +1333,6 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
           [session.publicKey, session.did, deriveCanonicalPnIdentifier(session.publicKey)],
           mlKemSecretKey
         );
-      }
-      const recoveryEnvelope = session.result?.recoveryEnvelope;
-      if (recoveryEnvelope && session.publicKey) {
-        const { rememberShellRecoveryEnvelope } = await import('../services/shellRecoveryEnvelope');
-        rememberShellRecoveryEnvelope([session.publicKey, session.did], recoveryEnvelope);
       }
       const authenticatedAt = new Date().toISOString();
       await storage.storeSession({

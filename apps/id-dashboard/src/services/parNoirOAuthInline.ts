@@ -12,7 +12,7 @@ import {
   oauthStatesMatch,
 } from '@par-noir/oauth-ui';
 
-export const PN_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
+const PN_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
 const STORAGE_KEY = 'pn_api_token';
 const OAUTH_STATE_KEY = 'pn_oauth_state';
 

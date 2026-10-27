@@ -1468,7 +1468,6 @@ function App() {
           handleDownloadRecoveryKey={handleDownloadRecoveryKey}
           handleOpenCustodianApprovalModal={handleOpenCustodianApprovalModal}
           ensureOwnerApiTokenForActiveUser={ensureOwnerApiTokenForActiveUser}
-          getEncryptedIdentityForApiToken={getEncryptedIdentityForApiToken}
           showErrorMessage={showErrorMessage}
           showSuccessMessage={showSuccessMessage}
           refreshAssetDelegations={refreshAssetDelegations}

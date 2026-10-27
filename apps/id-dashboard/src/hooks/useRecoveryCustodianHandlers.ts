@@ -753,9 +753,14 @@ This invitation expires in 24 hours.`;
 
       const { getRecoveryAuthSession } = await import('../services/recoveryAuthSession');
       const auth = getRecoveryAuthSession();
-      const envelope = auth?.encryptedIdentity?.recoveryEnvelope;
-      if (!envelope) {
+      if (!auth) {
         throw new Error('Unlock recovery above first.');
+      }
+      const envelope = auth.encryptedIdentity.recoveryEnvelope;
+      if (!envelope) {
+        throw new Error(
+          'This .pn file has no recovery envelope. Rotate your pN to add one, then create a recovery key.'
+        );
       }
 
       const { hashRecoveryKey, registerRecoveryFailsafe } = await import('../services/recoveryApiService');

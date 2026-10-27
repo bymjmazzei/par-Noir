@@ -15,9 +15,6 @@ export interface ShamirRecoverySectionProps {
   apiToken: string | null;
   userPnIdentifier: string | null;
   authenticatedUser: { id: string; publicKey?: string } | null;
-  loadEncryptedIdentity: (
-    identityPublicKeyOrId: string
-  ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
   canCustodiansRead: boolean;
   canManageCustodians: boolean;
   recoveryMutationAllowed: boolean;
@@ -40,7 +37,6 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
   apiToken,
   userPnIdentifier,
   authenticatedUser,
-  loadEncryptedIdentity,
   canCustodiansRead,
   canManageCustodians,
   recoveryMutationAllowed,
@@ -130,7 +126,6 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
 
       <RecoveryAuthGate
         expectedUser={authenticatedUser}
-        loadEncryptedIdentity={loadEncryptedIdentity}
         onAuthenticated={onAuthChange}
         onLocked={onAuthChange}
       />

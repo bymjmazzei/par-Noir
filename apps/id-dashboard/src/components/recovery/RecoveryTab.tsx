@@ -37,9 +37,6 @@ export interface RecoveryTabProps {
   refreshRecoveryVault: () => void | Promise<void>;
   handleRemoveCustodian: (id: string) => void;
   handleOpenCustodianApprovalModal: (cs: any) => void;
-  loadEncryptedIdentity: (
-    identityPublicKeyOrId: string
-  ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
 }
 
 export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
@@ -72,7 +69,6 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
     refreshRecoveryVault,
     handleRemoveCustodian,
     handleOpenCustodianApprovalModal,
-    loadEncryptedIdentity,
   } = props;
 
   const refreshRecoveryVaultCb = useCallback(() => {
@@ -103,7 +99,6 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
               ? { id: authenticatedUser.id, publicKey: authenticatedUser.publicKey }
               : null
           }
-          loadEncryptedIdentity={loadEncryptedIdentity}
           canCustodiansRead={canCustodiansRead}
           canManageCustodians={canManageCustodians}
           recoveryMutationAllowed={recoveryMutationAllowed}

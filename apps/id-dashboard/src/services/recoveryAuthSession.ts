@@ -4,9 +4,8 @@ const RECOVERY_AUTH_TTL_MS = 15 * 60 * 1000;
 
 export interface RecoveryAuthSession {
   encryptedIdentity: EncryptedIdentity;
-  /** Absent after an Unlock-app re-auth: Key 1 and Key 2 stay in Unlock. */
-  pnName?: string;
-  passcode?: string;
+  pnName: string;
+  passcode: string;
   expiresAt: number;
 }
 

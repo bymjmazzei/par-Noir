@@ -55,7 +55,7 @@ describe('buildShellResult export round-trip', () => {
     expect(parseShellReturn(fragment)?.result?.mlKemSecretKey).toBe('sek');
   });
 
-  it('returns the recovery envelope from the .pn on a session unlock so the dashboard can register a recovery key', async () => {
+  it('keeps the recovery envelope when Unlock exports a .pn it parsed', async () => {
     const envelope = { version: 1, iv: 'env-iv', ciphertext: 'env-ct' };
     const row = parseIdentityFileJson({
       publicKey: 'pk',
@@ -65,7 +65,7 @@ describe('buildShellResult export round-trip', () => {
       recoveryEnvelope: envelope,
     });
     const result = await buildShellResult({
-      op: 'session',
+      op: 'export',
       pnName: 'unused',
       passcode: 'unused',
       unlocked: {
@@ -74,16 +74,6 @@ describe('buildShellResult export round-trip', () => {
         encryptedIdentity: row as unknown as Record<string, unknown>,
       },
     });
-    const fragment = encodeShellReturn({
-      v: 1,
-      op: 'session',
-      did: 'did:pn:1',
-      publicKey: 'pk',
-      accessToken: '',
-      result,
-    });
-    const parsed = parseShellReturn(fragment);
-    expect(JSON.parse(parsed?.result?.recoveryEnvelope || '{}')).toEqual(envelope);
-    expect(parsed?.result?.encryptedData).toBeUndefined();
+    expect(JSON.parse(result?.identityFile || '{}').recoveryEnvelope).toEqual(envelope);
   });
 });
