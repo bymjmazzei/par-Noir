@@ -21,6 +21,17 @@ describe('RecoveryPasscodeModal', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(KEY_1, KEY_2));
   });
 
+  it('accepts any non-empty keys, like creating a pN', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    render(<RecoveryPasscodeModal isOpen onClose={jest.fn()} onSubmit={onSubmit} />);
+    fill('Enter Key 1', 'abc');
+    fill('Confirm Key 1', 'abc');
+    fill('Enter Key 2', 'xyz');
+    fill('Confirm Key 2', 'xyz');
+    fireEvent.click(screen.getByRole('button', { name: 'Complete recovery' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('abc', 'xyz'));
+  });
+
   it('blocks mismatched Key 1 before submitting', async () => {
     const onSubmit = jest.fn();
     render(<RecoveryPasscodeModal isOpen onClose={jest.fn()} onSubmit={onSubmit} />);

@@ -16,6 +16,7 @@ export { decryptPrivateFile, decryptPrivateFileBlob } from './privateFile';
 export type { PrivateFileOwner, PrivateFilePackageShape } from './privateFile';
 export { VolumeIdGenerator } from './volumeIdGenerator';
 export type { VolumeIdParams } from './volumeIdGenerator';
+export { safePnDisplayName } from './displayName';
 
 export { IdentityCrypto } from './identityCrypto';
 export type {

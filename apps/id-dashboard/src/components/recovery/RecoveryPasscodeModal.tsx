@@ -10,7 +10,7 @@ import {
   KEY_2_CONFIRM_PLACEHOLDER,
   KEYS_HELPER,
   KEYS_MISMATCH,
-  keyStrengthErrors,
+  KEYS_REQUIRED,
 } from '../../constants/credentialLabels';
 
 interface RecoveryPasscodeModalProps {
@@ -38,18 +38,12 @@ export function RecoveryPasscodeModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const key1Errors = keyStrengthErrors(newPnName.trim(), KEY_1_LABEL);
-    if (key1Errors.length) {
-      setError(key1Errors[0]);
+    if (!newPnName.trim() || !newPasscode) {
+      setError(KEYS_REQUIRED);
       return;
     }
     if (newPnName.trim() !== confirmPnName.trim()) {
       setError(KEY_1_MISMATCH);
-      return;
-    }
-    const key2Errors = keyStrengthErrors(newPasscode, KEY_2_LABEL);
-    if (key2Errors.length) {
-      setError(key2Errors[0]);
       return;
     }
     if (newPasscode !== confirmPasscode) {

@@ -35,16 +35,14 @@ export function RecoveryCompletionModal({
                 <ul>
                   <li>Open Storage settings and reconnect Google Drive for this identity</li>
                   <li>Your platform id and messaging keys are unchanged</li>
-                  <li>Custodians authorized recovery via ZK proofs — no shares left their devices</li>
                 </ul>
               </div>
               <div>
                 <p className="font-medium text-text-primary">What happens next</p>
                 <ul>
-                  <li>This device holds your recovered identity</li>
-                  <li>Download the .pn file and store it safely</li>
+                  <li>Your updated .pn file was downloaded — store it safely</li>
                   <li>Reconnect Google Drive to restore cloud-backed features</li>
-                  <li>Shamir shares remain on your Drive vault; custodians hold credentials only</li>
+                  <li>If you recovered with a recovery key, create a new one; each key works once</li>
                 </ul>
               </div>
             </SectionInfo>
@@ -62,7 +60,7 @@ export function RecoveryCompletionModal({
             <h3 className="text-lg font-medium mb-2">Recovery complete</h3>
             <p className="text-sm text-gray-600 mb-4">
               <strong>{recoveredDID.nickname}</strong> is unlocked on this device with the same cryptographic keys.
-              Your new Key 1 and Key 2 are saved locally.
+              Unlock it from now on with your new Key 1 and Key 2.
             </p>
           </div>
 
@@ -73,14 +71,15 @@ export function RecoveryCompletionModal({
                 Save your updated .pn file
               </h4>
               <p className="text-sm text-text-secondary mb-3">
-                Download and store your recovered identity file. You will need it for future recovery or device transfer.
+                It was downloaded when recovery finished. Download it again if you did not keep it — this
+                browser may be the only other copy.
               </p>
               <button
                 type="button"
                 onClick={onDownloadPn}
                 className="w-full px-4 py-2 modal-button rounded-md"
               >
-                Download recovered .pn
+                Download again
               </button>
             </div>
           )}

@@ -1210,7 +1210,6 @@ function App() {
     refreshRecoveryVault,
     getEncryptedIdentityForApiToken,
     canManageCustodians,
-    canExportIdentity,
     deviceAuth,
     recoveryThreshold,
     custodians,

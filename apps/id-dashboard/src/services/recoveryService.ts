@@ -14,11 +14,7 @@ import {
   type ShamirShare
 } from '@par-noir/recovery-crypto';
 import { IdentityCrypto, type EncryptedIdentity } from '@par-noir/identity-crypto';
-import {
-  KEY_1_LABEL,
-  KEY_2_LABEL,
-  keyStrengthErrors,
-} from '../constants/credentialLabels';
+import { KEYS_REQUIRED } from '../constants/credentialLabels';
 
 export interface RecoveryCompletionInput {
   envelope: RecoveryEnvelope;
@@ -37,14 +33,7 @@ export interface RecoveryCompletionResult {
 }
 
 function assertNewKeys(newPnName: string, newPasscode: string): void {
-  const key1Errors = keyStrengthErrors(newPnName, KEY_1_LABEL);
-  if (key1Errors.length) {
-    throw new Error(key1Errors[0]);
-  }
-  const key2Errors = keyStrengthErrors(newPasscode, KEY_2_LABEL);
-  if (key2Errors.length) {
-    throw new Error(key2Errors[0]);
-  }
+  if (!newPnName || !newPasscode) throw new Error(KEYS_REQUIRED);
 }
 
 /**

@@ -7,7 +7,7 @@
  */
 import type React from 'react';
 import QRCode from 'qrcode';
-import { IdentityCrypto } from '@par-noir/identity-crypto';
+import { IdentityCrypto, safePnDisplayName } from '@par-noir/identity-crypto';
 import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 import type { KeyRecoveryEnvelope, RecoveryEnvelope, ShamirShare } from '@par-noir/recovery-crypto';
 import { QRCodeManager } from '../utils/qrCode';
@@ -102,7 +102,6 @@ export interface UseRecoveryCustodianHandlersParams {
   ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
 
   canManageCustodians: boolean;
-  canExportIdentity: boolean;
   deviceAuth: ReturnType<typeof useDeviceAuthState>;
 
   recoveryThreshold: number;
@@ -164,6 +163,16 @@ export interface UseRecoveryCustodianHandlersParams {
   logError: (message: string, ...args: unknown[]) => void;
 }
 
+function downloadRecoveredPn(identity: EncryptedIdentity): void {
+  const blob = new Blob([JSON.stringify(identity, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'recovered-identity.pn';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandlersParams) {
   const {
     storage,
@@ -177,7 +186,6 @@ export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandler
     refreshRecoveryVault,
     getEncryptedIdentityForApiToken,
     canManageCustodians,
-    canExportIdentity,
     deviceAuth,
     recoveryThreshold,
     custodians,
@@ -591,12 +599,16 @@ This invitation expires in 24 hours.`;
               expectedPublicKey: completion.publicKey
             });
 
+      const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+      const displayName = safePnDisplayName({
+        pnIdentifier: deriveCanonicalPnIdentifier(result.identity.publicKey),
+      });
       const simpleStorage = (await import('../utils/simpleStorage')).SimpleStorage.getInstance();
       const { PNNameHash } = await import('../utils/security/pnNameHash');
       const pnNameHash = await PNNameHash.getLookupKey(result.pnName);
       await simpleStorage.storeIdentity({
         id: result.identity.publicKey,
-        nickname: result.pnName,
+        nickname: displayName,
         pnNameHash,
         publicKey: result.identity.publicKey,
         encryptedData: result.identity,
@@ -609,8 +621,9 @@ This invitation expires in 24 hours.`;
         newPasscode,
         result.pnName
       );
-      setAuthenticatedUser(authSession);
+      setAuthenticatedUser({ ...authSession, nickname: displayName });
       setRecoveredIdentityExport(result.identity);
+      downloadRecoveredPn(result.identity);
       setShowRecoveryPasscodeModal(false);
       setPendingRecoveryCompletion(null);
       (await import('../services/recoveryRelayFlows')).clearRelayRecoveryKey(completion.requestId);
@@ -620,8 +633,8 @@ This invitation expires in 24 hours.`;
       );
       setRecoveredDID({
         id: authSession.id,
-        pnName: result.pnName,
-        nickname: authSession.nickname || result.pnName,
+        pnName: '',
+        nickname: displayName,
         email: '',
         phone: '',
         recoveryEmail: '',
@@ -631,15 +644,15 @@ This invitation expires in 24 hours.`;
         custodiansRequired: true,
         custodiansSetup: true,
         isEncrypted: true,
-        displayName: authSession.nickname || result.pnName,
+        displayName,
         publicKey: result.identity.publicKey
       });
       setShowRecoveryCompleteModal(true);
       setShowRecoveryModal(false);
       setSuccessWithTimeout(
         completion.kind === 'key'
-          ? 'Recovery complete. Download your updated .pn file, reconnect Google Drive, then create a new recovery key — the old one has been used.'
-          : 'Recovery complete. Download your updated .pn file and reconnect Google Drive.'
+          ? 'Recovery complete. Your updated .pn file was downloaded. Reconnect Google Drive, then create a new recovery key — the old one has been used.'
+          : 'Recovery complete. Your updated .pn file was downloaded. Reconnect Google Drive.'
       );
     } finally {
       setLoading(false);
@@ -1041,20 +1054,11 @@ This invitation expires in 24 hours.`;
     setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
+  // Recovery output, sealed under keys the claimant just chose — not an export of an existing pN,
+  // so it is not gated on a keyed device (the browser may be the only copy).
   const handleDownloadRecoveredPn = () => {
     if (!recoveredIdentityExport) return;
-    if (!canExportIdentity) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    const blob = new Blob([JSON.stringify(recoveredIdentityExport, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'recovered-identity.pn';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadRecoveredPn(recoveredIdentityExport);
   };
 
   // Handle recovery completion with automatic license transfer

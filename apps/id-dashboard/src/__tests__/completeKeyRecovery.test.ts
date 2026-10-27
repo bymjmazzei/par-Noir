@@ -59,12 +59,12 @@ describe('completeKeyRecovery', () => {
     expect(restoreIdentity).not.toHaveBeenCalled();
   });
 
-  it('checks new key strength before opening anything', async () => {
+  it('requires both new keys before opening anything', async () => {
     await expect(
       completeKeyRecovery({
         keyEnvelope,
         recoveryKey: 'recovery-abc',
-        newPnName: 'a',
+        newPnName: '  ',
         newPasscode: NEW_KEY_2,
         expectedPublicKey: 'pk',
       })
