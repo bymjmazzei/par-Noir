@@ -48,7 +48,7 @@ describe('integratorDataPointService BLOCKED list', () => {
     const proofs = await fetchGrantedZkpProofs({
       userPnIdentifier: 'pn-abc123',
       clientId: 'test-client',
-      dataPointIds: ['pn_name', 'passcode', 'pn_file', 'pnIdentifier'],
+      dataPointIds: ['key1', 'key2', 'pn_file', 'pnIdentifier'],
     });
 
     expect(proofs).toEqual([]);

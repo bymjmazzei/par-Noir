@@ -1135,6 +1135,19 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const feedKeysPath = path.join(__dirname, '../../migrations/rename_feed_tokens_key_columns.sql');
+      await db.query(fs.readFileSync(feedKeysPath, 'utf-8'));
+      console.log('✅ feed_tokens key column rename executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ feed_tokens key column rename error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
       const { warmIdentitySuccessionCache } = await import('../modules/identitySuccessionService');
       await warmIdentitySuccessionCache();
       console.log('✅ Identity succession revocation cache warmed');

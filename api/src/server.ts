@@ -46,7 +46,7 @@ import { registerIntegratorRoutes } from './server/modules/integratorRoutes';
 import { registerStorageRoutes } from './server/modules/storage/storageRoutes';
 import {
   setupStorageCredentialsRoutes,
-  setupStorageVolumeMigrationRoute,
+  setupStorageCloudVaultRoutes,
 } from './server/modules/storage/storageCredentialsRoutes';
 import { setupStorageIndexRoutes } from './server/modules/storage/storageIndexRoutes';
 import {
@@ -57,7 +57,7 @@ import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPer
 import { registerCoreRoutes } from './server/modules/coreRoutes';
 import { registerThirdPartyRoutes } from './server/modules/thirdPartyRoutes';
 import { registerAuthChallengeRoutes } from './server/modules/authChallengeRoutes';
-import { registerDidCreateRoute, registerDidResolveRoute } from './server/modules/didRoutes';
+import { registerDidResolveRoute } from './server/modules/didRoutes';
 import { registerSearchRoutes, registerPersonalSearchRoute } from './server/modules/searchRoutes';
 import { registerCoinbaseWebhookRoutes } from './server/modules/coinbaseWebhookRoutes';
 import { registerRecommendationRoutes } from './server/modules/recommendationRoutes';
@@ -767,8 +767,6 @@ class ProductionServer {
     // Notification endpoints
     this.setupNotificationEndpoints();
 
-    registerDidCreateRoute(this.app);
-
     registerSearchRoutes(this.app);
 
     // API Routes (v1) - Data Points, Content Portability (user OAuth is /oauth/* only)
@@ -1036,7 +1034,7 @@ class ProductionServer {
 
     registerPersonalSearchRoute(this.app);
 
-    setupStorageVolumeMigrationRoute(this.app);
+    setupStorageCloudVaultRoutes(this.app);
 
     setupGroupRoutes(this.app, {
       extractAccountId: (account) => this.extractAccountId(account),

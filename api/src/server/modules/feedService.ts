@@ -824,8 +824,8 @@ export class FeedService {
       let activatedSubPn: string | null = null;
 
       try {
-        const feedPnName = `feed_${feedId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`;
-        const feedPasscode = crypto.randomBytes(16).toString('hex');
+        const feedKey1 = `feed_${feedId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`;
+        const feedKey2 = crypto.randomBytes(16).toString('hex');
 
         const { generateKeyPairSync } = crypto;
         const { publicKey } = generateKeyPairSync('rsa', {
@@ -835,25 +835,25 @@ export class FeedService {
         });
         
         const { encryptFeedTokenField } = await import('./feedTokenCrypto');
-        const encryptedPnName = encryptFeedTokenField(feedPnName);
-        const encryptedPasscode = encryptFeedTokenField(feedPasscode);
+        const encryptedKey1 = encryptFeedTokenField(feedKey1);
+        const encryptedKey2 = encryptFeedTokenField(feedKey2);
         
         // Store feed tokens (owned by creator's pN)
         await db.query(`
           INSERT INTO feed_tokens (
-            feed_id, owner_pn_identifier, encrypted_pn_name, encrypted_passcode, public_key
+            feed_id, owner_pn_identifier, encrypted_key1, encrypted_key2, public_key
           ) VALUES ($1, $2, $3, $4, $5)
           ON CONFLICT (feed_id) DO UPDATE SET
-            encrypted_pn_name = $3,
-            encrypted_passcode = $4,
+            encrypted_key1 = $3,
+            encrypted_key2 = $4,
             public_key = $5,
             updated_at = NOW()
-        `, [feedId, ownerPnIdentifier, encryptedPnName, encryptedPasscode, publicKey]);
+        `, [feedId, ownerPnIdentifier, encryptedKey1, encryptedKey2, publicKey]);
         
         // Generate sub-pN identifier from feed tokens using VolumeIdGenerator formula
-        // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → feed-{hash}
+        // Formula: SHA256(key1:key2:publicKey) → first 12 hex chars → feed-{hash}
         const publicKeyHash = crypto.createHash('sha256').update(publicKey, 'utf8').digest('hex').substring(0, 12);
-        const combined = `${feedPnName}:${feedPasscode}:${publicKeyHash}`;
+        const combined = `${feedKey1}:${feedKey2}:${publicKeyHash}`;
         const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
         const subPnIdentifier = `feed-${hash.substring(0, 12)}`;
 

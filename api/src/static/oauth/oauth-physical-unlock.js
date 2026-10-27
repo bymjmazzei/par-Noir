@@ -1,5 +1,5 @@
 /**
- * Physical USB / NFC unlock for oauth-authorize.html (matches id-dashboard crypto + physicalKeyCrypto).
+ * Physical USB / NFC unlock for the consent unlock app (loaded by physicalUnlockLoader) (matches id-dashboard crypto + physicalKeyCrypto).
  * Exposes window.ParNoirOAuthPhysical — no bundler required.
  */
 (function (global) {
@@ -23,11 +23,11 @@
     return btoa(binary);
   }
 
-  async function deriveDriveKey(passcode, salt) {
+  async function deriveDriveKey(passphrase, salt) {
     var encoder = new TextEncoder();
     var keyMaterial = await crypto.subtle.importKey(
       'raw',
-      encoder.encode(passcode),
+      encoder.encode(passphrase),
       'PBKDF2',
       false,
       ['deriveBits', 'deriveKey']
@@ -41,29 +41,29 @@
     );
   }
 
-  async function decryptFromDrive(encryptedBase64, drivePasscode) {
+  async function decryptFromDrive(encryptedBase64, drivePassphrase) {
     var combined = new Uint8Array(base64ToArrayBuffer(encryptedBase64));
     var salt = combined.slice(0, SALT_LENGTH);
     var iv = combined.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
     var ciphertext = combined.slice(SALT_LENGTH + IV_LENGTH);
-    var key = await deriveDriveKey(drivePasscode, salt);
+    var key = await deriveDriveKey(drivePassphrase, salt);
     var decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ciphertext);
     var json = new TextDecoder().decode(decrypted);
     return JSON.parse(json);
   }
 
-  async function decryptUidFromDrive(encryptedBase64, drivePasscode) {
+  async function decryptUidFromDrive(encryptedBase64, drivePassphrase) {
     var combined = new Uint8Array(base64ToArrayBuffer(encryptedBase64));
     var salt = combined.slice(0, SALT_LENGTH);
     var iv = combined.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
     var ciphertext = combined.slice(SALT_LENGTH + IV_LENGTH);
-    var key = await deriveDriveKey(drivePasscode, salt);
+    var key = await deriveDriveKey(drivePassphrase, salt);
     var decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ciphertext);
     return new TextDecoder().decode(decrypted);
   }
 
-  async function deriveKeyWithBinding(pnName, passcode, saltB64, uid) {
-    var keyMaterialStr = uid ? pnName + ':' + passcode + ':' + uid : pnName + ':' + passcode;
+  async function deriveKeyWithBinding(key1, key2, saltB64, uid) {
+    var keyMaterialStr = uid ? key1 + ':' + key2 + ':' + uid : key1 + ':' + key2;
     var encoder = new TextEncoder();
     var keyMaterialBuffer = encoder.encode(keyMaterialStr);
     var saltBuffer = base64ToArrayBuffer(saltB64);
@@ -88,11 +88,11 @@
     );
   }
 
-  async function decryptWithBinding(identityRow, pnName, passcode, uid) {
+  async function decryptWithBinding(identityRow, key1, key2, uid) {
     var enc = identityRow.encrypted ?? identityRow.encryptedData;
     var iv = base64ToArrayBuffer(identityRow.iv);
     var data = base64ToArrayBuffer(enc);
-    var key = await deriveKeyWithBinding(pnName, passcode, identityRow.salt, uid);
+    var key = await deriveKeyWithBinding(key1, key2, identityRow.salt, uid);
     var decryptedBuffer = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, data);
     return new TextDecoder().decode(decryptedBuffer);
   }
@@ -100,7 +100,7 @@
   /**
    * @returns {{ encryptedIdentity: object, publicKey: string, did: string, decryptedIdentity: object }}
    */
-  async function unlockBoundIdentity(boundPnBlobJson, uid, pnName, passcode) {
+  async function unlockBoundIdentity(boundPnBlobJson, uid, key1, key2) {
     var pnData = typeof boundPnBlobJson === 'string' ? JSON.parse(boundPnBlobJson) : boundPnBlobJson;
     var binding = pnData.binding;
     var identities = pnData.identities;
@@ -108,7 +108,7 @@
       throw new Error('Invalid key-bound pN file format');
     }
     var identityToUnlock = identities[0];
-    var plaintext = await decryptWithBinding(identityToUnlock, pnName, passcode, uid);
+    var plaintext = await decryptWithBinding(identityToUnlock, key1, key2, uid);
     var identity = JSON.parse(plaintext);
     var publicKey = identityToUnlock.publicKey || identity.publicKey;
     if (!publicKey) throw new Error('Invalid pN file: missing public key');
@@ -122,25 +122,25 @@
     return { encryptedIdentity: encryptedIdentity, publicKey: publicKey, did: did, decryptedIdentity: identity };
   }
 
-  async function unlockFromUsbKeyAndPayload(keyFileText, drivePasscode, payloadFileTextOrNull, pnName, passcode) {
+  async function unlockFromUsbKeyAndPayload(keyFileText, drivePassphrase, payloadFileTextOrNull, key1, key2) {
     var uid;
     var boundPnBlob;
     try {
-      var container = await decryptFromDrive(keyFileText, drivePasscode);
+      var container = await decryptFromDrive(keyFileText, drivePassphrase);
       uid = container.uid;
       boundPnBlob = container.boundPnBlob;
     } catch (e1) {
       try {
-        uid = await decryptUidFromDrive(keyFileText, drivePasscode);
+        uid = await decryptUidFromDrive(keyFileText, drivePassphrase);
         if (!payloadFileTextOrNull) {
           throw new Error('Select the payload file (parnoir-payload.enc) after the key file.');
         }
         boundPnBlob = payloadFileTextOrNull;
       } catch (e2) {
-        throw new Error(e2.message || e1.message || 'Invalid key file or drive passcode');
+        throw new Error(e2.message || e1.message || 'Invalid key file or drive passphrase');
       }
     }
-    return unlockBoundIdentity(boundPnBlob, uid, pnName, passcode);
+    return unlockBoundIdentity(boundPnBlob, uid, key1, key2);
   }
 
   var PARNOIR_MIME_TYPE = 'application/x-parnoir-identity';
@@ -205,20 +205,20 @@
 
   /**
    * Decrypt a standard pN identity file (file upload mode).
-   * Key derivation matches id-dashboard IdentityCrypto: PBKDF2 on "pnName:passcode".
+   * Key derivation matches id-dashboard IdentityCrypto: PBKDF2 on "key1:key2".
    * @returns {{ encryptedIdentity: object, publicKey: string, did: string, decryptedIdentity: object }}
    */
-  async function decryptIdentityFile(identityRow, pnName, passcode) {
+  async function decryptIdentityFile(identityRow, key1, key2) {
     var enc = identityRow.encryptedData ?? identityRow.encrypted;
     if (!enc || !identityRow.iv || !identityRow.salt) {
       throw new Error('Invalid identity file: missing encrypted data');
     }
-    var plaintext = await decryptWithBinding(identityRow, pnName, passcode, undefined);
+    var plaintext = await decryptWithBinding(identityRow, key1, key2, undefined);
     var identity = JSON.parse(plaintext);
     var publicKey = identityRow.publicKey || identity.publicKey;
     if (!publicKey) throw new Error('Invalid pN file: missing public key');
-    if (identity.username !== pnName) {
-      throw new Error('Authentication failed: pN name does not match identity file');
+    if (identity.key1 !== key1) {
+      throw new Error('Authentication failed: Key 1 does not match identity file');
     }
     var did = identity.id;
     if (!did) throw new Error('Identity file does not contain a DID');

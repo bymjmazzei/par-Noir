@@ -274,15 +274,11 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         } = req.body || {};
 
         // Fail closed: secrets must never arrive on this wire.
-        if (
-          req.body?.passcode != null ||
-          req.body?.pn_name != null ||
-          req.body?.pnName != null
-        ) {
+        if (['passcode', 'pn_name', 'pnName', 'key1', 'key2'].some((field) => req.body?.[field] != null)) {
           return res.status(400).json({
             error: 'invalid_request',
             error_description:
-              'passcode and pn name must not be sent to the server; unlock locally and submit an ML-DSA unlock proof',
+              'Key 1 and Key 2 must not be sent to the server; unlock locally and submit an ML-DSA unlock proof',
           });
         }
 
@@ -378,7 +374,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         // Under device cloud custody the server holds no Google secrets, so the
         // unlock page must supply the owner's Drive token itself. Hand back the
         // sealed vault: ciphertext the API cannot open, unsealable only with the
-        // ML-KEM secret or pn name + passcode the caller just proved it holds.
+        // ML-KEM secret or Key 1 + Key 2 the caller just proved it holds.
         let sealedCloudVault: unknown = null;
         if (pnIdentifier) {
           try {
@@ -884,7 +880,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
     // GET /oauth/zkp-data-points - Get ZKP data points for third-party tools
     // Returns ZKP proofs for data points that the third party has access to
-    // NEVER returns pN File, pN Name, or passcode
+    // NEVER returns pN File, Key 1, or Key 2
     app.get('/oauth/zkp-data-points', async (req, res) => {
       try {
         const tokenPayload = getBearerTokenPayload(req);
@@ -1039,7 +1035,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
     // GET /oauth/userinfo - User info endpoint
     // Returns user information based on access token
-    // NEVER returns pN File, pN Name, or passcode
+    // NEVER returns pN File, Key 1, or Key 2
     app.get('/oauth/userinfo', async (req, res) => {
       try {
         const tokenPayload = getBearerTokenPayload(req);
@@ -1127,7 +1123,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           console.log(`✅ [Userinfo] Using publicKey extracted from DID`);
         }
 
-        // NEVER return pN File, pN Name, or passcode to third parties
+        // NEVER return pN File, Key 1, or Key 2 to third parties
         // These are sensitive credentials that should never be exposed via OAuth
         
         // Get requested scopes from token
@@ -1141,7 +1137,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           sub: tokenPayload.did,
           did: tokenPayload.did,
           pn_identifier: pnIdentifier, // pN identifier is safe to share (it's public)
-          // NEVER include: pn_name, pn_file, passcode
+          // NEVER include: Key 1, Key 2, pn_file
         };
 
         // Browse/messaging need the public key after unlock; others only if scoped

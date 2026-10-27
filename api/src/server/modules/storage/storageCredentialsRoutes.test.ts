@@ -61,7 +61,6 @@ jest.mock('../storageCredentialsService', () => ({
   storageCredentialsService: {
     getCredentials: jest.fn(),
     upsertCredentials: jest.fn(),
-    migrateIdentityId: jest.fn(),
     stripCloudSecrets: jest.fn((c: Record<string, unknown>) => ({ ...c, stripped: true })),
   },
 }));
@@ -127,7 +126,7 @@ import express from 'express';
 import request from 'supertest';
 import {
   setupStorageCredentialsRoutes,
-  setupStorageVolumeMigrationRoute,
+  setupStorageCloudVaultRoutes,
 } from './storageCredentialsRoutes';
 import { storageCredentialsService } from '../storageCredentialsService';
 import { isPnRevokedForNetwork } from '../identitySuccessionService';
@@ -147,7 +146,6 @@ import { PN_DRIVE_SHEET_KEYS, REQUIRED_PN_DRIVE_SHEET_KEYS } from '../pnDriveInd
 
 const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock;
 const mockUpsertCredentials = storageCredentialsService.upsertCredentials as jest.Mock;
-const mockMigrateIdentityId = storageCredentialsService.migrateIdentityId as jest.Mock;
 const mockStripCloudSecrets = storageCredentialsService.stripCloudSecrets as jest.Mock;
 const mockIsRevoked = isPnRevokedForNetwork as jest.Mock;
 const mockCustodyEnabled = isDeviceCloudCustodyEnabled as jest.Mock;
@@ -187,7 +185,7 @@ function buildApp() {
   setupStorageCredentialsRoutes(app, {
     extractAccountId: (account: any) => account?.backendId || account?.keyPrefix,
   });
-  setupStorageVolumeMigrationRoute(app);
+  setupStorageCloudVaultRoutes(app);
   return app;
 }
 
@@ -207,7 +205,6 @@ describe('storage credentials routes', () => {
     gateFirstDeviceKeyedAt = undefined;
     mockGetCredentials.mockReset();
     mockUpsertCredentials.mockReset().mockResolvedValue(upsertResult());
-    mockMigrateIdentityId.mockReset();
     mockStripCloudSecrets
       .mockReset()
       .mockImplementation((c: Record<string, unknown>) => ({ ...c, stripped: true }));
@@ -671,45 +668,6 @@ describe('storage credentials routes', () => {
         .expect(400);
 
       expect(res.body.error).toBe('MIGRATION_ORDER');
-    });
-  });
-
-  describe('POST /api/storage/migrate-volume-id', () => {
-    it('requires legacy, canonical, and publicKey', async () => {
-      const res = await request(buildApp())
-        .post('/api/storage/migrate-volume-id')
-        .send({ legacyPnIdentifier: 'legacy' })
-        .expect(400);
-      expect(res.body.error).toContain('publicKey');
-    });
-
-    it('returns 404 when the legacy record is absent', async () => {
-      mockMigrateIdentityId.mockResolvedValue(null);
-
-      await request(buildApp())
-        .post('/api/storage/migrate-volume-id')
-        .send({ legacyPnIdentifier: 'legacy', canonicalPnIdentifier: 'canonical', publicKey: 'pk' })
-        .expect(404);
-    });
-
-    it('normalizes both identifiers to pn- form before migrating', async () => {
-      mockMigrateIdentityId.mockResolvedValue({ identityId: 'pn-canonical' });
-
-      const res = await request(buildApp())
-        .post('/api/storage/migrate-volume-id')
-        .send({
-          legacyPnIdentifier: 'legacy',
-          canonicalPnIdentifier: 'pn-canonical',
-          publicKey: 'pk',
-          driveFolderId: 'folder-1',
-        })
-        .expect(200);
-
-      expect(mockMigrateIdentityId).toHaveBeenCalledWith('pn-legacy', 'pn-canonical', {
-        driveFolderId: 'folder-1',
-        publicKey: 'pk',
-      });
-      expect(res.body).toEqual({ success: true, identityId: 'pn-canonical' });
     });
   });
 });

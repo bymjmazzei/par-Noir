@@ -18,11 +18,11 @@ describe('brokerPrivateKeyName', () => {
     ).toBeNull();
   });
 
-  it('rejects a passcode nested under messaging', () => {
+  it('rejects Key 2 nested under messaging', () => {
     expect(
       brokerPrivateKeyName({
-        messagingHandoff: { identity: { passcode: 'nope' } },
+        messagingHandoff: { identity: { key2: 'nope' } },
       })
-    ).toBe('passcode');
+    ).toBe('key2');
   });
 });

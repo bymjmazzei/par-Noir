@@ -352,20 +352,3 @@ export function releaseKeyRecovery(
 ): Promise<{ mode: 'key_only'; pnIdentifier: string; publicKey: string; keyEnvelope: KeyRecoveryEnvelope }> {
   return publicJson('POST', `/api/recovery/requests/${encodeURIComponent(requestId)}/release`, payload);
 }
-
-export async function migrateVolumeId(
-  authToken: string,
-  payload: {
-    legacyPnIdentifier: string;
-    canonicalPnIdentifier: string;
-    publicKey: string;
-    driveFolderId?: string;
-  }
-): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/storage/migrate-volume-id`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error('Failed to migrate platform id');
-}

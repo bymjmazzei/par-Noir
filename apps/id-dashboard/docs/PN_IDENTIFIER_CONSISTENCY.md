@@ -2,7 +2,7 @@
 
 ## Overview
 
-The pN identifier is a stable identifier used for Google Drive folders, OAuth binding, and API storage rows. **Canonical id is derived from the identity public key only** (passcode-independent).
+The pN identifier is a stable identifier used for Google Drive folders, OAuth binding, and API storage rows. **Canonical id is derived from the identity public key only** (independent of Key 1 and Key 2).
 
 ## Canonical method (preferred)
 
@@ -21,22 +21,16 @@ const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey
 
 ### Why publicKey-only?
 
-- **Stable across passcode rotation** (recovery sets new passcode, same keys)
+- **Stable across key rotation** (recovery sets a new Key 1 / Key 2, same keypair)
 - **OAuth and API binding** do not break after recovery
-- **No passcode in identifier derivation** (passcode is a secret factor, not an id ingredient)
-
-## Legacy method (migration only)
-
-`VolumeIdGenerator.generateVolumeId({ pnName, passcode, publicKey })` hashes all three factors. Existing Drive folders may use this id. On unlock, call `POST /api/storage/migrate-volume-id` when legacy ≠ canonical.
+- **No Key 1 or Key 2 in identifier derivation** (both are secrets, never id ingredients)
 
 ## Usage requirements
 
 1. **Always prefer** `generateCanonicalVolumeId(publicKey)` for new OAuth sessions, API credentials, and recovery flows.
-2. **Never log** pn name or passcode when generating or migrating ids.
-3. **Persist `driveFolderId`** in storage credentials when connecting Google Drive so recovery re-link can find the folder after id migration.
+2. **Never log** Key 1 or Key 2.
+3. **Persist `driveFolderId`** in storage credentials when connecting Google Drive so recovery re-link can find the folder.
 
 ## Related
 
-- Dashboard: `apps/id-dashboard/src/utils/volumeIdMigration.ts`
-- API: `POST /api/storage/migrate-volume-id`
 - Recovery: same `publicKey` after Shamir recovery → same canonical id → messaging keys unchanged

@@ -99,7 +99,7 @@ export async function checkPublicLinks(
     return {
       status: 400,
       error: 'secret_prompt',
-      error_description: 'A form on this post asks viewers for a passcode, password, or other secret.'
+      error_description: 'A form on this post asks viewers for a key, password, or other secret.'
     };
   }
 

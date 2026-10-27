@@ -1,7 +1,7 @@
 /**
  * pN OAuth Service
  * Implements OAuth 2.0 authorization code flow for pN identity authentication
- * Similar to Google OAuth but uses pN identity files and passcodes
+ * Similar to Google OAuth but uses pN identity files and Key 1 / Key 2
  */
 
 import crypto from 'crypto';
@@ -48,7 +48,7 @@ export interface AuthorizationCode {
   did: string; // User's DID
   publicKey?: string; // Public key from identity file (needed for file decryption)
   pnIdentifier?: string; // pN identifier (derived client-side, never derived from secrets on server)
-  // SECURITY: pN name and passcode are NEVER stored - they're secrets
+  // SECURITY: Key 1 and Key 2 are NEVER stored - they're secrets
   codeChallenge?: string;
   expiresAt: number; // Timestamp
 }
@@ -97,7 +97,7 @@ export interface AccessToken {
 
 export interface TokenPayload {
   did: string;
-  // pN name is NOT stored here - it's a secret and should never be stored
+  // Key 1 is NOT stored here - it's a secret and should never be stored
   pnIdentifier?: string; // pN identifier (e.g., "83c1db813607") derived from DID + publicKey
   clientId: string;
   scope: string[];
@@ -667,7 +667,7 @@ export class PNOAuthService {
    * Generate access token
    * 
    * SECURITY: Accepts pnIdentifier directly (derived client-side).
-   * Never derives from secrets - pnName and passcode are never accepted.
+   * Never derives from secrets - Key 1 and Key 2 are never accepted.
    */
   private static async generateAccessToken(params: { 
     did: string; 
@@ -677,7 +677,7 @@ export class PNOAuthService {
     scope: string[] 
   }): Promise<string> {
     // Use provided pN identifier (derived client-side)
-    // SECURITY: Never derive from secrets - pnName and passcode are never accepted
+    // SECURITY: Never derive from secrets - Key 1 and Key 2 are never accepted
     const pnIdentifier = params.pnIdentifier;
     
     if (!pnIdentifier) {
@@ -687,7 +687,7 @@ export class PNOAuthService {
     const now = Math.floor(Date.now() / 1000);
     const payload: TokenPayload = {
       did: params.did,
-      // SECURITY: pN name is NEVER stored - it's a secret
+      // SECURITY: Key 1 is NEVER stored - it's a secret
       pnIdentifier, // Use pN identifier directly (derived client-side)
       clientId: params.clientId,
       scope: params.scope,
@@ -723,7 +723,7 @@ export class PNOAuthService {
    * Generate refresh token and store in database
    * 
    * SECURITY: Accepts pnIdentifier directly (derived client-side).
-   * Never derives from secrets - pnName and passcode are never accepted.
+   * Never derives from secrets - Key 1 and Key 2 are never accepted.
    */
   private static async generateRefreshToken(params: { 
     did: string; 
@@ -741,7 +741,7 @@ export class PNOAuthService {
     const jti = crypto.randomUUID();
     
     // Use provided pN identifier (derived client-side)
-    // SECURITY: Never derive from secrets - pnName and passcode are never accepted
+    // SECURITY: Never derive from secrets - Key 1 and Key 2 are never accepted
     const db = getDatabasePool();
     try {
       await db.query(

@@ -438,7 +438,7 @@ describe('custodian-held recovery', () => {
     const binding = await call('POST', '/api/recovery/custodian/requests/:requestId/approve', {
       pn: 'pn-c1',
       params: { requestId },
-      body: { ...approval(CUSTODIANS[0], requestId, 'passcode-binding'), sealedShare: sealed(1) },
+      body: { ...approval(CUSTODIANS[0], requestId, 'mac-binding'), sealedShare: sealed(1) },
     });
     expect(binding.status).toBe(400);
     expect(binding.body.error).toBe('invalid_approval');

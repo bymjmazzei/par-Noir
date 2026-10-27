@@ -1,7 +1,7 @@
 /**
  * Real-time event payloads.
  * Opaque ciphertext (same class as mailbox jobs) is allowed for online delivery speed.
- * Never plaintext message bodies, passcode, or pn name.
+ * Never plaintext message bodies, Key 1, or Key 2.
  */
 
 export type RealtimeEvent =

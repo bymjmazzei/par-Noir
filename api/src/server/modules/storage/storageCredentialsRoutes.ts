@@ -30,12 +30,8 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         const { identityId } = req.params;
         const { credentials, cid } = req.body;
 
-        // SECURITY: Sanitize identityId in logs - never log pn names or short identifiers
-        // CRITICAL: pn identifiers start with 'pn-' and are safe to log (they're hashes, not names)
-        // Only redact if it's short AND doesn't start with 'pn-' or 'did:' or public key prefix
-        const sanitizedIdentityId = identityId && identityId.length < 20 && !identityId.startsWith('pn-') && !identityId.startsWith('did:') && !identityId.startsWith('MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA')
-          ? '[REDACTED - potential pn name]'
-          : identityId?.substring(0, 50) + (identityId && identityId.length > 50 ? '...' : '');
+        // Only canonical pN ids (public-key hashes) are logged; anything else could be Key 1.
+        const sanitizedIdentityId = /^pn-[0-9a-f]{12}$/.test(identityId || '') ? identityId : '[REDACTED]';
 
         console.log(`[StorageCredentials PUT] Received request for identityId: ${sanitizedIdentityId}`);
         console.log(`[StorageCredentials PUT] Credentials structure:`, {
@@ -634,35 +630,7 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
     });
 }
 
-/** POST /api/storage/migrate-volume-id — legacy passcode pn id → canonical publicKey id */
-export function setupStorageVolumeMigrationRoute(app: Application) {
-    app.post('/api/storage/migrate-volume-id', async (req: Request, res: Response) => {
-      try {
-        const { legacyPnIdentifier, canonicalPnIdentifier, publicKey, driveFolderId } = req.body as {
-          legacyPnIdentifier?: string;
-          canonicalPnIdentifier?: string;
-          publicKey?: string;
-          driveFolderId?: string;
-        };
-        if (!legacyPnIdentifier || !canonicalPnIdentifier || !publicKey) {
-          return res.status(400).json({ error: 'legacyPnIdentifier, canonicalPnIdentifier, and publicKey are required' });
-        }
-        const { storageCredentialsService } = await import('../storageCredentialsService');
-        const record = await storageCredentialsService.migrateIdentityId(
-          legacyPnIdentifier.startsWith('pn-') ? legacyPnIdentifier : `pn-${legacyPnIdentifier}`,
-          canonicalPnIdentifier.startsWith('pn-') ? canonicalPnIdentifier : `pn-${canonicalPnIdentifier}`,
-          { driveFolderId, publicKey }
-        );
-        if (!record) {
-          return res.status(404).json({ error: 'Legacy credentials not found' });
-        }
-        return res.json({ success: true, identityId: record.identityId });
-      } catch (error: any) {
-        console.error('Error migrating volume id:', error);
-        return res.status(500).json({ error: 'Failed to migrate volume id' });
-      }
-    });
-
+export function setupStorageCloudVaultRoutes(app: Application) {
     // PUT /api/storage/cloud-vault/:identityId — store opaque client-sealed credentials (ciphertext only)
     app.put('/api/storage/cloud-vault/:identityId', async (req: Request, res: Response) => {
       try {

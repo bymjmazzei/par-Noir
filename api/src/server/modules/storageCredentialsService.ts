@@ -568,38 +568,11 @@ export class StorageCredentialsService {
     return this.upsertCredentials(identityId, stripped, existing.cid ?? undefined);
   }
 
-  /**
-   * Move storage_credentials from legacy passcode-based pn id to canonical publicKey-based id.
-   */
   /** Pinned Drive folder id (par Noir root) if stored in credentials blob. */
   async getDriveFolderId(identityId: string): Promise<string | null> {
     const record = await this.getCredentials(identityId);
     const id = record?.credentials?.driveFolderId;
     return typeof id === 'string' && id.length > 0 ? id : null;
-  }
-
-  async migrateIdentityId(
-    legacyId: string,
-    canonicalId: string,
-    patch?: { driveFolderId?: string; publicKey?: string }
-  ): Promise<StoredCredentialsRecord | null> {
-    if (!legacyId || !canonicalId || legacyId === canonicalId) {
-      return null;
-    }
-    const legacy = await this.getCredentials(legacyId);
-    if (!legacy?.credentials) {
-      return null;
-    }
-    const existingCanonical = await this.getCredentials(canonicalId);
-    const merged = {
-      ...legacy.credentials,
-      ...(existingCanonical?.credentials || {}),
-      ...(patch?.driveFolderId ? { driveFolderId: patch.driveFolderId } : {}),
-      ...(patch?.publicKey ? { publicKey: patch.publicKey } : {})
-    };
-    const record = await this.upsertCredentials(canonicalId, merged, legacy.cid ?? undefined);
-    await this.deleteCredentials(legacyId);
-    return record;
   }
 }
 

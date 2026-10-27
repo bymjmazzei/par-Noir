@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  *
- * Approvals must be ZK v2 envelopes bound to the owner identity; passcode bindings are rejected.
+ * Approvals must be ZK v2 envelopes bound to the owner identity; MAC bindings are rejected.
  */
 import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
 import { generateZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
@@ -64,7 +64,7 @@ describe('verifyRecoveryApprovalPayload', () => {
     expect(result).toEqual({ ok: true, requestId: 'req-1', identityPublicKey: 'owner-pk' });
   });
 
-  it('rejects a passcode-derived approval binding', () => {
+  it('rejects a MAC approval binding', () => {
     const binding = JSON.stringify({
       requestId: 'req-1',
       custodianId: 'cust-1',

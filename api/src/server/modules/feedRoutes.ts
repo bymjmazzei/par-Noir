@@ -933,7 +933,7 @@ export function setupFeedRoutes(app: Application) {
         return res.status(400).json({ error: 'pN identifier not found in token' });
       }
 
-      // Fetch feed tokens owned by this pN (safe metadata only; never return pn name or passcode)
+      // Fetch feed tokens owned by this pN (safe metadata only; never return Key 1 or Key 2)
       const result = await db.query(`
         SELECT 
           ft.feed_id,

@@ -27,7 +27,7 @@ export const logger = winston.createLogger({
 });
 
 const SENSITIVE_KEY_PATTERN =
-  /(authorization|access[_-]?token|refresh[_-]?token|token|secret|api[_-]?key|client[_-]?secret|cookie|passcode|pnname|email)/i;
+  /(authorization|access[_-]?token|refresh[_-]?token|token|secret|api[_-]?key|client[_-]?secret|cookie|passcode|pnname|key1|key2|email)/i;
 
 /** Keys whose string values are hashed (routing metadata minimization). */
 const PN_IDENTIFIER_KEY_PATTERN =
