@@ -215,7 +215,7 @@ export function MePageTabsRail({ activeTab, onTabSelect, availableTabs }: MePage
         >
         <div
           ref={innerContainerRef}
-          className="flex items-center space-x-6 py-2"
+          className="feed-rail flex items-center space-x-6 py-2"
           style={{ 
             minWidth: 'max-content',
             paddingLeft: 'calc(50vw - 12px)',

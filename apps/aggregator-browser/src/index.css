@@ -70,8 +70,9 @@ body {
     touch-action: manipulation;
   }
 
-  /* The rail sizes its own icons. A 44px floor only opens the gaps. */
-  .feed-engagement-rail button {
+  /* Rails size their own items. A 44px floor opens the gaps and drops the active underline. */
+  .feed-engagement-rail button,
+  .feed-rail button {
     min-height: 0;
     min-width: 0;
   }

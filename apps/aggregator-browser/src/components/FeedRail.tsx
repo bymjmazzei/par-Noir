@@ -222,7 +222,7 @@ export function FeedRail({
       >
         <div
           ref={innerContainerRef}
-          className="flex items-center space-x-8 py-2"
+          className="feed-rail flex items-center space-x-8 py-2"
           style={{ 
             minWidth: 'max-content',
             paddingLeft: 'calc(50vw - 12px)', // Center first item when scrolled to start
