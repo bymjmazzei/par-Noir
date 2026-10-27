@@ -9,6 +9,7 @@ import {
   signOauthUnlockProof,
   verifyOauthUnlockProof,
 } from '@par-noir/pqc-crypto';
+import { buildRecoveryPayload } from '@par-noir/recovery-crypto';
 import { IdentityCrypto } from './identityCrypto';
 import { SecureCredentialManager } from './secureCredentialManager';
 
@@ -81,6 +82,44 @@ describe('create → unlock → oauth unlock proof', () => {
     expect(
       verifyOauthUnlockProof(signature, { ...params, challenge: 'tampered' }, encryptedIdentity.publicKey)
     ).toBe(false);
+  }, 120_000);
+
+  it('restoreIdentity keeps the pN keys and unlocks with the new keys only', async () => {
+    const oldName = `test-pn-old-${Date.now()}`;
+    const { identity: original } = await IdentityCrypto.createIdentity(oldName, 'Old', 'old-pass');
+    const decrypted = JSON.parse(
+      await IdentityCrypto.decryptData(
+        { encrypted: original.encryptedData, iv: original.iv, salt: original.salt },
+        oldName,
+        'old-pass'
+      )
+    ) as { id: string; pqcSecrets: { mlDsaSecretKey: string; mlKemSecretKey: string } };
+    const payload = buildRecoveryPayload({
+      publicKey: original.publicKey,
+      mlKemPublicKey: original.mlKemPublicKey!,
+      mlKemSecretKey: decrypted.pqcSecrets.mlKemSecretKey,
+      mlDsaSecretKey: decrypted.pqcSecrets.mlDsaSecretKey,
+      identityId: decrypted.id,
+      pnName: oldName,
+      recoveryConfig: { threshold: 2, totalShares: 5, version: 1, createdAt: new Date().toISOString() },
+    });
+
+    const newName = `test-pn-new-${Date.now()}`;
+    const { identity: restored } = await IdentityCrypto.restoreIdentity({
+      payload,
+      pnName: newName,
+      passcode: 'new-pass',
+    });
+
+    expect(restored.publicKey).toBe(original.publicKey);
+    expect(restored.mlKemPublicKey).toBe(original.mlKemPublicKey);
+    expect(restored.recoveryEnvelope).toBeTruthy();
+    expect(restored.recoveryEnvelope).not.toEqual(original.recoveryEnvelope);
+    const session = await IdentityCrypto.authenticateIdentity(restored, 'new-pass', newName);
+    expect(session.id).toBe(decrypted.id);
+    await expect(IdentityCrypto.authenticateIdentity(restored, 'old-pass', oldName)).rejects.toThrow(
+      /Authentication failed/
+    );
   }, 120_000);
 
   it('rejects unlock with wrong passcode', async () => {

@@ -15,10 +15,13 @@ export {
 export {
   encryptRecoveryEnvelope,
   decryptRecoveryEnvelope,
+  encryptKeyRecoveryEnvelope,
+  decryptKeyRecoveryEnvelope,
   buildRecoveryPayload,
   type RecoveryConfig,
   type RecoveryPayload,
-  type RecoveryEnvelope
+  type RecoveryEnvelope,
+  type KeyRecoveryEnvelope
 } from './envelope';
 export {
   generateRecoveryKeyPair,

@@ -6,6 +6,7 @@ import {
   encryptRecoveryEnvelope,
   buildRecoveryPayload,
   sealRecoveryShares,
+  type RecoveryPayload,
 } from '@par-noir/recovery-crypto';
 import { SecureCredentialManager } from './secureCredentialManager';
 import { MemorySecurity } from './memorySecurity';
@@ -66,71 +67,119 @@ export class IdentityCrypto {
     recoveryTotalShares = 5
   ): Promise<IdentityCreationResult> {
     try {
-      const didKeyPair = await this.generateDID();
-
-      const recoveryConfig = {
-        threshold: recoveryThreshold,
-        totalShares: recoveryTotalShares,
-        version: 1 as const,
-        createdAt: new Date().toISOString()
-      };
-
-      const identityData = {
-        id: didKeyPair.did,
+      return await this.sealIdentity({
+        keys: await this.generateDID(),
         username,
         nickname,
-        email: '',
-        phone: '',
-        recoveryEmail: recoveryEmail || '',
-        recoveryPhone: recoveryPhone || '',
-        profilePicture: DEFAULT_PROFILE_PICTURE,
-        createdAt: new Date().toISOString(),
-        status: 'active',
-        custodiansRequired: true,
-        custodiansSetup: false,
-        recoveryConfig,
-        pqcSecrets: {
-          mlDsaSecretKey: didKeyPair.privateKey,
-          mlKemSecretKey: didKeyPair.mlKemSecretKey,
-        },
-      };
-
-      const encryptedData = await this.encrypt(
-        JSON.stringify(identityData),
-        username,
-        passcode
-      );
-
-      const recoveryMaster = generateRecoveryMaster();
-      const recoveryPayload = buildRecoveryPayload({
-        publicKey: didKeyPair.publicKey,
-        mlKemPublicKey: didKeyPair.mlKemPublicKey,
-        mlKemSecretKey: didKeyPair.mlKemSecretKey,
-        mlDsaSecretKey: didKeyPair.privateKey,
-        identityId: didKeyPair.did,
-        pnName: username,
-        recoveryConfig
+        passcode,
+        recoveryEmail,
+        recoveryPhone,
+        recoveryThreshold,
+        recoveryTotalShares,
       });
-      const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
-      const recoveryShares = splitSecret(recoveryMaster, recoveryThreshold, recoveryTotalShares);
-      const recoverySharesSealed = await sealRecoveryShares(recoveryShares, username, passcode);
-
-      return {
-        identity: {
-          publicKey: didKeyPair.publicKey,
-          mlKemPublicKey: didKeyPair.mlKemPublicKey,
-          encryptedData: encryptedData.encrypted,
-          iv: encryptedData.iv,
-          salt: encryptedData.salt,
-          recoveryEnvelope,
-          recoverySharesSealed,
-        },
-        recoveryShares,
-        recoveryConfig
-      };
     } catch (error) {
       throw new Error(`Failed to create identity: ${error}`);
     }
+  }
+
+  /**
+   * Re-seal a recovered pN under new Key 1 + Key 2. Keeps the same keys (publicKey, DID, ML-DSA,
+   * ML-KEM) and issues a fresh recovery envelope and shares, exactly as createIdentity does.
+   */
+  static async restoreIdentity(params: {
+    payload: RecoveryPayload;
+    pnName: string;
+    passcode: string;
+    nickname?: string;
+  }): Promise<IdentityCreationResult> {
+    const { payload } = params;
+    try {
+      return await this.sealIdentity({
+        keys: {
+          publicKey: payload.publicKey,
+          privateKey: payload.mlDsaSecretKey,
+          did: payload.identityId,
+          mlKemPublicKey: payload.mlKemPublicKey,
+          mlKemSecretKey: payload.mlKemSecretKey,
+        },
+        username: params.pnName,
+        nickname: params.nickname || params.pnName,
+        passcode: params.passcode,
+        recoveryThreshold: payload.recoveryConfig?.threshold ?? 2,
+        recoveryTotalShares: payload.recoveryConfig?.totalShares ?? 5,
+      });
+    } catch (error) {
+      throw new Error(`Failed to restore identity: ${error}`);
+    }
+  }
+
+  private static async sealIdentity(params: {
+    keys: DIDKeyPair;
+    username: string;
+    nickname: string;
+    passcode: string;
+    recoveryEmail?: string;
+    recoveryPhone?: string;
+    recoveryThreshold: number;
+    recoveryTotalShares: number;
+  }): Promise<IdentityCreationResult> {
+    const { keys, username, passcode } = params;
+    const recoveryConfig = {
+      threshold: params.recoveryThreshold,
+      totalShares: params.recoveryTotalShares,
+      version: 1 as const,
+      createdAt: new Date().toISOString()
+    };
+
+    const identityData = {
+      id: keys.did,
+      username,
+      nickname: params.nickname,
+      email: '',
+      phone: '',
+      recoveryEmail: params.recoveryEmail || '',
+      recoveryPhone: params.recoveryPhone || '',
+      profilePicture: DEFAULT_PROFILE_PICTURE,
+      createdAt: new Date().toISOString(),
+      status: 'active',
+      custodiansRequired: true,
+      custodiansSetup: false,
+      recoveryConfig,
+      pqcSecrets: {
+        mlDsaSecretKey: keys.privateKey,
+        mlKemSecretKey: keys.mlKemSecretKey,
+      },
+    };
+
+    const encryptedData = await this.encrypt(JSON.stringify(identityData), username, passcode);
+
+    const recoveryMaster = generateRecoveryMaster();
+    const recoveryPayload = buildRecoveryPayload({
+      publicKey: keys.publicKey,
+      mlKemPublicKey: keys.mlKemPublicKey,
+      mlKemSecretKey: keys.mlKemSecretKey,
+      mlDsaSecretKey: keys.privateKey,
+      identityId: keys.did,
+      pnName: username,
+      recoveryConfig
+    });
+    const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
+    const recoveryShares = splitSecret(recoveryMaster, params.recoveryThreshold, params.recoveryTotalShares);
+    const recoverySharesSealed = await sealRecoveryShares(recoveryShares, username, passcode);
+
+    return {
+      identity: {
+        publicKey: keys.publicKey,
+        mlKemPublicKey: keys.mlKemPublicKey,
+        encryptedData: encryptedData.encrypted,
+        iv: encryptedData.iv,
+        salt: encryptedData.salt,
+        recoveryEnvelope,
+        recoverySharesSealed,
+      },
+      recoveryShares,
+      recoveryConfig
+    };
   }
 
   /**
