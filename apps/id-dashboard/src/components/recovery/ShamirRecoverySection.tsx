@@ -24,7 +24,6 @@ export interface ShamirRecoverySectionProps {
   recoveryVaultSummary: RecoveryCustodianSummary | null;
   hasKeyedDevices: boolean;
   deviceRequiredMessage: string;
-  onAuthChange: () => void;
   /** Summary changed on the relay (shares sent to custodians). */
   onSummaryChanged: () => void;
   onAddCustodian: () => void;
@@ -46,7 +45,6 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
   recoveryVaultSummary,
   hasKeyedDevices,
   deviceRequiredMessage,
-  onAuthChange,
   onSummaryChanged,
   onAddCustodian,
   onSendInvitation,
@@ -126,8 +124,6 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
 
       <RecoveryAuthGate
         expectedUser={authenticatedUser}
-        onAuthenticated={onAuthChange}
-        onLocked={onAuthChange}
       />
 
       {phase === 'auth_required' && (

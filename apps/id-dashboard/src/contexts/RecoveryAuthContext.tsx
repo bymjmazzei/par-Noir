@@ -17,9 +17,18 @@ function getRecoveryAuthContext(): React.Context<RecoveryAuthContextValue | null
   return recoveryAuthContext;
 }
 
-export function RecoveryAuthProvider({ children }: { children: React.ReactNode }) {
+export function RecoveryAuthProvider({
+  children,
+  onSessionChange,
+}: {
+  children: React.ReactNode;
+  /** Runs after the shared recovery session is set, cleared or expires. */
+  onSessionChange?: () => void;
+}) {
   const [auth, setAuth] = React.useState<RecoveryAuthSession | null>(null);
   const Ctx = getRecoveryAuthContext();
+  const onSessionChangeRef = React.useRef(onSessionChange);
+  onSessionChangeRef.current = onSessionChange;
 
   const clearAuth = React.useCallback(() => {
     setAuth(null);
@@ -29,9 +38,11 @@ export function RecoveryAuthProvider({ children }: { children: React.ReactNode }
   React.useEffect(() => {
     if (!auth) {
       setRecoveryAuthSession(null);
+      onSessionChangeRef.current?.();
       return;
     }
     setRecoveryAuthSession(auth);
+    onSessionChangeRef.current?.();
     const remaining = auth.expiresAt - Date.now();
     if (remaining <= 0) {
       clearAuth();

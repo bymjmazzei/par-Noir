@@ -10,8 +10,6 @@ import {
 
 interface RecoveryAuthGateProps {
   expectedUser: { id: string; publicKey?: string } | null;
-  onAuthenticated?: () => void;
-  onLocked?: () => void;
 }
 
 const INPUT_CLASS =
@@ -19,8 +17,6 @@ const INPUT_CLASS =
 
 export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
   expectedUser,
-  onAuthenticated,
-  onLocked,
 }) => {
   const { isAuthenticated, startSession, clearAuth, auth } = useRecoveryAuth();
   const [open, setOpen] = useState(false);
@@ -47,10 +43,7 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
         </div>
         <button
           type="button"
-          onClick={() => {
-            clearAuth();
-            onLocked?.();
-          }}
+          onClick={clearAuth}
           className="text-xs text-text-secondary hover:text-text-primary underline shrink-0"
         >
           Lock recovery
@@ -88,7 +81,6 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
       });
       startSession(session);
       setOpen(false);
-      onAuthenticated?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not unlock recovery');
     } finally {

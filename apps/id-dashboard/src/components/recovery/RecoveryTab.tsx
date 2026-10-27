@@ -90,7 +90,7 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
         deviceAuth={deviceAuth}
       />
 
-      <RecoveryAuthProvider>
+      <RecoveryAuthProvider onSessionChange={bumpRecoveryAuthUi}>
         <ShamirRecoverySection
           apiToken={apiToken}
           userPnIdentifier={recoveryVaultPnId}
@@ -108,7 +108,6 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
           recoveryVaultSummary={recoveryVaultSummary}
           hasKeyedDevices={!!deviceAuth?.hasKeyedDevices}
           deviceRequiredMessage={deviceAuth?.deviceRequiredMessage || 'Keyed device required'}
-          onAuthChange={bumpRecoveryAuthUi}
           onSummaryChanged={refreshRecoveryVaultCb}
           onAddCustodian={() => setShowAddCustodianModal(true)}
           onSendInvitation={onSendInvitation}
