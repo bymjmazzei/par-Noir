@@ -7,6 +7,5 @@ export * from './dmHistoryMigration';
 export * from './zkpReissue';
 export * from './dmRekey';
 export * from './groupRewrap';
-export * from './recoveryVault';
 export * from './lineageZkp';
 export * from './runner';

@@ -11,7 +11,6 @@ import {
   markStepComplete,
   createInitialProgress,
   serializeMigrationState,
-  migrateOwnerVaultShares,
   rekeyConnectionAsRequester,
   rewrapGroupForOwnerRotation,
   buildMemberMessageRootsFromRekeys,
@@ -447,6 +446,5 @@ export {
   rekeyConnectionAsRequester,
   rewrapGroupForOwnerRotation,
   buildMemberMessageRootsFromRekeys,
-  migrateOwnerVaultShares,
   reissueZkProofsFromEnvelopes,
 };
