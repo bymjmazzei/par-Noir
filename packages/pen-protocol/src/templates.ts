@@ -114,7 +114,7 @@ function registerStarter(input: {
     `Columns ( *=required ): ${cols}.`,
     'Emit ONLY a PenAgentBuild JSON object: { "templateId", "title", "rows": [ { columnId: value, ... } ] }.',
     'Do not use freeform TipTap sections for row data. Do not invent folder paths or extra columns.',
-    'Never include secrets, pn name, passcodes, tokens, or raw account identifiers.',
+    'Never include secrets, Key 1, Key 2, tokens, or raw account identifiers.',
     'User request:',
     '{{user_input}}'
   ].join('\n');

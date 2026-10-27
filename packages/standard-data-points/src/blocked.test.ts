@@ -20,7 +20,7 @@ describe('blocked data points', () => {
   });
 
   it('is case-sensitive so near-miss ids are not silently allowed through a rename', () => {
-    expect(isBlockedDataPoint('PN_NAME')).toBe(false);
+    expect(isBlockedDataPoint('KEY1')).toBe(false);
   });
 
   it('strips blocked ids while preserving the order of the rest', () => {

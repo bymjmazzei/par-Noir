@@ -27,11 +27,11 @@ afterEach(() => {
 
 describe('create → unlock → oauth unlock proof', () => {
   it('roundtrips dashboard .pn JSON and signs a verifiable unlock proof', async () => {
-    const pnName = `test-pn-${Date.now()}`;
-    const passcode = 'test-passcode-not-a-secret';
+    const key1 = `test-pn-${Date.now()}`;
+    const key2 = 'test-key2-not-a-secret';
     const nickname = 'Gate Test';
 
-    const { identity } = await IdentityCrypto.createIdentity(pnName, nickname, passcode);
+    const { identity } = await IdentityCrypto.createIdentity(key1, nickname, key2);
 
     // Same shape the dashboard downloads as .pn
     const pnFile = JSON.stringify({
@@ -45,8 +45,8 @@ describe('create → unlock → oauth unlock proof', () => {
 
     const session = await IdentityCrypto.authenticateIdentity(
       encryptedIdentity,
-      passcode,
-      pnName
+      key2,
+      key1
     );
     expect(session.id).toMatch(/^did:key:/);
     expect(session.publicKey).toBe(encryptedIdentity.publicKey);
@@ -59,8 +59,8 @@ describe('create → unlock → oauth unlock proof', () => {
         iv: encryptedIdentity.iv,
         salt: encryptedIdentity.salt,
       },
-      pnName,
-      passcode
+      key1,
+      key2
     );
     const decrypted = JSON.parse(raw) as {
       pqcSecrets?: { mlDsaSecretKey?: string };
@@ -100,15 +100,14 @@ describe('create → unlock → oauth unlock proof', () => {
       mlKemSecretKey: decrypted.pqcSecrets.mlKemSecretKey,
       mlDsaSecretKey: decrypted.pqcSecrets.mlDsaSecretKey,
       identityId: decrypted.id,
-      pnName: oldName,
       recoveryConfig: { threshold: 2, totalShares: 5, version: 1, createdAt: new Date().toISOString() },
     });
 
     const newName = `test-pn-new-${Date.now()}`;
     const { identity: restored } = await IdentityCrypto.restoreIdentity({
       payload,
-      pnName: newName,
-      passcode: 'new-pass',
+      key1: newName,
+      key2: 'new-pass',
     });
 
     expect(restored.publicKey).toBe(original.publicKey);
@@ -135,16 +134,19 @@ describe('create → unlock → oauth unlock proof', () => {
           key1,
           'pass'
         )
-      ) as { nickname: string };
+      ) as { nickname: string; key1: string };
       expect(decrypted.nickname).toBe('');
+      expect(decrypted.key1).toBe(key1);
+      expect(decrypted).not.toHaveProperty('username');
+      expect(decrypted).not.toHaveProperty('pnName');
     }
   }, 120_000);
 
-  it('rejects unlock with wrong passcode', async () => {
-    const pnName = `test-pn-bad-${Date.now()}`;
-    const { identity } = await IdentityCrypto.createIdentity(pnName, 'x', 'correct-pass');
+  it('rejects unlock with wrong Key 2', async () => {
+    const key1 = `test-pn-bad-${Date.now()}`;
+    const { identity } = await IdentityCrypto.createIdentity(key1, 'x', 'correct-pass');
     await expect(
-      IdentityCrypto.authenticateIdentity(identity, 'wrong-pass', pnName)
+      IdentityCrypto.authenticateIdentity(identity, 'wrong-pass', key1)
     ).rejects.toThrow(/Authentication failed/);
   }, 120_000);
 });

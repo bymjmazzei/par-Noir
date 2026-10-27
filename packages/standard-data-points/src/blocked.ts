@@ -1,5 +1,5 @@
 /** Data point ids that must never be requested or granted via integrator APIs. */
-export const BLOCKED_DATA_POINTS = ['pn_file', 'pn_name', 'passcode', 'pnIdentifier'] as const;
+export const BLOCKED_DATA_POINTS = ['pn_file', 'pn_name', 'passcode', 'key1', 'key2', 'pnIdentifier'] as const;
 
 export type BlockedDataPointId = (typeof BLOCKED_DATA_POINTS)[number];
 

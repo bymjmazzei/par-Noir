@@ -31,8 +31,8 @@ function identityFile(identity: unknown): string {
 
 export async function buildShellResult(args: {
   op: ShellOp;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   unlocked?: ShellUnlocked;
   vaultPayload?: string;
   agentLabel?: string;
@@ -72,13 +72,13 @@ export async function buildShellResult(args: {
   if (args.op === 'seal_vault') {
     if (!args.vaultPayload) throw new Error('Cloud envelope missing');
     const credentials = JSON.parse(b64UrlDecode(args.vaultPayload)) as StorageCredentialsEnvelope;
-    const sealed = await sealCloudVault(credentials, args.pnName, args.passcode);
+    const sealed = await sealCloudVault(credentials, args.key1, args.key2);
     return { sealedVault: JSON.stringify(sealed) };
   }
 
   if (args.op === 'create') {
-    const created = await IdentityCrypto.createIdentity(args.pnName, '', args.passcode);
-    const session = await IdentityCrypto.authenticateIdentity(created.identity, args.passcode, args.pnName);
+    const created = await IdentityCrypto.createIdentity(args.key1, '', args.key2);
+    const session = await IdentityCrypto.authenticateIdentity(created.identity, args.key2, args.key1);
     return {
       identityFile: identityFile(created.identity),
       did: session.id,
@@ -89,8 +89,8 @@ export async function buildShellResult(args: {
   if (args.op === 'rotate' || args.op === 'recovery') {
     const predecessor = args.unlocked?.decryptedIdentity || {};
     const created = await IdentityCrypto.prepareRotatedIdentity({
-      pnName: args.pnName,
-      newPasscode: args.passcode,
+      key1: args.key1,
+      newKey2: args.key2,
       predecessorDecrypted: {
         nickname: typeof predecessor.nickname === 'string' ? predecessor.nickname : undefined,
         recoveryEmail: typeof predecessor.recoveryEmail === 'string' ? predecessor.recoveryEmail : undefined,

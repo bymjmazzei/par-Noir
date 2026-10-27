@@ -12,7 +12,6 @@ const payload = buildRecoveryPayload({
   mlKemSecretKey: 'kem-sk',
   mlDsaSecretKey: 'dsa-sk',
   identityId: 'did:key:abc',
-  pnName: 'old-key-one',
   recoveryConfig: { threshold: 2, totalShares: 5, version: 1, createdAt: '2026-01-01T00:00:00.000Z' },
 });
 const RECOVERY_KEY = 'recovery-0123456789abcdef0123456789abcdef';

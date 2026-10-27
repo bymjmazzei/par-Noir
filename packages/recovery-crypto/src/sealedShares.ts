@@ -1,6 +1,6 @@
 /**
- * Passcode-bound seal for Shamir shares stored inside the portable .pn identity file.
- * Key derivation matches dashboard identity crypto (pnName:passcode, PBKDF2 1M / SHA-512, AES-GCM).
+ * Key 2-bound seal for Shamir shares stored inside the portable .pn identity file.
+ * Key derivation matches dashboard identity crypto (key1:key2, PBKDF2 1M / SHA-512, AES-GCM).
  */
 
 import { normalizeShare, type ShamirShare } from './shamir';
@@ -26,8 +26,8 @@ function base64ToArrayBuffer(b64: string): ArrayBuffer {
   return out.buffer;
 }
 
-async function deriveKey(pnName: string, passcode: string, saltB64: string): Promise<CryptoKey> {
-  const material = new TextEncoder().encode(`${pnName}:${passcode}`);
+async function deriveKey(key1: string, key2: string, saltB64: string): Promise<CryptoKey> {
+  const material = new TextEncoder().encode(`${key1}:${key2}`);
   const salt = base64ToArrayBuffer(saltB64);
   const baseKey = await crypto.subtle.importKey('raw', material, 'PBKDF2', false, ['deriveBits', 'deriveKey']);
   return crypto.subtle.deriveKey(
@@ -41,13 +41,13 @@ async function deriveKey(pnName: string, passcode: string, saltB64: string): Pro
 
 export async function sealRecoveryShares(
   shares: ShamirShare[],
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<RecoverySharesSealed> {
   const saltBytes = crypto.getRandomValues(new Uint8Array(16));
   const salt = arrayBufferToBase64(saltBytes.buffer);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(pnName, passcode, salt);
+  const key = await deriveKey(key1, key2, salt);
   const plaintext = new TextEncoder().encode(JSON.stringify(shares));
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, plaintext);
   return {
@@ -60,11 +60,11 @@ export async function sealRecoveryShares(
 
 export async function unsealRecoveryShares(
   sealed: RecoverySharesSealed,
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<ShamirShare[]> {
   if (sealed.v !== 1) throw new Error('unsupported recovery shares seal version');
-  const key = await deriveKey(pnName, passcode, sealed.salt);
+  const key = await deriveKey(key1, key2, sealed.salt);
   const iv = base64ToArrayBuffer(sealed.iv);
   const ciphertext = base64ToArrayBuffer(sealed.encrypted);
   let decrypted: ArrayBuffer;

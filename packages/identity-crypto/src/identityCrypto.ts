@@ -59,9 +59,9 @@ export class IdentityCrypto {
    * Create a real identity with encrypted storage
    */
   static async createIdentity(
-    username: string,
+    key1: string,
     nickname: string,
-    passcode: string,
+    key2: string,
     recoveryEmail?: string,
     recoveryPhone?: string,
     recoveryThreshold = 2,
@@ -70,9 +70,9 @@ export class IdentityCrypto {
     try {
       return await this.sealIdentity({
         keys: await this.generateDID(),
-        username,
+        key1,
         nickname,
-        passcode,
+        key2,
         recoveryEmail,
         recoveryPhone,
         recoveryThreshold,
@@ -89,8 +89,8 @@ export class IdentityCrypto {
    */
   static async restoreIdentity(params: {
     payload: RecoveryPayload;
-    pnName: string;
-    passcode: string;
+    key1: string;
+    key2: string;
     nickname?: string;
   }): Promise<IdentityCreationResult> {
     const { payload } = params;
@@ -103,9 +103,9 @@ export class IdentityCrypto {
           mlKemPublicKey: payload.mlKemPublicKey,
           mlKemSecretKey: payload.mlKemSecretKey,
         },
-        username: params.pnName,
+        key1: params.key1,
         nickname: params.nickname ?? '',
-        passcode: params.passcode,
+        key2: params.key2,
         recoveryThreshold: payload.recoveryConfig?.threshold ?? 2,
         recoveryTotalShares: payload.recoveryConfig?.totalShares ?? 5,
       });
@@ -116,15 +116,15 @@ export class IdentityCrypto {
 
   private static async sealIdentity(params: {
     keys: DIDKeyPair;
-    username: string;
+    key1: string;
     nickname: string;
-    passcode: string;
+    key2: string;
     recoveryEmail?: string;
     recoveryPhone?: string;
     recoveryThreshold: number;
     recoveryTotalShares: number;
   }): Promise<IdentityCreationResult> {
-    const { keys, username, passcode } = params;
+    const { keys, key1, key2 } = params;
     const recoveryConfig = {
       threshold: params.recoveryThreshold,
       totalShares: params.recoveryTotalShares,
@@ -134,8 +134,8 @@ export class IdentityCrypto {
 
     const identityData = {
       id: keys.did,
-      username,
-      nickname: params.nickname.trim() === username.trim() ? '' : params.nickname,
+      key1,
+      nickname: params.nickname.trim() === key1.trim() ? '' : params.nickname,
       email: '',
       phone: '',
       recoveryEmail: params.recoveryEmail || '',
@@ -152,7 +152,7 @@ export class IdentityCrypto {
       },
     };
 
-    const encryptedData = await this.encrypt(JSON.stringify(identityData), username, passcode);
+    const encryptedData = await this.encrypt(JSON.stringify(identityData), key1, key2);
 
     const recoveryMaster = generateRecoveryMaster();
     const recoveryPayload = buildRecoveryPayload({
@@ -161,12 +161,11 @@ export class IdentityCrypto {
       mlKemSecretKey: keys.mlKemSecretKey,
       mlDsaSecretKey: keys.privateKey,
       identityId: keys.did,
-      pnName: username,
       recoveryConfig
     });
     const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
     const recoveryShares = splitSecret(recoveryMaster, params.recoveryThreshold, params.recoveryTotalShares);
-    const recoverySharesSealed = await sealRecoveryShares(recoveryShares, username, passcode);
+    const recoverySharesSealed = await sealRecoveryShares(recoveryShares, key1, key2);
 
     return {
       identity: {
@@ -188,8 +187,8 @@ export class IdentityCrypto {
    * Copies profile fields from decrypted predecessor JSON; new keys and recovery envelope.
    */
   static async prepareRotatedIdentity(params: {
-    pnName: string;
-    newPasscode: string;
+    key1: string;
+    newKey2: string;
     predecessorDecrypted: {
       nickname?: string;
       recoveryEmail?: string;
@@ -199,9 +198,9 @@ export class IdentityCrypto {
   }): Promise<IdentityCreationResult> {
     const cfg = params.predecessorDecrypted.recoveryConfig;
     return this.createIdentity(
-      params.pnName,
+      params.key1,
       params.predecessorDecrypted.nickname ?? '',
-      params.newPasscode,
+      params.newKey2,
       params.predecessorDecrypted.recoveryEmail,
       params.predecessorDecrypted.recoveryPhone,
       cfg?.threshold ?? 2,
@@ -211,31 +210,31 @@ export class IdentityCrypto {
 
   /** @deprecated Use createIdentity return value; kept for callers expecting EncryptedIdentity only. */
   static async createIdentityLegacy(
-    username: string,
+    key1: string,
     nickname: string,
-    passcode: string,
+    key2: string,
     recoveryEmail?: string,
     recoveryPhone?: string
   ): Promise<EncryptedIdentity> {
-    const { identity } = await this.createIdentity(username, nickname, passcode, recoveryEmail, recoveryPhone);
+    const { identity } = await this.createIdentity(key1, nickname, key2, recoveryEmail, recoveryPhone);
     return identity;
   }
 
   /**
    * Authenticate and decrypt identity
    * 
-   * SECURITY: pN name and passcode are SECRETS and are stored in SecureCredentialManager,
+   * SECURITY: Key 1 and Key 2 are SECRETS and are stored in SecureCredentialManager,
    * NOT in the returned AuthSession object.
    */
   static async authenticateIdentity(
     encryptedIdentity: EncryptedIdentity,
-    passcode: string,
-    expectedUsername?: string
+    key2: string,
+    expectedKey1?: string
   ): Promise<AuthSession> {
     try {
       // Use only the current decryption method - NO LEGACY FALLBACK
       // Legacy fallback was a security vulnerability that allowed wrong credentials to work
-      // SECURITY: Decryption requires BOTH pnName (expectedUsername) and passcode
+      // SECURITY: Decryption requires BOTH Key 1 and Key 2
       // Both are secrets and must be combined for key derivation
       const decryptedData = await this.decrypt(
         {
@@ -243,48 +242,47 @@ export class IdentityCrypto {
           iv: encryptedIdentity.iv,
           salt: encryptedIdentity.salt
         },
-        expectedUsername || '', // pnName - SECRET #1 (required for decryption)
-        passcode                 // passcode - SECRET #2 (required for decryption)
+        expectedKey1 || '', // Key 1 - SECRET #1 (required for decryption)
+        key2                 // Key 2 - SECRET #2 (required for decryption)
       );
 
       const identity = JSON.parse(decryptedData);
       
-      // CRITICAL SECURITY FIX: Verify the decrypted username matches the expected username
-      if (expectedUsername && identity.username !== expectedUsername) {
-        throw new Error('Authentication failed: username mismatch');
+      if (expectedKey1 && identity.key1 !== expectedKey1) {
+        throw new Error('Authentication failed: Key 1 mismatch');
       }
       
       // Generate JWT-like token
-      const token = await this.generateAuthToken(identity.id, identity.username);
+      const token = await this.generateAuthToken(identity.id);
       
-      const resolvedPnName: string = identity.username;
+      const key1Value: string = identity.key1;
 
-      // SECURITY: Store pN name and passcode in SecureCredentialManager (memory only, never persisted)
+      // SECURITY: Store Key 1 and Key 2 in SecureCredentialManager (memory only, never persisted)
       // These are SECRETS and must NOT be in the AuthSession object
       SecureCredentialManager.setCredentials(
         identity.id,
-        resolvedPnName,
-        passcode,
+        key1Value,
+        key2,
         15 * 60 * 1000 // 15 minutes TTL
       );
 
       // Generate auth token hash (for verification purposes)
       const encoder = new TextEncoder();
-      const digestData = encoder.encode(`${resolvedPnName}::${encryptedIdentity.publicKey || identity.id}::${passcode}`);
+      const digestData = encoder.encode(`${key1Value}::${encryptedIdentity.publicKey || identity.id}::${key2}`);
       const digestBuffer = await window.crypto.subtle.digest('SHA-256', digestData);
       const authToken = Array.from(new Uint8Array(digestBuffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
       
-      // SECURITY: Zeroize passcode from local variables (best-effort)
+      // SECURITY: Zeroize Key 2 from local variables (best-effort)
       // Note: JavaScript strings are immutable, but we try to clear references
-      const passcodeBuffer = encoder.encode(passcode);
-      MemorySecurity.zeroize(passcodeBuffer);
+      const key2Buffer = encoder.encode(key2);
+      MemorySecurity.zeroize(key2Buffer);
       
-      // Return AuthSession WITHOUT pN name or passcode (these are SECRETS)
+      // Return AuthSession WITHOUT Key 1 or Key 2 (these are SECRETS)
       return {
         id: identity.id, // DID comes from decrypted data
         nickname: safePnDisplayName({
           nickname: identity.nickname,
-          key1: resolvedPnName,
+          key1: key1Value,
           pnIdentifier: encryptedIdentity.publicKey ? deriveCanonicalPnIdentifier(encryptedIdentity.publicKey) : null,
         }),
         accessToken: token,
@@ -292,13 +290,13 @@ export class IdentityCrypto {
         authenticatedAt: new Date().toISOString(),
         publicKey: encryptedIdentity.publicKey,
         authToken,
-        // SECURITY: pnName and passcode are NOT included - use SecureCredentialManager.getCredentials(id)
+        // SECURITY: Key 1 and Key 2 are NOT included - use SecureCredentialManager.getCredentials(id)
       };
     } catch (error) {
-      // SECURITY: Zeroize passcode on error too
+      // SECURITY: Zeroize Key 2 on error too
       const encoder = new TextEncoder();
-      const passcodeBuffer = encoder.encode(passcode);
-      MemorySecurity.zeroize(passcodeBuffer);
+      const key2Buffer = encoder.encode(key2);
+      MemorySecurity.zeroize(key2Buffer);
       
       throw new Error(`Authentication failed: ${error}`);
     }
@@ -367,17 +365,17 @@ export class IdentityCrypto {
 
 
   /**
-   * Hash passcode for verification
+   * Hash Key 2 for verification
    */
-  static async hashPasscode(passcode: string, salt: string): Promise<string> {
+  static async hashKey2(key2: string, salt: string): Promise<string> {
     try {
       const encoder = new TextEncoder();
-      const passcodeBuffer = encoder.encode(passcode);
+      const key2Buffer = encoder.encode(key2);
       const saltBuffer = encoder.encode(salt);
 
       const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        passcodeBuffer,
+        key2Buffer,
         'PBKDF2',
         false,
         ['deriveBits']
@@ -397,16 +395,16 @@ export class IdentityCrypto {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     } catch (error) {
-      throw new Error(`Failed to hash passcode: ${error}`);
+      throw new Error(`Failed to hash Key 2: ${error}`);
     }
   }
 
   /**
-   * Verify passcode against stored hash
+   * Verify Key 2 against stored hash
    */
-  static async verifyPasscode(passcode: string, storedHash: string, salt: string): Promise<boolean> {
+  static async verifyKey2(key2: string, storedHash: string, salt: string): Promise<boolean> {
     try {
-      const computedHash = await this.hashPasscode(passcode, salt);
+      const computedHash = await this.hashKey2(key2, salt);
       return computedHash === storedHash;
     } catch (error) {
       return false;
@@ -415,32 +413,32 @@ export class IdentityCrypto {
 
   /**
    * Public encrypt method for external use
-   * SECURITY: Requires both pnName and passcode
+   * SECURITY: Requires both Key 1 and Key 2
    */
-  static async encryptData(data: string, pnName: string, passcode: string): Promise<EncryptedData> {
-    return await this.encrypt(data, pnName, passcode);
+  static async encryptData(data: string, key1: string, key2: string): Promise<EncryptedData> {
+    return await this.encrypt(data, key1, key2);
   }
 
   /**
    * Public decrypt method for external use
-   * SECURITY: Requires both pnName and passcode
+   * SECURITY: Requires both Key 1 and Key 2
    */
-  static async decryptData(encryptedData: EncryptedData, pnName: string, passcode: string): Promise<string> {
-    return await this.decrypt(encryptedData, pnName, passcode);
+  static async decryptData(encryptedData: EncryptedData, key1: string, key2: string): Promise<string> {
+    return await this.decrypt(encryptedData, key1, key2);
   }
 
   /**
    * Encrypt data with physical key binding (UID).
-   * Key derivation includes uid: pnName:passcode:uid
+   * Key derivation includes uid: key1:key2:uid
    * Used for USB (generated UID) or NFC (card UID) binding.
    */
   static async encryptDataWithBinding(
     data: string,
-    pnName: string,
-    passcode: string,
+    key1: string,
+    key2: string,
     uid: string
   ): Promise<EncryptedData> {
-    return await this.encryptWithBinding(data, pnName, passcode, uid);
+    return await this.encryptWithBinding(data, key1, key2, uid);
   }
 
   /**
@@ -449,44 +447,44 @@ export class IdentityCrypto {
    */
   static async decryptDataWithBinding(
     encryptedData: EncryptedData,
-    pnName: string,
-    passcode: string,
+    key1: string,
+    key2: string,
     uid: string
   ): Promise<string> {
-    return await this.decryptWithBinding(encryptedData, pnName, passcode, uid);
+    return await this.decryptWithBinding(encryptedData, key1, key2, uid);
   }
 
   /**
    * Build AuthSession from decrypted identity (used after decryptDataWithBinding).
-   * Verifies pnName, sets credentials in SecureCredentialManager.
+   * Verifies Key 1, sets credentials in SecureCredentialManager.
    */
   static async buildAuthSessionFromDecrypted(
-    identity: { id: string; username: string; nickname?: string; [key: string]: unknown },
+    identity: { id: string; key1: string; nickname?: string; [key: string]: unknown },
     publicKey: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<AuthSession> {
-    if (identity.username !== pnName) {
-      throw new Error('Authentication failed: username mismatch');
+    if (identity.key1 !== key1) {
+      throw new Error('Authentication failed: Key 1 mismatch');
     }
 
-    const resolvedPnName = identity.username;
-    SecureCredentialManager.setCredentials(identity.id, resolvedPnName, passcode, 15 * 60 * 1000);
+    const key1Value = identity.key1;
+    SecureCredentialManager.setCredentials(identity.id, key1Value, key2, 15 * 60 * 1000);
 
-    const token = await this.generateAuthToken(identity.id, identity.username);
+    const token = await this.generateAuthToken(identity.id);
     const encoder = new TextEncoder();
-    const digestData = encoder.encode(`${resolvedPnName}::${publicKey}::${passcode}`);
+    const digestData = encoder.encode(`${key1Value}::${publicKey}::${key2}`);
     const digestBuffer = await window.crypto.subtle.digest('SHA-256', digestData);
     const authToken = Array.from(new Uint8Array(digestBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-    const passcodeBuffer = encoder.encode(passcode);
-    MemorySecurity.zeroize(passcodeBuffer);
+    const key2Buffer = encoder.encode(key2);
+    MemorySecurity.zeroize(key2Buffer);
 
     return {
       id: identity.id,
       nickname: safePnDisplayName({
         nickname: identity.nickname,
-        key1: resolvedPnName,
+        key1: key1Value,
         pnIdentifier: publicKey ? deriveCanonicalPnIdentifier(publicKey) : null,
       }),
       accessToken: token,
@@ -501,7 +499,7 @@ export class IdentityCrypto {
    * Opaque local session marker for AuthSession.accessToken (not a signed JWT).
    * Real API sessions are minted via ML-DSA OAuth unlock proofs.
    */
-  private static async generateAuthToken(did: string, _username: string): Promise<string> {
+  private static async generateAuthToken(did: string): Promise<string> {
     const bytes = crypto.getRandomValues(new Uint8Array(32));
     const id = this.arrayBufferToBase64(bytes.buffer);
     return `pn-session.${did}.${id}`;
@@ -512,13 +510,13 @@ export class IdentityCrypto {
    */
   private static async encryptWithBinding(
     data: string,
-    pnName: string,
-    passcode: string,
+    key1: string,
+    key2: string,
     uid: string
   ): Promise<EncryptedData> {
     try {
       const salt = this.generateSalt();
-      const key = await this.deriveKey(pnName, passcode, salt, uid);
+      const key = await this.deriveKey(key1, key2, salt, uid);
       const iv = this.generateIV();
 
       const encoder = new TextEncoder();
@@ -545,12 +543,12 @@ export class IdentityCrypto {
    */
   private static async decryptWithBinding(
     encryptedData: EncryptedData,
-    pnName: string,
-    passcode: string,
+    key1: string,
+    key2: string,
     uid: string
   ): Promise<string> {
     try {
-      const key = await this.deriveKey(pnName, passcode, encryptedData.salt, uid);
+      const key = await this.deriveKey(key1, key2, encryptedData.salt, uid);
 
       const iv = this.base64ToArrayBuffer(encryptedData.iv);
       const data = this.base64ToArrayBuffer(encryptedData.encrypted);
@@ -569,18 +567,18 @@ export class IdentityCrypto {
   }
 
   /**
-   * Encrypt data with pnName and passcode
-   * SECURITY: Both pnName and passcode are SECRETS and are required for encryption/decryption
+   * Encrypt data with Key 1 and Key 2
+   * SECURITY: Both Key 1 and Key 2 are SECRETS and are required for encryption/decryption
    * 
    * @param data - Data to encrypt
-   * @param pnName - pN name (SECRET #1)
-   * @param passcode - Passcode (SECRET #2)
+   * @param key1 - Key 1 (SECRET #1)
+   * @param key2 - Key 2 (SECRET #2)
    */
-  private static async encrypt(data: string, pnName: string, passcode: string): Promise<EncryptedData> {
+  private static async encrypt(data: string, key1: string, key2: string): Promise<EncryptedData> {
     try {
       const salt = this.generateSalt();
       // SECURITY: Combine both secrets for key derivation
-      const key = await this.deriveKey(pnName, passcode, salt);
+      const key = await this.deriveKey(key1, key2, salt);
       const iv = this.generateIV();
       
       const encoder = new TextEncoder();
@@ -603,17 +601,17 @@ export class IdentityCrypto {
   }
 
   /**
-   * Decrypt data with pnName and passcode
-   * SECURITY: Both pnName and passcode are SECRETS and are required for decryption
+   * Decrypt data with Key 1 and Key 2
+   * SECURITY: Both Key 1 and Key 2 are SECRETS and are required for decryption
    * 
    * @param encryptedData - Encrypted data to decrypt
-   * @param pnName - pN name (SECRET #1)
-   * @param passcode - Passcode (SECRET #2)
+   * @param key1 - Key 1 (SECRET #1)
+   * @param key2 - Key 2 (SECRET #2)
    */
-  private static async decrypt(encryptedData: EncryptedData, pnName: string, passcode: string): Promise<string> {
+  private static async decrypt(encryptedData: EncryptedData, key1: string, key2: string): Promise<string> {
     try {
       // SECURITY: Combine both secrets for key derivation
-      const key = await this.deriveKey(pnName, passcode, encryptedData.salt);
+      const key = await this.deriveKey(key1, key2, encryptedData.salt);
       
       const iv = this.base64ToArrayBuffer(encryptedData.iv);
       const data = this.base64ToArrayBuffer(encryptedData.encrypted);
@@ -632,24 +630,24 @@ export class IdentityCrypto {
   }
 
   /**
-   * Derive encryption key from pnName and passcode (and optional UID for physical key binding)
-   * SECURITY: Both pnName and passcode are SECRETS and must be combined for key derivation
+   * Derive encryption key from Key 1 and Key 2 (and optional UID for physical key binding)
+   * SECURITY: Both Key 1 and Key 2 are SECRETS and must be combined for key derivation
    * 
-   * @param pnName - pN name (SECRET #1)
-   * @param passcode - Passcode (SECRET #2)
+   * @param key1 - Key 1 (SECRET #1)
+   * @param key2 - Key 2 (SECRET #2)
    * @param salt - Salt for key derivation
    * @param uid - Optional UID for physical key binding (USB or NFC card UID)
    */
   private static async deriveKey(
-    pnName: string,
-    passcode: string,
+    key1: string,
+    key2: string,
     salt: string,
     uid?: string
   ): Promise<CryptoKey> {
     try {
       // SECURITY: Combine both secrets for key derivation
-      // Format: "pnName:passcode" or "pnName:passcode:uid" when binding
-      const keyMaterial = uid ? `${pnName}:${passcode}:${uid}` : `${pnName}:${passcode}`;
+      // Format: "key1:key2" or "key1:key2:uid" when binding
+      const keyMaterial = uid ? `${key1}:${key2}:${uid}` : `${key1}:${key2}`;
       
       const encoder = new TextEncoder();
       const keyMaterialBuffer = encoder.encode(keyMaterial);
@@ -746,7 +744,7 @@ export class IdentityCrypto {
   /**
    * @deprecated Removed mock path. Use authenticateIdentity / decryptData with the encrypted blob.
    */
-  static async decryptIdentity(_publicKey: string, _passcode: string): Promise<never> {
+  static async decryptIdentity(_publicKey: string, _key2: string): Promise<never> {
     throw new Error(
       'decryptIdentity is not supported; use authenticateIdentity or decryptData with the encrypted identity blob'
     );

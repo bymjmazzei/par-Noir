@@ -43,7 +43,7 @@ const cardStyle: CSSProperties = {
 export function SessionVaultEnrollPrompt({
   open,
   title = 'Stay unlocked on this device?',
-  body = 'Use Face ID, fingerprint, or your device passcode next time instead of re-entering your keys. You can turn this off anytime by signing out.',
+  body = 'Use Face ID, fingerprint, or your device screen lock next time instead of re-entering your keys. You can turn this off anytime by signing out.',
   confirmLabel = 'Enable',
   declineLabel = 'Not now',
   busy = false,
@@ -120,7 +120,7 @@ export interface SessionVaultUnlockOverlayProps {
 export function SessionVaultUnlockOverlay({
   open,
   title = 'Unlock',
-  body = 'Use Face ID, fingerprint, or your device passcode to continue.',
+  body = 'Use Face ID, fingerprint, or your device screen lock to continue.',
   unlockLabel = 'Unlock with biometrics',
   useFullUnlockLabel = 'Use full unlock instead',
   busy = false,
@@ -181,7 +181,7 @@ export function SessionVaultUnlockOverlay({
 
 export type SessionVaultPickerOption = {
   identityId: string;
-  /** Safe display label (never Key 1 / passcode). */
+  /** Safe display label (never Key 1 / Key 2). */
   label: string;
 };
 

@@ -28,8 +28,8 @@ const OWNER_READ_SCOPE = ['openid', 'cloud:read'];
 export type OwnerVaultEntry = {
   identityId: string;
   publicKey: string;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   encryptedIdentityJson?: string;
 };
 
@@ -61,7 +61,7 @@ export async function openOwnerCustody(opts: { apiEndpoint: string; owner: Owner
   let did = owner.identityId;
   try {
     const row = parseIdentityFileJson(JSON.parse(owner.encryptedIdentityJson || ''));
-    const unlocked = await decryptIdentityFileLocal(row, owner.pnName, owner.passcode);
+    const unlocked = await decryptIdentityFileLocal(row, owner.key1, owner.key2);
     publicKey = unlocked.publicKey;
     did = unlocked.did;
     mlDsaSecretKeyB64 = extractMlDsaSecretKeyB64(unlocked.decryptedIdentity);

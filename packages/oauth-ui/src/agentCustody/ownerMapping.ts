@@ -10,8 +10,8 @@ import { AgentCustodyError } from './errors';
 type ListedIdentity = { identityId: string; publicKey: string; nickname?: string };
 
 type VaultIdentity = ListedIdentity & {
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   encryptedIdentityJson?: string;
   ownerIdentityId?: string;
 };
@@ -45,7 +45,7 @@ export function resolveAgentOwner<T extends VaultIdentity>(entries: readonly T[]
   const ownerId = agent?.ownerIdentityId?.trim();
   if (!ownerId) throw new AgentCustodyError('agent_not_on_this_mac');
   const owner = entries.find((row) => row.identityId === ownerId && !isAgentVaultNickname(row.nickname));
-  if (!owner || !owner.pnName || !owner.passcode || !owner.encryptedIdentityJson) {
+  if (!owner || !owner.key1 || !owner.key2 || !owner.encryptedIdentityJson) {
     throw new AgentCustodyError('agent_not_on_this_mac');
   }
   return owner;

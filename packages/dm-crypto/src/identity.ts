@@ -25,8 +25,8 @@ function base64ToArrayBuffer(b64: string): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
-async function deriveIdentityKey(pnName: string, passcode: string, saltB64: string): Promise<CryptoKey> {
-  const keyMaterial = `${pnName}:${passcode}`;
+async function deriveIdentityKey(key1: string, key2: string, saltB64: string): Promise<CryptoKey> {
+  const keyMaterial = `${key1}:${key2}`;
   const encoder = new TextEncoder();
   const keyMaterialKey = await crypto.subtle.importKey(
     'raw',
@@ -52,23 +52,23 @@ async function deriveIdentityKey(pnName: string, passcode: string, saltB64: stri
 /** Decrypt encrypted identity JSON and extract ML-KEM secret (base64). */
 export async function unlockIdentityMlKemSecret(
   payload: EncryptedIdentityPayload,
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<DecryptedIdentitySecrets> {
-  const key = await deriveIdentityKey(pnName, passcode, payload.salt);
+  const key = await deriveIdentityKey(key1, key2, payload.salt);
   const iv = base64ToArrayBuffer(payload.iv);
   const data = base64ToArrayBuffer(payload.encryptedData);
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
   const json = bytesToUtf8(new Uint8Array(decrypted));
   const identity = JSON.parse(json) as {
-    username?: string;
+    key1?: string;
     pqcSecrets?: { mlKemSecretKey?: string; mlKemPublicKey?: string };
     publicKey?: string;
     mlKemPublicKey?: string;
   };
 
-  if (identity.username !== pnName) {
-    throw new Error('Authentication failed: username mismatch');
+  if (identity.key1 !== key1) {
+    throw new Error('Authentication failed: Key 1 mismatch');
   }
 
   const mlKemSecretKey =

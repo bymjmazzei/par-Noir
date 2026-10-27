@@ -1,6 +1,6 @@
 /**
  * Shared OAuth unlock-proof mint: challenge → ML-DSA sign → authenticate → code → token.
- * Never accepts passcode / pn name — callers decrypt locally and pass mlDsaSecretKeyB64 only.
+ * Never accepts Key 1 / Key 2 — callers decrypt locally and pass mlDsaSecretKeyB64 only.
  */
 
 import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
@@ -70,7 +70,7 @@ export async function requestOauthUnlockChallenge(opts: {
 
 /**
  * Sign unlock proof and POST /oauth/authorize/authenticate.
- * Body contains public_key + signature only — never passcode or pn name.
+ * Body contains public_key + signature only — never Key 1 or Key 2.
  */
 export async function authenticateWithUnlockProof(
   params: AuthenticateWithUnlockProofParams
@@ -112,7 +112,7 @@ export async function authenticateWithUnlockProof(
   };
 
   // Guard: never ship secrets on this wire
-  const forbidden = ['passcode', 'pn_name', 'pnName', 'password'] as const;
+  const forbidden = ['passcode', 'pn_name', 'pnName', 'key1', 'key2', 'password'] as const;
   for (const key of forbidden) {
     if (key in body) {
       throw new Error(`Refusing authenticate body field: ${key}`);

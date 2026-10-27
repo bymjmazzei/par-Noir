@@ -32,8 +32,8 @@ export async function ensureCloudCredentialsReady(opts: {
   authToken: string;
   pnIdentifier: string;
   mlKemSecretKey?: string | null;
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
   extraHeaders?: Record<string, string>;
 }): Promise<'ready' | 'missing' | 'unseal_failed' | 'error'> {
   const existing = getSessionCloudCredentials(opts.pnIdentifier);

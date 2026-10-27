@@ -46,8 +46,8 @@ describe('cloud vault canonical seal', () => {
     );
     const opened = await unsealCloudVaultWithAnyFactor(sealed, {
       mlKemSecretKey: 'wrong',
-      pnName: 'alice',
-      passcode: 'secret'
+      key1: 'alice',
+      key2: 'secret'
     });
     expect((opened.googleDriveAccounts as any)?.[0]?.refreshToken).toBe('legacy-rt');
   });

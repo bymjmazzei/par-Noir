@@ -29,7 +29,7 @@ describe('ensureCloudCredentialsReady', () => {
     vi.mocked(hydrateCloudCredentialsFromVault).mockClear();
   });
 
-  it('opens the sealed vault with the unlock ML-KEM secret and no passcode', async () => {
+  it('opens the sealed vault with the unlock ML-KEM secret and no Key 2', async () => {
     const status = await ensureCloudCredentialsReady({
       apiEndpoint: 'https://api.parnoir.com',
       authToken: 'owner-jwt',

@@ -6,7 +6,7 @@ describe('physicalResultToBundle', () => {
     const bundle = physicalResultToBundle({
       publicKey: 'pk',
       did: 'did:key:x',
-      decryptedIdentity: { id: 'did:key:x', username: 'u' },
+      decryptedIdentity: { id: 'did:key:x', key1: 'u' },
       encryptedIdentity: {
         publicKey: 'pk',
         encryptedData: 'enc',

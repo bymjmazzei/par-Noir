@@ -19,8 +19,8 @@ import type { SealSession } from './types.js';
 
 const session: SealSession = {
   sessionId: 'pn-sender',
-  pnName: 'test',
-  passcode: 'x'.repeat(64)
+  key1: 'test',
+  key2: 'x'.repeat(64)
 };
 
 describe('promoteOutboxRecord (Sheets SoT)', () => {

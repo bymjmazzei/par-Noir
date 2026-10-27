@@ -10,7 +10,7 @@ export interface SecureVolumeMountState {
 }
 
 export interface SecureVolumeIdentity {
-  pnName: string;
+  key1: string;
   publicKey: string;
   pnIdentifier?: string;
   authToken?: string;

@@ -43,8 +43,8 @@ interface EnvelopeLike {
 }
 
 /**
- * Dead ends on a credential path must be visible. Reason codes only: no pn name,
- * passcode, account id, or token ever reaches this log.
+ * Dead ends on a credential path must be visible. Reason codes only: no Key 1,
+ * Key 2, account id, or token ever reaches this log.
  */
 function warnDeadEnd(path: string, reason: DriveTokenReason): void {
   try {

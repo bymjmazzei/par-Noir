@@ -78,11 +78,11 @@ export class MemorySecurity {
   /**
    * Zeroize credentials object
    * 
-   * @param credentials - Object containing pnName and passcode
+   * @param credentials - Object containing Key 1 and Key 2
    */
-  static zeroizeCredentials(credentials: { pnName: string; passcode: string }): void {
-    this.zeroize(credentials.pnName);
-    this.zeroize(credentials.passcode);
+  static zeroizeCredentials(credentials: { key1: string; key2: string }): void {
+    this.zeroize(credentials.key1);
+    this.zeroize(credentials.key2);
   }
 }
 

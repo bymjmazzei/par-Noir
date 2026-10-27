@@ -13,7 +13,6 @@ export interface RecoveryPayload {
   mlKemSecretKey: string;
   mlDsaSecretKey: string;
   identityId: string;
-  pnName: string;
   recoveryConfig: RecoveryConfig;
 }
 
@@ -149,7 +148,6 @@ export function buildRecoveryPayload(input: {
   mlKemSecretKey: string;
   mlDsaSecretKey: string;
   identityId: string;
-  pnName: string;
   recoveryConfig: RecoveryConfig;
 }): RecoveryPayload {
   return { ...input };

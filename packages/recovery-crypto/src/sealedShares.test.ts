@@ -13,7 +13,7 @@ describe('sealedRecoveryShares', () => {
     expect(out[0].share).toBe(shares[0].share);
   });
 
-  it('fails with wrong passcode', async () => {
+  it('fails with wrong Key 2', async () => {
     const master = generateRecoveryMaster(16);
     const shares = splitSecret(master, 2, 5);
     const sealed = await sealRecoveryShares(shares, 'alice', 'SecretPass1!');

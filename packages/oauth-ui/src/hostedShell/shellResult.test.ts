@@ -12,8 +12,8 @@ describe('buildShellResult export round-trip', () => {
   it('returns an identity file the hosted page can store', async () => {
     const result = await buildShellResult({
       op: 'export',
-      pnName: 'unused',
-      passcode: 'unused',
+      key1: 'unused',
+      key2: 'unused',
       unlocked: {
         publicKey: 'pk',
         decryptedIdentity: { id: 'did:pn:1' },
@@ -30,14 +30,14 @@ describe('buildShellResult export round-trip', () => {
     });
     const parsed = parseShellReturn(fragment);
     expect(parsed?.result?.identityFile).toContain('ciphertext');
-    expect(parsed?.result?.passcode).toBeUndefined();
+    expect(parsed?.result?.key2).toBeUndefined();
   });
 
   it('returns the device messaging key on a session unlock so cloud credentials can be unsealed later', async () => {
     const result = await buildShellResult({
       op: 'session',
-      pnName: 'unused',
-      passcode: 'unused',
+      key1: 'unused',
+      key2: 'unused',
       unlocked: {
         publicKey: 'pk',
         decryptedIdentity: { pqcSecrets: { mlKemSecretKey: 'sek', mlKemPublicKey: 'pubk' } },
@@ -66,8 +66,8 @@ describe('buildShellResult export round-trip', () => {
     });
     const result = await buildShellResult({
       op: 'export',
-      pnName: 'unused',
-      passcode: 'unused',
+      key1: 'unused',
+      key2: 'unused',
       unlocked: {
         publicKey: 'pk',
         decryptedIdentity: {},

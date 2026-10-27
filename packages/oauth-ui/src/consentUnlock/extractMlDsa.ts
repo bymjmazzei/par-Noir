@@ -1,6 +1,6 @@
 export type DecryptedIdentityRecord = Record<string, unknown> & {
   id?: string;
-  username?: string;
+  key1?: string;
   publicKey?: string;
   privateKey?: string;
   pqcSecrets?: {

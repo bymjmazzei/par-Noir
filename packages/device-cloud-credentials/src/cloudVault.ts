@@ -2,7 +2,7 @@
  * Cross-app sealed cloud-credentials vault.
  *
  * Primary seal key: ML-KEM secret (available after first-party OAuth messaging handoff).
- * Legacy seal key: pn name + passcode (dashboard identity unlock / migration).
+ * Legacy seal key: Key 1 + Key 2 (dashboard identity unlock / migration).
  */
 
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
@@ -11,9 +11,9 @@ import { setSessionCloudCredentials } from './sessionMemory.js';
 import { freshAccessTokenFromEnvelope } from './driveTokenResolver.js';
 import type { SealSession, SealedEnvelope } from './types.js';
 
-/** Legacy identity-factor seal (pn name + passcode). */
+/** Legacy identity-factor seal (Key 1 + Key 2). */
 export const CLOUD_VAULT_SEAL_SESSION_ID = 'pn-cloud-creds-v1';
-/** Primary seal — unsealable after OAuth ML-KEM handoff without re-entering passcode. */
+/** Primary seal — unsealable after OAuth ML-KEM handoff without re-entering Key 2. */
 export const CLOUD_VAULT_MLKEM_SESSION_ID = 'pn-cloud-creds-v1-mlkem';
 
 export const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
@@ -21,26 +21,26 @@ export const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
 export function cloudVaultSealSessionFromMlKem(mlKemSecretKey: string): SealSession {
   return {
     sessionId: CLOUD_VAULT_MLKEM_SESSION_ID,
-    pnName: 'mlkem',
-    passcode: mlKemSecretKey
+    key1: 'mlkem',
+    key2: mlKemSecretKey
   };
 }
 
 /** @deprecated Prefer cloudVaultSealSessionFromMlKem for cross-app OAuth unlock. */
-export function canonicalCloudSealSession(pnName: string, passcode: string): SealSession {
+export function canonicalCloudSealSession(key1: string, key2: string): SealSession {
   return {
     sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
-    pnName: pnName.trim(),
-    passcode
+    key1: key1.trim(),
+    key2
   };
 }
 
 export async function sealCloudVault(
   credentials: StorageCredentialsEnvelope,
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<SealedEnvelope> {
-  return sealCredentials(credentials, canonicalCloudSealSession(pnName, passcode), null);
+  return sealCredentials(credentials, canonicalCloudSealSession(key1, key2), null);
 }
 
 export async function sealCloudVaultWithMlKem(
@@ -52,12 +52,12 @@ export async function sealCloudVaultWithMlKem(
 
 export async function unsealCloudVault(
   envelope: SealedEnvelope,
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<StorageCredentialsEnvelope> {
   return unsealCredentials<StorageCredentialsEnvelope>(
     envelope,
-    canonicalCloudSealSession(pnName, passcode)
+    canonicalCloudSealSession(key1, key2)
   );
 }
 
@@ -74,7 +74,7 @@ export async function unsealCloudVaultWithMlKem(
 /** Try ML-KEM first, then legacy identity factors. */
 export async function unsealCloudVaultWithAnyFactor(
   envelope: SealedEnvelope,
-  factors: { mlKemSecretKey?: string | null; pnName?: string | null; passcode?: string | null }
+  factors: { mlKemSecretKey?: string | null; key1?: string | null; key2?: string | null }
 ): Promise<StorageCredentialsEnvelope> {
   const errors: string[] = [];
   if (factors.mlKemSecretKey) {
@@ -84,9 +84,9 @@ export async function unsealCloudVaultWithAnyFactor(
       errors.push(e instanceof Error ? e.message : 'mlkem unseal failed');
     }
   }
-  if (factors.pnName && factors.passcode) {
+  if (factors.key1 && factors.key2) {
     try {
-      return await unsealCloudVault(envelope, factors.pnName, factors.passcode);
+      return await unsealCloudVault(envelope, factors.key1, factors.key2);
     } catch (e) {
       errors.push(e instanceof Error ? e.message : 'identity unseal failed');
     }
@@ -143,11 +143,11 @@ export async function hydrateCloudCredentialsFromVault(opts: {
   /** Preferred: ML-KEM from OAuth messaging handoff */
   mlKemSecretKey?: string | null;
   /** Legacy / dashboard identity unlock */
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
   extraHeaders?: Record<string, string>;
 }): Promise<CloudVaultHydrateResult> {
-  if (!opts.mlKemSecretKey && !(opts.pnName && opts.passcode)) {
+  if (!opts.mlKemSecretKey && !(opts.key1 && opts.key2)) {
     return { status: 'error', error: 'No vault unseal factors' };
   }
   const base = opts.apiEndpoint.replace(/\/$/, '');
@@ -172,8 +172,8 @@ export async function hydrateCloudCredentialsFromVault(opts: {
     try {
       const credentials = await unsealCloudVaultWithAnyFactor(envelope, {
         mlKemSecretKey: opts.mlKemSecretKey,
-        pnName: opts.pnName,
-        passcode: opts.passcode
+        key1: opts.key1,
+        key2: opts.key2
       });
       setSessionCloudCredentials(opts.pnIdentifier, credentials);
       return {
@@ -200,17 +200,17 @@ export async function publishCloudCredentialsVault(opts: {
   authToken: string;
   pnIdentifier: string;
   credentials: StorageCredentialsEnvelope;
-  /** Prefer ML-KEM so browse/messaging OAuth unlock can hydrate without passcode. */
+  /** Prefer ML-KEM so browse/messaging OAuth unlock can hydrate without Key 2. */
   mlKemSecretKey?: string | null;
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
   extraHeaders?: Record<string, string>;
 }): Promise<{ ok: boolean; status: number; error?: string }> {
   let envelope: SealedEnvelope;
   if (opts.mlKemSecretKey) {
     envelope = await sealCloudVaultWithMlKem(opts.credentials, opts.mlKemSecretKey);
-  } else if (opts.pnName && opts.passcode) {
-    envelope = await sealCloudVault(opts.credentials, opts.pnName, opts.passcode);
+  } else if (opts.key1 && opts.key2) {
+    envelope = await sealCloudVault(opts.credentials, opts.key1, opts.key2);
   } else {
     return { ok: false, status: 0, error: 'No vault seal factors' };
   }

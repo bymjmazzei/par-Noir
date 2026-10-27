@@ -31,14 +31,14 @@ describe('hosted shell session', () => {
   it('round-trips a factor-free handoff in the url fragment', () => {
     const fragment = encodeShellReturn(session);
     const url = applyShellFragment('https://pn.parnoir.com/oauth-callback.html', fragment);
-    expect(url.includes('passcode')).toBe(false);
-    expect(url.includes('pnName')).toBe(false);
+    expect(url.includes('key2')).toBe(false);
+    expect(url.includes('key1')).toBe(false);
     expect(parseShellReturn(url)).toEqual(session);
   });
 
   it('rejects a handoff that contains key 1 or key 2', () => {
-    expect(() => assertFactorFree({ passcode: 'secret' })).toThrow(ShellFactorLeak);
-    expect(() => assertFactorFree({ nested: { pnName: 'alice' } })).toThrow(ShellFactorLeak);
+    expect(() => assertFactorFree({ key2: 'secret' })).toThrow(ShellFactorLeak);
+    expect(() => assertFactorFree({ nested: { key1: 'alice' } })).toThrow(ShellFactorLeak);
     expect(() =>
       encodeShellReturn({ ...session, nickname: 'ok' })
     ).not.toThrow();
@@ -47,14 +47,14 @@ describe('hosted shell session', () => {
       'pn_shell='
     );
     expect(parseShellReturn(leaked)?.did).toBe('did:pn:abc');
-    const bad = btoa(JSON.stringify({ ...session, passcode: 'nope' }))
+    const bad = btoa(JSON.stringify({ ...session, key2: 'nope' }))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/g, '');
     expect(() => parseShellReturn(`pn_shell=${bad}`)).toThrow(ShellFactorLeak);
   });
 
-  it('accepts a sealed vault string and rejects a passcode field', () => {
+  it('accepts a sealed vault string and rejects a Key 2 field', () => {
     expect(() =>
       encodeShellReturn({
         ...session,
@@ -65,7 +65,7 @@ describe('hosted shell session', () => {
     expect(() =>
       encodeShellReturn({
         ...session,
-        result: { passcode: 'nope' },
+        result: { key2: 'nope' },
       })
     ).toThrow(ShellFactorLeak);
   });
@@ -78,7 +78,7 @@ describe('hosted shell session', () => {
     expect(url.startsWith('com.parnoir.unlock://oauth/consent?')).toBe(true);
     expect(url).toContain('flow=shell');
     expect(url).toContain('op=dm');
-    expect(url).not.toContain('passcode');
+    expect(url).not.toContain('key2');
   });
 
   it('puts a state on the shell launch so the original tab can see the app open', () => {
@@ -100,7 +100,7 @@ describe('hosted shell session', () => {
     expect(url.startsWith('https://unlock.parnoir.com/oauth/consent?')).toBe(true);
     expect(url).toContain('flow=shell');
     expect(url).toContain('op=session');
-    expect(url).not.toContain('passcode');
+    expect(url).not.toContain('key2');
     expect(url).toBe(buildShellWebUrl(args));
     expect(chooseShellLaunchUrl({ ...args, appOpened: true }).startsWith('com.parnoir.unlock://')).toBe(
       true
@@ -111,7 +111,7 @@ describe('hosted shell session', () => {
     const fragment = encodeShellReturn(session);
     const url = applyShellFragment('https://pn.parnoir.com/', fragment);
     expect(url.startsWith('https://pn.parnoir.com/#pn_shell=')).toBe(true);
-    expect(url).not.toContain('passcode');
+    expect(url).not.toContain('key2');
     expect(parseShellReturn(url)?.code).toBe('auth-code');
   });
 

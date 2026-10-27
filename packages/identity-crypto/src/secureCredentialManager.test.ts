@@ -1,8 +1,8 @@
 /**
  * Session-lifetime guarantees for SecureCredentialManager.
  *
- * These are regression tests for the memory-only credential contract: pn name and
- * passcode must be retrievable for the life of a session, must disappear on expiry
+ * These are regression tests for the memory-only credential contract: Key 1 and
+ * Key 2 must be retrievable for the life of a session, must disappear on expiry
  * or clear, and must never be written to any storage surface.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,8 +10,8 @@ import { SecureCredentialManager } from './secureCredentialManager';
 
 const SESSION = 'session-a';
 const OTHER_SESSION = 'session-b';
-const PN_NAME = 'test-pn-name';
-const PASSCODE = 'test-passcode';
+const KEY1 = 'test-pn-name';
+const KEY2 = 'test-key2';
 
 describe('SecureCredentialManager', () => {
   beforeEach(() => {
@@ -24,11 +24,11 @@ describe('SecureCredentialManager', () => {
   });
 
   it('returns the credentials that were set for a session', () => {
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE);
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2);
 
     expect(SecureCredentialManager.getCredentials(SESSION)).toEqual({
-      pnName: PN_NAME,
-      passcode: PASSCODE,
+      key1: KEY1,
+      key2: KEY2,
     });
     expect(SecureCredentialManager.hasCredentials(SESSION)).toBe(true);
   });
@@ -39,28 +39,28 @@ describe('SecureCredentialManager', () => {
   });
 
   it('keeps sessions isolated from each other', () => {
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE);
-    SecureCredentialManager.setCredentials(OTHER_SESSION, 'other-name', 'other-passcode');
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2);
+    SecureCredentialManager.setCredentials(OTHER_SESSION, 'other-name', 'other-key2');
 
-    expect(SecureCredentialManager.getCredentials(SESSION)?.pnName).toBe(PN_NAME);
-    expect(SecureCredentialManager.getCredentials(OTHER_SESSION)?.pnName).toBe('other-name');
+    expect(SecureCredentialManager.getCredentials(SESSION)?.key1).toBe(KEY1);
+    expect(SecureCredentialManager.getCredentials(OTHER_SESSION)?.key1).toBe('other-name');
     expect(SecureCredentialManager.getActiveCredentialsCount()).toBe(2);
   });
 
   it('overwrites credentials when the same session is set twice', () => {
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE);
-    SecureCredentialManager.setCredentials(SESSION, 'rotated-name', 'rotated-passcode');
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2);
+    SecureCredentialManager.setCredentials(SESSION, 'rotated-name', 'rotated-key2');
 
     expect(SecureCredentialManager.getCredentials(SESSION)).toEqual({
-      pnName: 'rotated-name',
-      passcode: 'rotated-passcode',
+      key1: 'rotated-name',
+      key2: 'rotated-key2',
     });
     expect(SecureCredentialManager.getActiveCredentialsCount()).toBe(1);
   });
 
   it('clears only the requested session', () => {
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE);
-    SecureCredentialManager.setCredentials(OTHER_SESSION, 'other-name', 'other-passcode');
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2);
+    SecureCredentialManager.setCredentials(OTHER_SESSION, 'other-name', 'other-key2');
 
     SecureCredentialManager.clearCredentials(SESSION);
 
@@ -69,8 +69,8 @@ describe('SecureCredentialManager', () => {
   });
 
   it('clearAll removes every session', () => {
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE);
-    SecureCredentialManager.setCredentials(OTHER_SESSION, 'other-name', 'other-passcode');
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2);
+    SecureCredentialManager.setCredentials(OTHER_SESSION, 'other-name', 'other-key2');
 
     SecureCredentialManager.clearAll();
 
@@ -87,7 +87,7 @@ describe('SecureCredentialManager', () => {
   it('expires credentials once the requested lifetime has elapsed', () => {
     vi.useFakeTimers();
 
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE, 1000);
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2, 1000);
     expect(SecureCredentialManager.getCredentials(SESSION)).not.toBeNull();
 
     vi.advanceTimersByTime(1001);
@@ -99,8 +99,8 @@ describe('SecureCredentialManager', () => {
   it('drops expired sessions from the active count without touching live ones', () => {
     vi.useFakeTimers();
 
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE, 1000);
-    SecureCredentialManager.setCredentials(OTHER_SESSION, 'other-name', 'other-passcode', 60_000);
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2, 1000);
+    SecureCredentialManager.setCredentials(OTHER_SESSION, 'other-name', 'other-key2', 60_000);
 
     vi.advanceTimersByTime(1001);
 
@@ -111,7 +111,7 @@ describe('SecureCredentialManager', () => {
   it('defaults to a 15 minute session lifetime', () => {
     vi.useFakeTimers();
 
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE);
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2);
 
     vi.advanceTimersByTime(15 * 60 * 1000 - 1);
     expect(SecureCredentialManager.hasCredentials(SESSION)).toBe(true);
@@ -126,7 +126,7 @@ describe('SecureCredentialManager', () => {
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
 
-    SecureCredentialManager.setCredentials(SESSION, PN_NAME, PASSCODE);
+    SecureCredentialManager.setCredentials(SESSION, KEY1, KEY2);
     SecureCredentialManager.getCredentials(SESSION);
     SecureCredentialManager.clearCredentials(SESSION);
 

@@ -548,12 +548,12 @@ export interface IndexedFile {
 export interface AuthSession {
   id: string;
   publicKey: string;
-  pnName?: string;
+  key1?: string;
   nickname?: string;
   accessToken?: string;
   expiresIn?: number;
   authenticatedAt?: string;
-  passcode?: string;
+  key2?: string;
   authToken?: string;
 }
 

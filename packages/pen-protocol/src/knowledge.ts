@@ -41,7 +41,7 @@ export type AssetAttestation = {
 };
 
 const RAW_PII_KEYS =
-  /^(lat|lng|longitude|latitude|email|passcode|pn[_-]?name|ssn|phone|address|dob|birth)/i;
+  /^(lat|lng|longitude|latitude|email|pass_?code|key_?[12]|pn[_-]?name|ssn|phone|address|dob|birth)/i;
 const COORD_PAIR = /-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/;
 
 /** Reject payloads that store raw PII or coordinates in IR. */

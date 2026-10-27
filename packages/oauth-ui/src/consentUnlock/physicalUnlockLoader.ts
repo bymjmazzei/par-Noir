@@ -24,21 +24,21 @@ export type NfcIdentityPayload = {
 export type ParNoirOAuthPhysicalApi = {
   decryptIdentityFile: (
     identityRow: Record<string, unknown>,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ) => Promise<PhysicalUnlockResult>;
   unlockBoundIdentity: (
     boundPnBlobJson: string | object,
     uid: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ) => Promise<PhysicalUnlockResult>;
   unlockFromUsbKeyAndPayload: (
     keyFileText: string,
-    drivePasscode: string,
+    drivePassphrase: string,
     payloadFileTextOrNull: string | null,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ) => Promise<PhysicalUnlockResult>;
   readNfcIdentity: () => Promise<NfcIdentityPayload>;
   hasNfc: () => boolean;

@@ -32,12 +32,12 @@ describe('recovery envelope', () => {
       mlKemSecretKey: 'kem-sk',
       mlDsaSecretKey: 'dsa-sk',
       identityId: 'did:key:abc',
-      pnName: 'user',
       recoveryConfig: { threshold: 2, totalShares: 5, version: 1, createdAt: new Date().toISOString() }
     });
     const envelope = await encryptRecoveryEnvelope(master, payload);
     const out = await decryptRecoveryEnvelope(master, envelope);
     expect(out.publicKey).toBe('pk');
-    expect(out.pnName).toBe('user');
+    expect(out).not.toHaveProperty('key1');
+    expect(out).not.toHaveProperty('key1');
   });
 });

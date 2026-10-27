@@ -46,8 +46,6 @@ export async function registerRecoveryKey(params: {
         mlKemSecretKey,
         mlDsaSecretKey,
         identityId: decrypted.id,
-        // Restoring sets a new Key 1; whoever holds the recovery key never learns the old one.
-        pnName: '',
         recoveryConfig: {
           threshold: decrypted.recoveryConfig?.threshold ?? 2,
           totalShares: decrypted.recoveryConfig?.totalShares ?? 5,

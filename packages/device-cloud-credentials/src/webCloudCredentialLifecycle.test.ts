@@ -11,7 +11,7 @@ import {
 import { getSessionCloudCredentials } from './sessionMemory.js';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 
-const session = { sessionId: 's1', pnName: 'test-name', passcode: 'test-pass' };
+const session = { sessionId: 's1', key1: 'test-name', key2: 'test-pass' };
 const identityId = 'pn-test-identity';
 
 const creds: StorageCredentialsEnvelope = {

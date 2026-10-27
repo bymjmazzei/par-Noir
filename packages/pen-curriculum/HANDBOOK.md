@@ -22,7 +22,7 @@ A user asks you to build something in Pen. You:
 - **No path invention.** Canonical tree is `par-noir-pen/{docId}/doc.json`, `drafts/{draftId}/`, `current/`, `past/`, `history.chain` — see `snapshots/path-grammar.json`.
 - **Consumer vs kit.** Kit forms (e.g. `records.register`) are for agents/integrators; do not treat them as consumer New… picks unless the user asked for a register/table.
 - **Publish ≠ connect to feed.** Materializing / publishing current updates the doc. Putting content on a public feed is a separate human/follow-on step.
-- **No secrets.** Never put pn name, passcode, tokens, or account ids in builds, prompts, or fixtures.
+- **No secrets.** Never put Key 1, Key 2, tokens, or account ids in builds, prompts, or fixtures.
 - **Compose from atoms.** Prefer Social/Time/Knowledge atoms (Note, tiles, Metric, Audio, Post, Collection, Set, Event, Knowledge claim). Projects are a thin shell (≤2 examples) — do not invent a Project-only zoo; users publish their own Project templates.
 - **Longform** = sequence of atoms (Library Book/Article). **Feed embed** = live L5 iframe slot — never confuse with longform chapters.
 - **Knowledge / geo.** Bind `dataPointId` + opaque `proofRef` only. Never raw age, email, coordinates, or Place-as-template.

@@ -1,6 +1,6 @@
 /**
  * OAuth unlock proof: challenge-bound ML-DSA-65 signature.
- * Passcode and pn name never leave the device; the server verifies possession
+ * Key 1 and Key 2 never leave the device; the server verifies possession
  * of the ML-DSA secret that only three-factor unlock can produce.
  */
 
@@ -117,7 +117,7 @@ function sha256HexUtf8(text: string): string {
   return Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Canonical platform id from ML-DSA public key (passcode-independent). */
+/** Canonical platform id from ML-DSA public key (independent of Key 1 and Key 2). */
 export function deriveCanonicalPnIdentifier(publicKeyB64: string): string {
   const hex = sha256HexUtf8(publicKeyB64);
   return `pn-${hex.substring(0, 12)}`;

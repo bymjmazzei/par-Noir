@@ -7,8 +7,8 @@ describe('DeviceSessionVault', () => {
     kind: 'dashboard_keys',
     identityId: 'id-1',
     publicKey: 'pk-1',
-    pnName: 'KeyOneSecret!',
-    passcode: 'KeyTwoSecret!',
+    key1: 'KeyOneSecret!',
+    key2: 'KeyTwoSecret!',
   };
 
   it('enroll requires biometric verify', async () => {
@@ -149,8 +149,8 @@ describe('DeviceSessionVault', () => {
       kind: 'unlock_keys',
       identityId: 'did:a',
       publicKey: 'pk-aaaaaaaabbbb',
-      pnName: 'KeyOneA!',
-      passcode: 'KeyTwoA!',
+      key1: 'KeyOneA!',
+      key2: 'KeyTwoA!',
       encryptedIdentityJson: '{"encryptedData":"a"}',
       nickname: 'Alpha',
     };
@@ -158,8 +158,8 @@ describe('DeviceSessionVault', () => {
       kind: 'unlock_keys',
       identityId: 'did:b',
       publicKey: 'pk-cccccccddddd',
-      pnName: 'KeyOneB!',
-      passcode: 'KeyTwoB!',
+      key1: 'KeyOneB!',
+      key2: 'KeyTwoB!',
       encryptedIdentityJson: '{"encryptedData":"b"}',
     };
     await vault.enrollAfterUnlock('unlock', a);
@@ -174,7 +174,7 @@ describe('DeviceSessionVault', () => {
     expect(unlocked?.kind).toBe('unlock_multi');
     if (unlocked?.kind === 'unlock_multi') {
       expect(unlocked.entries).toHaveLength(2);
-      expect(unlocked.entries.find((e) => e.identityId === 'did:a')?.pnName).toBe('KeyOneA!');
+      expect(unlocked.entries.find((e) => e.identityId === 'did:a')?.key1).toBe('KeyOneA!');
       expect(unlocked.entries.find((e) => e.identityId === 'did:b')?.encryptedIdentityJson).toContain(
         '"b"'
       );
@@ -197,8 +197,8 @@ describe('DeviceSessionVault', () => {
       kind: 'unlock_keys',
       identityId: 'did:legacy',
       publicKey: 'pk-legacyxxxx',
-      pnName: 'LegacyKey1!',
-      passcode: 'LegacyKey2!',
+      key1: 'LegacyKey1!',
+      key2: 'LegacyKey2!',
       encryptedIdentityJson: '{"encryptedData":"leg"}',
     };
     const sealed = await sealPayload(legacy);

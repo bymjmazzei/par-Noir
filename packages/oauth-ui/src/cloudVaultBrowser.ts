@@ -24,8 +24,8 @@ import type { SealedEnvelope } from '@par-noir/device-cloud-credentials';
 
 interface UnsealFactors {
   mlKemSecretKey?: string | null;
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
 }
 
 interface DriveTokenOptions extends UnsealFactors {
@@ -54,8 +54,8 @@ async function accessTokenFromSealedVault(
   try {
     credentials = await unsealCloudVaultWithAnyFactor(envelope, {
       mlKemSecretKey: options.mlKemSecretKey,
-      pnName: options.pnName,
-      passcode: options.passcode
+      key1: options.key1,
+      key2: options.key2
     });
   } catch {
     // Never log the reason with identity material attached.

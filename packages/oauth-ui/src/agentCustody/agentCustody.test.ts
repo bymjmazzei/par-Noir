@@ -13,10 +13,10 @@ import { findAgentOnThisMac, resolveAgentOwner } from './ownerMapping';
 import { readPrivateFileText, searchPrivate } from './privateReads';
 
 const SECRETS = {
-  ownerPnName: 'owner-PNNAME-do-not-leak',
-  ownerPasscode: 'owner-PASSCODE-do-not-leak',
-  agentPnName: 'agent-PNNAME-do-not-leak',
-  agentPasscode: 'agent-PASSCODE-do-not-leak',
+  ownerKey1: 'owner-PNNAME-do-not-leak',
+  ownerKey2: 'owner-KEY2-do-not-leak',
+  agentKey1: 'agent-PNNAME-do-not-leak',
+  agentKey2: 'agent-KEY2-do-not-leak',
   driveToken: 'ya29.DRIVE-TOKEN-do-not-leak',
   mlKem: 'MLKEM-SECRET-do-not-leak',
 };
@@ -160,8 +160,8 @@ describe('delegation status', () => {
 const agentEntry = {
   identityId: 'did:key:agent00000000000',
   publicKey: AGENT_PUBLIC_KEY,
-  pnName: SECRETS.agentPnName,
-  passcode: SECRETS.agentPasscode,
+  key1: SECRETS.agentKey1,
+  key2: SECRETS.agentKey2,
   encryptedIdentityJson: '{"agent":true}',
   nickname: agentVaultNickname('Claude desktop'),
   ownerIdentityId: OWNER_ID,
@@ -169,8 +169,8 @@ const agentEntry = {
 const ownerEntry = {
   identityId: OWNER_ID,
   publicKey: 'owner-public-key-b64',
-  pnName: SECRETS.ownerPnName,
-  passcode: SECRETS.ownerPasscode,
+  key1: SECRETS.ownerKey1,
+  key2: SECRETS.ownerKey2,
   encryptedIdentityJson: '{"owner":true}',
   nickname: 'Me',
 };
@@ -438,7 +438,7 @@ describe('custody bridge', () => {
     const ok = await setup();
     const failing = await setup({
       openOwner: async () => {
-        throw new Error(`decrypt failed for ${SECRETS.ownerPnName} / ${SECRETS.ownerPasscode} ${SECRETS.mlKem}`);
+        throw new Error(`decrypt failed for ${SECRETS.ownerKey1} / ${SECRETS.ownerKey2} ${SECRETS.mlKem}`);
       },
     });
     const outputs = [

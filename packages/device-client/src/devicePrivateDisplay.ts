@@ -28,8 +28,8 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-async function deriveKey(pnName: string, passcode: string, saltB64: string): Promise<CryptoKey> {
-  const keyMaterial = `${pnName}:${passcode}`;
+async function deriveKey(key1: string, key2: string, saltB64: string): Promise<CryptoKey> {
+  const keyMaterial = `${key1}:${key2}`;
   const imported = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(keyMaterial),
@@ -52,14 +52,14 @@ async function deriveKey(pnName: string, passcode: string, saltB64: string): Pro
 }
 
 /**
- * Seal display-only device fields with pn name + passcode.
- * Compatible with EncryptionManager.encrypt(pnName, passcode) ciphertext shape.
+ * Seal display-only device fields with Key 1 + Key 2.
+ * Compatible with EncryptionManager.encrypt(Key 1, Key 2) ciphertext shape.
  * API stores the returned opaque string without decrypting.
  */
 export async function sealDevicePrivateDisplay(
   display: DevicePrivateDisplay,
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<string> {
   const payload = JSON.stringify({
     label: display.label,
@@ -68,7 +68,7 @@ export async function sealDevicePrivateDisplay(
   });
   const salt = bytesToBase64(crypto.getRandomValues(new Uint8Array(16)));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(pnName, passcode, salt);
+  const key = await deriveKey(key1, key2, salt);
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     key,
@@ -87,8 +87,8 @@ export async function sealDevicePrivateDisplay(
  */
 export async function unsealDevicePrivateDisplay(
   blob: string,
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<DevicePrivateDisplay> {
   let sealed: SealedBlob;
   try {
@@ -99,7 +99,7 @@ export async function unsealDevicePrivateDisplay(
   if (!sealed?.encrypted || !sealed?.iv || !sealed?.salt) {
     throw new Error('Invalid privateDisplay blob');
   }
-  const key = await deriveKey(pnName, passcode, sealed.salt);
+  const key = await deriveKey(key1, key2, sealed.salt);
   let plainBuf: ArrayBuffer;
   try {
     plainBuf = await crypto.subtle.decrypt(

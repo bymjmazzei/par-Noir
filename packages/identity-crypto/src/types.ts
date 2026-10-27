@@ -37,13 +37,13 @@ export interface AuthSession {
   authenticatedAt: string;
   publicKey: string; // Public key - safe to store
   authToken?: string;
-  // SECURITY: pnName and passcode are SECRETS and must NEVER be stored here
+  // SECURITY: Key 1 and Key 2 are SECRETS and must NEVER be stored here
   // Use SecureCredentialManager.getCredentials(id) to retrieve them when needed
 }
 
 export interface IdentityData {
   id: string;
-  username: string;
+  key1: string;
   nickname: string;
   email: string;
   phone: string;
@@ -68,12 +68,12 @@ export interface EncryptedIdentity {
   publicKey: string;
   /** ML-KEM-768 public key (base64) — optional on legacy files; required for new PQC identities. */
   mlKemPublicKey?: string;
-  encryptedData: string; // Contains ALL sensitive data including PQC secret keys, DID, username, ...
+  encryptedData: string; // Contains ALL sensitive data including PQC secret keys, DID, Key 1, ...
   iv: string;
   salt: string;
   /** Shamir recovery envelope (AES-GCM of recovery payload, key = recovery master). */
   recoveryEnvelope?: RecoveryEnvelope;
-  /** Shamir shares sealed with pN name + passcode — durable recovery vault seed in .pn file. */
+  /** Shamir shares sealed with Key 1 + Key 2 — durable recovery vault seed in .pn file. */
   recoverySharesSealed?: RecoverySharesSealed;
 }
 
@@ -87,7 +87,7 @@ export interface IdentityCreationResult {
 
 export interface AuthenticationResult {
   id: string;
-  pnName: string;
+  key1: string;
   nickname: string;
   accessToken: string;
   expiresIn: number;
@@ -104,7 +104,6 @@ export interface RecoveryKeyData {
 
 export interface TokenPayload {
   did: string;
-  username: string;
   iat: number;
   exp: number;
 }

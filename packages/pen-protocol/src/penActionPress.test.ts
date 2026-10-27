@@ -188,7 +188,7 @@ describe('pressPenAction', () => {
       id: 'in',
       kind: 'text',
       widgetElement: 'input',
-      name: 'Your passcode',
+      name: 'Your Key 2',
       parentGroupId: 'g',
       x: 0,
       y: 0,

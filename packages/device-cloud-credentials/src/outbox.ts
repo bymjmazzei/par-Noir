@@ -210,6 +210,6 @@ export async function clearLocalOutbox(identityId: string): Promise<void> {
 // The browser -> dashboard outbox bridge was removed. It could not work: the two
 // apps are separate origins so they never shared a localStorage partition, and
 // even same-origin they derive different seal keys (the browser seals with
-// sessionId=pn and passcode=mlKemSecretKey, the dashboard unseals with
-// sessionId=session.id and the real passcode). Both failures were swallowed by a
+// sessionId=pn and Key 2=mlKemSecretKey, the dashboard unseals with
+// sessionId=session.id and the real Key 2). Both failures were swallowed by a
 // bare catch. The browser now completes its own deliveries through the API.

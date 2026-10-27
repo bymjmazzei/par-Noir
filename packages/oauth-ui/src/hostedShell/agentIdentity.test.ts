@@ -30,8 +30,8 @@ import { assertFactorFree, buildShellLaunchUrl, encodeShellReturn, parseShellRet
 beforeEach(() => {
   createIdentity.mockReset();
   authenticateIdentity.mockReset();
-  createIdentity.mockImplementation(async (pnName: string, nickname: string) => ({
-    identity: { id: 'did:agent', nickname, encryptedData: `sealed-for-${pnName}` },
+  createIdentity.mockImplementation(async (key1: string, nickname: string) => ({
+    identity: { id: 'did:agent', nickname, encryptedData: `sealed-for-${key1}` },
   }));
   authenticateIdentity.mockResolvedValue({ id: 'did:agent', publicKey: 'agent-pk' });
 });
@@ -91,11 +91,11 @@ describe('AI agent identity', () => {
     expect(saved).toHaveLength(1);
     expect(saved[0].nickname).toBe('AI agent: Cursor');
     expect(saved[0].ownerIdentityId).toBe('did:owner');
-    expect(saved[0].pnName).toMatch(/^agent-/);
-    expect(saved[0].passcode.length).toBeGreaterThanOrEqual(40);
+    expect(saved[0].key1).toMatch(/^agent-/);
+    expect(saved[0].key2.length).toBeGreaterThanOrEqual(40);
     expect(saved[0].encryptedIdentityJson).toContain('sealed-for-');
-    expect(JSON.stringify(result)).not.toContain(saved[0].passcode);
-    expect(JSON.stringify(result)).not.toContain(saved[0].pnName);
+    expect(JSON.stringify(result)).not.toContain(saved[0].key2);
+    expect(JSON.stringify(result)).not.toContain(saved[0].key1);
   });
 
   it('uses fresh factors for each agent', async () => {
@@ -105,8 +105,8 @@ describe('AI agent identity', () => {
     };
     await createAgentIdentity({ label: 'A', ownerIdentityId: 'did:owner', saveAgentIdentity: save });
     await createAgentIdentity({ label: 'B', ownerIdentityId: 'did:owner', saveAgentIdentity: save });
-    expect(saved[0].passcode).not.toBe(saved[1].passcode);
-    expect(saved[0].pnName).not.toBe(saved[1].pnName);
+    expect(saved[0].key2).not.toBe(saved[1].key2);
+    expect(saved[0].key1).not.toBe(saved[1].key1);
   });
 
   it('normalizes labels', () => {
@@ -148,8 +148,8 @@ describe('agent shell op', () => {
     await expect(
       buildShellResult({
         op: 'agent',
-        pnName: '',
-        passcode: '',
+        key1: '',
+        key2: '',
         agentLabel: 'Cursor',
         agentDelegation: encodedDraft,
         saveAgentIdentity: vi.fn(),
@@ -162,8 +162,8 @@ describe('agent shell op', () => {
     await expect(
       buildShellResult({
         op: 'agent',
-        pnName: 'owner-key1',
-        passcode: 'owner-key2',
+        key1: 'owner-key1',
+        key2: 'owner-key2',
         unlocked,
         agentLabel: 'Cursor',
         saveAgentIdentity: save,
@@ -176,8 +176,8 @@ describe('agent shell op', () => {
     const save = vi.fn(async () => undefined);
     const result = await buildShellResult({
       op: 'agent',
-      pnName: 'owner-key1',
-      passcode: 'owner-key2',
+      key1: 'owner-key1',
+      key2: 'owner-key2',
       unlocked,
       agentLabel: 'Cursor',
       agentDelegation: encodedDraft,
@@ -206,8 +206,8 @@ describe('agent shell op', () => {
   it('returns a factor-free fragment with no owner secrets', async () => {
     const result = await buildShellResult({
       op: 'agent',
-      pnName: 'owner-key1',
-      passcode: 'owner-key2',
+      key1: 'owner-key1',
+      key2: 'owner-key2',
       unlocked,
       agentLabel: 'Cursor',
       agentDelegation: encodedDraft,

@@ -1,5 +1,5 @@
 /**
- * Falsify: authenticate body must never include passcode / pn name.
+ * Falsify: authenticate body must never include Key 1 / Key 2.
  * @vitest-environment node
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -28,7 +28,7 @@ describe('oauthUnlockProofMint', () => {
     fetchMock.mockReset();
   });
 
-  it('authenticateWithUnlockProof posts public_key+signature without passcode fields', async () => {
+  it('authenticateWithUnlockProof posts public_key+signature without Key 2 fields', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -60,9 +60,9 @@ describe('oauthUnlockProofMint', () => {
     expect(body.public_key).toBe('pk');
     expect(body.signature).toBe('sig-b64');
     expect(body.challenge_id).toBe('cid');
-    expect(body).not.toHaveProperty('passcode');
+    expect(body).not.toHaveProperty('key2');
     expect(body).not.toHaveProperty('pn_name');
-    expect(body).not.toHaveProperty('pnName');
+    expect(body).not.toHaveProperty('key1');
     expect(body).not.toHaveProperty('password');
   });
 });

@@ -812,7 +812,7 @@ export function inputLayers(
 }
 
 const SECRET_PROMPT =
-  /\b(pass\s*code|password|pass\s*phrase|seed(\s*phrase)?|recovery|private\s*key|pin|2fa|otp|one[-\s]?time\s*code|verification\s*code|security\s*code|cvv|card\s*number|ssn|social\s*security)\b/i;
+  /\b(pass\s*code|key\s*[12]|password|pass\s*phrase|seed(\s*phrase)?|recovery|private\s*key|pin|2fa|otp|one[-\s]?time\s*code|verification\s*code|security\s*code|cvv|card\s*number|ssn|social\s*security)\b/i;
 
 /**
  * Inputs, or text beside them, that ask a viewer for a secret. A form like this never submits.

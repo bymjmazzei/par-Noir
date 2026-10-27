@@ -6,7 +6,7 @@ async function deriveKey(session: SealSession, saltBytes: Uint8Array): Promise<C
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(`${session.sessionId}::${session.pnName}::${session.passcode}`),
+    encoder.encode(`${session.sessionId}::${session.key1}::${session.key2}`),
     'PBKDF2',
     false,
     ['deriveKey']

@@ -123,18 +123,18 @@ export class EncryptionManager {
     }
 
     /**
-     * Encrypt data with pnName and passcode
-     * SECURITY: Both pnName and passcode are SECRETS and are required for encryption/decryption
+     * Encrypt data with Key 1 and Key 2
+     * SECURITY: Both Key 1 and Key 2 are SECRETS and are required for encryption/decryption
      * 
      * @param data - Data to encrypt
-     * @param pnName - pN name (SECRET #1)
-     * @param passcode - Passcode (SECRET #2)
+     * @param key1 - Key 1 (SECRET #1)
+     * @param key2 - Key 2 (SECRET #2)
      */
-    static async encrypt(data: string, pnName: string, passcode: string): Promise<EncryptedData> {
+    static async encrypt(data: string, key1: string, key2: string): Promise<EncryptedData> {
         try {
             const salt = this.generateSalt();
             // SECURITY: Combine both secrets for key derivation
-            const key = await this.deriveKey(pnName, passcode, salt);
+            const key = await this.deriveKey(key1, key2, salt);
             const iv = this.generateIV();
             const encoder = new TextEncoder();
             const dataBuffer = encoder.encode(data);
@@ -156,11 +156,11 @@ export class EncryptionManager {
      *
      * @deprecated This method is dangerous and should not be used
      */
-    static async legacyDecrypt(encryptedData: EncryptedData, passcode: string): Promise<string> {
+    static async legacyDecrypt(encryptedData: EncryptedData, key2: string): Promise<string> {
         try {
             // Console statement removed for production
             const encoder = new TextEncoder();
-            const passcodeBuffer = encoder.encode(passcode);
+            const key2Buffer = encoder.encode(key2);
             const saltBuffer = this.base64ToArrayBuffer(encryptedData.salt);
             const iv = this.base64ToArrayBuffer(encryptedData.iv);
             const data = this.base64ToArrayBuffer(encryptedData.encrypted);
@@ -180,7 +180,7 @@ export class EncryptionManager {
             for (const params of parameterSets) {
                 try {
                     // Console statement removed for production
-                    const keyMaterial = await cryptoWorkerManager.importKey('raw', passcodeBuffer, 'PBKDF2', false, ['deriveBits', 'deriveKey']);
+                    const keyMaterial = await cryptoWorkerManager.importKey('raw', key2Buffer, 'PBKDF2', false, ['deriveBits', 'deriveKey']);
                     const derivedKey = await cryptoWorkerManager.deriveKey({
                         name: 'PBKDF2',
                         salt: saltBuffer,
@@ -206,17 +206,17 @@ export class EncryptionManager {
     }
 
     /**
-     * Decrypt data with pnName and passcode
-     * SECURITY: Both pnName and passcode are SECRETS and are required for decryption
+     * Decrypt data with Key 1 and Key 2
+     * SECURITY: Both Key 1 and Key 2 are SECRETS and are required for decryption
      * 
      * @param encryptedData - Encrypted data to decrypt
-     * @param pnName - pN name (SECRET #1)
-     * @param passcode - Passcode (SECRET #2)
+     * @param key1 - Key 1 (SECRET #1)
+     * @param key2 - Key 2 (SECRET #2)
      */
-    static async decrypt(encryptedData: EncryptedData, pnName: string, passcode: string): Promise<string> {
+    static async decrypt(encryptedData: EncryptedData, key1: string, key2: string): Promise<string> {
         try {
             // SECURITY: Combine both secrets for key derivation
-            const key = await this.deriveKey(pnName, passcode, encryptedData.salt);
+            const key = await this.deriveKey(key1, key2, encryptedData.salt);
             const iv = this.base64ToArrayBuffer(encryptedData.iv);
             const data = this.base64ToArrayBuffer(encryptedData.encrypted);
             const decryptedBuffer = await cryptoWorkerManager.decrypt({ name: 'AES-GCM', iv }, key, data);
@@ -295,18 +295,18 @@ export class EncryptionManager {
     }
 
     /**
-     * Derive encryption key from pnName and passcode (static method)
-     * SECURITY: Both pnName and passcode are SECRETS and must be combined for key derivation
+     * Derive encryption key from Key 1 and Key 2 (static method)
+     * SECURITY: Both Key 1 and Key 2 are SECRETS and must be combined for key derivation
      * 
-     * @param pnName - pN name (SECRET #1)
-     * @param passcode - Passcode (SECRET #2)
+     * @param key1 - Key 1 (SECRET #1)
+     * @param key2 - Key 2 (SECRET #2)
      * @param salt - Salt for key derivation
      */
-    private static async deriveKey(pnName: string, passcode: string, salt: string): Promise<CryptoKey> {
+    private static async deriveKey(key1: string, key2: string, salt: string): Promise<CryptoKey> {
         try {
             // SECURITY: Combine both secrets for key derivation
-            // Format: "pnName:passcode" (same as VolumeIdGenerator pattern)
-            const keyMaterial = `${pnName}:${passcode}`;
+            // Format: "key1:key2" (same as VolumeIdGenerator pattern)
+            const keyMaterial = `${key1}:${key2}`;
             
             const encoder = new TextEncoder();
             const keyMaterialBuffer = encoder.encode(keyMaterial);

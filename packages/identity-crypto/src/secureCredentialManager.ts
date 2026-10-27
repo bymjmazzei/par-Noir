@@ -1,18 +1,18 @@
 /**
  * Secure Credential Manager
  * 
- * Stores pn name and passcode ONLY in memory during authentication.
+ * Stores Key 1 and Key 2 ONLY in memory during authentication.
  * NEVER persists to IndexedDB, localStorage, or any storage.
  * 
- * CRITICAL: pn name + passcode = 2FA credentials. Must remain secret.
+ * CRITICAL: Key 1 + Key 2 = 2FA credentials. Must remain secret.
  * Both are SECRETS and must be treated identically.
  */
 
 import { MemorySecurity } from './memorySecurity';
 
 interface Credentials {
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   sessionId: string;
   expiresAt: number; // Timestamp when credentials expire
 }
@@ -27,14 +27,14 @@ export class SecureCredentialManager {
   /**
    * Store credentials temporarily in memory only
    * @param sessionId - The session/identity ID
-   * @param pnName - The pn name (part of 2FA - SECRET)
-   * @param passcode - The passcode (part of 2FA - SECRET)
+   * @param key1 - The Key 1 (part of 2FA - SECRET)
+   * @param key2 - The Key 2 (part of 2FA - SECRET)
    * @param expiresIn - Optional expiration time in milliseconds (default: 1 hour)
    */
   static setCredentials(
     sessionId: string, 
-    pnName: string, 
-    passcode: string,
+    key1: string, 
+    key2: string,
     expiresIn: number = this.DEFAULT_EXPIRY
   ): void {
     // Clear any existing credentials for this session
@@ -43,8 +43,8 @@ export class SecureCredentialManager {
     const expiresAt = Date.now() + expiresIn;
     
     this.credentials.set(sessionId, {
-      pnName,
-      passcode,
+      key1,
+      key2,
       sessionId,
       expiresAt
     });
@@ -57,7 +57,7 @@ export class SecureCredentialManager {
    * Retrieve credentials from memory only
    * Returns null if credentials don't exist or are expired
    */
-  static getCredentials(sessionId: string): { pnName: string; passcode: string } | null {
+  static getCredentials(sessionId: string): { key1: string; key2: string } | null {
     const creds = this.credentials.get(sessionId);
     
     if (!creds) {
@@ -71,8 +71,8 @@ export class SecureCredentialManager {
     }
     
     return {
-      pnName: creds.pnName,
-      passcode: creds.passcode
+      key1: creds.key1,
+      key2: creds.key2
     };
   }
   
@@ -101,8 +101,8 @@ export class SecureCredentialManager {
     if (creds) {
       // Zeroize secrets before deletion
       MemorySecurity.zeroizeCredentials({
-        pnName: creds.pnName,
-        passcode: creds.passcode
+        key1: creds.key1,
+        key2: creds.key2
       });
     this.credentials.delete(sessionId);
     }
@@ -116,8 +116,8 @@ export class SecureCredentialManager {
     // Zeroize all credentials before clearing
     for (const creds of this.credentials.values()) {
       MemorySecurity.zeroizeCredentials({
-        pnName: creds.pnName,
-        passcode: creds.passcode
+        key1: creds.key1,
+        key2: creds.key2
       });
     }
     this.credentials.clear();

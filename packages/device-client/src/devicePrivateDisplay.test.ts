@@ -11,13 +11,13 @@ describe('devicePrivateDisplay', () => {
       deviceType: 'desktop' as const,
       lastSeenAt: '2026-08-03T12:00:00.000Z',
     };
-    const blob = await sealDevicePrivateDisplay(display, 'test-pn-name', 'test-passcode');
+    const blob = await sealDevicePrivateDisplay(display, 'test-pn-name', 'test-key2');
     expect(blob.includes('MacBook')).toBe(false);
-    const opened = await unsealDevicePrivateDisplay(blob, 'test-pn-name', 'test-passcode');
+    const opened = await unsealDevicePrivateDisplay(blob, 'test-pn-name', 'test-key2');
     expect(opened).toEqual(display);
   });
 
-  it('fails with wrong passcode', async () => {
+  it('fails with wrong Key 2', async () => {
     const blob = await sealDevicePrivateDisplay(
       { label: 'Phone', deviceType: 'mobile', lastSeenAt: '' },
       'name',

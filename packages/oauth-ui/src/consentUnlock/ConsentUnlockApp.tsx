@@ -63,8 +63,8 @@ import {
 
 /** Factors + sealed identity for biometric vault re-mint (never sent to API). */
 export type ConsentVaultFactors = {
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   /** JSON of EncryptedIdentityRow (or single-identity file shape). */
   encryptedIdentityJson: string;
 };
@@ -73,8 +73,8 @@ export type ConsentVaultFactors = {
 export type ConsentVaultEnrollMaterial = {
   identityId: string;
   publicKey: string;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   encryptedIdentityJson: string;
 };
 
@@ -258,8 +258,8 @@ function ConnectorConsent(props: {
           ) : (
             <>
               <p className="physical-hint">
-                The agent gets only what you delegated to it: {scopes.join(', ') || 'no access yet'}. Your pN
-                name and passcode never leave this device.
+                The agent gets only what you delegated to it: {scopes.join(', ') || 'no access yet'}. Your Key 1
+                and Key 2 never leave this device.
               </p>
               {status !== 'idle' ? (
                 <div className={status === 'returned' ? 'handoff-done' : 'physical-hint'} role="status">
@@ -356,16 +356,16 @@ function ConsentUnlockInner(props: {
   } = props;
   const [step, setStep] = useState<Step>('unlock');
   const [unlockMode, setUnlockMode] = useState<UnlockMode>('file');
-  const [pnName, setPnName] = useState('');
-  const [passcode, setPasscode] = useState('');
-  const shellFactorRef = useRef({ pnName: '', passcode: '' });
+  const [key1, setKey1] = useState('');
+  const [key2, setKey2] = useState('');
+  const shellFactorRef = useRef({ key1: '', key2: '' });
   const [fileName, setFileName] = useState('');
   const [identityJson, setIdentityJson] = useState<unknown>(null);
   const [usbKeyName, setUsbKeyName] = useState('');
   const [usbKeyText, setUsbKeyText] = useState<string | null>(null);
   const [usbPayloadName, setUsbPayloadName] = useState('');
   const [usbPayloadText, setUsbPayloadText] = useState<string | null>(null);
-  const [usbDrivePasscode, setUsbDrivePasscode] = useState('');
+  const [usbDrivePassphrase, setUsbDrivePassphrase] = useState('');
   const [nfcPayload, setNfcPayload] = useState<NfcIdentityPayload | null>(null);
   const [nfcStatus, setNfcStatus] = useState('');
   const [nfcScanning, setNfcScanning] = useState(false);
@@ -483,8 +483,8 @@ function ConsentUnlockInner(props: {
         const factors = shellFactorRef.current;
         const built = await buildShellResult({
           op: active.shellOp || 'session',
-          pnName: factors.pnName,
-          passcode: factors.passcode,
+          key1: factors.key1,
+          key2: factors.key2,
           vaultPayload: active.vaultPayload,
           agentLabel: active.agentLabel,
           agentDelegation: active.agentDelegation,
@@ -565,15 +565,15 @@ function ConsentUnlockInner(props: {
   );
 
   const resetFormAfterBrokerHandoff = useCallback(() => {
-    setPnName('');
-    setPasscode('');
+    setKey1('');
+    setKey2('');
     setFileName('');
     setIdentityJson(null);
     setUsbKeyName('');
     setUsbKeyText(null);
     setUsbPayloadName('');
     setUsbPayloadText(null);
-    setUsbDrivePasscode('');
+    setUsbDrivePassphrase('');
     setNfcPayload(null);
     setNfcStatus('');
     setNfcScanning(false);
@@ -619,7 +619,7 @@ function ConsentUnlockInner(props: {
   const afterUnlock = useCallback(
     async (unlocked: UnlockedIdentityBundle, key1: string, key2: string) => {
       const active = consentParamsNow(params);
-      shellFactorRef.current = { pnName: key1, passcode: key2 };
+      shellFactorRef.current = { key1: key1, key2: key2 };
       setBundle(unlocked);
       const mint = await mintConsentAuthorizationCode({
         apiEndpoint: active.apiEndpoint,
@@ -711,7 +711,7 @@ function ConsentUnlockInner(props: {
 
   /** Biometric vault path: decrypt sealed identity + mint without the factor form. */
   useEffect(() => {
-    if (!vaultFactors?.encryptedIdentityJson || !vaultFactors.pnName || !vaultFactors.passcode) {
+    if (!vaultFactors?.encryptedIdentityJson || !vaultFactors.key1 || !vaultFactors.key2) {
       return;
     }
     let cancelled = false;
@@ -723,11 +723,11 @@ function ConsentUnlockInner(props: {
         const row = parseIdentityFileJson(raw);
         const unlocked = await decryptIdentityFileLocal(
           row,
-          vaultFactors.pnName,
-          vaultFactors.passcode
+          vaultFactors.key1,
+          vaultFactors.key2
         );
         if (cancelled) return;
-        await afterUnlock(unlocked, vaultFactors.pnName, vaultFactors.passcode);
+        await afterUnlock(unlocked, vaultFactors.key1, vaultFactors.key2);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Biometric unlock failed');
@@ -752,16 +752,16 @@ function ConsentUnlockInner(props: {
       e.preventDefault();
       if (busy) return;
       setError(null);
-      if (!pnName || !passcode) {
+      if (!key1 || !key2) {
         setError('Please enter Key 1 and Key 2');
         return;
       }
-      shellFactorRef.current = { pnName, passcode };
+      shellFactorRef.current = { key1, key2 };
 
       if (params.flow === 'shell' && params.shellOp === 'create') {
         setBusy(true);
         try {
-          const built = await buildShellResult({ op: 'create', pnName, passcode });
+          const built = await buildShellResult({ op: 'create', key1, key2 });
           const fragment = encodeShellReturn({
             v: 1,
             op: 'create',
@@ -785,8 +785,8 @@ function ConsentUnlockInner(props: {
         return;
       }
       if (unlockMode === 'usb') {
-        if (!usbKeyText || !usbDrivePasscode) {
-          setError('Select the key file and enter the drive passcode');
+        if (!usbKeyText || !usbDrivePassphrase) {
+          setError('Select the key file and enter the drive passphrase');
           return;
         }
       }
@@ -804,26 +804,26 @@ function ConsentUnlockInner(props: {
           const result = await physical.unlockBoundIdentity(
             nfcPayload!.boundPnBlob,
             nfcPayload!.uid,
-            pnName,
-            passcode
+            key1,
+            key2
           );
           unlocked = physicalResultToBundle(result) as UnlockedIdentityBundle;
         } else if (unlockMode === 'usb') {
           const physical = await loadParNoirOAuthPhysical(params.apiEndpoint);
           const result = await physical.unlockFromUsbKeyAndPayload(
             usbKeyText!,
-            usbDrivePasscode,
+            usbDrivePassphrase,
             usbPayloadText,
-            pnName,
-            passcode
+            key1,
+            key2
           );
           unlocked = physicalResultToBundle(result) as UnlockedIdentityBundle;
         } else {
           const row = parseIdentityFileJson(identityJson);
-          unlocked = await decryptIdentityFileLocal(row, pnName, passcode);
+          unlocked = await decryptIdentityFileLocal(row, key1, key2);
         }
 
-        await afterUnlock(unlocked, pnName, passcode);
+        await afterUnlock(unlocked, key1, key2);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to unlock');
       } finally {
@@ -832,12 +832,12 @@ function ConsentUnlockInner(props: {
     },
     [
       busy,
-      pnName,
-      passcode,
+      key1,
+      key2,
       unlockMode,
       identityJson,
       usbKeyText,
-      usbDrivePasscode,
+      usbDrivePassphrase,
       usbPayloadText,
       nfcPayload,
       params,
@@ -968,7 +968,7 @@ function ConsentUnlockInner(props: {
                 <>
                   <p className="physical-hint">
                     Use the same USB backup as in the dashboard: key file (and payload if you use two
-                    files), plus the drive passcode you set when exporting.
+                    files), plus the drive passphrase you set when exporting.
                   </p>
                   <div className="form-group">
                     <label>Key file (parnoir-key.enc)</label>
@@ -981,13 +981,13 @@ function ConsentUnlockInner(props: {
                     />
                   </div>
                   <div className="form-group">
-                    <label>Drive passcode</label>
+                    <label>Drive passphrase</label>
                     <input
                       type="password"
                       autoComplete="off"
-                      placeholder="Passcode for USB key file"
-                      value={usbDrivePasscode}
-                      onChange={(ev) => setUsbDrivePasscode(ev.target.value)}
+                      placeholder="Passphrase for USB key file"
+                      value={usbDrivePassphrase}
+                      onChange={(ev) => setUsbDrivePassphrase(ev.target.value)}
                     />
                   </div>
                   <div className="form-group">
@@ -1029,8 +1029,8 @@ function ConsentUnlockInner(props: {
                     {...key1Props}
                     type={showKey1 ? 'text' : 'password'}
                     placeholder="Enter Key 1"
-                    value={pnName}
-                    onChange={(ev) => setPnName(ev.target.value)}
+                    value={key1}
+                    onChange={(ev) => setKey1(ev.target.value)}
                   />
                   <button
                     type="button"
@@ -1050,8 +1050,8 @@ function ConsentUnlockInner(props: {
                     {...key2Props}
                     type={showKey2 ? 'text' : 'password'}
                     placeholder="Enter Key 2"
-                    value={passcode}
-                    onChange={(ev) => setPasscode(ev.target.value)}
+                    value={key2}
+                    onChange={(ev) => setKey2(ev.target.value)}
                   />
                   <button
                     type="button"

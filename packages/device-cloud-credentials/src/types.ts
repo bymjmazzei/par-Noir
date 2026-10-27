@@ -11,8 +11,8 @@ export interface SealedEnvelope {
 
 export interface SealSession {
   sessionId: string;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
 }
 
 export interface CredentialStore {

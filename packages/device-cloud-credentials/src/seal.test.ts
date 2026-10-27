@@ -4,7 +4,7 @@ import { WEB_GRACE_TTL_MS } from '../src/types.js';
 
 describe('device-cloud-credentials seal', () => {
   it('round-trips sealed credentials', async () => {
-    const session = { sessionId: 's1', pnName: 'alice', passcode: 'secret' };
+    const session = { sessionId: 's1', key1: 'alice', key2: 'secret' };
     const payload = { googleDriveAccounts: [{ accountId: 'a1', refreshToken: 'rt' }] };
     const sealed = await sealCredentials(payload, session, null);
     const opened = await unsealCredentials<typeof payload>(sealed, session);
@@ -12,7 +12,7 @@ describe('device-cloud-credentials seal', () => {
   });
 
   it('rejects expired web grace envelopes', async () => {
-    const session = { sessionId: 's1', pnName: 'alice', passcode: 'secret' };
+    const session = { sessionId: 's1', key1: 'alice', key2: 'secret' };
     const sealed = await sealCredentials({ ok: true }, session, new Date(Date.now() - 1000).toISOString());
     await expect(unsealCredentials(sealed, session)).rejects.toThrow(/expired/);
   });

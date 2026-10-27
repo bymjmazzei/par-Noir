@@ -14,8 +14,8 @@ const AGENT_LABEL_MAX = 40;
 export type AgentVaultEntry = {
   identityId: string;
   publicKey: string;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   encryptedIdentityJson: string;
   nickname: string;
   /** Vault identityId of the owner who added this agent on this device. */
@@ -85,16 +85,16 @@ export async function createAgentIdentity(args: {
   if (!ownerIdentityId) throw new Error('Unlock your pN to add an AI agent');
 
   const nickname = agentVaultNickname(label);
-  const pnName = `agent-${randomFactor(18)}`;
-  const passcode = randomFactor(32);
-  const created = await IdentityCrypto.createIdentity(pnName, nickname, passcode);
-  const session = await IdentityCrypto.authenticateIdentity(created.identity, passcode, pnName);
+  const key1 = `agent-${randomFactor(18)}`;
+  const key2 = randomFactor(32);
+  const created = await IdentityCrypto.createIdentity(key1, nickname, key2);
+  const session = await IdentityCrypto.authenticateIdentity(created.identity, key2, key1);
 
   await args.saveAgentIdentity({
     identityId: session.id,
     publicKey: session.publicKey,
-    pnName,
-    passcode,
+    key1,
+    key2,
     encryptedIdentityJson: JSON.stringify(created.identity),
     nickname,
     ownerIdentityId,

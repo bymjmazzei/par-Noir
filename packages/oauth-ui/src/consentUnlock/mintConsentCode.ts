@@ -1,5 +1,5 @@
 /**
- * Challenge → ML-DSA unlock proof → authenticate. Never sends passcode / pn name.
+ * Challenge → ML-DSA unlock proof → authenticate. Never sends Key 1 / Key 2.
  */
 
 import type { AuthenticateWithUnlockProofParams } from '../oauthUnlockProofMint';
@@ -72,7 +72,7 @@ export async function mintConsentAuthorizationCode(
 export async function authenticateWithUnlockProofDetailed(
   params: AuthenticateWithUnlockProofParams
 ): Promise<ConsentAuthenticateResult> {
-  // Re-implement post so we can read extra fields — still no passcode on body.
+  // Re-implement post so we can read extra fields — still no Key 2 on body.
   const { requestOauthUnlockChallenge } = await import('../oauthUnlockProofMint');
   const { base64ToBytes } = await import('@par-noir/pqc-crypto/encoding');
   const {
@@ -129,7 +129,7 @@ export async function authenticateWithUnlockProofDetailed(
     body.code_challenge_method = params.codeChallengeMethod || 'S256';
   }
 
-  const forbidden = ['passcode', 'pn_name', 'pnName', 'password'] as const;
+  const forbidden = ['passcode', 'pn_name', 'pnName', 'key1', 'key2', 'password'] as const;
   for (const key of forbidden) {
     if (key in body) {
       throw new Error(`Refusing authenticate body field: ${key}`);

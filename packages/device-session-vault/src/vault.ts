@@ -271,8 +271,8 @@ export class DeviceSessionVault {
   /** After biometric already verified: merge unlock_keys into unlock_multi seal + index. */
   private async writeUnlockMultiMerged(entry: UnlockKeysPayload): Promise<void> {
     if (
-      !entry.pnName?.trim() ||
-      !entry.passcode?.trim() ||
+      !entry.key1?.trim() ||
+      !entry.key2?.trim() ||
       !entry.encryptedIdentityJson?.trim()
     ) {
       throw new Error('Vault enroll requires identity file, Key 1, and Key 2');

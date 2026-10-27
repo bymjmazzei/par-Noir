@@ -33,12 +33,12 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 }
 
 async function deriveKeyWithBinding(
-  pnName: string,
-  passcode: string,
+  key1: string,
+  key2: string,
   saltB64: string,
   uid?: string
 ): Promise<CryptoKey> {
-  const keyMaterialStr = uid ? `${pnName}:${passcode}:${uid}` : `${pnName}:${passcode}`;
+  const keyMaterialStr = uid ? `${key1}:${key2}:${uid}` : `${key1}:${key2}`;
   const encoder = new TextEncoder();
   const keyMaterialBuffer = encoder.encode(keyMaterialStr);
   const saltBuffer = base64ToArrayBuffer(saltB64);
@@ -105,26 +105,26 @@ export function parseIdentityFileJson(raw: unknown): EncryptedIdentityRow {
 }
 
 /**
- * Local three-factor decrypt. Never sends pnName/passcode off-device.
+ * Local three-factor decrypt. Never sends Key 1/Key 2 off-device.
  */
 export async function decryptIdentityFileLocal(
   identityRow: EncryptedIdentityRow | Record<string, unknown>,
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<UnlockedIdentityBundle> {
   const encryptedIdentity = asEncryptedIdentity(identityRow as Record<string, unknown>);
   if (!encryptedIdentity.publicKey) {
     throw new Error('Invalid identity file: missing public key');
   }
   try {
-    const key = await deriveKeyWithBinding(pnName, passcode, encryptedIdentity.salt);
+    const key = await deriveKeyWithBinding(key1, key2, encryptedIdentity.salt);
     const iv = base64ToArrayBuffer(encryptedIdentity.iv);
     const data = base64ToArrayBuffer(encryptedIdentity.encryptedData);
     const decryptedBuffer = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, key, data);
     const plaintext = new TextDecoder().decode(decryptedBuffer);
     const decryptedIdentity = JSON.parse(plaintext) as DecryptedIdentityRecord;
-    if (decryptedIdentity.username !== pnName) {
-      throw new Error('Authentication failed: pN name does not match identity file');
+    if (decryptedIdentity.key1 !== key1) {
+      throw new Error('Authentication failed: Key 1 does not match identity file');
     }
     const did = typeof decryptedIdentity.id === 'string' ? decryptedIdentity.id : '';
     if (!did) throw new Error('Identity file does not contain a DID');

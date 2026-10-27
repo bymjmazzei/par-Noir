@@ -8,7 +8,7 @@ export function proseStarter(input: { title: string; focus: string }): string {
     'Sections for this template: {{section_list}}.',
     'Emit ONLY a PenAgentBuild JSON object: { "templateId", "title", "sections": [{ "slug", "plainText" }] }.',
     'Use only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.',
-    'Never include secrets, pn name, passcodes, tokens, or raw account identifiers.',
+    'Never include secrets, Key 1, Key 2, tokens, or raw account identifiers.',
     'User request:',
     '{{user_input}}'
   ].join('\n');

@@ -137,7 +137,7 @@ describe('socket client', () => {
   it('refuses replies for another request, unknown codes and garbage', async () => {
     const replies: Reply[] = [
       () => ({ v: 1, id: 'someone-else', ok: true, result: {} }),
-      (req) => err(req, `stack trace for ${SECRETS.passcode}`),
+      (req) => err(req, `stack trace for ${SECRETS.key2}`),
       () => 'not json',
       (req) => ok(req, { fileId: 'f1' }),
     ];

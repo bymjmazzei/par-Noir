@@ -19,7 +19,7 @@ describe('consentUnlock mint', () => {
     vi.restoreAllMocks();
   });
 
-  it('authenticate body never includes passcode or pn name', async () => {
+  it('authenticate body never includes Key 1 or Key 2', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url).includes('/challenge')) {
         return {
@@ -28,9 +28,9 @@ describe('consentUnlock mint', () => {
         } as Response;
       }
       const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
-      expect(body).not.toHaveProperty('passcode');
+      expect(body).not.toHaveProperty('key2');
       expect(body).not.toHaveProperty('pn_name');
-      expect(body).not.toHaveProperty('pnName');
+      expect(body).not.toHaveProperty('key1');
       expect(body).not.toHaveProperty('password');
       expect(body).toHaveProperty('public_key');
       expect(body).toHaveProperty('signature');
@@ -168,7 +168,7 @@ describe('vault enroll material', () => {
           iv: 'iv',
           salt: 'salt',
         },
-        decryptedIdentity: { id: 'did:pn:1', username: 'u' },
+        decryptedIdentity: { id: 'did:pn:1', key1: 'u' },
       },
       'key1',
       'key2'
@@ -183,9 +183,9 @@ describe('vault enroll material', () => {
       assertNoVaultSecretsOnWire({
         public_key: 'pk',
         signature: 'sig',
-        passcode: 'nope',
+        key2: 'nope',
       })
-    ).toThrow(/passcode/);
+    ).toThrow(/key2/);
     expect(() =>
       assertNoVaultSecretsOnWire({
         public_key: 'pk',

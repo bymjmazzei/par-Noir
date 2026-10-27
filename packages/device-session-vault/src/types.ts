@@ -15,8 +15,8 @@ export type DashboardKeysPayload = {
   kind: 'dashboard_keys';
   identityId: string;
   publicKey: string;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   nickname?: string;
 };
 
@@ -25,10 +25,10 @@ export type UnlockKeysPayload = {
   kind: 'unlock_keys';
   identityId: string;
   publicKey: string;
-  /** Knowledge key 1 (pn name). */
-  pnName: string;
-  /** Knowledge key 2 (passcode). */
-  passcode: string;
+  /** Knowledge key 1 (Key 1). */
+  key1: string;
+  /** Knowledge key 2 (Key 2). */
+  key2: string;
   /** Opaque encrypted identity JSON (.pn file contents) for re-mint without re-upload. */
   encryptedIdentityJson: string;
   /** Optional display nickname (never Key 1). */
@@ -98,7 +98,7 @@ export type SealedVaultRecord = {
   failureCount: number;
 };
 
-/** Safe picker label — never Key 1 / passcode. */
+/** Safe picker label — never Key 1 / Key 2. */
 export function unlockIdentityLabel(id: UnlockIdentityListing): string {
   const nick = id.nickname?.trim();
   if (nick) return nick;

@@ -23,8 +23,8 @@ export interface ThirdPartyCloudReconnectHostProps {
   /** Preferred: ML-KEM from OAuth messaging handoff */
   mlKemSecretKey?: string | null;
   /** Legacy identity factors for vault hydrate */
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
 }
 
 /**
@@ -36,8 +36,8 @@ export function ThirdPartyCloudReconnectHost({
   authToken,
   pnIdentifier,
   mlKemSecretKey,
-  pnName,
-  passcode
+  key1,
+  key2
 }: ThirdPartyCloudReconnectHostProps) {
   const [vaultHydrated, setVaultHydrated] = useState(false);
   const [hydrateFailed, setHydrateFailed] = useState(false);
@@ -47,7 +47,7 @@ export function ThirdPartyCloudReconnectHost({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      if (!authToken || !pnIdentifier || (!mlKemSecretKey && !(pnName && passcode))) {
+      if (!authToken || !pnIdentifier || (!mlKemSecretKey && !(key1 && key2))) {
         setVaultHydrated(false);
         return;
       }
@@ -60,32 +60,32 @@ export function ThirdPartyCloudReconnectHost({
         authToken,
         pnIdentifier,
         mlKemSecretKey,
-        pnName,
-        passcode
+        key1,
+        key2
       });
       if (!cancelled) setVaultHydrated(status === 'ready');
     })();
     return () => {
       cancelled = true;
     };
-  }, [apiEndpoint, authToken, pnIdentifier, mlKemSecretKey, pnName, passcode]);
+  }, [apiEndpoint, authToken, pnIdentifier, mlKemSecretKey, key1, key2]);
 
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
     if (!pnIdentifier) return null;
     const existing = getSessionCloudCredentials(pnIdentifier);
     if (envelopeHasUsableSecrets(existing)) return existing;
-    if (!authToken || (!mlKemSecretKey && !(pnName && passcode))) return existing;
+    if (!authToken || (!mlKemSecretKey && !(key1 && key2))) return existing;
     const status = await ensureCloudCredentialsReady({
       apiEndpoint,
       authToken,
       pnIdentifier,
       mlKemSecretKey,
-      pnName,
-      passcode,
+      key1,
+      key2,
     });
     if (status !== 'ready') return existing;
     return getSessionCloudCredentials(pnIdentifier);
-  }, [apiEndpoint, authToken, pnIdentifier, mlKemSecretKey, pnName, passcode]);
+  }, [apiEndpoint, authToken, pnIdentifier, mlKemSecretKey, key1, key2]);
 
   const gate = useCloudReconnectGate({
     enabled: !!(authToken && pnIdentifier),
