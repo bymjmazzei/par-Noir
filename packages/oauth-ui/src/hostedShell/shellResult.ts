@@ -114,10 +114,20 @@ export async function buildShellResult(args: {
   }
 
   if (args.op === 'session') {
-    return mlKemResult(args.unlocked);
+    return sessionResult(args.unlocked);
   }
 
   return undefined;
+}
+
+/** The dashboard registers recovery keys with the envelope; Unlock keeps the rest of the .pn. */
+function sessionResult(unlocked?: ShellUnlocked): Record<string, string> | undefined {
+  const result: Record<string, string> = { ...(mlKemResult(unlocked) || {}) };
+  const envelope = unlocked?.encryptedIdentity.recoveryEnvelope;
+  if (envelope && typeof envelope === 'object') {
+    result.recoveryEnvelope = JSON.stringify(envelope);
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function mlKemResult(unlocked?: ShellUnlocked): Record<string, string> | undefined {

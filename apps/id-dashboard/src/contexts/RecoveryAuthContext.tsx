@@ -34,7 +34,7 @@ function isEncryptedRow(value: unknown): value is EncryptedIdentity {
   return Boolean(row?.encryptedData && row.iv && row.salt);
 }
 
-/** The locally saved identity carries the recovery envelope the Recovery tab registers. */
+/** Recovery envelope for the Recovery tab: the Unlock-app session's copy, else the locally saved .pn. */
 async function loadStoredIdentity(
   publicKey: string,
   userId: string,
@@ -55,6 +55,12 @@ async function loadStoredIdentity(
     }
   } catch (err) {
     console.warn('[recovery] local identity read failed:', err instanceof Error ? err.message : err);
+  }
+  const { readShellRecoveryEnvelope } = await import('../services/shellRecoveryEnvelope');
+  const shellEnvelope = readShellRecoveryEnvelope(publicKey) || readShellRecoveryEnvelope(userId);
+  if (shellEnvelope) {
+    // An Unlock-app session has no local encrypted row; only the envelope crosses over.
+    identity = { encryptedData: '', iv: '', salt: '', ...(identity || {}), publicKey, recoveryEnvelope: shellEnvelope };
   }
   return identity;
 }
@@ -95,8 +101,10 @@ export function RecoveryAuthProvider({ children }: { children: React.ReactNode }
       await reauthenticateForRecovery(publicKey);
 
       const encryptedIdentity = await loadStoredIdentity(publicKey, opts.expectedUser.id, opts.loadEncryptedIdentity);
-      if (!encryptedIdentity) {
-        throw new Error('This pN is not saved on this device. Import your .pn, then unlock recovery again.');
+      if (!encryptedIdentity?.recoveryEnvelope) {
+        throw new Error(
+          'par Noir Unlock did not share this pN’s recovery data. Lock the dashboard, unlock again choosing your .pn file in par Noir Unlock, then unlock recovery.'
+        );
       }
       setAuth({ encryptedIdentity, expiresAt: Date.now() + RECOVERY_AUTH_TTL_MS });
     },

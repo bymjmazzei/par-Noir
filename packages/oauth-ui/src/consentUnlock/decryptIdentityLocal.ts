@@ -14,6 +14,8 @@ export type EncryptedIdentityRow = {
   encryptedData: string;
   iv: string;
   salt: string;
+  /** Shamir recovery envelope. Ciphertext only custodian shares can open. */
+  recoveryEnvelope?: Record<string, unknown>;
 };
 
 export type UnlockedIdentityBundle = {
@@ -69,11 +71,15 @@ function asEncryptedIdentity(row: Record<string, unknown>): EncryptedIdentityRow
   if (!encryptedData || !iv || !salt) {
     throw new Error('Invalid identity file: missing encrypted data');
   }
+  const recoveryEnvelope = row.recoveryEnvelope;
   return {
     publicKey: publicKey || '',
     encryptedData,
     iv,
     salt,
+    ...(recoveryEnvelope && typeof recoveryEnvelope === 'object'
+      ? { recoveryEnvelope: recoveryEnvelope as Record<string, unknown> }
+      : {}),
   };
 }
 

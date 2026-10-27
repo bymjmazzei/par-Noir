@@ -6,6 +6,7 @@ vi.mock('@par-noir/identity-crypto', () => ({
 
 import { encodeShellReturn, parseShellReturn } from './session';
 import { buildShellResult } from './shellResult';
+import { parseIdentityFileJson } from '../consentUnlock/decryptIdentityLocal';
 
 describe('buildShellResult export round-trip', () => {
   it('returns an identity file the hosted page can store', async () => {
@@ -52,5 +53,37 @@ describe('buildShellResult export round-trip', () => {
       result,
     });
     expect(parseShellReturn(fragment)?.result?.mlKemSecretKey).toBe('sek');
+  });
+
+  it('returns the recovery envelope from the .pn on a session unlock so the dashboard can register a recovery key', async () => {
+    const envelope = { version: 1, iv: 'env-iv', ciphertext: 'env-ct' };
+    const row = parseIdentityFileJson({
+      publicKey: 'pk',
+      encryptedData: 'ciphertext',
+      iv: 'iv',
+      salt: 'salt',
+      recoveryEnvelope: envelope,
+    });
+    const result = await buildShellResult({
+      op: 'session',
+      pnName: 'unused',
+      passcode: 'unused',
+      unlocked: {
+        publicKey: 'pk',
+        decryptedIdentity: {},
+        encryptedIdentity: row as unknown as Record<string, unknown>,
+      },
+    });
+    const fragment = encodeShellReturn({
+      v: 1,
+      op: 'session',
+      did: 'did:pn:1',
+      publicKey: 'pk',
+      accessToken: '',
+      result,
+    });
+    const parsed = parseShellReturn(fragment);
+    expect(JSON.parse(parsed?.result?.recoveryEnvelope || '{}')).toEqual(envelope);
+    expect(parsed?.result?.encryptedData).toBeUndefined();
   });
 });

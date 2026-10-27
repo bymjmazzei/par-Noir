@@ -38,6 +38,10 @@ jest.mock('../utils/simpleStorage', () => ({
 
 import { RecoveryAuthProvider, useRecoveryAuth } from '../contexts/RecoveryAuthContext';
 import { getRecoveryAuthSession } from '../services/recoveryAuthSession';
+import {
+  clearShellRecoveryEnvelope,
+  rememberShellRecoveryEnvelope,
+} from '../services/shellRecoveryEnvelope';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <RecoveryAuthProvider>{children}</RecoveryAuthProvider>
@@ -48,6 +52,7 @@ const loadEncryptedIdentity = jest.fn(async () => null);
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearShellRecoveryEnvelope();
   startPnOAuthPopup.mockImplementation(async (opts: { url: string; expectedState: string }) => ({
     code: 'auth-code',
     state: opts.expectedState,
@@ -76,6 +81,33 @@ describe('Recovery tab step-up through the shared unlock popup', () => {
     expect(result.current.auth?.pnName).toBeUndefined();
     expect(result.current.auth?.passcode).toBeUndefined();
     expect(getRecoveryAuthSession()?.encryptedIdentity.publicKey).toBe(OWNER_PK);
+  });
+
+  it('uses the envelope from the Unlock-app session when this browser has no saved .pn', async () => {
+    getIdentity.mockResolvedValue(null);
+    rememberShellRecoveryEnvelope([OWNER_PK], JSON.stringify(ENVELOPE));
+    fetchPortalUserInfo.mockResolvedValue({ pn_identifier: OWNER_PN });
+    const { result } = renderHook(() => useRecoveryAuth(), { wrapper });
+
+    await act(async () => {
+      await result.current.unlockViaOAuthPopup({ expectedUser, loadEncryptedIdentity });
+    });
+
+    expect(result.current.auth?.encryptedIdentity.recoveryEnvelope).toEqual(ENVELOPE);
+    expect(result.current.auth?.encryptedIdentity.publicKey).toBe(OWNER_PK);
+  });
+
+  it('explains how to fix it when neither the session nor this browser has the envelope', async () => {
+    getIdentity.mockResolvedValue(null);
+    fetchPortalUserInfo.mockResolvedValue({ pn_identifier: OWNER_PN });
+    const { result } = renderHook(() => useRecoveryAuth(), { wrapper });
+
+    await act(async () => {
+      await expect(
+        result.current.unlockViaOAuthPopup({ expectedUser, loadEncryptedIdentity })
+      ).rejects.toThrow('did not share this pN’s recovery data');
+    });
+    expect(result.current.isAuthenticated).toBe(false);
   });
 
   it('rejects when the popup unlocked a different pN', async () => {
