@@ -255,22 +255,12 @@ export function useStorageIdentity({
         const session = await storage.getCurrentSession();
         
         if (session) {
-          const pnName = (session as any).pnName || (session as any).username || (session as any).name;
           const publicKey = (session as any).publicKey || 
             (session.id && session.id.startsWith('did:key:') ? session.id : session.id);
           const sessionAuthToken = (session as any).authToken;
           
           if (import.meta.env.DEV) {
-            console.log('🔍 [FileStorageAggregator] Extracted from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey, sessionKeys: Object.keys(session) });
-          }
-          
-          let passcode: string | null = null;
-          try {
-            // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
-            const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-            passcode = getPasscodeFromSecureStorage(sessionId);
-          } catch (e) {
-            // SecureCredentialManager might not be available
+            console.log('🔍 [FileStorageAggregator] Extracted from storage:', { hasPublicKey: !!publicKey, sessionKeys: Object.keys(session) });
           }
           
           const fromStoredSession = storageAuthFromUnlockedUser({
@@ -279,11 +269,6 @@ export function useStorageIdentity({
             authToken: sessionAuthToken,
           });
           if (fromStoredSession) {
-            const credentialSessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || session?.id || null;
-            if (credentialSessionId && pnName && passcode) {
-              SecureCredentialManager.setCredentials(credentialSessionId, pnName, passcode);
-            }
-
             if (import.meta.env.DEV) {
               console.log('✅ [FileStorageAggregator] Auth resolved from storage');
             }
@@ -291,7 +276,7 @@ export function useStorageIdentity({
             setError(null);
           } else {
             if (import.meta.env.DEV) {
-              console.warn('⚠️ [FileStorageAggregator] Missing credentials from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
+              console.warn('⚠️ [FileStorageAggregator] Missing credentials from storage:', { hasPublicKey: !!publicKey });
             }
           }
         } else {

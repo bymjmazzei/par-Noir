@@ -7,7 +7,6 @@ import { HostedShellLaunch } from '@par-noir/oauth-ui';
 import { applyDmSessionHandoff } from '../services/dmIdentitySession';
 
 interface DmCryptoUnlockModalProps {
-  pnName?: string;
   onUnlocked: () => void;
   onCancel?: () => void;
 }

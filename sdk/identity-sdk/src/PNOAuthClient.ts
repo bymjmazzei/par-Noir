@@ -25,7 +25,6 @@ export interface PNOAuthTokenResponse {
 export interface PNOAuthUserInfo {
   sub: string;
   did: string;
-  pn_name?: string;
 }
 
 export interface PNOAuthSession {
@@ -33,7 +32,6 @@ export interface PNOAuthSession {
   refreshToken?: string;
   expiresAt: number;
   did: string;
-  pnName?: string;
 }
 
 export class PNOAuthClient {
@@ -120,7 +118,6 @@ export class PNOAuthClient {
       refreshToken: tokenResponse.refresh_token,
       expiresAt: Date.now() + tokenResponse.expires_in * 1000,
       did: userInfo.did,
-      pnName: userInfo.pn_name,
     };
   }
 

@@ -35,62 +35,6 @@ export function useCustodianState() {
   }, []);
   const [selectedCustodianForInvitation, setSelectedCustodianForInvitation] = useState<any>(null);
 
-  // Form states
-  const [createForm, setCreateForm] = useState({
-    pnName: '',
-    confirmPNName: '',
-    passcode: '',
-    confirmPasscode: '',
-    nickname: '',
-    email: '',
-    phone: '',
-    recoveryEmail: '',
-    confirmRecoveryEmail: '',
-    recoveryPhone: '',
-    confirmRecoveryPhone: '',
-    recoveryContactType: 'email' as 'email' | 'phone'
-  });
-
-  // Create step state for multi-step form
-  const [createStep, setCreateStep] = useState(1);
-
-  // Show/hide state for create form fields
-  const [showPNName, setShowPNName] = useState(false);
-  const [showPasscode, setShowPasscode] = useState(false);
-  const [showConfirmPNName, setShowConfirmPNName] = useState(false);
-  const [showConfirmPasscode, setShowConfirmPasscode] = useState(false);
-  const [showCreatePasscode, setShowCreatePasscode] = useState(false);
-  const [showCreateConfirmPasscode, setShowCreateConfirmPasscode] = useState(false);
-  const [showCreateNickname, setShowCreateNickname] = useState(false);
-  const [showCreateEmail, setShowCreateEmail] = useState(false);
-  const [showCreatePhone, setShowCreatePhone] = useState(false);
-
-  // Show/hide state for main unlock form fields
-  const [showUnlockPasscode, setShowUnlockPasscode] = useState(false);
-  const [showUnlockNickname, setShowUnlockNickname] = useState(false);
-  const [showUnlockEmail, setShowUnlockEmail] = useState(false);
-  const [showUnlockPhone, setShowUnlockPhone] = useState(false);
-  
-  // Show/hide state for main form fields
-  const [showMainPNName, setShowMainPNName] = useState(false);
-  const [showMainPasscode, setShowMainPasscode] = useState(false);
-
-  // Main screen form state
-  const [unlockForm, setUnlockForm] = useState({
-    pnName: '',
-    passcode: '',
-    nickname: '',
-    email: '',
-    phone: ''
-  });
-
-  // Main form state for identity unlock
-  const [mainForm, setMainForm] = useState({
-    pnName: '',
-    passcode: '',
-    uploadFile: null as File | null
-  });
-
   // Recovery key form state
   const [recoveryKeyForm, setRecoveryKeyForm] = useState({
     purpose: 'personal' as 'personal' | 'legal' | 'insurance' | 'will',
@@ -148,48 +92,8 @@ export function useCustodianState() {
     setSelectedCustodianForInvitation,
 
     // Forms
-    createForm,
-    setCreateForm,
-    createStep,
-    setCreateStep,
-    showPNName,
-    setShowPNName,
-    showPasscode,
-    setShowPasscode,
-    showConfirmPNName,
-    setShowConfirmPNName,
-    showConfirmPasscode,
-    setShowConfirmPasscode,
-    showCreatePasscode,
-    setShowCreatePasscode,
-    showCreateConfirmPasscode,
-    setShowCreateConfirmPasscode,
-    showCreateNickname,
-    setShowCreateNickname,
-    showCreateEmail,
-    setShowCreateEmail,
-    showCreatePhone,
-    setShowCreatePhone,
 
-    // Unlock forms
-    showUnlockPasscode,
-    setShowUnlockPasscode,
-    showUnlockNickname,
-    setShowUnlockNickname,
-    showUnlockEmail,
-    setShowUnlockEmail,
-    showUnlockPhone,
-    setShowUnlockPhone,
     
-    // Main form visibility
-    showMainPNName,
-    setShowMainPNName,
-    showMainPasscode,
-    setShowMainPasscode,
-    unlockForm,
-    setUnlockForm,
-    mainForm,
-    setMainForm,
     recoveryKeyForm,
     setRecoveryKeyForm,
 

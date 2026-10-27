@@ -2,7 +2,7 @@ export interface StoredCustodianshipCredential {
   custodianId: string;
   identityPublicKey: string;
   identityName: string;
-  identityUsername: string;
+  identityPnId: string;
   shareIndex: number;
   custodianshipZkp: string;
   custodianPasscode: string;

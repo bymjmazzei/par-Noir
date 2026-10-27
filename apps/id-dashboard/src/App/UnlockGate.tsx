@@ -6,22 +6,15 @@ export interface UnlockGateProps {
   authenticatedUser: any;
   showTransferReceiver: any;
   pwaState: any;
-  handleMainFormSubmit: any;
   handleShellSession: (session: HostedShellSession) => void;
   selectedStoredIdentity: any;
   handleIdentitySelect: any;
   handleDeleteIdentity: any;
   setShowCreateForm: any;
-  mainForm: any;
-  setMainForm: any;
   setSelectedStoredIdentity: any;
   setShowUnlockFromUsbModal: any;
   hasNfcSupport: any;
   setShowUnlockFromNfcModal: any;
-  showMainPNName: any;
-  setShowMainPNName: any;
-  showMainPasscode: any;
-  setShowMainPasscode: any;
   loading: any;
   setShowRecoveryModal: (open: boolean) => void;
 }

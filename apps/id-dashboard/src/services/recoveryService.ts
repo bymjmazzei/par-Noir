@@ -77,7 +77,6 @@ export async function completeRecoveryWithShares(
   const identityData: Record<string, unknown> = {
     id: payload.identityId,
     username: newPnName,
-    pnName: newPnName,
     recoveryConfig: payload.recoveryConfig,
     custodiansRequired: true,
     custodiansSetup: true,

@@ -18,7 +18,6 @@ export interface DecryptedIdentitySecrets {
   mlKemSecretKey: string;
   mlKemPublicKey?: string;
   publicKey?: string;
-  pnName?: string;
 }
 
 function base64ToArrayBuffer(b64: string): ArrayBuffer {
@@ -63,14 +62,12 @@ export async function unlockIdentityMlKemSecret(
   const json = bytesToUtf8(new Uint8Array(decrypted));
   const identity = JSON.parse(json) as {
     username?: string;
-    pnName?: string;
     pqcSecrets?: { mlKemSecretKey?: string; mlKemPublicKey?: string };
     publicKey?: string;
     mlKemPublicKey?: string;
   };
 
-  const username = identity.username ?? identity.pnName;
-  if (username && username !== pnName) {
+  if (identity.username !== pnName) {
     throw new Error('Authentication failed: username mismatch');
   }
 
@@ -85,6 +82,5 @@ export async function unlockIdentityMlKemSecret(
     mlKemSecretKey,
     mlKemPublicKey: deriveMlKemPublicKeyFromSecretKey(mlKemSecretKey),
     publicKey: payload.publicKey ?? identity.publicKey,
-    pnName: username ?? pnName,
   };
 }

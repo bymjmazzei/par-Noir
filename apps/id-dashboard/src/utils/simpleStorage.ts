@@ -7,10 +7,8 @@
 
 export interface SimpleIdentity {
   id: string;
+  /** Visible name only; never Key 1. Records are keyed by publicKey. */
   nickname: string;
-  // SECURITY: pnName is a SECRET and must NOT be stored in plaintext
-  // Use pnNameHash for lookup instead
-  pnNameHash?: string; // Optional hash for lookup (first 16 chars of SHA-256)
   publicKey: string;
   encryptedData: any;
   createdAt: string;

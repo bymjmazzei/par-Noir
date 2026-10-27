@@ -2,7 +2,6 @@ import type { CustodianRecoveryRequest } from '../services/recoveryApiService';
 
 export interface DIDInfo {
   id: string;
-  pnName: string;
   createdAt: string;
   status: string;
   displayName?: string;
@@ -128,7 +127,7 @@ export interface CustodianInvitationData {
   contactValue: string;
   expiresAt: number;
   identityName: string;
-  identityUsername: string;
+  identityPnId: string;
 }
 
 export interface DeepLinkData {
@@ -138,7 +137,7 @@ export interface DeepLinkData {
   contactType: 'email' | 'phone';
   contactValue: string;
   identityName: string;
-  identityUsername: string;
+  identityPnId: string;
 }
 
 export interface OfflineSyncStatus {

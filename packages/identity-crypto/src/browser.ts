@@ -7,7 +7,6 @@ export { cryptoWorkerManager } from './cryptoWorkerManager';
 export { SecureCredentialManager } from './secureCredentialManager';
 export { EncryptionManager } from './encryptionManager';
 export { VolumeIdGenerator } from './volumeIdGenerator';
-export type { VolumeIdParams } from './volumeIdGenerator';
 export { safePnDisplayName } from './displayName';
 export type {
   EncryptedData,

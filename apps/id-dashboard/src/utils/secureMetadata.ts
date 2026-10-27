@@ -260,7 +260,7 @@ export class SecureMetadataCrypto {
     initialData: Partial<MetadataContent> = {}
   ): Promise<SecureMetadata> {
     const initialMetadata: MetadataContent = {
-      nickname: initialData.nickname || _username,
+      nickname: initialData.nickname || '',
       profilePicture: initialData.profilePicture,
       custodians: initialData.custodians || [],
       recoveryKeys: initialData.recoveryKeys || [],

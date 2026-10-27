@@ -154,7 +154,7 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
                 id: `custodianship-${relay.custodianId}`,
                 identityId: relay.ownerPublicKey,
                 identityName: 'pN you protect',
-                identityUsername: '',
+                identityPnId: '',
                 identityPublicKey: relay.ownerPublicKey,
                 status: 'active',
                 canApprove: true,

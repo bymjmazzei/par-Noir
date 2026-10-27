@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { DATA_POINT_CATEGORIES } from '../types/standardDataPoints';
 
 interface DataPointProposalModalProps {
@@ -107,12 +108,7 @@ export const DataPointProposalModal: React.FC<DataPointProposalModalProps> = ({
         requiredFields: formData.requiredFields.filter(f => f.trim()),
         examples: formData.examples.filter(e => e.trim()),
         useCase: formData.useCase.trim(),
-        // SECURITY: Get pnName from SecureCredentialManager (secrets), not from session
-        proposedBy: (() => {
-          const sessionId = session.id;
-          const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-          return credentials?.pnName || session.nickname || 'Unknown';
-        })()
+        proposedBy: session.publicKey ? deriveCanonicalPnIdentifier(session.publicKey) : 'Unknown'
       };
       
       // SECURITY: Check credentials from SecureCredentialManager (secrets)

@@ -320,7 +320,7 @@ function sealSessionForOutbox(userPnIdentifier: string) {
   const identity = getDmIdentity();
   return {
     sessionId: userPnIdentifier,
-    pnName: identity.pnName || 'browser-outbox',
+    pnName: 'browser-outbox',
     passcode: identity.mlKemSecretKey
   };
 }

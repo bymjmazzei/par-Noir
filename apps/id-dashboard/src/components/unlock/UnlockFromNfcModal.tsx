@@ -11,7 +11,6 @@ export interface UnlockFromNfcResult {
   identityData: Record<string, unknown>;
   publicKey: string;
   nickname: string;
-  pnName: string;
   identityId: string;
 }
 
@@ -119,8 +118,7 @@ export function UnlockFromNfcModal({
         identityToUnlock: identityForStorage,
         identityData: identity,
         publicKey,
-        nickname: identity.nickname || identity.username || pnName,
-        pnName,
+        nickname: authSession.nickname,
         identityId: identity.id,
       });
       handleClose();

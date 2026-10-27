@@ -1,38 +1,9 @@
 import React from 'react';
 import { HostedShellLaunch } from '@par-noir/oauth-ui';
 
-export interface CreateDidForm {
-  pnName: string;
-  confirmPNName: string;
-  passcode: string;
-  confirmPasscode: string;
-  nickname: string;
-  email: string;
-  phone: string;
-  recoveryEmail: string;
-  confirmRecoveryEmail: string;
-  recoveryPhone: string;
-  confirmRecoveryPhone: string;
-  recoveryContactType: 'email' | 'phone';
-}
-
 export interface CreateDidModalProps {
   showCreateForm: boolean;
   setShowCreateForm: React.Dispatch<React.SetStateAction<boolean>>;
-  createStep: number;
-  setCreateStep: React.Dispatch<React.SetStateAction<number>>;
-  createForm: CreateDidForm;
-  setCreateForm: React.Dispatch<React.SetStateAction<CreateDidForm>>;
-  showPNName: boolean;
-  setShowPNName: React.Dispatch<React.SetStateAction<boolean>>;
-  showPasscode: boolean;
-  setShowPasscode: React.Dispatch<React.SetStateAction<boolean>>;
-  showConfirmPNName: boolean;
-  setShowConfirmPNName: React.Dispatch<React.SetStateAction<boolean>>;
-  showConfirmPasscode: boolean;
-  setShowConfirmPasscode: React.Dispatch<React.SetStateAction<boolean>>;
-  error: string | null;
-  handleCreateDID: (e: React.FormEvent) => void | Promise<void>;
 }
 
 export function CreateDidModal(props: CreateDidModalProps) {

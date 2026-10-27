@@ -44,7 +44,7 @@ export interface CustodianshipEntry {
   id: string;
   identityId: string;
   identityName: string;
-  identityUsername: string;
+  identityPnId: string;
   identityPublicKey?: string;
   status: 'active' | 'pending';
   canApprove: boolean;
@@ -287,7 +287,7 @@ export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandler
         contactValue: custodianData.contactValue,
         expiresAt: Date.now() + (24 * 60 * 60 * 1000),
         identityName: authenticatedUser?.nickname || 'Unknown Identity',
-        identityUsername: authenticatedUser?.nickname || authenticatedUser?.id || 'unknown',
+        identityPnId: recoveryVaultPnId || '',
         identityPublicKey: encryptedIdentity.publicKey,
         shareIndex: vault.shareIndex,
         custodianshipZkp: vault.custodianshipZkp
@@ -301,7 +301,7 @@ export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandler
         contactType: invitationData.contactType,
         contactValue: invitationData.contactValue,
         identityName: invitationData.identityName,
-        identityUsername: invitationData.identityUsername,
+        identityPnId: invitationData.identityPnId,
         identityPublicKey: invitationData.identityPublicKey,
         shareIndex: invitationData.shareIndex,
         custodianshipZkp: invitationData.custodianshipZkp
@@ -343,7 +343,7 @@ export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandler
       contactType: custodianContactInfo.contactType,
       contactValue: custodianContactInfo.contactValue,
       identityName: authenticatedUser?.nickname || 'Unknown Identity',
-      identityUsername: authenticatedUser?.pnName || 'unknown',
+      identityPnId: recoveryVaultPnId || '',
       expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
     };
 
@@ -458,7 +458,7 @@ This invitation expires in 24 hours.`;
         shareIndex?: number;
         custodianshipZkp?: string;
         identityName?: string;
-        identityUsername?: string;
+        identityPnId?: string;
         invitationId?: string;
       };
 
@@ -485,7 +485,7 @@ This invitation expires in 24 hours.`;
         custodianId: invitation.custodianId,
         identityPublicKey: invitation.identityPublicKey,
         identityName: invitation.identityName || 'Identity',
-        identityUsername: invitation.identityUsername || '',
+        identityPnId: invitation.identityPnId || '',
         shareIndex: invitation.shareIndex || 0,
         custodianshipZkp: invitation.custodianshipZkp,
         custodianPasscode: acceptancePasscode,
@@ -496,7 +496,7 @@ This invitation expires in 24 hours.`;
         id: `custodianship-${invitation.custodianId}`,
         identityId: invitation.invitationId || invitation.custodianId,
         identityName: invitation.identityName || 'Identity',
-        identityUsername: invitation.identityUsername || '',
+        identityPnId: invitation.identityPnId || '',
         identityPublicKey: invitation.identityPublicKey,
         status: 'active' as const,
         canApprove: true
@@ -604,12 +604,9 @@ This invitation expires in 24 hours.`;
         pnIdentifier: deriveCanonicalPnIdentifier(result.identity.publicKey),
       });
       const simpleStorage = (await import('../utils/simpleStorage')).SimpleStorage.getInstance();
-      const { PNNameHash } = await import('../utils/security/pnNameHash');
-      const pnNameHash = await PNNameHash.getLookupKey(result.pnName);
       await simpleStorage.storeIdentity({
         id: result.identity.publicKey,
         nickname: displayName,
-        pnNameHash,
         publicKey: result.identity.publicKey,
         encryptedData: result.identity,
         createdAt: new Date().toISOString(),
@@ -633,7 +630,6 @@ This invitation expires in 24 hours.`;
       );
       setRecoveredDID({
         id: authSession.id,
-        pnName: '',
         nickname: displayName,
         email: '',
         phone: '',
@@ -1173,7 +1169,7 @@ This invitation expires in 24 hours.`;
     id: string;
     identityId: string;
     identityName: string;
-    identityUsername: string;
+    identityPnId: string;
     identityPublicKey?: string;
     status: 'active' | 'pending';
     canApprove: boolean;
@@ -1197,7 +1193,7 @@ This invitation expires in 24 hours.`;
     contactType: 'email' | 'phone';
     contactValue: string;
     identityName: string;
-    identityUsername: string;
+    identityPnId: string;
   }) => {
     try {
       // Check if user is authenticated
@@ -1212,7 +1208,7 @@ This invitation expires in 24 hours.`;
         id: `custodianship-${Date.now()}`,
         identityId: invitationData.invitationId.split('-')[0], // Extract identity ID from invitation
         identityName: invitationData.identityName,
-        identityUsername: invitationData.identityUsername,
+        identityPnId: invitationData.identityPnId,
         status: 'active' as const,
         canApprove: true
       };
@@ -1258,7 +1254,7 @@ This invitation expires in 24 hours.`;
         id: `custodianship-${Date.now()}`,
         identityId: invitationData.invitationId,
         identityName: invitationData.custodianName,
-        identityUsername: invitationData.custodianName.split(' ')[0].toLowerCase(),
+        identityPnId: invitationData.identityPnId || '',
         status: 'active' as const,
         canApprove: true
       };

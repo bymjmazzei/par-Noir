@@ -26,7 +26,7 @@ This script:
 
 ### Publish order
 
-1. Leaf packages: `user-owned-storage`, `pqc-crypto`, `device-cloud-credentials`, `aggregator-domain`, `zk-protocol-v1`, `zk-protocol-v2`, `identity-core`
+1. Leaf packages: `user-owned-storage`, `pqc-crypto`, `device-cloud-credentials`, `aggregator-domain`, `zk-protocol-v1`, `zk-protocol-v2`
 2. `@par-noir/oauth-ui`
 3. `@identity-protocol/identity-sdk`
 

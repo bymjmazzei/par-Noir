@@ -37,7 +37,6 @@ npm run build --workspace=@par-noir/device-cloud-credentials
 npm run build --workspace=@par-noir/aggregator-domain
 npm run build --workspace=@par-noir/zk-protocol-v1 2>/dev/null || true
 npm run build --workspace=@par-noir/zk-protocol-v2 2>/dev/null || true
-npm run build --workspace=@identity-protocol/identity-core 2>/dev/null || true
 
 echo "Building @par-noir/standard-data-points tests..."
 npm test --workspace=@par-noir/standard-data-points -- --run src/integratorPermissionManifest.gate.test.ts
@@ -59,7 +58,6 @@ echo "  npm publish --workspace=@par-noir/device-cloud-credentials --access publ
 echo "  npm publish --workspace=@par-noir/aggregator-domain --access public"
 echo "  npm publish --workspace=@par-noir/zk-protocol-v1 --access public"
 echo "  npm publish --workspace=@par-noir/zk-protocol-v2 --access public"
-echo "  npm publish --workspace=@identity-protocol/identity-core --access public"
 echo "  # 2. Integrator kit"
 echo "  npm publish --workspace=@par-noir/oauth-ui --access public"
 echo "  npm publish --workspace=@identity-protocol/identity-sdk --access public"

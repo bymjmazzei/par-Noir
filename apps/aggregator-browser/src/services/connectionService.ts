@@ -80,7 +80,7 @@ export async function sendConnectionRequest(
     requesterPnIdentifier,
     {
       sessionId: requesterPnIdentifier,
-      pnName: identity.pnName || 'browser-mailbox',
+      pnName: 'browser-mailbox',
       passcode: identity.mlKemSecretKey
     },
     {
@@ -222,7 +222,7 @@ export async function acceptConnectionRequest(
     userPnIdentifier,
     {
       sessionId: userPnIdentifier,
-      pnName: identity.pnName || 'browser-mailbox',
+      pnName: 'browser-mailbox',
       passcode: identity.mlKemSecretKey
     },
     {

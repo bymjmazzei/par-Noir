@@ -144,7 +144,7 @@ export function buildCustodianInvitationPayload(row: {
   contactType?: string;
   contactValue?: string;
   identityName?: string;
-  identityUsername?: string;
+  identityPnId?: string;
   identityPublicKey: string;
   shareIndex: number;
   custodianshipZkp: string;
@@ -158,7 +158,7 @@ export function buildCustodianInvitationPayload(row: {
     contactType: row.contactType,
     contactValue: row.contactValue,
     identityName: row.identityName,
-    identityUsername: row.identityUsername,
+    identityPnId: row.identityPnId,
     identityPublicKey: row.identityPublicKey,
     shareIndex: row.shareIndex,
     custodianshipZkp: row.custodianshipZkp,

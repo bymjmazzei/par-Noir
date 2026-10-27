@@ -27,7 +27,6 @@ import { CustodianAcceptanceModal } from '../components/modals/CustodianAcceptan
 import { CustodianApprovalModal } from '../components/modals/CustodianApprovalModal';
 import { CustodianInvitationAcceptanceModal } from '../components/modals/CustodianInvitationAcceptanceModal';
 import { RecoveryPasscodeModal } from '../components/recovery/RecoveryPasscodeModal';
-import { BiometricPasscodeModal } from '../components/security/BiometricPasscodeModal';
 import { ownerFetch } from '../services/ownerApiService';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
@@ -190,13 +189,6 @@ export interface AppModalsProps {
   getEncryptedIdentityForApiToken: (
     identityPublicKeyOrId: string | undefined
   ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
-  showBiometricPasscodeModal: any;
-  pendingBiometricIdentity: any;
-  setShowBiometricPasscodeModal: any;
-  setPendingBiometricIdentity: any;
-  setBiometricPasscodeError: any;
-  handleBiometricPasscodeSubmit: any;
-  biometricPasscodeError: any;
   showDelegationModal: any;
   setShowDelegationModal: any;
   apiToken: any;
@@ -363,13 +355,6 @@ export function AppModals(props: AppModalsProps) {
     handleDataPointInputComplete,
     selectedStoredIdentity,
     getEncryptedIdentityForApiToken,
-    showBiometricPasscodeModal,
-    pendingBiometricIdentity,
-    setShowBiometricPasscodeModal,
-    setPendingBiometricIdentity,
-    setBiometricPasscodeError,
-    handleBiometricPasscodeSubmit,
-    biometricPasscodeError,
     showDelegationModal,
     setShowDelegationModal,
     apiToken,
@@ -784,21 +769,6 @@ export function AppModals(props: AppModalsProps) {
                     }
                     return undefined;
                   })()}
-                />
-              )}
-
-        {/* Biometric Passcode Modal */}
-        {showBiometricPasscodeModal && pendingBiometricIdentity && (
-          <BiometricPasscodeModal
-            isOpen={showBiometricPasscodeModal}
-            onClose={() => {
-              setShowBiometricPasscodeModal(false);
-              setPendingBiometricIdentity(null);
-              setBiometricPasscodeError(null);
-            }}
-            onSubmit={handleBiometricPasscodeSubmit}
-            identityName={pendingBiometricIdentity.nickname || pendingBiometricIdentity.pnName}
-            error={biometricPasscodeError}
                 />
               )}
 

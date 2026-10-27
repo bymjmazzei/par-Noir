@@ -77,7 +77,7 @@ export async function buildShellResult(args: {
   }
 
   if (args.op === 'create') {
-    const created = await IdentityCrypto.createIdentity(args.pnName, args.pnName, args.passcode);
+    const created = await IdentityCrypto.createIdentity(args.pnName, '', args.passcode);
     const session = await IdentityCrypto.authenticateIdentity(created.identity, args.passcode, args.pnName);
     return {
       identityFile: identityFile(created.identity),

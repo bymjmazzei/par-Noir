@@ -122,6 +122,24 @@ describe('create → unlock → oauth unlock proof', () => {
     );
   }, 120_000);
 
+  it('never returns Key 1 as the session nickname', async () => {
+    const key1 = `test-pn-secret-${Date.now()}`;
+    for (const nickname of ['', key1]) {
+      const { identity } = await IdentityCrypto.createIdentity(key1, nickname, 'pass');
+      const session = await IdentityCrypto.authenticateIdentity(identity, 'pass', key1);
+      expect(session.nickname).not.toBe(key1);
+      expect(session.nickname).toMatch(/^pN [0-9a-f]{8}$/);
+      const decrypted = JSON.parse(
+        await IdentityCrypto.decryptData(
+          { encrypted: identity.encryptedData, iv: identity.iv, salt: identity.salt },
+          key1,
+          'pass'
+        )
+      ) as { nickname: string };
+      expect(decrypted.nickname).toBe('');
+    }
+  }, 120_000);
+
   it('rejects unlock with wrong passcode', async () => {
     const pnName = `test-pn-bad-${Date.now()}`;
     const { identity } = await IdentityCrypto.createIdentity(pnName, 'x', 'correct-pass');

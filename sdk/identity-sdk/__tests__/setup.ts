@@ -52,25 +52,6 @@ jest.mock('@par-noir/zk-protocol-v2', () => ({
   ZK_PROOF_TYPE_V2: 'stark_genstark_sha256_ml_dsa_binding_v2',
 }));
 
-// Mock crypto worker manager
-jest.mock('@identity-protocol/identity-core/src/encryption/cryptoWorkerManager', () => ({
-  cryptoWorkerManager: {
-    isHealthy: jest.fn(() => true),
-    encrypt: jest.fn(),
-    decrypt: jest.fn(),
-    generateKey: jest.fn(),
-    sign: jest.fn(),
-    verify: jest.fn(),
-    hash: jest.fn(),
-    generateRandom: jest.fn((arr) => {
-      for (let i = 0; i < arr.length; i++) {
-        arr[i] = Math.floor(Math.random() * 256);
-      }
-      return arr;
-    })
-  }
-}));
-
 // Mock standard data points - removed due to path issues
 
 // Mock Web Crypto API

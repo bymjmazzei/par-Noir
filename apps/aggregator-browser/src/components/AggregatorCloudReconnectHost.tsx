@@ -14,7 +14,6 @@ import {
   setSessionCloudCredentials,
   getSessionCloudCredentials,
   CLOUD_VAULT_MLKEM_SESSION_ID,
-  CLOUD_VAULT_SEAL_SESSION_ID
 } from '@par-noir/device-cloud-credentials';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
@@ -100,9 +99,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       }
       const identity = getDmIdentity();
       const mlKemSecretKey = identity.mlKemSecretKey || null;
-      const pnName = identity.pnName || null;
-      const passcode = identity.passcode || null;
-      if (!mlKemSecretKey && !(pnName && passcode)) {
+      if (!mlKemSecretKey) {
         setVaultHydrated(false);
         return;
       }
@@ -125,21 +122,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
             return;
           }
         }
-        if (pnName && passcode) {
-          const local = await loadLocalCloudCredentials({
-            identityId: pnIdentifier,
-            session: {
-              sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
-              pnName,
-              passcode
-            }
-          });
-          if (local && envelopeHasUsableSecrets(local, 'google_drive')) {
-            setSessionCloudCredentials(pnIdentifier, local);
-            if (!cancelled) setVaultHydrated(true);
-            return;
-          }
-        }
       } catch {
         /* fall through to API vault */
       }
@@ -147,9 +129,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         apiEndpoint: API_ENDPOINT,
         authToken,
         pnIdentifier,
-        mlKemSecretKey: mlKemSecretKey || undefined,
-        pnName: pnName || undefined,
-        passcode: passcode || undefined
+        mlKemSecretKey,
       });
       if (cancelled) return;
       if (status === 'ready' && envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier), 'google_drive')) {
@@ -180,17 +160,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       });
       if (mlkem && envelopeHasUsableSecrets(mlkem, 'google_drive')) return mlkem;
     }
-    if (identity.pnName && identity.passcode) {
-      const identitySealed = await loadLocalCloudCredentials({
-        identityId: pnIdentifier,
-        session: {
-          sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
-          pnName: identity.pnName,
-          passcode: identity.passcode
-        }
-      });
-      if (envelopeHasUsableSecrets(identitySealed, 'google_drive')) return identitySealed;
-    }
     const authToken = PNOAuthService.loadSession()?.accessToken;
     if (!authToken) return null;
     const status = await ensureCloudCredentialsReady({
@@ -198,8 +167,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       authToken,
       pnIdentifier,
       mlKemSecretKey: identity.mlKemSecretKey || undefined,
-      pnName: identity.pnName || undefined,
-      passcode: identity.passcode || undefined,
     });
     if (status !== 'ready') return null;
     const hydrated = getSessionCloudCredentials(pnIdentifier);
@@ -240,31 +207,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
             authToken,
             pnIdentifier,
             mlKemSecretKey: identity.mlKemSecretKey,
-            ...(identity.pnName && identity.passcode
-              ? { pnName: identity.pnName, passcode: identity.passcode }
-              : {}),
-            credentials: envelope
-          }).catch(() => ({ ok: false }));
-        }
-      } else if (identity.pnName && identity.passcode) {
-        const mode = resolveCloudPersistMode({ hasKeyedDevices });
-        await persistCloudCredentials({
-          identityId: pnIdentifier,
-          credentials: envelope,
-          session: {
-            sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
-            pnName: identity.pnName,
-            passcode: identity.passcode
-          },
-          mode
-        });
-        if (authToken) {
-          await publishCloudCredentialsVault({
-            apiEndpoint: API_ENDPOINT,
-            authToken,
-            pnIdentifier,
-            pnName: identity.pnName,
-            passcode: identity.passcode,
             credentials: envelope
           }).catch(() => ({ ok: false }));
         }

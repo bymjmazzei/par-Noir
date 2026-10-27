@@ -113,9 +113,8 @@ export async function bootstrapThisDevice(params: {
     throw new Error('Unlock messaging identity before keying this device');
   }
   const identity = getDmIdentity();
-  // OAuth ML-KEM handoff may omit Key1/Key2; seal privateDisplay with ML-KEM material.
-  const pnName = (identity.pnName && identity.pnName.trim()) || 'browser';
-  const passcode = identity.passcode || identity.mlKemSecretKey;
+  const pnName = 'browser';
+  const passcode = identity.mlKemSecretKey;
   if (!passcode) {
     throw new Error('Unlock messaging before keying this device');
   }

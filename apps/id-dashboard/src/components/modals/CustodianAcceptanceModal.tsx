@@ -6,7 +6,7 @@ interface CustodianAcceptanceModalProps {
   onClose: () => void;
   pendingCustodianInvitationData: {
     identityName: string;
-    identityUsername: string;
+    identityPnId: string;
     custodianName: string;
     custodianType: string;
     contactValue: string;
@@ -84,7 +84,7 @@ export function CustodianAcceptanceModal({
             <h3 className="font-medium text-text-primary mb-2">Invitation Details</h3>
             <div className="space-y-2 text-sm">
               <div><span className="text-text-secondary">Identity:</span> <span className="font-medium">{pendingCustodianInvitationData.identityName}</span></div>
-              <div><span className="text-text-secondary">pN Name:</span> <span className="font-medium">{pendingCustodianInvitationData.identityUsername}</span></div>
+              <div><span className="text-text-secondary">pN ID:</span> <span className="font-medium">{pendingCustodianInvitationData.identityPnId}</span></div>
               <div><span className="text-text-secondary">Custodian Name:</span> <span className="font-medium">{pendingCustodianInvitationData.custodianName}</span></div>
               <div><span className="text-text-secondary">Type:</span> <span className="font-medium">{pendingCustodianInvitationData.custodianType}</span></div>
               <div><span className="text-text-secondary">Contact:</span> <span className="font-medium">{pendingCustodianInvitationData.contactValue} ({pendingCustodianInvitationData.contactType})</span></div>

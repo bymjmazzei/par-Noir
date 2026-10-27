@@ -82,11 +82,11 @@ const DashboardDropdown: React.FC<DashboardDropdownProps> = ({
           <div className="p-4 border-b border-border">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
-                {authenticatedUser?.nickname?.charAt(0) || authenticatedUser?.username?.charAt(0) || 'U'}
+                {authenticatedUser?.nickname?.charAt(0) || 'U'}
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-text-primary">
-                  {authenticatedUser?.nickname || authenticatedUser?.username || 'User'}
+                  {authenticatedUser?.nickname || 'User'}
                 </h3>
                 <p className="text-xs text-text-secondary">
                   {authenticatedUser?.email || 'No email'}

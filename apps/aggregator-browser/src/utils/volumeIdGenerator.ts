@@ -1,2 +1,1 @@
-export { VolumeIdGenerator, type VolumeIdParams } from '@par-noir/aggregator-domain';
-
+export { VolumeIdGenerator } from '@par-noir/aggregator-domain';

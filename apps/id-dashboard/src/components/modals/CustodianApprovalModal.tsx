@@ -9,7 +9,7 @@ interface CustodianApprovalModalProps {
   selectedCustodianship: {
     id: string;
     identityName: string;
-    identityUsername: string;
+    identityPnId: string;
     identityId: string;
   } | null;
   recoveryThreshold: number;
@@ -49,8 +49,8 @@ export function CustodianApprovalModal({
               <h3 className="font-medium text-text-primary mb-2">Identity Details</h3>
               <div className="space-y-2 text-sm">
                 <div><span className="text-text-secondary">Name:</span> <span className="font-medium">{selectedCustodianship.identityName}</span></div>
-                {selectedCustodianship.identityUsername && (
-                  <div><span className="text-text-secondary">Username:</span> <span className="font-medium">{selectedCustodianship.identityUsername}</span></div>
+                {selectedCustodianship.identityPnId && (
+                  <div><span className="text-text-secondary">pN ID:</span> <span className="font-medium">{selectedCustodianship.identityPnId}</span></div>
                 )}
               </div>
             </div>

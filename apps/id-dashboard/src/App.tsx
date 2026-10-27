@@ -459,46 +459,7 @@ function App() {
     setShowSendInvitationModal,
     selectedCustodianForInvitation,
     setSelectedCustodianForInvitation,
-    createForm,
-    setCreateForm,
-    createStep,
-    setCreateStep,
-    showPNName,
-    setShowPNName,
-    showPasscode,
-    setShowPasscode,
-    showConfirmPNName,
-    setShowConfirmPNName,
-    showConfirmPasscode,
-    setShowConfirmPasscode,
-    showCreatePasscode,
-    setShowCreatePasscode,
-    showCreateConfirmPasscode,
-    setShowCreateConfirmPasscode,
-    showCreateNickname,
-    setShowCreateNickname,
-    showCreateEmail,
-    setShowCreateEmail,
-    showCreatePhone,
-    setShowCreatePhone,
-    showUnlockPasscode,
-    setShowUnlockPasscode,
-    showUnlockNickname,
-    setShowUnlockNickname,
-    showUnlockEmail,
-    setShowUnlockEmail,
-    showUnlockPhone,
-    setShowUnlockPhone,
     
-    // Main form visibility
-    showMainPNName,
-    setShowMainPNName,
-    showMainPasscode,
-    setShowMainPasscode,
-    unlockForm,
-    setUnlockForm,
-    mainForm,
-    setMainForm,
     recoveryKeyForm,
     setRecoveryKeyForm,
     selectedStoredIdentity,
@@ -999,28 +960,18 @@ function App() {
     setShowMigrationModal(false);
   };
 
-  const { handleCreateDID, handleImportDID } = useCreateImportHandlers({
+  const { handleImportDID } = useCreateImportHandlers({
     storage,
     recoveryVaultPnId,
-    createForm,
-    setCreateForm,
-    createStep,
-    setCreateStep,
-    setShowCreateForm,
     importForm,
     setImportForm,
     setShowImportForm,
     setDids,
     setSelectedDID,
     setAuthenticatedUser,
-    setIsNewUser,
-    setShowOnboardingWizard,
     setLoading,
     setError,
     setSuccessWithTimeout,
-    showSuccessMessage,
-    logDebug,
-    logError
   });
 
   const {
@@ -1031,17 +982,6 @@ function App() {
     handleDeleteIdentity,
     handleUnlockFromUsb,
     handleShellSession,
-    handleMainFormSubmit,
-    handleSimpleUnlock,
-    handleBiometricAuth,
-    handleBiometricPasscodeSubmit,
-    handleBiometricSetupSuccess,
-    showBiometricPasscodeModal,
-    setShowBiometricPasscodeModal,
-    pendingBiometricIdentity,
-    setPendingBiometricIdentity,
-    biometricPasscodeError,
-    setBiometricPasscodeError
   } = useAuthUnlockHandlers({
     storage,
     authenticatedUser,
@@ -1050,10 +990,6 @@ function App() {
     setSelectedDID,
     selectedStoredIdentity,
     setSelectedStoredIdentity,
-    mainForm,
-    setMainForm,
-    setShowMainPNName,
-    setShowMainPasscode,
     recoveryVaultPnId,
     isKeyedSession: deviceAuth.isKeyedSession,
     hasKeyedDevices: deviceAuth.hasKeyedDevices,
@@ -1335,21 +1271,14 @@ function App() {
           showTransferReceiver={showTransferReceiver}
           pwaState={pwaState}
           handleShellSession={handleShellSession}
-          handleMainFormSubmit={handleMainFormSubmit}
           selectedStoredIdentity={selectedStoredIdentity}
           handleIdentitySelect={handleIdentitySelect}
           handleDeleteIdentity={handleDeleteIdentity}
           setShowCreateForm={setShowCreateForm}
-          mainForm={mainForm}
-          setMainForm={setMainForm}
           setSelectedStoredIdentity={setSelectedStoredIdentity}
           setShowUnlockFromUsbModal={setShowUnlockFromUsbModal}
           hasNfcSupport={hasNfcSupport}
           setShowUnlockFromNfcModal={setShowUnlockFromNfcModal}
-          showMainPNName={showMainPNName}
-          setShowMainPNName={setShowMainPNName}
-          showMainPasscode={showMainPasscode}
-          setShowMainPasscode={setShowMainPasscode}
           loading={loading}
           setShowRecoveryModal={setShowRecoveryModal}
         />
@@ -1362,20 +1291,6 @@ function App() {
         <CreateDidModal
           showCreateForm={showCreateForm}
           setShowCreateForm={setShowCreateForm}
-          createStep={createStep}
-          setCreateStep={setCreateStep}
-          createForm={createForm}
-          setCreateForm={setCreateForm}
-          showPNName={showPNName}
-          setShowPNName={setShowPNName}
-          showPasscode={showPasscode}
-          setShowPasscode={setShowPasscode}
-          showConfirmPNName={showConfirmPNName}
-          setShowConfirmPNName={setShowConfirmPNName}
-          showConfirmPasscode={showConfirmPasscode}
-          setShowConfirmPasscode={setShowConfirmPasscode}
-          error={error}
-          handleCreateDID={handleCreateDID}
         />
 
         <ImportDidModal
@@ -1644,13 +1559,6 @@ function App() {
           handleDataPointInputComplete={toolPrivacyHandlers.handleDataPointInputComplete}
           selectedStoredIdentity={selectedStoredIdentity}
           getEncryptedIdentityForApiToken={getEncryptedIdentityForApiToken}
-          showBiometricPasscodeModal={showBiometricPasscodeModal}
-          pendingBiometricIdentity={pendingBiometricIdentity}
-          setShowBiometricPasscodeModal={setShowBiometricPasscodeModal}
-          setPendingBiometricIdentity={setPendingBiometricIdentity}
-          setBiometricPasscodeError={setBiometricPasscodeError}
-          handleBiometricPasscodeSubmit={handleBiometricPasscodeSubmit}
-          biometricPasscodeError={biometricPasscodeError}
           showDelegationModal={showDelegationModal}
           setShowDelegationModal={setShowDelegationModal}
           apiToken={apiToken}

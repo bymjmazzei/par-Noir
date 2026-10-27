@@ -1,5 +1,5 @@
 // Self-contained cryptographic utilities
-import { mlDsa65Keygen, mlKem768Keygen, bytesToBase64 } from '@par-noir/pqc-crypto';
+import { mlDsa65Keygen, mlKem768Keygen, bytesToBase64, deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto';
 import {
   splitSecret,
   generateRecoveryMaster,
@@ -10,6 +10,7 @@ import {
 } from '@par-noir/recovery-crypto';
 import { SecureCredentialManager } from './secureCredentialManager';
 import { MemorySecurity } from './memorySecurity';
+import { safePnDisplayName } from './displayName';
 import type {
   AuthSession,
   DIDKeyPair,
@@ -103,7 +104,7 @@ export class IdentityCrypto {
           mlKemSecretKey: payload.mlKemSecretKey,
         },
         username: params.pnName,
-        nickname: params.nickname || params.pnName,
+        nickname: params.nickname ?? '',
         passcode: params.passcode,
         recoveryThreshold: payload.recoveryConfig?.threshold ?? 2,
         recoveryTotalShares: payload.recoveryConfig?.totalShares ?? 5,
@@ -134,7 +135,7 @@ export class IdentityCrypto {
     const identityData = {
       id: keys.did,
       username,
-      nickname: params.nickname,
+      nickname: params.nickname.trim() === username.trim() ? '' : params.nickname,
       email: '',
       phone: '',
       recoveryEmail: params.recoveryEmail || '',
@@ -199,7 +200,7 @@ export class IdentityCrypto {
     const cfg = params.predecessorDecrypted.recoveryConfig;
     return this.createIdentity(
       params.pnName,
-      params.predecessorDecrypted.nickname || params.pnName,
+      params.predecessorDecrypted.nickname ?? '',
       params.newPasscode,
       params.predecessorDecrypted.recoveryEmail,
       params.predecessorDecrypted.recoveryPhone,
@@ -256,7 +257,7 @@ export class IdentityCrypto {
       // Generate JWT-like token
       const token = await this.generateAuthToken(identity.id, identity.username);
       
-      const resolvedPnName = identity.pnName || identity.username || identity.nickname || expectedUsername || identity.id;
+      const resolvedPnName: string = identity.username;
 
       // SECURITY: Store pN name and passcode in SecureCredentialManager (memory only, never persisted)
       // These are SECRETS and must NOT be in the AuthSession object
@@ -281,7 +282,11 @@ export class IdentityCrypto {
       // Return AuthSession WITHOUT pN name or passcode (these are SECRETS)
       return {
         id: identity.id, // DID comes from decrypted data
-        nickname: identity.nickname || resolvedPnName,
+        nickname: safePnDisplayName({
+          nickname: identity.nickname,
+          key1: resolvedPnName,
+          pnIdentifier: encryptedIdentity.publicKey ? deriveCanonicalPnIdentifier(encryptedIdentity.publicKey) : null,
+        }),
         accessToken: token,
         expiresIn: this.TOKEN_EXPIRY,
         authenticatedAt: new Date().toISOString(),
@@ -465,12 +470,7 @@ export class IdentityCrypto {
       throw new Error('Authentication failed: username mismatch');
     }
 
-    const resolvedPnName =
-      (typeof identity.pnName === 'string' ? identity.pnName : undefined) ||
-      identity.username ||
-      identity.nickname ||
-      pnName ||
-      identity.id;
+    const resolvedPnName = identity.username;
     SecureCredentialManager.setCredentials(identity.id, resolvedPnName, passcode, 15 * 60 * 1000);
 
     const token = await this.generateAuthToken(identity.id, identity.username);
@@ -484,7 +484,11 @@ export class IdentityCrypto {
 
     return {
       id: identity.id,
-      nickname: identity.nickname || resolvedPnName,
+      nickname: safePnDisplayName({
+        nickname: identity.nickname,
+        key1: resolvedPnName,
+        pnIdentifier: publicKey ? deriveCanonicalPnIdentifier(publicKey) : null,
+      }),
       accessToken: token,
       expiresIn: this.TOKEN_EXPIRY,
       authenticatedAt: new Date().toISOString(),

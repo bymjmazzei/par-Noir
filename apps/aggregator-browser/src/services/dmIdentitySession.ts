@@ -2,7 +2,7 @@
  * Messaging + authorship crypto unlock — ML-KEM (+ optional ML-DSA) in memory only.
  */
 
-import { unlockIdentityMlKemSecret, deriveMlKemPublicKeyFromSecretKey, type EncryptedIdentityPayload } from '@par-noir/dm-crypto';
+import { deriveMlKemPublicKeyFromSecretKey, type EncryptedIdentityPayload } from '@par-noir/dm-crypto';
 import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import {
   mergeMessagingSessionParts,
@@ -21,9 +21,6 @@ export interface DmIdentityState {
   /** Durable ML-DSA from OAuth messaging handoff — Pen Mini / Note authorship. */
   mlDsaPublicKey?: string;
   mlDsaSecretKey?: string;
-  pnName: string;
-  /** In-memory only for client seals (e.g. device privateDisplay); never persisted. */
-  passcode: string;
 }
 
 export interface DmSessionHandoff {
@@ -232,8 +229,6 @@ export function applyDmSessionHandoff(session: DmSessionHandoff): void {
     mlKemPublicKey,
     mlDsaPublicKey: incomingDsaPk,
     mlDsaSecretKey: incomingDsaSk,
-    pnName: state?.pnName || '',
-    passcode: state?.passcode || '',
   };
   persistDmSessionToStorage({
     mlKemSecretKey: session.mlKemSecretKey,
@@ -273,76 +268,6 @@ export function storeEncryptedIdentityForMessaging(payload: EncryptedIdentityPay
   }
   localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(payload));
   notifyDmIdentityChange();
-}
-
-export async function unlockDmIdentity(pnName: string, passcode: string): Promise<DmIdentityState> {
-  const payload = loadStoredIdentity();
-  if (!payload?.encryptedData || !payload.salt || !payload.iv) {
-    throw new Error(
-      'No local identity for messaging. Lock your pN and unlock again with your identity file.'
-    );
-  }
-  const secrets = await unlockIdentityMlKemSecret(payload, pnName, passcode);
-  const mlKemPublicKey = secrets.mlKemPublicKey!;
-  state = {
-    mlKemSecretKey: secrets.mlKemSecretKey,
-    mlKemPublicKey,
-    pnName: secrets.pnName || pnName,
-    passcode,
-  };
-  persistDmSessionToStorage({
-    mlKemSecretKey: secrets.mlKemSecretKey,
-    mlKemPublicKey
-  });
-  void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
-
-  // Single post-unlock promote owner (send path also promotes per message).
-  // Not invoked from mailbox drain — keeps inbox paint off the promote critical path.
-  void (async () => {
-    try {
-      const session = PNOAuthService.loadSession();
-      const pn = session?.pnIdentifier;
-      if (pn) {
-        const { promoteSenderOutbox } = await import('./messageService');
-        await promoteSenderOutbox(pn);
-      }
-    } catch {
-      /* non-blocking */
-    }
-  })();
-
-  void (async () => {
-    try {
-      const handoffRaw = sessionStorage.getItem('pn_identity_migration_kem_handoff');
-      if (!handoffRaw) return;
-      const handoff = JSON.parse(handoffRaw) as {
-        migrationId: string;
-        predecessorMlKemSecretKey: string;
-        predecessorMlKemPublicKey: string;
-        successorMlKemSecretKey: string;
-        successorMlKemPublicKey: string;
-      };
-      const session = PNOAuthService.loadSession();
-      if (!session?.accessToken) return;
-      const { migrateConnectionsOnUnlock } = await import('./identityMigrationBridge');
-      await migrateConnectionsOnUnlock({
-        predecessorMlKemSecretKey: handoff.predecessorMlKemSecretKey,
-        predecessorMlKemPublicKey: handoff.predecessorMlKemPublicKey,
-        successorMlKemSecretKey: handoff.successorMlKemSecretKey,
-        successorMlKemPublicKey: handoff.successorMlKemPublicKey,
-        authToken: session.accessToken,
-      });
-      const { ackMigrationStep } = await import('./identityMigrationApiClient');
-      await ackMigrationStep(session.accessToken, handoff.migrationId, 'dm_rekey').catch(() => {});
-      await ackMigrationStep(session.accessToken, handoff.migrationId, 'group_rewrap').catch(() => {});
-      sessionStorage.removeItem('pn_identity_migration_kem_handoff');
-    } catch {
-      /* non-blocking */
-    }
-  })();
-
-  notifyDmIdentityChange();
-  return state;
 }
 
 async function publishMlKemPublicKey(mlKemPublicKey: string): Promise<void> {

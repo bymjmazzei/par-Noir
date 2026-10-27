@@ -94,10 +94,6 @@ export function MessagesPage({
     };
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
-  const session = PNOAuthService.loadSession();
-  const pnNameHint =
-    (session as { pnName?: string } | null)?.pnName || session?.nickname || undefined;
-
   return (
     <div className="h-screen w-full bg-neutral-900 flex flex-col">
       <KeyDeviceBanner />
@@ -130,7 +126,6 @@ export function MessagesPage({
       </div>
       {showDmUnlock && hasStoredEncryptedIdentity() && (
         <DmCryptoUnlockModal
-          pnName={pnNameHint}
           onUnlocked={() => {
             setShowDmUnlock(false);
             setDmUnlockDismissed(false);
