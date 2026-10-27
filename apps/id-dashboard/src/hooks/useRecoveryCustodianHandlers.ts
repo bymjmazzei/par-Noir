@@ -767,12 +767,16 @@ This invitation expires in 24 hours.`;
       const { ensureRecoveryDriveProof } = await import('../services/recoveryRelayFlows');
       const keyHash = await hashRecoveryKey(keyData);
       const driveProofHash = await ensureRecoveryDriveProof(pnId);
+      const ownerProof = deviceAuth.isKeyedSession
+        ? undefined
+        : await (await import('../services/recoverySetupProof')).signRecoverySetupChallenge(apiToken, auth);
       await registerRecoveryFailsafe(apiToken, {
         userPnIdentifier: pnId,
         publicKey,
         envelope,
         keyHash,
         driveProofHash,
+        ownerProof,
       });
 
       const recoveryKey: RecoveryKey = {

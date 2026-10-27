@@ -15,7 +15,9 @@ import {
   mlKem768Keygen,
   sha3_384_digest,
   signOauthUnlockProof,
+  signRecoverySetupProof,
   verifyOauthUnlockProof,
+  verifyRecoverySetupProof,
   bytesToBase64,
 } from '../src/index';
 
@@ -84,5 +86,22 @@ describe('@par-noir/pqc-crypto', () => {
     ).toBe(false);
     expect(deriveCanonicalPnIdentifier(publicKey)).toMatch(/^pn-[0-9a-f]{12}$/);
     expect(deriveDidFromPublicKey(publicKey)).toMatch(/^did:key:[0-9a-f]{16}$/);
+  });
+
+  it('recovery setup proof binds the challenge, pN and key, and is not an unlock proof', () => {
+    const dsa = mlDsa65Keygen();
+    const publicKey = bytesToBase64(dsa.publicKey);
+    const params = { challenge: 'setup-challenge', pnIdentifier: deriveCanonicalPnIdentifier(publicKey), publicKey };
+    const signature = signRecoverySetupProof(params, dsa.secretKey);
+    expect(verifyRecoverySetupProof(signature, params)).toBe(true);
+    expect(verifyRecoverySetupProof(signature, { ...params, challenge: 'other' })).toBe(false);
+    expect(verifyRecoverySetupProof(signature, { ...params, pnIdentifier: 'pn-000000000000' })).toBe(false);
+    expect(verifyRecoverySetupProof(signature, { ...params, publicKey: bytesToBase64(mlDsa65Keygen().publicKey) })).toBe(false);
+    expect(verifyRecoverySetupProof('not base64 !!', params)).toBe(false);
+    const unlockSig = signOauthUnlockProof(
+      { challenge: params.challenge, clientId: 'c', redirectUri: 'r', scope: 's', state: '', nonce: '', publicKey },
+      dsa.secretKey
+    );
+    expect(verifyRecoverySetupProof(unlockSig, params)).toBe(false);
   });
 });

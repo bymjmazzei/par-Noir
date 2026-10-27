@@ -4,7 +4,7 @@
 
 import type { Application, Request, Response } from 'express';
 import { PNOAuthService } from './pnOAuthService';
-import { assertDeviceCapability, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import { gateRecoverySetup, RECOVERY_SETUP_CHALLENGE_CLIENT_ID } from './deviceCapabilityService';
 import {
   getFailsafeStatus,
   resolveRecoveryFailsafe,
@@ -38,13 +38,26 @@ function bearerPn(req: Request): string | null {
 }
 
 export function registerRecoveryFailsafeRoutes(app: Application): void {
+  /** Owner: single-use challenge to sign when changing recovery setup before any device is keyed. */
+  app.post('/api/recovery/owner/setup-challenge', async (req: Request, res: Response) => {
+    try {
+      const authPn = bearerPn(req);
+      if (!authPn) return res.status(401).json({ error: 'unauthorized' });
+      const challenge = await PNOAuthService.createUnlockChallenge({
+        clientId: RECOVERY_SETUP_CHALLENGE_CLIENT_ID,
+        redirectUri: authPn,
+      });
+      return res.json(challenge);
+    } catch (error: unknown) {
+      console.error('[recovery] setup challenge:', error);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
   /** Owner: register failsafe key hash + recovery envelope (or update either). */
   app.post('/api/recovery/failsafe/register', async (req: Request, res: Response) => {
     try {
-      const gate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.recoveryVaultWrite);
-      if (!gate.ok) {
-        return res.status(gate.status).json({ error: gate.error, reason: gate.reason });
-      }
+      if (!(await gateRecoverySetup(req, res))) return;
       const authPn = bearerPn(req);
       if (!authPn) return res.status(401).json({ error: 'unauthorized' });
 

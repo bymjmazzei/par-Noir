@@ -237,6 +237,18 @@ export async function hashRecoveryKey(recoveryKey: string): Promise<string> {
     .join('');
 }
 
+export interface RecoverySetupOwnerProof {
+  challengeId: string;
+  publicKey: string;
+  signature: string;
+}
+
+export function fetchRecoverySetupChallenge(
+  authToken: string
+): Promise<{ challengeId: string; challenge: string; expiresAt: number }> {
+  return ownerJson(authToken, 'POST', '/api/recovery/owner/setup-challenge', {});
+}
+
 export async function registerRecoveryFailsafe(
   authToken: string,
   payload: {
@@ -245,6 +257,8 @@ export async function registerRecoveryFailsafe(
     envelope: unknown;
     keyHash?: string;
     driveProofHash?: string;
+    /** Required before any device is keyed; ignored by the API on keyed devices. */
+    ownerProof?: RecoverySetupOwnerProof;
   }
 ): Promise<void> {
   await ownerJson(authToken, 'POST', '/api/recovery/failsafe/register', payload);

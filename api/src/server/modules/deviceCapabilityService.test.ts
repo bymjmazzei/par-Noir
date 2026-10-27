@@ -11,9 +11,15 @@ import {
   clearDeviceContextCache,
   gateOwnerRoute,
   gateOwnerSelfRoute,
+  gateRecoverySetup,
   getDeviceRegistrySummary,
+  RECOVERY_SETUP_CHALLENGE_CLIENT_ID,
 } from './deviceCapabilityService';
 import { DriveIndexError } from './pnDriveIndex';
+import { putUnlockChallengeRecord } from './oauthAuthCodeStore';
+import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
+import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
+import { deriveCanonicalPnIdentifier, signRecoverySetupProof } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
 jest.mock('./storage/deviceStorageService', () => ({
   loadDeviceBundle: jest.fn(),
@@ -400,6 +406,73 @@ describe('assertDeviceCapability', () => {
     expect(deviceStorage.loadDeviceBundle).toHaveBeenCalledWith(PN, {
       accessToken: 'ya29.forwarded-token',
     });
+  });
+});
+
+describe('gateRecoverySetup', () => {
+  const dsa = mlDsa65Keygen();
+  const publicKey = bytesToBase64(dsa.publicKey);
+  const ownerPn = deriveCanonicalPnIdentifier(publicKey);
+
+  function useRegistry(firstDeviceKeyedAt: string | undefined, keyed: boolean) {
+    clearDeviceContextCache();
+    mockValidate.mockReturnValue({ pnIdentifier: ownerPn } as ReturnType<typeof PNOAuthService.validateAccessToken>);
+    deviceStorage.loadDeviceBundle.mockResolvedValue({ pnIdentifier: ownerPn, isPortable: false, spreadsheetId: 's' });
+    deviceStorage.readPolicy.mockResolvedValue({ ...defaultDevicePolicy(), firstDeviceKeyedAt });
+    deviceStorage.listDevices.mockResolvedValue(
+      keyed ? [{ deviceId: 'dev-1', status: 'active', devicePublicKey: 'pk', label: 'T', createdAt: KEYED_AT }] : []
+    );
+  }
+
+  async function signedProof(pnBinding = ownerPn) {
+    const challengeId = `c-${Math.random()}`;
+    const challenge = `challenge-${challengeId}`;
+    await putUnlockChallengeRecord(
+      { challengeId, challenge, clientId: RECOVERY_SETUP_CHALLENGE_CLIENT_ID, redirectUri: pnBinding, expiresAt: Date.now() + 60_000 },
+      60_000
+    );
+    const signature = signRecoverySetupProof({ challenge, pnIdentifier: ownerPn, publicKey }, dsa.secretKey);
+    return { challengeId, publicKey, signature };
+  }
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('accepts a signed setup challenge when no device has ever been keyed, once', async () => {
+    useRegistry(undefined, false);
+    const ownerProof = await signedProof();
+    const first = mockRes();
+    expect(await gateRecoverySetup(bearerReq({ body: { ownerProof } }), first)).not.toBeNull();
+    const replay = mockRes();
+    expect(await gateRecoverySetup(bearerReq({ body: { ownerProof } }), replay)).toBeNull();
+    expect(replay.body).toEqual({ error: 'owner_proof_invalid', reason: 'challenge' });
+  });
+
+  it('requires the proof before any device is keyed', async () => {
+    useRegistry(undefined, false);
+    const res = mockRes();
+    expect(await gateRecoverySetup(bearerReq({ body: {} }), res)).toBeNull();
+    expect(res.body).toEqual({ error: 'owner_proof_required' });
+  });
+
+  it('rejects a challenge issued for another pN or a signature from another key', async () => {
+    useRegistry(undefined, false);
+    const wrongPn = mockRes();
+    expect(await gateRecoverySetup(bearerReq({ body: { ownerProof: await signedProof('pn-other') } }), wrongPn)).toBeNull();
+    expect(wrongPn.statusCode).toBe(403);
+
+    const other = mlDsa65Keygen();
+    const proof = await signedProof();
+    const forged = mockRes();
+    const forgedProof = { ...proof, signature: signRecoverySetupProof({ challenge: 'x', pnIdentifier: ownerPn, publicKey }, other.secretKey) };
+    expect(await gateRecoverySetup(bearerReq({ body: { ownerProof: forgedProof } }), forged)).toBeNull();
+    expect(forged.body).toEqual({ error: 'owner_proof_invalid', reason: 'signature' });
+  });
+
+  it('requires a keyed device once any device has been keyed, even with a valid proof', async () => {
+    useRegistry(KEYED_AT, true);
+    const res = mockRes();
+    expect(await gateRecoverySetup(bearerReq({ body: { ownerProof: await signedProof() } }), res)).toBeNull();
+    expect(res.body).toEqual({ error: 'device_key_required', reason: 'keyed_device_required' });
   });
 });
 

@@ -14,6 +14,11 @@ import {
   type DeviceProofPayload,
   type DeviceRow,
 } from '@par-noir/device-auth';
+import {
+  deriveCanonicalPnIdentifier,
+  verifyRecoverySetupProof,
+} from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import { takeUnlockChallengeRecord } from './oauthAuthCodeStore';
 import { PNOAuthService, type TokenPayload } from './pnOAuthService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import {
@@ -298,6 +303,68 @@ export async function gateOwnerRoute(
     return null;
   }
   return gate.ctx;
+}
+
+export const RECOVERY_SETUP_CHALLENGE_CLIENT_ID = 'recovery-setup';
+
+/**
+ * Gate recovery setup changes. Once any device has been keyed, only a keyed device may change
+ * setup. Before that, the caller proves the pN root key by signing a single-use setup challenge.
+ */
+export async function gateRecoverySetup(req: Request, res: Response): Promise<DeviceAuthContext | null> {
+  const ctx = await resolveDeviceAuthContext(req);
+  if (!ctx) {
+    res.status(401).json({ error: 'unauthorized' });
+    return null;
+  }
+  if (ctx.isKeyed) return ctx;
+  if (ctx.policy.firstDeviceKeyedAt) {
+    res.status(403).json({ error: 'device_key_required', reason: 'keyed_device_required' });
+    return null;
+  }
+
+  const proof = (req.body ?? {}).ownerProof as
+    | { challengeId?: unknown; publicKey?: unknown; signature?: unknown }
+    | undefined;
+  const challengeId = typeof proof?.challengeId === 'string' ? proof.challengeId : '';
+  const publicKey = typeof proof?.publicKey === 'string' ? proof.publicKey : '';
+  const signature = typeof proof?.signature === 'string' ? proof.signature : '';
+  if (!challengeId || !publicKey || !signature) {
+    res.status(403).json({ error: 'owner_proof_required' });
+    return null;
+  }
+
+  const record = await takeUnlockChallengeRecord(challengeId);
+  if (
+    !record ||
+    record.clientId !== RECOVERY_SETUP_CHALLENGE_CLIENT_ID ||
+    record.redirectUri !== ctx.pnIdentifier
+  ) {
+    res.status(403).json({ error: 'owner_proof_invalid', reason: 'challenge' });
+    return null;
+  }
+
+  let derivedPn: string;
+  try {
+    derivedPn = deriveCanonicalPnIdentifier(publicKey);
+  } catch {
+    derivedPn = '';
+  }
+  if (derivedPn !== ctx.pnIdentifier) {
+    res.status(403).json({ error: 'owner_proof_invalid', reason: 'pn_mismatch' });
+    return null;
+  }
+  if (
+    !verifyRecoverySetupProof(signature, {
+      challenge: record.challenge,
+      pnIdentifier: ctx.pnIdentifier,
+      publicKey,
+    })
+  ) {
+    res.status(403).json({ error: 'owner_proof_invalid', reason: 'signature' });
+    return null;
+  }
+  return ctx;
 }
 
 /**

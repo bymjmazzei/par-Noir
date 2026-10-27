@@ -71,6 +71,8 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
     handleOpenCustodianApprovalModal,
   } = props;
 
+  const canChangeRecoverySetup = !deviceAuth?.isUnkeyedRestricted;
+
   const refreshRecoveryVaultCb = useCallback(() => {
     void refreshRecoveryVault();
   }, [refreshRecoveryVault]);
@@ -119,13 +121,13 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
           apiToken={apiToken}
           userPnIdentifier={recoveryVaultPnId}
           recoveryKeysCount={recoveryKeys?.length ?? 0}
-          canCreate={recoveryMutationAllowed && canManageCustodians}
+          canCreate={recoveryMutationAllowed && canChangeRecoverySetup}
           onCreate={() => setShowRecoveryKeyModal(true)}
           disabledReason={
             !recoveryMutationAllowed
-              ? 'Unlock recovery first'
-              : !canManageCustodians
-                ? deviceAuth?.deviceRequiredMessage
+              ? 'Unlock recovery above first.'
+              : !canChangeRecoverySetup
+                ? 'This pN has a keyed device, so only a keyed device can change recovery. Open the dashboard on that device.'
                 : undefined
           }
         />

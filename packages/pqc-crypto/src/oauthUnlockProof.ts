@@ -72,6 +72,46 @@ export function verifyOauthUnlockProof(
   }
 }
 
+export const RECOVERY_SETUP_PROOF_VERSION = 'PN-RECOVERY-SETUP-V1' as const;
+
+export type RecoverySetupProofParams = {
+  challenge: string;
+  pnIdentifier: string;
+  publicKey: string;
+};
+
+/** Proof of the pN root key for changing recovery setup without a keyed device. */
+export function buildRecoverySetupProofMessage(params: RecoverySetupProofParams): Uint8Array {
+  const lines = [
+    RECOVERY_SETUP_PROOF_VERSION,
+    `challenge=${params.challenge}`,
+    `pn_identifier=${params.pnIdentifier}`,
+    `public_key=${params.publicKey}`,
+  ];
+  return new TextEncoder().encode(lines.join('\n'));
+}
+
+export function signRecoverySetupProof(params: RecoverySetupProofParams, mlDsaSecretKey: Uint8Array): string {
+  return bytesToBase64(mlDsa65Sign(buildRecoverySetupProofMessage(params), mlDsaSecretKey));
+}
+
+export function verifyRecoverySetupProof(signatureB64: string, params: RecoverySetupProofParams): boolean {
+  let signature: Uint8Array;
+  let publicKey: Uint8Array;
+  try {
+    signature = base64ToBytes(signatureB64);
+    publicKey = base64ToBytes(params.publicKey);
+  } catch {
+    return false;
+  }
+  if (publicKey.length !== ML_DSA_65_PUBLIC_KEY_LENGTH) return false;
+  try {
+    return mlDsa65Verify(signature, buildRecoverySetupProofMessage(params), publicKey);
+  } catch {
+    return false;
+  }
+}
+
 function sha256HexUtf8(text: string): string {
   const digest = sha256(new TextEncoder().encode(text));
   return Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('');

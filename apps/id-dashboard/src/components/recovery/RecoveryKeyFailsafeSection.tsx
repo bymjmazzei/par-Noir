@@ -70,6 +70,9 @@ export const RecoveryKeyFailsafeSection: React.FC<RecoveryKeyFailsafeSectionProp
       >
         {registered ? 'Create and download new recovery key' : 'Create recovery key'}
       </button>
+      {!canCreate && disabledReason && (
+        <p className="text-xs text-text-secondary">{disabledReason}</p>
+      )}
     </div>
   );
 };
