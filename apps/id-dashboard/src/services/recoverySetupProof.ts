@@ -31,9 +31,10 @@ export async function decryptRecoverySessionIdentity(auth: RecoveryAuthSession):
 
 export async function signRecoverySetupChallenge(
   authToken: string,
-  auth: RecoveryAuthSession
+  auth: RecoveryAuthSession,
+  decrypted?: RecoverySessionIdentity
 ): Promise<RecoverySetupOwnerProof> {
-  const identity = await decryptRecoverySessionIdentity(auth);
+  const identity = decrypted ?? (await decryptRecoverySessionIdentity(auth));
   const secretB64 = identity.pqcSecrets?.mlDsaSecretKey;
   if (!secretB64) {
     throw new Error('This .pn file has no signing key. Rotate your pN, then set up recovery.');

@@ -1,5 +1,9 @@
 import { API_ENDPOINT } from '../config/api';
-import type { RecoveryEnvelope, RecoveryZkApprovalPayload } from '@par-noir/recovery-crypto';
+import type {
+  KeyRecoveryEnvelope,
+  RecoveryEnvelope,
+  RecoveryZkApprovalPayload,
+} from '@par-noir/recovery-crypto';
 import { ownerFetch, ownerGet } from './ownerApiService';
 
 export interface RecoveryCustodianApiRow {
@@ -35,7 +39,10 @@ export interface RecoveryCustodianSummary {
   };
 }
 
-export type RecoveryRequestType = 'identity_recovery' | 'device_registry_reset';
+export type RecoveryRequestType = 'identity_recovery' | 'device_registry_reset' | 'key_recovery';
+
+/** key_only: recovery key + Drive + 24h wait. custodians: the key starts custodian approval. */
+export type RecoveryFailsafeMode = 'key_only' | 'custodians';
 
 export interface OwnerRecoveryRequest {
   requestId: string;
@@ -165,6 +172,19 @@ export function cancelOwnerRecoveryRequest(authToken: string, requestId: string)
   );
 }
 
+/** Keyed device only: let a key-only recovery finish now instead of after the wait. */
+export function approveOwnerRecoveryRequest(
+  authToken: string,
+  requestId: string
+): Promise<{ status: string; releaseAfter: string }> {
+  return ownerJson(
+    authToken,
+    'POST',
+    `/api/recovery/owner/requests/${encodeURIComponent(requestId)}/approve`,
+    {}
+  );
+}
+
 export function startDeviceRegistryReset(
   authToken: string
 ): Promise<{ requestId: string; threshold: number }> {
@@ -254,7 +274,9 @@ export async function registerRecoveryFailsafe(
   payload: {
     userPnIdentifier: string;
     publicKey: string;
-    envelope: unknown;
+    envelope?: unknown;
+    /** Key-only mode: recovery data sealed to the recovery key itself. */
+    keyEnvelope?: KeyRecoveryEnvelope;
     keyHash?: string;
     driveProofHash?: string;
     /** Required before any device is keyed; ignored by the API on keyed devices. */
@@ -267,7 +289,13 @@ export async function registerRecoveryFailsafe(
 export async function fetchRecoveryFailsafeStatus(
   userPnIdentifier: string,
   authToken: string
-): Promise<{ hasKey: boolean; hasEnvelope: boolean; hasDriveProof?: boolean; createdAt?: string }> {
+): Promise<{
+  hasKey: boolean;
+  hasEnvelope: boolean;
+  hasDriveProof?: boolean;
+  mode?: RecoveryFailsafeMode | null;
+  createdAt?: string;
+}> {
   const res = await fetch(
     `${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/failsafe`,
     { headers: { Authorization: `Bearer ${authToken}` } }
@@ -276,19 +304,20 @@ export async function fetchRecoveryFailsafeStatus(
   return res.json();
 }
 
+export type StartRecoveryResult = {
+  requestId: string;
+  pnIdentifier: string;
+  publicKey: string;
+  threshold: number;
+  releaseAfter: string;
+  expiresAt: string;
+} & ({ mode: 'key_only' } | { mode: 'custodians'; envelope: RecoveryEnvelope });
+
 export function startRecoveryWithFailsafeKey(payload: {
   keyHash: string;
   temporaryPublicKey: string;
   claimantContact?: string;
-}): Promise<{
-  requestId: string;
-  pnIdentifier: string;
-  publicKey: string;
-  envelope: RecoveryEnvelope;
-  threshold: number;
-  releaseAfter: string;
-  expiresAt: string;
-}> {
+}): Promise<StartRecoveryResult> {
   return publicJson('POST', '/api/recovery/failsafe/start', payload);
 }
 
@@ -313,6 +342,14 @@ export function releaseRecoveryShares(
   envelope: RecoveryEnvelope;
   shares: Array<{ custodianId: string; shareIndex: number; epoch: number; sealedShare: string }>;
 }> {
+  return publicJson('POST', `/api/recovery/requests/${encodeURIComponent(requestId)}/release`, payload);
+}
+
+/** Key-only release: the key envelope comes back once, then the server drops the key. */
+export function releaseKeyRecovery(
+  requestId: string,
+  payload: { keyHash: string; driveProof: string }
+): Promise<{ mode: 'key_only'; pnIdentifier: string; publicKey: string; keyEnvelope: KeyRecoveryEnvelope }> {
   return publicJson('POST', `/api/recovery/requests/${encodeURIComponent(requestId)}/release`, payload);
 }
 

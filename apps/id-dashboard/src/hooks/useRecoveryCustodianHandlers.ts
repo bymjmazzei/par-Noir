@@ -9,15 +9,16 @@ import type React from 'react';
 import QRCode from 'qrcode';
 import { IdentityCrypto } from '@par-noir/identity-crypto';
 import type { EncryptedIdentity } from '@par-noir/identity-crypto';
-import type { RecoveryEnvelope, ShamirShare } from '@par-noir/recovery-crypto';
+import type { KeyRecoveryEnvelope, RecoveryEnvelope, ShamirShare } from '@par-noir/recovery-crypto';
 import { QRCodeManager } from '../utils/qrCode';
 import { cloudSyncManager } from '../utils/cloudSync';
 import { LicenseVerification } from '../utils/licenseVerification';
-import { completeRecoveryWithShares } from '../services/recoveryService';
+import { completeKeyRecovery, completeRecoveryWithShares } from '../services/recoveryService';
 import {
   revokeRecoveryCustodian,
   acceptRecoveryCustodianship,
   fetchRecoveryRequestStatus,
+  hashRecoveryKey,
 } from '../services/recoveryApiService';
 import { getRecoveryAuthSession, recoveryAuthRequiredMessage } from '../services/recoveryAuthSession';
 import {
@@ -49,12 +50,22 @@ export interface CustodianshipEntry {
   canApprove: boolean;
 }
 
-export interface PendingRecoveryCompletion {
-  requestId: string;
-  envelope: RecoveryEnvelope;
-  publicKey: string;
-  shares: ShamirShare[];
-}
+export type PendingRecoveryCompletion =
+  | {
+      kind: 'custodians';
+      requestId: string;
+      envelope: RecoveryEnvelope;
+      publicKey: string;
+      shares: ShamirShare[];
+    }
+  | {
+      kind: 'key';
+      requestId: string;
+      keyEnvelope: KeyRecoveryEnvelope;
+      publicKey: string;
+      /** Held in memory only until new Key 1 + Key 2 are set. */
+      recoveryKey: string;
+    };
 
 export interface CustodianContactInfo {
   name: string;
@@ -563,13 +574,22 @@ This invitation expires in 24 hours.`;
     const completion = pendingRecoveryCompletion;
     setLoading(true);
     try {
-      const result = await completeRecoveryWithShares({
-        envelope: completion.envelope,
-        shares: completion.shares,
-        newPnName,
-        newPasscode,
-        expectedPublicKey: completion.publicKey
-      });
+      const result =
+        completion.kind === 'key'
+          ? await completeKeyRecovery({
+              keyEnvelope: completion.keyEnvelope,
+              recoveryKey: completion.recoveryKey,
+              newPnName,
+              newPasscode,
+              expectedPublicKey: completion.publicKey,
+            })
+          : await completeRecoveryWithShares({
+              envelope: completion.envelope,
+              shares: completion.shares,
+              newPnName,
+              newPasscode,
+              expectedPublicKey: completion.publicKey
+            });
 
       const simpleStorage = (await import('../utils/simpleStorage')).SimpleStorage.getInstance();
       const { PNNameHash } = await import('../utils/security/pnNameHash');
@@ -616,13 +636,17 @@ This invitation expires in 24 hours.`;
       });
       setShowRecoveryCompleteModal(true);
       setShowRecoveryModal(false);
-      setSuccessWithTimeout('Recovery complete. Download your updated .pn file and reconnect Google Drive.');
+      setSuccessWithTimeout(
+        completion.kind === 'key'
+          ? 'Recovery complete. Download your updated .pn file, reconnect Google Drive, then create a new recovery key — the old one has been used.'
+          : 'Recovery complete. Download your updated .pn file and reconnect Google Drive.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleContinueReadyRecovery = async () => {
+  const handleContinueReadyRecovery = async (recoveryKeyInput?: string) => {
     const session = getRecoveryActiveSession();
     if (!session) {
       setError('Recovery session expired. Start recovery again.');
@@ -632,6 +656,43 @@ This invitation expires in 24 hours.`;
     try {
       setLoading(true);
       setError(null);
+      if (session.mode === 'key_only') {
+        const recoveryKey = recoveryKeyInput?.trim() || '';
+        if (!recoveryKey) throw new Error('Enter your recovery key to finish.');
+        if ((await hashRecoveryKey(recoveryKey)) !== session.keyHash) {
+          throw new Error('That is not the recovery key this recovery was started with.');
+        }
+        let keyEnvelope = session.keyEnvelope;
+        let publicKey = session.publicKey;
+        if (!keyEnvelope) {
+          if (Date.now() < session.releaseAfter) {
+            throw new Error(
+              `Recovery unlocks at ${new Date(session.releaseAfter).toLocaleString()}. This wait gives the owner time to cancel.`
+            );
+          }
+          const { connectGoogleForRecovery } = await import('../services/recoveryGoogleConnect');
+          const googleAccessToken = await connectGoogleForRecovery();
+          const { finishKeyRecovery } = await import('../services/recoveryRelayFlows');
+          const released = await finishKeyRecovery({
+            requestId: session.requestId,
+            keyHash: session.keyHash,
+            pnIdentifier: session.pnIdentifier,
+            googleAccessToken,
+          });
+          keyEnvelope = released.keyEnvelope;
+          publicKey = released.publicKey;
+          updateRecoveryActiveSession({ keyEnvelope, publicKey, status: 'ready' });
+        }
+        setPendingRecoveryCompletion({
+          kind: 'key',
+          requestId: session.requestId,
+          keyEnvelope,
+          publicKey,
+          recoveryKey,
+        });
+        setShowRecoveryPasscodeModal(true);
+        return;
+      }
       if (Date.now() < session.releaseAfter) {
         throw new Error(
           `Recovery unlocks at ${new Date(session.releaseAfter).toLocaleString()}. This delay gives the owner time to cancel.`
@@ -647,6 +708,7 @@ This invitation expires in 24 hours.`;
         googleAccessToken,
       });
       setPendingRecoveryCompletion({
+        kind: 'custodians',
         requestId: session.requestId,
         envelope: released.envelope,
         publicKey: released.publicKey,
@@ -751,32 +813,19 @@ This invitation expires in 24 hours.`;
         throw new Error('Sign in and connect storage before creating a recovery key.');
       }
 
-      const { getRecoveryAuthSession } = await import('../services/recoveryAuthSession');
       const auth = getRecoveryAuthSession();
       if (!auth) {
         throw new Error('Unlock recovery above first.');
       }
-      const envelope = auth.encryptedIdentity.recoveryEnvelope;
-      if (!envelope) {
-        throw new Error(
-          'This .pn file has no recovery envelope. Rotate your pN to add one, then create a recovery key.'
-        );
-      }
 
-      const { hashRecoveryKey, registerRecoveryFailsafe } = await import('../services/recoveryApiService');
-      const { ensureRecoveryDriveProof } = await import('../services/recoveryRelayFlows');
-      const keyHash = await hashRecoveryKey(keyData);
-      const driveProofHash = await ensureRecoveryDriveProof(pnId);
-      const ownerProof = deviceAuth.isKeyedSession
-        ? undefined
-        : await (await import('../services/recoverySetupProof')).signRecoverySetupChallenge(apiToken, auth);
-      await registerRecoveryFailsafe(apiToken, {
-        userPnIdentifier: pnId,
-        publicKey,
-        envelope,
-        keyHash,
-        driveProofHash,
-        ownerProof,
+      const { registerRecoveryKey } = await import('../services/recoveryKeyRegistration');
+      const { mode } = await registerRecoveryKey({
+        apiToken,
+        pnIdentifier: pnId,
+        auth,
+        recoveryKey: keyData,
+        custodiansConfigured: Boolean(recoveryVaultSummary?.configured),
+        isKeyedSession: Boolean(deviceAuth.isKeyedSession),
       });
 
       const recoveryKey: RecoveryKey = {
@@ -799,8 +848,11 @@ This invitation expires in 24 hours.`;
         purpose,
         description,
         createdAt: recoveryKey.createdAt,
+        mode,
         instructions:
-          'Store offline. Paste this file or the recoveryKey string on the unlock Recover screen. Starts custodian recovery — does not unlock by itself.',
+          mode === 'key_only'
+            ? 'Store offline. On the unlock screen choose Recover pN and use this file. Recovery also needs the Google account that holds your pN, and waits 24 hours unless a keyed device approves. Works once.'
+            : 'Store offline. On the unlock screen choose Recover pN and use this file. Starts custodian recovery — does not unlock by itself.',
       };
       const blob = new Blob([JSON.stringify(packageJson, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -893,7 +945,8 @@ This invitation expires in 24 hours.`;
         publicKey: started.publicKey,
         pnIdentifier: started.pnIdentifier,
         callbackContact: contactInfo.contactValue.trim(),
-        envelope: started.envelope,
+        mode: started.mode,
+        envelope: started.mode === 'custodians' ? started.envelope : undefined,
         keyHash: started.keyHash,
         threshold: started.threshold,
         approvalCount: 0,
@@ -904,7 +957,9 @@ This invitation expires in 24 hours.`;
       setShowRecoveryKeyInputModal(false);
       setShowRecoveryModal(true);
       setSuccessWithTimeout(
-        'Recovery started. Custodians see the request in their Recovery tab; keep this device to finish.'
+        started.mode === 'key_only'
+          ? 'Recovery started. Come back on this device after the wait with your recovery key and the Google account your pN uses.'
+          : 'Recovery started. Custodians see the request in their Recovery tab; keep this device to finish.'
       );
       setTimeout(() => setSuccessWithTimeout(null), 6000);
     } catch (error: any) {

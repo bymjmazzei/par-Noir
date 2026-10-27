@@ -342,7 +342,10 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                 </div>
               </div>
 
-              <OwnerRecoveryRequestsBanner apiToken={apiToken || null} />
+              <OwnerRecoveryRequestsBanner
+                apiToken={apiToken || null}
+                isKeyedSession={Boolean(deviceAuth?.isKeyedSession)}
+              />
 
               {/* Tabbed Interface */}
               <div className="bg-modal-bg rounded-lg shadow p-4 sm:p-6 lg:p-8 text-text-primary w-full max-w-4xl min-w-0">

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { SectionInfo } from '../common/SectionInfo';
 import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
-import { fetchRecoveryFailsafeStatus } from '../../services/recoveryApiService';
+import { fetchRecoveryFailsafeStatus, type RecoveryFailsafeMode } from '../../services/recoveryApiService';
 
 export interface RecoveryKeyFailsafeSectionProps {
   apiToken: string | null;
@@ -21,7 +21,7 @@ export const RecoveryKeyFailsafeSection: React.FC<RecoveryKeyFailsafeSectionProp
   disabledReason,
 }) => {
   const { isAuthenticated } = useRecoveryAuth();
-  const [status, setStatus] = useState<{ hasKey: boolean; hasEnvelope: boolean }>({
+  const [status, setStatus] = useState<{ hasKey: boolean; hasEnvelope: boolean; mode?: RecoveryFailsafeMode | null }>({
     hasKey: false,
     hasEnvelope: false,
   });
@@ -47,19 +47,22 @@ export const RecoveryKeyFailsafeSection: React.FC<RecoveryKeyFailsafeSectionProp
         <h4 className="font-medium text-text-primary">Recovery key failsafe</h4>
         <SectionInfo title="Recovery key failsafe">
           <p>
-            Store offline. Starts custodian recovery without Key 1 or Key 2 — including if you lose
-            your .pn file or recovery contact. Does not unlock by itself.
+            Store offline. Recovers your pN without Key 1, Key 2 or your .pn file. Without custodians,
+            recovery needs this key, the Google account that holds your pN, and a 24-hour wait your
+            signed-in devices can cancel (a keyed device can approve it sooner). With custodians, the
+            key only asks them to approve.
           </p>
         </SectionInfo>
       </div>
       {registered ? (
         <p className="text-sm text-green-400">
-          Failsafe key registered
-          {status.hasEnvelope ? ' (envelope on file)' : ''}. Create another only if you need to rotate
-          it.
+          {status.mode === 'custodians'
+            ? 'Recovery key registered. It starts custodian approval.'
+            : 'Recovery key registered. It recovers with your Google account after a 24-hour wait, once.'}{' '}
+          Create another only if you need to rotate it.
         </p>
       ) : (
-        <p className="text-sm text-text-secondary">No failsafe key registered yet.</p>
+        <p className="text-sm text-text-secondary">No recovery key registered yet.</p>
       )}
       <button
         type="button"

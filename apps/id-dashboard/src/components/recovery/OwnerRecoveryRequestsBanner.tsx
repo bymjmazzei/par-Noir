@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import {
+  approveOwnerRecoveryRequest,
   cancelOwnerRecoveryRequest,
   fetchOwnerRecoveryRequests,
   type OwnerRecoveryRequest,
@@ -8,8 +9,20 @@ import {
 
 const POLL_MS = 60_000;
 
-/** Owner-side warning for open recovery/reset requests, with a cancel during the safety delay. */
-export const OwnerRecoveryRequestsBanner: React.FC<{ apiToken: string | null }> = ({ apiToken }) => {
+function requestLabel(r: OwnerRecoveryRequest): string {
+  if (r.requestType === 'device_registry_reset') return 'Device reset';
+  if (r.requestType === 'key_recovery') return 'Key recovery';
+  return 'Identity recovery';
+}
+
+/**
+ * Owner-side warning for open recovery/reset requests, with a cancel during the safety delay.
+ * Keyed devices can also approve a key recovery so it can finish without the wait.
+ */
+export const OwnerRecoveryRequestsBanner: React.FC<{ apiToken: string | null; isKeyedSession?: boolean }> = ({
+  apiToken,
+  isKeyedSession = false,
+}) => {
   const [requests, setRequests] = useState<OwnerRecoveryRequest[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,15 +43,22 @@ export const OwnerRecoveryRequestsBanner: React.FC<{ apiToken: string | null }> 
     return () => window.clearInterval(id);
   }, [load]);
 
-  const cancel = async (requestId: string) => {
+  const act = async (requestId: string, action: 'cancel' | 'approve') => {
     if (!apiToken) return;
+    if (
+      action === 'approve'
+      && !window.confirm('Approve this recovery? Whoever holds your recovery key can then finish recovering your pN right away.')
+    ) {
+      return;
+    }
     setBusyId(requestId);
     setError(null);
     try {
-      await cancelOwnerRecoveryRequest(apiToken, requestId);
+      if (action === 'cancel') await cancelOwnerRecoveryRequest(apiToken, requestId);
+      else await approveOwnerRecoveryRequest(apiToken, requestId);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not cancel the request');
+      setError(err instanceof Error ? err.message : `Could not ${action} the request`);
     } finally {
       setBusyId(null);
     }
@@ -56,31 +76,49 @@ export const OwnerRecoveryRequestsBanner: React.FC<{ apiToken: string | null }> 
         </div>
       </div>
       <ul className="space-y-2">
-        {requests.map((r) => (
-          <li
-            key={r.requestId}
-            className="flex items-center justify-between gap-3 text-sm border border-border rounded p-2"
-          >
-            <div>
-              <div className="font-medium">
-                {r.requestType === 'device_registry_reset' ? 'Device reset' : 'Identity recovery'}
-                {r.claimantContact ? ` · ${r.claimantContact}` : ''}
-              </div>
-              <div className="text-xs text-text-secondary">
-                {r.approvalCount}/{r.threshold} approvals · started {new Date(r.createdAt).toLocaleString()}
-                {r.status === 'ready' ? ` · can finish after ${new Date(r.releaseAfter).toLocaleString()}` : ''}
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled={busyId === r.requestId}
-              onClick={() => void cancel(r.requestId)}
-              className="px-3 py-1 rounded text-xs border border-red-500/50 text-red-300 disabled:opacity-50"
+        {requests.map((r) => {
+          const keyRecovery = r.requestType === 'key_recovery';
+          const finishAt = new Date(r.releaseAfter).toLocaleString();
+          return (
+            <li
+              key={r.requestId}
+              className="flex items-center justify-between gap-3 text-sm border border-border rounded p-2"
             >
-              Cancel
-            </button>
-          </li>
-        ))}
+              <div>
+                <div className="font-medium">
+                  {requestLabel(r)}
+                  {r.claimantContact ? ` · ${r.claimantContact}` : ''}
+                </div>
+                <div className="text-xs text-text-secondary">
+                  {keyRecovery
+                    ? `Started ${new Date(r.createdAt).toLocaleString()} · can finish after ${finishAt}`
+                    : `${r.approvalCount}/${r.threshold} approvals · started ${new Date(r.createdAt).toLocaleString()}`}
+                  {!keyRecovery && r.status === 'ready' ? ` · can finish after ${finishAt}` : ''}
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {keyRecovery && isKeyedSession && r.status === 'pending' && (
+                  <button
+                    type="button"
+                    disabled={busyId === r.requestId}
+                    onClick={() => void act(r.requestId, 'approve')}
+                    className="px-3 py-1 rounded text-xs border border-green-500/50 text-green-300 disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={busyId === r.requestId}
+                  onClick={() => void act(r.requestId, 'cancel')}
+                  className="px-3 py-1 rounded text-xs border border-red-500/50 text-red-300 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
       {error && <p className="text-xs text-red-300">{error}</p>}
     </div>
