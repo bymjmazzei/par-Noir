@@ -1,7 +1,8 @@
 /**
- * Custodian-held recovery on the device: owner seals shares to custodians, custodians keep
+ * Recovery on the device. Custodian mode: owner seals shares to custodians, custodians keep
  * them on their own Drive and re-seal to the claimant's one-time key, the claimant opens them.
- * The API only relays sealed shares; nothing here sends a Drive token to it.
+ * Key-only mode: the claimant proves the owner's Google account and receives data only the
+ * recovery key opens. The API only relays sealed data; nothing here sends a Drive token to it.
  */
 import {
   custodyAad,
@@ -13,6 +14,7 @@ import {
   releaseAad,
   sealShareToKey,
   serializeSealedShare,
+  type KeyRecoveryEnvelope,
   type RecoveryEnvelope,
   type RecoveryKeyPair,
   type RecoveryZkApprovalPayload,
@@ -32,6 +34,7 @@ import {
   ackCustodyDeliveries,
   fetchCustodyDeliveries,
   hashRecoveryKey,
+  releaseKeyRecovery,
   releaseRecoveryShares,
   sendCustodyDelivery,
   startRecoveryWithFailsafeKey,
@@ -271,13 +274,7 @@ export async function finishRelayRecovery(params: {
     throw new Error('This device does not hold the key for this recovery. Finish on the device where you started.');
   }
   const keyPair = JSON.parse(raw) as RecoveryKeyPair;
-  const driveProof = await readRecoveryDriveProof({
-    accessToken: params.googleAccessToken,
-    pnIdentifier: params.pnIdentifier,
-  });
-  if (!driveProof) {
-    throw new Error("This Google account does not hold this pN's recovery proof. Sign in with the account the pN uses.");
-  }
+  const driveProof = await readClaimantDriveProof(params.googleAccessToken, params.pnIdentifier);
   const released = await releaseRecoveryShares(params.requestId, { keyHash: params.keyHash, driveProof });
   const shares: ShamirShare[] = [];
   for (const s of released.shares) {
@@ -290,6 +287,26 @@ export async function finishRelayRecovery(params: {
     );
   }
   return { shares, envelope: released.envelope, publicKey: released.publicKey };
+}
+
+/** Key-only: prove the owner's Google account and release the key envelope (works once). */
+export async function finishKeyRecovery(params: {
+  requestId: string;
+  keyHash: string;
+  pnIdentifier: string;
+  googleAccessToken: string;
+}): Promise<{ keyEnvelope: KeyRecoveryEnvelope; publicKey: string }> {
+  const driveProof = await readClaimantDriveProof(params.googleAccessToken, params.pnIdentifier);
+  const released = await releaseKeyRecovery(params.requestId, { keyHash: params.keyHash, driveProof });
+  return { keyEnvelope: released.keyEnvelope, publicKey: released.publicKey };
+}
+
+async function readClaimantDriveProof(accessToken: string, pnIdentifier: string): Promise<string> {
+  const driveProof = await readRecoveryDriveProof({ accessToken, pnIdentifier });
+  if (!driveProof) {
+    throw new Error("This Google account does not hold this pN's recovery proof. Sign in with the account the pN uses.");
+  }
+  return driveProof;
 }
 
 export function clearRelayRecoveryKey(requestId: string): void {

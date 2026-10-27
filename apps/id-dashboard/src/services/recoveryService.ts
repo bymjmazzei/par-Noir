@@ -1,12 +1,15 @@
 /**
- * Combine Shamir shares, decrypt envelope, re-wrap identity with new Key 1 + Key 2.
+ * Finish recovery on the claimant device: open the recovered data (Shamir shares + envelope, or
+ * the key envelope) and re-wrap the identity with new Key 1 + Key 2.
  * Cryptographic secrets and publicKey stay the same (continuity, not succession).
  */
 import {
   combineShares,
+  decryptKeyRecoveryEnvelope,
   decryptRecoveryEnvelope,
   normalizeShare,
   sealRecoveryShares,
+  type KeyRecoveryEnvelope,
   type RecoveryEnvelope,
   type ShamirShare
 } from '@par-noir/recovery-crypto';
@@ -33,18 +36,47 @@ export interface RecoveryCompletionResult {
   pnName: string;
 }
 
-export async function completeRecoveryWithShares(
-  input: RecoveryCompletionInput
-): Promise<RecoveryCompletionResult> {
-  const newPnName = input.newPnName.trim();
+function assertNewKeys(newPnName: string, newPasscode: string): void {
   const key1Errors = keyStrengthErrors(newPnName, KEY_1_LABEL);
   if (key1Errors.length) {
     throw new Error(key1Errors[0]);
   }
-  const key2Errors = keyStrengthErrors(input.newPasscode, KEY_2_LABEL);
+  const key2Errors = keyStrengthErrors(newPasscode, KEY_2_LABEL);
   if (key2Errors.length) {
     throw new Error(key2Errors[0]);
   }
+}
+
+/**
+ * Key-only recovery: open the key envelope with the recovery key, then re-seal the pN under new
+ * Key 1 + Key 2 the same way a new pN is created (same keys, fresh recovery envelope).
+ */
+export async function completeKeyRecovery(input: {
+  keyEnvelope: KeyRecoveryEnvelope;
+  recoveryKey: string;
+  newPnName: string;
+  newPasscode: string;
+  expectedPublicKey: string;
+}): Promise<RecoveryCompletionResult> {
+  const newPnName = input.newPnName.trim();
+  assertNewKeys(newPnName, input.newPasscode);
+  const payload = await decryptKeyRecoveryEnvelope(input.recoveryKey, input.keyEnvelope);
+  if (payload.publicKey !== input.expectedPublicKey) {
+    throw new Error('Recovery data does not match this pN');
+  }
+  const { identity } = await IdentityCrypto.restoreIdentity({
+    payload,
+    pnName: newPnName,
+    passcode: input.newPasscode,
+  });
+  return { identity, pnName: newPnName };
+}
+
+export async function completeRecoveryWithShares(
+  input: RecoveryCompletionInput
+): Promise<RecoveryCompletionResult> {
+  const newPnName = input.newPnName.trim();
+  assertNewKeys(newPnName, input.newPasscode);
 
   const master = combineShares(input.shares.map((s) => normalizeShare(s)));
   const payload = await decryptRecoveryEnvelope(master, input.envelope);

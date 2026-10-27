@@ -23,11 +23,11 @@ export interface UnlockGateProps {
   showMainPasscode: any;
   setShowMainPasscode: any;
   loading: any;
-  setShowRecoveryModal: any;
+  setShowRecoveryModal: (open: boolean) => void;
 }
 
 export function UnlockGate(props: UnlockGateProps) {
-  const { authenticatedUser, showTransferReceiver, handleShellSession, loading } = props;
+  const { authenticatedUser, showTransferReceiver, handleShellSession, loading, setShowRecoveryModal } = props;
 
   return (
     <>
@@ -64,9 +64,20 @@ export function UnlockGate(props: UnlockGateProps) {
                 <HostedShellLaunch buttonOnly op="create" label="Create New pN" onSession={(session) => {
                   void import('../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session));
                 }} />
-                <HostedShellLaunch buttonOnly op="recovery" label="Recover pN" onSession={(session) => {
-                  void import('../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session, 'par-noir-recovered.json'));
-                }} />
+                <button
+                  type="button"
+                  className="w-full text-sm font-medium"
+                  style={{
+                    backgroundColor: 'rgba(26, 26, 26, 0.95)',
+                    border: '1px solid #d1d5db',
+                    color: '#ffffff',
+                    borderRadius: 8,
+                    padding: '12px 16px',
+                  }}
+                  onClick={() => setShowRecoveryModal(true)}
+                >
+                  Recover pN
+                </button>
               </div>
             </div>
           </div>

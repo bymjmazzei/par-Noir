@@ -1,4 +1,4 @@
-import type { RecoveryEnvelope } from '@par-noir/recovery-crypto';
+import type { KeyRecoveryEnvelope, RecoveryEnvelope } from '@par-noir/recovery-crypto';
 
 const STORAGE_KEY = 'pn_recovery_active_session';
 
@@ -11,7 +11,15 @@ export interface RecoveryActiveSession {
   publicKey: string;
   pnIdentifier: string;
   callbackContact: string;
-  envelope: RecoveryEnvelope;
+  /** key_only: recovery key + Drive + wait. Missing on sessions started before key-only existed. */
+  mode?: 'key_only' | 'custodians';
+  /** Custodian mode only. */
+  envelope?: RecoveryEnvelope;
+  /**
+   * Key-only mode, after release. The server drops the key on release, so this is kept until
+   * recovery completes; only the recovery key opens it.
+   */
+  keyEnvelope?: KeyRecoveryEnvelope;
   /** sha256 of the failsafe key; the relay requires it again at release. */
   keyHash: string;
   threshold: number;

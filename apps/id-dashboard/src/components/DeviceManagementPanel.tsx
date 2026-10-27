@@ -191,8 +191,9 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
       setResetRequests(
         rows.filter(
           (r) =>
-            r.requestType === 'device_registry_reset'
-            && (r.status === 'pending' || r.status === 'ready')
+            (r.requestType === 'device_registry_reset' && (r.status === 'pending' || r.status === 'ready'))
+            // A finished key recovery can reset keyed devices the owner lost.
+            || (r.requestType === 'key_recovery' && r.status === 'released')
         )
       );
     } catch (err) {
@@ -419,6 +420,19 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
               </button>
             )}
             {resetRequests.map((r) => {
+              if (r.requestType === 'key_recovery') {
+                return (
+                  <button
+                    key={r.requestId}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleFinalizeShamirDeviceReset(r.requestId)}
+                    className="px-3 py-1.5 rounded text-sm border border-amber-500/50 text-amber-200 disabled:opacity-50"
+                  >
+                    Reset keyed devices (after key recovery)
+                  </button>
+                );
+              }
               const waitMs = Date.parse(r.releaseAfter) - Date.now();
               const ready = r.status === 'ready' && waitMs <= 0;
               return (
