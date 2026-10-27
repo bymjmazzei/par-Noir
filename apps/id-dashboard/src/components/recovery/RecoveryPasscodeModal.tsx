@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { SectionInfo } from '../common/SectionInfo';
-import { HostedShellLaunch } from '@par-noir/oauth-ui';
 import {
   KEY_1_LABEL,
+  KEY_1_PLACEHOLDER,
+  KEY_1_CONFIRM_PLACEHOLDER,
+  KEY_1_MISMATCH,
   KEY_2_LABEL,
+  KEY_2_PLACEHOLDER,
   KEY_2_CONFIRM_PLACEHOLDER,
   KEYS_HELPER,
   KEYS_MISMATCH,
@@ -25,6 +28,7 @@ export function RecoveryPasscodeModal({
   loading = false
 }: RecoveryPasscodeModalProps) {
   const [newPnName, setNewPnName] = useState('');
+  const [confirmPnName, setConfirmPnName] = useState('');
   const [newPasscode, setNewPasscode] = useState('');
   const [confirmPasscode, setConfirmPasscode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +43,10 @@ export function RecoveryPasscodeModal({
       setError(key1Errors[0]);
       return;
     }
+    if (newPnName.trim() !== confirmPnName.trim()) {
+      setError(KEY_1_MISMATCH);
+      return;
+    }
     const key2Errors = keyStrengthErrors(newPasscode, KEY_2_LABEL);
     if (key2Errors.length) {
       setError(key2Errors[0]);
@@ -51,6 +59,7 @@ export function RecoveryPasscodeModal({
     try {
       await onSubmit(newPnName.trim(), newPasscode);
       setNewPnName('');
+      setConfirmPnName('');
       setNewPasscode('');
       setConfirmPasscode('');
     } catch (err: unknown) {
@@ -65,16 +74,57 @@ export function RecoveryPasscodeModal({
           <h2 className="text-xl font-semibold">Set new Key 1 and Key 2</h2>
           <SectionInfo title="Set new Key 1 and Key 2">
             <p>
-              Custodians approved recovery. Choose new unlock secrets — your cryptographic identity (same pN keys)
-              is preserved. Reconnect Google Drive after unlock if tokens were lost.
+              Choose new unlock secrets. Your cryptographic identity (same pN keys) is preserved and
+              re-sealed on this device. Reconnect Google Drive after unlock if tokens were lost.
             </p>
             <p>{KEYS_HELPER}</p>
           </SectionInfo>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <HostedShellLaunch op="recovery" onSession={(session) => {
-            void import('../../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session, 'par-noir-recovered.json'));
-          }} />
+          <div>
+            <label className="block text-sm font-medium mb-1">New {KEY_1_LABEL}</label>
+            <input
+              type="password"
+              value={newPnName}
+              onChange={(e) => setNewPnName(e.target.value)}
+              placeholder={KEY_1_PLACEHOLDER}
+              autoComplete="new-password"
+              className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md"
+              required
+            />
+            <input
+              type="password"
+              value={confirmPnName}
+              onChange={(e) => setConfirmPnName(e.target.value)}
+              placeholder={KEY_1_CONFIRM_PLACEHOLDER}
+              autoComplete="new-password"
+              className="w-full px-3 py-2 mt-2 border border-input-border bg-input-bg rounded-md"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">New {KEY_2_LABEL}</label>
+            <input
+              type="password"
+              value={newPasscode}
+              onChange={(e) => setNewPasscode(e.target.value)}
+              placeholder={KEY_2_PLACEHOLDER}
+              autoComplete="new-password"
+              className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md"
+              required
+            />
+          </div>
+          <div>
+            <input
+              type="password"
+              value={confirmPasscode}
+              onChange={(e) => setConfirmPasscode(e.target.value)}
+              placeholder={KEY_2_CONFIRM_PLACEHOLDER}
+              autoComplete="new-password"
+              className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md"
+              required
+            />
+          </div>
           {error ? <p className="text-sm text-red-500">{error}</p> : null}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-border rounded">
