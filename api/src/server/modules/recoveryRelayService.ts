@@ -13,7 +13,8 @@ import {
 } from '@par-noir/recovery-crypto';
 import { getDatabasePool } from '../utils/database';
 
-export type RecoveryRequestType = 'identity_recovery' | 'device_registry_reset';
+/** key_recovery: recovery key + Drive proof + wait; no custodians (pN with no custodian epoch). */
+export type RecoveryRequestType = 'identity_recovery' | 'device_registry_reset' | 'key_recovery';
 export type RecoveryRequestStatus =
   | 'pending'
   | 'ready'
@@ -97,7 +98,7 @@ export interface RecoveryRelayStore {
   insertRequest(row: RecoveryRequestRow): Promise<void>;
   updateRequest(
     requestId: string,
-    patch: Partial<Pick<RecoveryRequestRow, 'status' | 'approvals'>>
+    patch: Partial<Pick<RecoveryRequestRow, 'status' | 'approvals' | 'releaseAfter'>>
   ): Promise<void>;
   listRequestsForOwner(ownerHash: string): Promise<RecoveryRequestRow[]>;
   /** Replaces any unacked custody delivery for the same owner + custodian. */
@@ -278,10 +279,14 @@ export function releaseBlockReason(
   now = Date.now()
 ): ReleaseBlock | null {
   if (!request) return 'request_not_found';
-  if (request.requestType !== 'identity_recovery') return 'wrong_request_type';
+  if (request.requestType !== 'identity_recovery' && request.requestType !== 'key_recovery') {
+    return 'wrong_request_type';
+  }
   if (request.status === 'cancelled') return 'request_cancelled';
   if (request.status === 'expired' || isRequestExpired(request, now)) return 'request_expired';
-  if (!quorum?.ready || (request.status !== 'ready' && request.status !== 'released')) {
+  if (request.requestType === 'key_recovery') {
+    if (request.status !== 'pending' && request.status !== 'ready') return 'request_not_ready';
+  } else if (!quorum?.ready || (request.status !== 'ready' && request.status !== 'released')) {
     return 'request_not_ready';
   }
   if (Date.parse(request.releaseAfter) > now) return 'release_delay_active';
@@ -574,6 +579,10 @@ export const pgRecoveryRelayStore: RecoveryRelayStore = {
     if (patch.approvals !== undefined) {
       values.push(JSON.stringify(patch.approvals));
       sets.push(`approvals_json = $${values.length}`);
+    }
+    if (patch.releaseAfter !== undefined) {
+      values.push(patch.releaseAfter);
+      sets.push(`release_after = $${values.length}`);
     }
     if (sets.length === 0) return;
     await getDatabasePool().query(

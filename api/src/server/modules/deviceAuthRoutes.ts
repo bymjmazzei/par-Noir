@@ -301,7 +301,8 @@ export function registerDeviceAuthRoutes(app: Application): void {
   });
 
   /**
-   * Finalize Shamir device_registry_reset after custodian quorum (request status ready).
+   * Finalize a device registry reset: a device_registry_reset after custodian quorum, or a
+   * released key_recovery (the owner recovered with their key and lost their keyed devices).
    */
   app.post('/api/devices/registry/reset/finalize', async (req: Request, res: Response) => {
     try {
@@ -320,16 +321,24 @@ export function registerDeviceAuthRoutes(app: Application): void {
       if (!found || found.ownerHash !== recoveryOwnerHash(pn)) {
         return res.status(404).json({ error: 'request_not_found' });
       }
-      if (found.requestType !== 'device_registry_reset') {
-        return res.status(400).json({ error: 'wrong_request_type' });
-      }
       const row = await refreshRequestExpiry(store, found);
-      const quorum = evaluateRequestQuorum(row, await store.listCustodians(row.ownerHash));
-      if (row.status !== 'ready' || !quorum.ready) {
-        return res.status(403).json({
-          error: 'quorum_not_met',
-          error_description: 'Custodian quorum not reached for this device registry reset.',
-        });
+      if (found.requestType === 'key_recovery') {
+        if (row.status !== 'released') {
+          return res.status(403).json({
+            error: 'recovery_not_released',
+            error_description: 'Finish key recovery before resetting keyed devices.',
+          });
+        }
+      } else if (found.requestType === 'device_registry_reset') {
+        const quorum = evaluateRequestQuorum(row, await store.listCustodians(row.ownerHash));
+        if (row.status !== 'ready' || !quorum.ready) {
+          return res.status(403).json({
+            error: 'quorum_not_met',
+            error_description: 'Custodian quorum not reached for this device registry reset.',
+          });
+        }
+      } else {
+        return res.status(400).json({ error: 'wrong_request_type' });
       }
 
       const bundle = await storageBundle(pn, req);

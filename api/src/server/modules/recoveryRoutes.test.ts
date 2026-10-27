@@ -8,7 +8,10 @@ import type { Request, Response } from 'express';
 jest.mock('./deviceCapabilityService', () => ({
   gateOwnerRoute: jest.fn(async (req: { headers: Record<string, string> }) => ({
     pnIdentifier: req.headers['x-test-pn'],
+    isKeyed: req.headers['x-test-keyed'] === '1',
   })),
+  gateRecoverySetup: jest.fn(async () => ({ isKeyed: false })),
+  RECOVERY_SETUP_CHALLENGE_CLIENT_ID: 'recovery-setup',
   assertDeviceCapability: jest.fn(async () => ({ ok: true })),
   getBearerPnIdentifier: jest.fn((req: { headers: Record<string, string> }) => req.headers['x-test-pn'] ?? null),
   DEVICE_CAPABILITIES: new Proxy({}, { get: (_t, p) => String(p) }),
@@ -33,11 +36,16 @@ jest.mock('./recoveryZkService', () => ({
 }));
 
 const resolveRecoveryFailsafe = jest.fn();
+const upsertRecoveryFailsafe = jest.fn();
+const clearKeyEnvelope = jest.fn();
+const consumeKeyEnvelope = jest.fn();
 jest.mock('./recoveryFailsafeService', () => ({
   resolveRecoveryFailsafe: (...args: unknown[]) => resolveRecoveryFailsafe(...args),
   getFailsafeStatus: jest.fn(),
-  upsertRecoveryFailsafe: jest.fn(),
+  upsertRecoveryFailsafe: (...args: unknown[]) => upsertRecoveryFailsafe(...args),
   upsertRecoveryEnvelopeOnly: jest.fn(),
+  clearKeyEnvelope: (...args: unknown[]) => clearKeyEnvelope(...args),
+  consumeKeyEnvelope: (...args: unknown[]) => consumeKeyEnvelope(...args),
 }));
 
 jest.mock('@par-noir/pqc-crypto/oauth-unlock-proof', () => ({
@@ -90,7 +98,7 @@ let store: ReturnType<typeof createMemoryRecoveryRelayStore>;
 async function call(
   method: 'GET' | 'POST',
   route: string,
-  opts: { pn?: string; body?: unknown; params?: Record<string, string> } = {}
+  opts: { pn?: string; keyed?: boolean; body?: unknown; params?: Record<string, string> } = {}
 ): Promise<{ status: number; body: Record<string, any> }> {
   const h = handlers.get(`${method} ${route}`);
   if (!h) throw new Error(`${method} ${route} not registered`);
@@ -106,10 +114,10 @@ async function call(
       return res;
     },
   };
-  await h(
-    { headers: opts.pn ? { 'x-test-pn': opts.pn } : {}, body: opts.body ?? {}, params: opts.params ?? {} } as never,
-    res as never
-  );
+  const headers: Record<string, string> = {};
+  if (opts.pn) headers['x-test-pn'] = opts.pn;
+  if (opts.keyed) headers['x-test-keyed'] = '1';
+  await h({ headers, body: opts.body ?? {}, params: opts.params ?? {} } as never, res as never);
   return { status, body };
 }
 
@@ -209,12 +217,148 @@ beforeEach(async () => {
     }
     return null;
   });
-  await setupCustody();
 });
 
 afterAll(() => setRecoveryRelayStoreForTests(null));
 
+describe('key-only recovery', () => {
+  const KEY_ENVELOPE = { version: 1, kind: 'recovery-key', salt: 's', iv: 'i', ciphertext: 'c' };
+  let keyLive: boolean;
+
+  beforeEach(() => {
+    keyLive = true;
+    consumeKeyEnvelope.mockImplementation(async () => {
+      keyLive = false;
+    });
+    resolveRecoveryFailsafe.mockImplementation(async ({ keyHash }: { keyHash: string }) =>
+      keyHash === 'good-key' && keyLive
+        ? {
+            pnIdentifier: OWNER,
+            publicKey: OWNER_PK,
+            envelope: null,
+            keyEnvelope: KEY_ENVELOPE,
+            driveProofDigest: recoveryDriveProofDigest(sha256Hex(DRIVE_PROOF)),
+          }
+        : null
+    );
+  });
+
+  const release = (requestId: string) =>
+    call('POST', '/api/recovery/requests/:requestId/release', {
+      params: { requestId },
+      body: { keyHash: 'good-key', driveProof: DRIVE_PROOF },
+    });
+
+  it('registers a key envelope only while no custodians are set up', async () => {
+    const body = {
+      userPnIdentifier: OWNER,
+      publicKey: OWNER_PK,
+      keyHash: 'good-key',
+      keyEnvelope: KEY_ENVELOPE,
+      driveProofHash: sha256Hex(DRIVE_PROOF),
+    };
+    const ok = await call('POST', '/api/recovery/failsafe/register', { pn: OWNER, body });
+    expect(ok.status).toBe(200);
+    expect(upsertRecoveryFailsafe).toHaveBeenCalledWith(
+      expect.objectContaining({ keyEnvelope: KEY_ENVELOPE, envelope: null })
+    );
+
+    const bad = await call('POST', '/api/recovery/failsafe/register', {
+      pn: OWNER,
+      body: { ...body, keyEnvelope: { version: 1, kind: 'other' } },
+    });
+    expect(bad.body.error).toBe('invalid_key_envelope');
+
+    await setupCustody();
+    const blocked = await call('POST', '/api/recovery/failsafe/register', { pn: OWNER, body });
+    expect(blocked).toEqual({ status: 409, body: { error: 'custodians_configured' } });
+  });
+
+  it('waits out the delay unless a keyed device approves, then releases the key envelope once', async () => {
+    const start = await call('POST', '/api/recovery/failsafe/start', {
+      body: { keyHash: 'good-key', temporaryPublicKey: TEMP_PK },
+    });
+    expect(start.body).toEqual(expect.objectContaining({ mode: 'key_only', threshold: 0 }));
+    expect(start.body.envelope).toBeUndefined();
+    expect(emitNewNotification).toHaveBeenCalledWith(OWNER, 'recovery_request');
+    const requestId = start.body.requestId as string;
+    expect(store.requests.get(requestId)!.requestType).toBe('key_recovery');
+
+    const early = await release(requestId);
+    expect(early.body.error).toBe('release_delay_active');
+
+    const listed = await call('GET', '/api/recovery/owner/requests', { pn: OWNER });
+    expect(listed.body.requests[0]).toEqual(
+      expect.objectContaining({ requestId, requestType: 'key_recovery', status: 'pending' })
+    );
+
+    const unkeyed = await call('POST', '/api/recovery/owner/requests/:requestId/approve', {
+      pn: OWNER,
+      params: { requestId },
+    });
+    expect(unkeyed.status).toBe(403);
+    expect(unkeyed.body.error).toBe('device_key_required');
+
+    const approved = await call('POST', '/api/recovery/owner/requests/:requestId/approve', {
+      pn: OWNER,
+      keyed: true,
+      params: { requestId },
+    });
+    expect(approved.body.status).toBe('ready');
+
+    const released = await release(requestId);
+    expect(released.status).toBe(200);
+    expect(released.body).toEqual(
+      expect.objectContaining({ mode: 'key_only', publicKey: OWNER_PK, keyEnvelope: KEY_ENVELOPE })
+    );
+    expect(released.body.shares).toBeUndefined();
+    expect(consumeKeyEnvelope).toHaveBeenCalledWith(OWNER);
+    expect(store.requests.get(requestId)!.status).toBe('released');
+
+    const again = await release(requestId);
+    expect(again).toEqual({ status: 403, body: { error: 'invalid_recovery_key' } });
+  });
+
+  it('releases after the 24h wait without approval', async () => {
+    const start = await call('POST', '/api/recovery/failsafe/start', {
+      body: { keyHash: 'good-key', temporaryPublicKey: TEMP_PK },
+    });
+    const requestId = start.body.requestId as string;
+    const wait = Date.parse(start.body.releaseAfter) - Date.now();
+    expect(wait).toBeGreaterThan(23 * 60 * 60 * 1000);
+    skipReleaseDelay(requestId);
+    expect((await release(requestId)).body.keyEnvelope).toEqual(KEY_ENVELOPE);
+  });
+
+  it('owner cancel blocks release', async () => {
+    const start = await call('POST', '/api/recovery/failsafe/start', {
+      body: { keyHash: 'good-key', temporaryPublicKey: TEMP_PK },
+    });
+    const requestId = start.body.requestId as string;
+    await call('POST', '/api/recovery/owner/requests/:requestId/cancel', { pn: OWNER, params: { requestId } });
+    skipReleaseDelay(requestId);
+    expect((await release(requestId)).body.error).toBe('request_cancelled');
+    expect(consumeKeyEnvelope).not.toHaveBeenCalled();
+  });
+
+  it('custodian setup clears the key envelope and cancels key recovery', async () => {
+    const start = await call('POST', '/api/recovery/failsafe/start', {
+      body: { keyHash: 'good-key', temporaryPublicKey: TEMP_PK },
+    });
+    await call('POST', '/api/recovery/owner/epoch', {
+      pn: OWNER,
+      body: { ownerPublicKey: OWNER_PK, threshold: 2, totalShares: 3 },
+    });
+    expect(clearKeyEnvelope).toHaveBeenCalledWith(OWNER);
+    expect(store.requests.get(start.body.requestId)!.status).toBe('cancelled');
+  });
+});
+
 describe('custodian-held recovery', () => {
+  beforeEach(async () => {
+    await setupCustody();
+  });
+
   it('releases sealed shares after quorum with the protected custodian, delay, key and Drive proof', async () => {
     const requestId = await startRecovery();
     expect(requestId).toBe(sha256Hex(TEMP_PK));

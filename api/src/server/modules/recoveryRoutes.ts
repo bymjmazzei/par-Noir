@@ -32,7 +32,7 @@ import {
   type RecoveryRequestRow,
 } from './recoveryRelayService';
 import { verifyCustodianshipCredential, verifyRecoveryApprovalPayload } from './recoveryZkService';
-import { resolveRecoveryFailsafe } from './recoveryFailsafeService';
+import { clearKeyEnvelope, consumeKeyEnvelope, resolveRecoveryFailsafe } from './recoveryFailsafeService';
 import { safeLogger } from '../../utils/logger';
 
 function serverError(res: Response, tag: string, error: unknown): Response {
@@ -135,11 +135,13 @@ export function registerRecoveryRoutes(app: Application): void {
       });
       if (existing && rotate === true) {
         await store.deleteCustodyDeliveriesForOwner(ownerHash);
-        const requests = await store.listRequestsForOwner(ownerHash);
-        for (const r of requests) {
-          if (ACTIVE_REQUEST_STATUSES.includes(r.status)) {
-            await store.updateRequest(r.requestId, { status: 'cancelled' });
-          }
+      }
+      // Custodian setup makes recovery custodian-only: the key no longer opens anything alone.
+      await clearKeyEnvelope(ctx.pnIdentifier);
+      for (const r of await store.listRequestsForOwner(ownerHash)) {
+        const cancel = r.requestType === 'key_recovery' || (existing && rotate === true);
+        if (cancel && ACTIVE_REQUEST_STATUSES.includes(r.status)) {
+          await store.updateRequest(r.requestId, { status: 'cancelled' });
         }
       }
       return res.json({ success: true, epoch, threshold: split.threshold, totalShares: split.totalShares });
@@ -358,6 +360,32 @@ export function registerRecoveryRoutes(app: Application): void {
     }
   });
 
+  /** Keyed device approves a key-only recovery so it can finish now instead of after the wait. */
+  app.post('/api/recovery/owner/requests/:requestId/approve', async (req: Request, res: Response) => {
+    try {
+      const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.recoveryInitiate);
+      if (!ctx) return;
+      if (!ctx.isKeyed) {
+        return res.status(403).json({ error: 'device_key_required', reason: 'keyed_device_required' });
+      }
+      const store = getRecoveryRelayStore();
+      const found = await store.getRequest(req.params.requestId);
+      if (!found || found.ownerHash !== recoveryOwnerHash(ctx.pnIdentifier)) {
+        return res.status(404).json({ error: 'request_not_found' });
+      }
+      if (found.requestType !== 'key_recovery') return res.status(409).json({ error: 'wrong_request_type' });
+      const request = await refreshRequestExpiry(store, found);
+      if (request.status !== 'pending' && request.status !== 'ready') {
+        return res.status(409).json({ error: 'request_not_active', status: request.status });
+      }
+      const releaseAfter = new Date().toISOString();
+      await store.updateRequest(request.requestId, { status: 'ready', releaseAfter });
+      return res.json({ success: true, status: 'ready', releaseAfter });
+    } catch (error) {
+      return serverError(res, 'owner approve request', error);
+    }
+  });
+
   /** Owner (unlocked, possibly unkeyed) asks custodians to approve wiping keyed devices. */
   app.post('/api/recovery/owner/device-reset', async (req: Request, res: Response) => {
     try {
@@ -501,7 +529,7 @@ export function registerRecoveryRoutes(app: Application): void {
         for (const raw of await store.listRequestsForOwner(c.ownerHash)) {
           const r = await refreshRequestExpiry(store, raw, now);
           if (r.status !== 'pending' && r.status !== 'ready') continue;
-          if (r.epoch !== c.custodyEpoch) continue;
+          if (r.requestType === 'key_recovery' || r.epoch !== c.custodyEpoch) continue;
           if (r.approvals.some((a) => a.custodianId === c.custodianId)) continue;
           out.push({
             ...requestSummary(r, all),
@@ -532,6 +560,7 @@ export function registerRecoveryRoutes(app: Application): void {
       const store = getRecoveryRelayStore();
       const found = await store.getRequest(req.params.requestId);
       if (!found) return res.status(404).json({ error: 'request_not_found' });
+      if (found.requestType === 'key_recovery') return res.status(409).json({ error: 'wrong_request_type' });
       const request = await refreshRequestExpiry(store, found);
       if (request.status !== 'pending' && request.status !== 'ready') {
         return res.status(409).json({ error: 'request_not_active', status: request.status });
@@ -652,6 +681,19 @@ export function registerRecoveryRoutes(app: Application): void {
           error: block,
           releaseAfter: request.releaseAfter,
           approvalCount: quorum.approvalCount,
+        });
+      }
+
+      if (request.requestType === 'key_recovery') {
+        if (!failsafe.keyEnvelope) return res.status(409).json({ error: 'key_recovery_unavailable' });
+        await store.updateRequest(request.requestId, { status: 'released' });
+        await consumeKeyEnvelope(failsafe.pnIdentifier);
+        return res.json({
+          success: true,
+          mode: 'key_only',
+          pnIdentifier: failsafe.pnIdentifier,
+          publicKey: failsafe.publicKey,
+          keyEnvelope: failsafe.keyEnvelope,
         });
       }
 

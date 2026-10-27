@@ -154,6 +154,20 @@ describe('device registry reset finalize', () => {
     expect(resetDeviceRegistry).not.toHaveBeenCalled();
   });
 
+  it('resets after a released key recovery, once', async () => {
+    const keyRecovery = { requestType: 'key_recovery' as const, threshold: 0, epoch: 0, approvals: [] };
+    await store.insertRequest(request({ ...keyRecovery, status: 'pending' }));
+    expect((await finalize('device-reset-1')).status).toHaveBeenCalledWith(403);
+    expect(resetDeviceRegistry).not.toHaveBeenCalled();
+
+    await store.updateRequest('device-reset-1', { status: 'released' });
+    const res = await finalize('device-reset-1');
+    expect(res.json).toHaveBeenCalledWith({ success: true, revoked: 2 });
+    expect(store.requests.get('device-reset-1')!.status).toBe('completed');
+    expect((await finalize('device-reset-1')).status).toHaveBeenCalledWith(403);
+    expect(resetDeviceRegistry).toHaveBeenCalledTimes(1);
+  });
+
   it("does not finalize another owner's request", async () => {
     await store.insertRequest(request({ ownerHash: recoveryOwnerHash('pn-someone') }));
     const res = await finalize('device-reset-1');
