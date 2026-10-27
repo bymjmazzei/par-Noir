@@ -10,12 +10,12 @@ export class AgeZKPCheckService {
   /**
    * Check if user has age_attestation ZKP data point
    * @param identityId - The identity ID to check
-   * @param passcode - The passcode to decrypt metadata
+   * @param key2 - The Key 2 to decrypt metadata
    * @returns Promise<boolean> - True if age ZKP exists and is valid
    */
   static async checkAgeZKPExists(
     identityId: string,
-    passcode: string
+    key2: string
   ): Promise<boolean> {
     try {
       // Load metadata for the identity
@@ -24,8 +24,8 @@ export class AgeZKPCheckService {
         return false;
       }
       
-      // Get the username/pnName from identity (we need to pass it)
-      // For now, we'll try to decrypt with just the passcode
+      // Get Key 1 from identity (we need to pass it)
+      // For now, we'll try to decrypt with just the Key 2
       // This is a simplified check - in production, we'd need the full identity context
       
       // Check if age_attestation exists in metadata

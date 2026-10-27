@@ -27,14 +27,14 @@ export function UnlockFromUsbModal({
   onUnlock,
   onError,
 }: UnlockFromUsbModalProps) {
-  const [step, setStep] = useState<'key' | 'passcode' | 'payload' | 'credentials'>('key');
+  const [step, setStep] = useState<'key' | 'drivePassphrase' | 'payload' | 'credentials'>('key');
   const [keyFileContent, setKeyFileContent] = useState<string | null>(null);
   const [payloadContent, setPayloadContent] = useState<string | null>(null);
   const [uid, setUid] = useState<string | null>(null);
   const [boundPnBlob, setBoundPnBlob] = useState<string | null>(null);
-  const [drivePasscode, setDrivePasscode] = useState('');
-  const [pnName, setPnName] = useState('');
-  const [passcode, setPasscode] = useState('');
+  const [drivePassphrase, setDrivePassphrase] = useState('');
+  const [key1, setKey1] = useState('');
+  const [key2, setKey2] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const keyInputRef = useRef<HTMLInputElement>(null);
@@ -46,9 +46,9 @@ export function UnlockFromUsbModal({
     setPayloadContent(null);
     setUid(null);
     setBoundPnBlob(null);
-    setDrivePasscode('');
-    setPnName('');
-    setPasscode('');
+    setDrivePassphrase('');
+    setKey1('');
+    setKey2('');
     setError(null);
     setLoading(false);
     onClose();
@@ -61,7 +61,7 @@ export function UnlockFromUsbModal({
     try {
       const content = await file.text();
       setKeyFileContent(content);
-      setStep('passcode');
+      setStep('drivePassphrase');
     } catch (err: any) {
       setError(err.message || 'Failed to read key file');
     }
@@ -84,8 +84,8 @@ export function UnlockFromUsbModal({
 
   const handleDecryptKeyOrLegacy = async () => {
     setError(null);
-    if (!drivePasscode || drivePasscode.length < 6) {
-      setError('Drive passcode must be at least 6 characters');
+    if (!drivePassphrase || drivePassphrase.length < 6) {
+      setError('Drive passphrase must be at least 6 characters');
       return;
     }
     if (!keyFileContent) {
@@ -95,17 +95,17 @@ export function UnlockFromUsbModal({
 
     setLoading(true);
     try {
-      const container = await decryptFromDrive(keyFileContent, drivePasscode);
+      const container = await decryptFromDrive(keyFileContent, drivePassphrase);
       setBoundPnBlob(container.boundPnBlob);
       setUid(container.uid);
       setStep('credentials');
     } catch {
       try {
-        const decryptedUid = await decryptUidFromDrive(keyFileContent, drivePasscode);
+        const decryptedUid = await decryptUidFromDrive(keyFileContent, drivePassphrase);
         setUid(decryptedUid);
         setStep('payload');
       } catch (err: any) {
-        setError(err.message || 'Invalid key file or drive passcode');
+        setError(err.message || 'Invalid key file or drive passphrase');
       }
     } finally {
       setLoading(false);
@@ -114,7 +114,7 @@ export function UnlockFromUsbModal({
 
   const handleUnlock = async () => {
     setError(null);
-    if (!pnName || !passcode) {
+    if (!key1 || !key2) {
       setError('Please enter Key 1 and Key 2');
       return;
     }
@@ -145,8 +145,8 @@ export function UnlockFromUsbModal({
 
       const plaintext = await IdentityCrypto.decryptDataWithBinding(
         encryptedData,
-        pnName,
-        passcode,
+        key1,
+        key2,
         currentUid
       );
 
@@ -159,8 +159,8 @@ export function UnlockFromUsbModal({
       const authSession = await IdentityCrypto.buildAuthSessionFromDecrypted(
         identity,
         publicKey,
-        pnName,
-        passcode
+        key1,
+        key2
       );
 
       const identityForStorage = {
@@ -226,18 +226,18 @@ export function UnlockFromUsbModal({
           </div>
         )}
 
-        {step === 'passcode' && (
+        {step === 'drivePassphrase' && (
           <div className="space-y-4">
             <p className="text-sm text-text-secondary">
-              Enter the drive passcode you set when exporting.
+              Enter the drive passphrase you set when exporting.
             </p>
             <div>
-              <label className="block text-sm font-medium mb-2">Drive passcode</label>
+              <label className="block text-sm font-medium mb-2">Drive passphrase</label>
               <input
                 type="password"
-                value={drivePasscode}
-                onChange={(e) => setDrivePasscode(e.target.value)}
-                placeholder="Drive passcode"
+                value={drivePassphrase}
+                onChange={(e) => setDrivePassphrase(e.target.value)}
+                placeholder="Drive passphrase"
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>
@@ -252,7 +252,7 @@ export function UnlockFromUsbModal({
               type="button"
               onClick={() => {
                 setStep('key');
-                setDrivePasscode('');
+                setDrivePassphrase('');
                 setKeyFileContent(null);
                 setError(null);
               }}
@@ -286,7 +286,7 @@ export function UnlockFromUsbModal({
             <button
               type="button"
               onClick={() => {
-                setStep('passcode');
+                setStep('drivePassphrase');
                 setPayloadContent(null);
                 setError(null);
               }}

@@ -54,14 +54,14 @@ export async function loadIdentityRecoveryKeys(
   publicKey?: string | null
 ): Promise<RecoveryKeyPair> {
   const creds = SecureCredentialManager.getCredentials(identityId);
-  if (!creds?.pnName || !creds.passcode) {
+  if (!creds?.key1 || !creds.key2) {
     throw new Error('Unlock your pN to act as a custodian.');
   }
   const secretKey = await resolveIdentityMlKemSecret({
     identityId,
     publicKey,
-    pnName: creds.pnName,
-    passcode: creds.passcode,
+    key1: creds.key1,
+    key2: creds.key2,
   });
   if (!secretKey) throw new Error('This pN has no encryption key for recovery shares.');
   return { publicKey: recoveryPublicKeyFromSecret(secretKey), secretKey };

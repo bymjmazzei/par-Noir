@@ -12,7 +12,6 @@ interface DesktopAuthEventPayload extends SecureVolumeIdentity {
 }
 
 interface DesktopLockEventPayload {
-  pnName?: string;
   publicKey?: string;
   pnIdentifier?: string;
 }
@@ -96,20 +95,14 @@ export const DesktopSecureFolderPanel: React.FC = () => {
         return;
       }
 
-      // SECURITY: Get pnName from SecureCredentialManager if not in payload (secrets)
-      // The payload may come from FileStorageAggregator which includes pnName from SecureCredentialManager
-      // But we should verify it's available and not store it unnecessarily
       const context: SecureVolumeUnlockPayload = {
-        pnName: payload.pnName, // This comes from SecureCredentialManager via FileStorageAggregator
         publicKey: payload.publicKey,
         pnIdentifier: payload.pnIdentifier,
         authToken: payload.authToken.trim(),
       };
 
       contextRef.current = context;
-      // SECURITY: Store minimal identity info (pnName is needed for desktop unlock)
-      // Note: pnName in payload comes from SecureCredentialManager, not from session
-      setIdentity({ pnName: payload.pnName, publicKey: payload.publicKey, pnIdentifier: payload.pnIdentifier });
+      setIdentity({ publicKey: payload.publicKey, pnIdentifier: payload.pnIdentifier });
 
       await unlockWithContext(context);
     },
@@ -123,7 +116,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   React.useEffect(() => {
     const listener = (event: Event) => {
       const custom = event as CustomEvent<DesktopAuthEventPayload>;
-      if (custom.detail?.pnName && custom.detail.publicKey) {
+      if (custom.detail?.publicKey) {
         void handleUnlock(custom.detail);
       }
     };
@@ -226,7 +219,6 @@ export const DesktopSecureFolderPanel: React.FC = () => {
           setIdentity(
             detail
               ? {
-                  pnName: detail.pnName ?? '',
                   publicKey: detail.publicKey ?? '',
                   pnIdentifier: detail.pnIdentifier,
                 }

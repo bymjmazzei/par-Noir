@@ -10,7 +10,7 @@ interface CustodianInvitationModalProps {
     contactType: 'email' | 'phone';
     contactValue: string;
     type: 'person' | 'service' | 'self';
-    passcode: string;
+    acceptanceCode: string;
   };
   setSelectedCustodianForInvitation: (custodian: any) => void;
   custodianQRCode: string;
@@ -20,7 +20,7 @@ interface CustodianInvitationModalProps {
     contactType: 'email' | 'phone';
     contactValue: string;
     type: 'person' | 'service' | 'self';
-    passcode: string;
+    acceptanceCode: string;
   };
   setCustodianContactInfo: (info: any) => void;
   onGenerateCustodianQRCode: (custodianData: any) => Promise<void>;
@@ -49,7 +49,7 @@ export function CustodianInvitationModal({
       contactType: 'email',
       contactValue: '',
       type: 'person',
-      passcode: ''
+      acceptanceCode: ''
     });
     onClose();
   };
@@ -120,7 +120,7 @@ export function CustodianInvitationModal({
                     contactType: selectedCustodianForInvitation.contactType,
                     contactValue: selectedCustodianForInvitation.contactValue,
                     type: selectedCustodianForInvitation.type,
-                    passcode: selectedCustodianForInvitation.passcode || ''
+                    acceptanceCode: selectedCustodianForInvitation.acceptanceCode || ''
                   };
                   await onGenerateCustodianQRCode(custodianData);
                 }}
@@ -180,7 +180,7 @@ export function CustodianInvitationModal({
                       contactType: selectedCustodianForInvitation.contactType,
                       contactValue: selectedCustodianForInvitation.contactValue,
                       type: selectedCustodianForInvitation.type,
-                      passcode: selectedCustodianForInvitation.passcode || ''
+                      acceptanceCode: selectedCustodianForInvitation.acceptanceCode || ''
                     };
                     await onGenerateCustodianQRCode(custodianData);
                   }}

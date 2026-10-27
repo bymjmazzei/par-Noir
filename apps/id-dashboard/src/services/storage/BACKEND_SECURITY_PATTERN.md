@@ -9,7 +9,7 @@ All storage backends (Google Drive, Firebase, GitHub, etc.) must follow this sec
 - **NEVER** store credentials in plaintext `localStorage` or `sessionStorage`
 - **ALWAYS** use `IntegrationCredentialManager` for credential storage
 - Credentials are encrypted using AES-GCM 256-bit encryption
-- Encryption key is derived from user's `pnName + passcode`
+- Encryption key is derived from user's `key1 + key2`
 
 ### 2. Backend Implementation Pattern
 

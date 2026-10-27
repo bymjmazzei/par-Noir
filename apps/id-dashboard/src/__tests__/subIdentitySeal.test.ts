@@ -22,7 +22,7 @@ import {
 
 describe('subIdentitySeal', () => {
   it('round-trips payload with passphrase', async () => {
-    const plain = JSON.stringify({ pnName: 'x', passcode: 'y', k: 1 });
+    const plain = JSON.stringify({ key1: 'x', key2: 'y', k: 1 });
     const sealed = await sealSubExportPayload(plain, 'test-passphrase-123');
     const out = await unsealSubExportPayload(sealed, 'test-passphrase-123');
     expect(out).toBe(plain);
@@ -34,12 +34,12 @@ describe('subIdentitySeal', () => {
   });
 
   it('export file carries only the sealed blob, never factors in plain text', async () => {
-    const plain = JSON.stringify({ pnName: 'sub-name-xyz', passcode: 'sub-pass-xyz', encryptedIdentity: {} });
+    const plain = JSON.stringify({ key1: 'sub-name-xyz', key2: 'sub-pass-xyz', encryptedIdentity: {} });
     const sealed = await sealSubExportPayload(plain, 'pass-123');
     const file = buildSealedSubExportFile('asset-1', sealed);
     expect(file).not.toContain('sub-name-xyz');
     expect(file).not.toContain('sub-pass-xyz');
-    expect(file).not.toMatch(/"pnName"|"passcode"/);
+    expect(file).not.toMatch(/"key1"|"key2"/);
     const parsed = JSON.parse(file) as { type: string; sealed: unknown };
     expect(parsed.type).toBe('par-noir-sub-identity-sealed');
     expect(await unsealSubExportPayload(JSON.stringify(parsed.sealed), 'pass-123')).toBe(plain);

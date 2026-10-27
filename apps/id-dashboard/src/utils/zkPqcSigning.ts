@@ -4,7 +4,7 @@ import { IdentityCrypto } from '@par-noir/identity-crypto';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 /**
- * Load ML-DSA-65 key material from an encrypted identity using in-memory pnName/passcode.
+ * Load ML-DSA-65 key material from an encrypted identity using in-memory Key 1/Key 2.
  * Used only for ZKP v1 envelope signing (dashboard).
  */
 export async function loadMlDsaKeypairForZk(
@@ -12,7 +12,7 @@ export async function loadMlDsaKeypairForZk(
   encryptedIdentity: EncryptedIdentity
 ): Promise<{ mlDsaSecretKey: Uint8Array; mlDsaPublicKey: Uint8Array }> {
   const creds = SecureCredentialManager.getCredentials(identityId);
-  if (!creds?.pnName || !creds.passcode) {
+  if (!creds?.key1 || !creds.key2) {
     throw new Error('Session credentials unavailable for ZKP signing.');
   }
   const raw = await IdentityCrypto.decryptData(
@@ -21,8 +21,8 @@ export async function loadMlDsaKeypairForZk(
       iv: encryptedIdentity.iv,
       salt: encryptedIdentity.salt,
     },
-    creds.pnName,
-    creds.passcode
+    creds.key1,
+    creds.key2
   );
   const identity = JSON.parse(raw) as { pqcSecrets?: { mlDsaSecretKey?: string } };
   const skB64 = identity.pqcSecrets?.mlDsaSecretKey;

@@ -19,7 +19,7 @@ export interface NameAttestationFields {
 
 export interface MintDerivedParams {
   identityId: string;
-  credentials: { pnName: string; passcode: string };
+  credentials: { key1: string; key2: string };
   authToken: string;
   publicKey?: string;
   encryptedIdentity: EncryptedIdentity;

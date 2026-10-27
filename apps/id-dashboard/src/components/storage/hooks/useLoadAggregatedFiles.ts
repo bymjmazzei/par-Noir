@@ -52,7 +52,7 @@ export interface UseLoadAggregatedFilesParams {
   driveReadBlocked: boolean;
   deviceGate: FileStorageAggregatorProps['deviceGate'];
   resolveOwnerApiToken: (wantedPn?: string | null) => string | null;
-  getPasscodeFromSecureStorage: (sessionId: string | null | undefined) => string | null;
+  getKey2FromSecureStorage: (sessionId: string | null | undefined) => string | null;
   makeShareTokenCacheKey: (backendId: string, backendFileId: string) => string;
   /** Shared refs owned by FileStorageAggregator / useDriveLayoutInit. */
   shareTokenCache: React.MutableRefObject<Map<string, ShareToken>>;
@@ -85,7 +85,7 @@ export function useLoadAggregatedFiles({
   driveReadBlocked,
   deviceGate,
   resolveOwnerApiToken,
-  getPasscodeFromSecureStorage,
+  getKey2FromSecureStorage,
   makeShareTokenCacheKey,
   shareTokenCache,
   pnIdentifierRef,
@@ -214,49 +214,48 @@ export function useLoadAggregatedFiles({
         const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
         
         // Get credentials (prioritize resolvedAuth, fallback to authenticatedUser + sessionStorage)
-        let pnName: string | null = null;
+        let key1: string | null = null;
         let publicKey: string | null = null;
         // SECURITY: Get credentials from SecureCredentialManager (secrets)
         const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
-        let passcode: string | null = credentials?.passcode || null;
+        let key2: string | null = credentials?.key2 || null;
         
-        // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
-        if (credentials?.pnName && resolvedAuth?.publicKey) {
-          pnName = credentials.pnName;
+        // SECURITY: Get Key 1 from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
+        if (credentials?.key1 && resolvedAuth?.publicKey) {
+          key1 = credentials.key1;
           publicKey = resolvedAuth.publicKey;
-          passcode = credentials.passcode;
+          key2 = credentials.key2;
         } else if (authenticatedUser && credentials) {
-          pnName = credentials.pnName;
+          key1 = credentials.key1;
           publicKey = authenticatedUser.publicKey || 
             (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
-          passcode = credentials.passcode;
+          key2 = credentials.key2;
           try {
-            // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+            // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
             const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-            passcode = getPasscodeFromSecureStorage(sessionId);
+            key2 = getKey2FromSecureStorage(sessionId);
           } catch (e) {
             // Ignore SecureCredentialManager errors
           }
         }
         
         // If still missing, try loading from SecureStorage
-        if ((!pnName || !publicKey || !passcode)) {
+        if ((!key1 || !publicKey || !key2)) {
           try {
             const { SecureStorage } = await import('../../../utils/storage');
             const storage = new SecureStorage();
             await storage.init();
             const session = await storage.getCurrentSession();
             if (session) {
-              if (!pnName) pnName = (session as any).pnName || (session as any).username || (session as any).name || null;
               if (!publicKey) publicKey = (session as any).publicKey || 
                 (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
-              if (!passcode) {
+              if (!key2) {
                 try {
-                  // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+                  // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
                   const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-                  passcode = getPasscodeFromSecureStorage(sessionId);
+                  key2 = getKey2FromSecureStorage(sessionId);
                 } catch (e) {
                   // Ignore
                 }

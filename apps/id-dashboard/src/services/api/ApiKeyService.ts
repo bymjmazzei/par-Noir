@@ -130,8 +130,8 @@ export class ApiKeyService {
             const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
             const decrypted = await SecureMetadataCrypto.decryptMetadata(
               metadata,
-              userCredentials.pnName,
-              userCredentials.passcode
+              userCredentials.key1,
+              userCredentials.key2
             );
             
             if (decrypted.apiKeys && decrypted.apiKeys[pnId]) {
@@ -256,8 +256,8 @@ export class ApiKeyService {
             try {
               const decrypted = await SecureMetadataCrypto.decryptMetadata(
                 currentMetadata,
-                userCredentials.pnName,
-                userCredentials.passcode
+                userCredentials.key1,
+                userCredentials.key2
               );
               apiKeys = decrypted.apiKeys || {};
             } catch (decryptError) {
@@ -271,8 +271,8 @@ export class ApiKeyService {
           // Store updated API keys in encrypted metadata
           await SecureMetadataStorage.updateMetadataField(
             apiKey.pnId,
-            userCredentials.pnName,
-            userCredentials.passcode,
+            userCredentials.key1,
+            userCredentials.key2,
             'apiKeys',
             apiKeys
           );

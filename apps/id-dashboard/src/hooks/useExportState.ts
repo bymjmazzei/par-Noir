@@ -10,9 +10,9 @@ export function useExportState() {
   const [showExportToNfcModal, setShowExportToNfcModal] = useState(false);
   const [identityForNfcExport, setIdentityForNfcExport] = useState<{ encryptedData: string; iv: string; salt: string; publicKey?: string } | null>(null);
   const [pendingExportAction, setPendingExportAction] = useState<'download' | 'usb' | 'nfc' | 'device-bound' | null>(null);
-  const [exportAuthData, setExportAuthData] = useState({ pnName: '', passcode: '' });
-  const [showExportPasscode, setShowExportPasscode] = useState(false);
-  const [showExportPnName, setShowExportPnName] = useState(false);
+  const [exportAuthData, setExportAuthData] = useState({ key1: '', key2: '' });
+  const [showExportKey2, setShowExportKey2] = useState(false);
+  const [showExportKey1, setShowExportKey1] = useState(false);
 
   // Transfer state
   const [showTransferReceiver, setShowTransferReceiver] = useState(false);
@@ -24,7 +24,7 @@ export function useExportState() {
   const [showDelegationModal, setShowDelegationModal] = useState(false);
   const [activeDelegations, setActiveDelegations] = useState([]);
   const [transferId, setTransferId] = useState('');
-  const [transferPasscode, setTransferPasscode] = useState('');
+  const [transferCode, setTransferCode] = useState('');
   const [transferCreated, setTransferCreated] = useState(false);
 
   return {
@@ -47,10 +47,10 @@ export function useExportState() {
     setPendingExportAction,
     exportAuthData,
     setExportAuthData,
-    showExportPasscode,
-    setShowExportPasscode,
-    showExportPnName,
-    setShowExportPnName,
+    showExportKey2,
+    setShowExportKey2,
+    showExportKey1,
+    setShowExportKey1,
 
     // Transfer state
     showTransferReceiver,
@@ -71,8 +71,8 @@ export function useExportState() {
     setActiveDelegations,
     transferId,
     setTransferId,
-    transferPasscode,
-    setTransferPasscode,
+    transferCode,
+    setTransferCode,
     transferCreated,
     setTransferCreated
   };

@@ -84,8 +84,8 @@ export function useCreateImportHandlers(params: UseCreateImportHandlersParams) {
         }
         const result = await authenticateDeviceBoundPn({
           envelope: backup,
-          pnName: importForm.pnName,
-          passcode: importForm.passcode,
+          key1: importForm.key1,
+          key2: importForm.key2,
           pnIdentifier: recoveryVaultPnId,
         });
         authSession = result.authSession;
@@ -98,8 +98,8 @@ export function useCreateImportHandlers(params: UseCreateImportHandlersParams) {
 
         authSession = await IdentityCrypto.authenticateIdentity(
           identityToImport,
-          importForm.passcode,
-          importForm.pnName
+          importForm.key2,
+          importForm.key1
         );
         importedIdentity = { ...identityToImport };
       }
@@ -132,8 +132,8 @@ export function useCreateImportHandlers(params: UseCreateImportHandlersParams) {
       
       // Reset form
       setImportForm({
-        pnName: '',
-        passcode: '',
+        key1: '',
+        key2: '',
         backupFile: null
       });
       setShowImportForm(false);

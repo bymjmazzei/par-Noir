@@ -118,25 +118,25 @@ export class InputValidator {
   }
 
   /**
-   * Validate Key 1 (internal: pnName) — same strength rules as Key 2.
+   * Validate Key 1 (internal: Key 1) — same strength rules as Key 2.
    */
-  static validatePNName(pnName: string): ValidationResult {
-    const errors = keyStrengthErrors(pnName, KEY_1_LABEL);
+  static validateKey1(key1: string): ValidationResult {
+    const errors = keyStrengthErrors(key1, KEY_1_LABEL);
     const warnings: string[] = [];
 
     return {
       isValid: errors.length === 0,
       errors,
       warnings,
-      sanitizedValue: pnName
+      sanitizedValue: key1
     };
   }
 
   /**
-   * Validate Key 2 (internal: passcode) strength
+   * Validate Key 2 (internal: Key 2) strength
    */
-  static validatePasscode(passcode: string): ValidationResult {
-    const errors = keyStrengthErrors(passcode, KEY_2_LABEL);
+  static validateKey2(key2: string): ValidationResult {
+    const errors = keyStrengthErrors(key2, KEY_2_LABEL);
     const warnings: string[] = [];
 
     // Check for common weak patterns
@@ -145,16 +145,16 @@ export class InputValidator {
       'monkey', 'dragon', 'master', 'football', 'baseball', 'shadow'
     ];
 
-    if (passcode && weakPatterns.some(pattern => passcode.toLowerCase().includes(pattern))) {
+    if (key2 && weakPatterns.some(pattern => key2.toLowerCase().includes(pattern))) {
       warnings.push('Key 2 contains common weak patterns');
     }
 
     const keyboardPatterns = ['qwerty', 'asdfgh', 'zxcvbn', '1234567890'];
-    if (passcode && keyboardPatterns.some(pattern => passcode.toLowerCase().includes(pattern))) {
+    if (key2 && keyboardPatterns.some(pattern => key2.toLowerCase().includes(pattern))) {
       warnings.push('Key 2 contains keyboard patterns');
     }
 
-    if (passcode && /(.)\1{3,}/.test(passcode)) {
+    if (key2 && /(.)\1{3,}/.test(key2)) {
       warnings.push('Key 2 contains repeated characters');
     }
 
@@ -162,7 +162,7 @@ export class InputValidator {
       isValid: errors.length === 0,
       errors,
       warnings,
-      sanitizedValue: passcode
+      sanitizedValue: key2
     };
   }
 
@@ -524,9 +524,9 @@ export class InputValidator {
    * Comprehensive validation for identity creation
    */
   static validateIdentityCreation(data: {
-    pnName: string;
+    key1: string;
     nickname: string;
-    passcode: string;
+    key2: string;
     email?: string;
     phone?: string;
   }): ValidationResult {
@@ -534,11 +534,11 @@ export class InputValidator {
     const warnings: string[] = [];
 
     // Validate required fields
-    const pnNameValidation = this.validatePNName(data.pnName);
-    if (!pnNameValidation.isValid) {
-      errors.push(...pnNameValidation.errors);
+    const key1Validation = this.validateKey1(data.key1);
+    if (!key1Validation.isValid) {
+      errors.push(...key1Validation.errors);
     }
-    warnings.push(...pnNameValidation.warnings);
+    warnings.push(...key1Validation.warnings);
 
     const nicknameValidation = this.validateNickname(data.nickname);
     if (!nicknameValidation.isValid) {
@@ -546,11 +546,11 @@ export class InputValidator {
     }
     warnings.push(...nicknameValidation.warnings);
 
-    const passcodeValidation = this.validatePasscode(data.passcode);
-    if (!passcodeValidation.isValid) {
-      errors.push(...passcodeValidation.errors);
+    const key2Validation = this.validateKey2(data.key2);
+    if (!key2Validation.isValid) {
+      errors.push(...key2Validation.errors);
     }
-    warnings.push(...passcodeValidation.warnings);
+    warnings.push(...key2Validation.warnings);
 
     // Validate optional fields
     if (data.email) {

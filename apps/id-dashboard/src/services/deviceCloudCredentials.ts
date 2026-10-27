@@ -98,8 +98,8 @@ export async function sealAndStoreCloudCredentials(opts: {
 }): Promise<SealedEnvelope | null> {
   const canonical: SealSession = {
     sessionId: 'pn-cloud-creds-v1',
-    pnName: opts.session.pnName,
-    passcode: opts.session.passcode
+    key1: opts.session.key1,
+    key2: opts.session.key2
   };
   if (!isNative()) {
     return persistCloudCredentials({
@@ -116,12 +116,12 @@ export async function sealAndStoreCloudCredentials(opts: {
   return envelope;
 }
 
-/** Publish ML-KEM-sealed cloud vault so OAuth first-party apps can hydrate without passcode. */
+/** Publish ML-KEM-sealed cloud vault so OAuth first-party apps can hydrate without Key 2. */
 export async function publishCloudVaultForIdentity(opts: {
   identityId: string;
   authToken: string;
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
   credentials: StorageCredentialsEnvelope;
   /** Optional storage public key when identityId is a pn- identifier */
   publicKey?: string | null;
@@ -129,13 +129,13 @@ export async function publishCloudVaultForIdentity(opts: {
 }): Promise<{ ok: boolean; error?: string }> {
   const { publishCloudCredentialsVault } = await import('@par-noir/device-cloud-credentials');
   let mlKemSecretKey = opts.mlKemSecretKey || null;
-  if (!mlKemSecretKey && opts.pnName && opts.passcode) {
+  if (!mlKemSecretKey && opts.key1 && opts.key2) {
     const { resolveIdentityMlKemSecret } = await import('./resolveIdentityMlKem');
     mlKemSecretKey = await resolveIdentityMlKemSecret({
       identityId: opts.identityId,
       publicKey: opts.publicKey,
-      pnName: opts.pnName,
-      passcode: opts.passcode
+      key1: opts.key1,
+      key2: opts.key2
     });
   }
   const result = await publishCloudCredentialsVault({
@@ -144,8 +144,8 @@ export async function publishCloudVaultForIdentity(opts: {
     pnIdentifier: opts.identityId,
     mlKemSecretKey,
     // Fallback seal if ML-KEM unavailable (dashboard-only hydrate)
-    pnName: opts.pnName,
-    passcode: opts.passcode,
+    key1: opts.key1,
+    key2: opts.key2,
     credentials: opts.credentials
   });
   if (!result.ok) {

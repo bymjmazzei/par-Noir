@@ -11,13 +11,13 @@ export async function resolveIdentityMlKemSecret(opts: {
   identityId: string;
   /** ML-DSA / storage public key when identityId is a pn- identifier */
   publicKey?: string | null;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
 }): Promise<string | null> {
   const payloads = await collectEncryptedPayloads(opts.identityId, opts.publicKey);
   for (const payload of payloads) {
     try {
-      const secrets = await unlockIdentityMlKemSecret(payload, opts.pnName, opts.passcode);
+      const secrets = await unlockIdentityMlKemSecret(payload, opts.key1, opts.key2);
       if (secrets.mlKemSecretKey) return secrets.mlKemSecretKey;
     } catch {
       /* try next candidate */

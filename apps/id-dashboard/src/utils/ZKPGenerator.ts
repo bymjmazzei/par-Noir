@@ -173,19 +173,19 @@ export class ZKPGenerator {
   static async proposeDataPoint(
     proposal: Omit<DataPointProposal, 'id' | 'proposedAt' | 'status' | 'votes'>,
     identityId: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<{ success: boolean; proposalId?: string; error?: string }> {
-    return DataPointProposalManager.proposeDataPoint(proposal, identityId, pnName, passcode);
+    return DataPointProposalManager.proposeDataPoint(proposal, identityId, key1, key2);
   }
 
   static async getPendingProposals(
     identityId: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<DataPointProposal[]> {
-    void pnName;
-    void passcode;
+    void key1;
+    void key2;
     const all = await DataPointProposalManager.getProposals(identityId);
     return all.filter((p) => p.status === 'pending');
   }

@@ -18,9 +18,9 @@ const ROOT = process.env.REPO_ROOT || resolve(scriptDir, '../../..');
 const OUT = resolve(ROOT, '.local/ux-playwright');
 mkdirSync(OUT, { recursive: true });
 
-let identityPath, PN_NAME, PASSCODE;
+let identityPath, KEY1, KEY2;
 try {
-  ({ identityPath, PN_NAME, PASSCODE } = loadTestPn(ROOT));
+  ({ identityPath, KEY1, KEY2 } = loadTestPn(ROOT));
 } catch (e) {
   console.error(e.message || e);
   process.exit(2);
@@ -100,8 +100,8 @@ async function fillConsentAndUnlock(popupOrPage, { expectClose = true } = {}) {
   await popupOrPage.waitForURL(/oauth\/consent|authorize/, { timeout: 45_000 });
   const fileInput = popupOrPage.locator('#identityFile, input[type="file"]').first();
   await fileInput.setInputFiles(identityPath);
-  await popupOrPage.getByPlaceholder('Enter Key 1').fill(PN_NAME);
-  await popupOrPage.getByPlaceholder('Enter Key 2').fill(PASSCODE);
+  await popupOrPage.getByPlaceholder('Enter Key 1').fill(KEY1);
+  await popupOrPage.getByPlaceholder('Enter Key 2').fill(KEY2);
   await popupOrPage.getByRole('button', { name: 'Unlock pN' }).click();
   const approve = popupOrPage.getByRole('button', { name: 'Approve' });
   try {
@@ -127,7 +127,7 @@ async function unlockViaPopup(page, unlockClick) {
 
 /**
  * Drive React controlled inputs. Playwright fill/pressSequentially can leave DOM values
- * while mainForm.pnName/passcode stay empty — submit then early-returns with no loading.
+ * while mainForm.Key 1/Key 2 stay empty — submit then early-returns with no loading.
  * Calls the React onChange prop directly (required for UnlockGate controlled fields).
  */
 async function fillReactControlled(page, placeholder, value) {
@@ -198,8 +198,8 @@ async function unlockDashboard(page, notes) {
       timeout: 15_000,
     });
 
-    await fillReactControlled(page, 'Enter Key 1', PN_NAME);
-    await fillReactControlled(page, 'Enter Key 2', PASSCODE);
+    await fillReactControlled(page, 'Enter Key 1', KEY1);
+    await fillReactControlled(page, 'Enter Key 2', KEY2);
     notes.push('reactProps onChange applied for Key 1/2');
 
     await page.getByRole('button', { name: 'Unlock pN' }).click();

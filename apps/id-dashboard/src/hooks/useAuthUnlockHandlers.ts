@@ -71,13 +71,13 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     logError
   } = params;
 
-  const deriveAuthToken = async (pnName: string | undefined, publicKey: string | undefined, passcode: string | undefined): Promise<string | null> => {
-    if (!pnName || !publicKey || !passcode) {
+  const deriveAuthToken = async (key1: string | undefined, publicKey: string | undefined, key2: string | undefined): Promise<string | null> => {
+    if (!key1 || !publicKey || !key2) {
       return null;
     }
     try {
       const encoder = new TextEncoder();
-      const data = encoder.encode(`${pnName}::${publicKey}::${passcode}`);
+      const data = encoder.encode(`${key1}::${publicKey}::${key2}`);
       const digest = await window.crypto.subtle.digest('SHA-256', data);
       return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
     } catch (error) {
@@ -89,19 +89,19 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
   const handleAuthSuccess = async (session: any) => {
     try {
       // SECURITY: Store credentials in memory only via SecureCredentialManager
-      // pnName + passcode = 2FA credentials - must remain secret
-      if (session.pnName && session.passcode) {
+      // Key 1 + Key 2 = 2FA credentials - must remain secret
+      if (session.key1 && session.key2) {
         const expiresIn = (session.expiresIn || 3600) * 1000; // Convert to milliseconds
         SecureCredentialManager.setCredentials(
           session.id,
-          session.pnName,
-          session.passcode,
+          session.key1,
+          session.key2,
           expiresIn
         );
       }
 
       // Store the session WITHOUT credentials
-      // SECURITY: Do not pass pnName, passcode, or authToken to storeSession
+      // SECURITY: Do not pass Key 1, Key 2, or authToken to storeSession
       await storage.storeSession({
         id: session.id,
         nickname: session.nickname,
@@ -110,11 +110,11 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
         authenticatedAt: session.authenticatedAt,
         publicKey: session.publicKey || '',
         // authToken removed - it's derived from credentials and should not be stored
-        // pnName and passcode removed - stored in SecureCredentialManager only
+        // Key 1 and Key 2 removed - stored in SecureCredentialManager only
       });
 
-      // SECURITY: Do NOT store passcode in sessionStorage - use SecureCredentialManager instead
-      // Removed: sessionStorage.setItem('pn_session_passcode', session.passcode);
+      // SECURITY: Do NOT store Key 2 in sessionStorage - use SecureCredentialManager instead
+      // Removed: sessionStorage.setItem('pn_session_key2', session.Key 2);
 
       // SECURITY: Do NOT expose credentials in custom events
         try {
@@ -126,9 +126,9 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
           }
           
           const authEventDetail = {
-          // pnName and passcode removed - use SecureCredentialManager if needed
+          // Key 1 and Key 2 removed - use SecureCredentialManager if needed
             publicKey: session.publicKey || session.id,
-            authToken: await deriveAuthToken(credentials.pnName, session.publicKey || session.id, credentials.passcode),
+            authToken: await deriveAuthToken(credentials.key1, session.publicKey || session.id, credentials.key2),
           };
           window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: authEventDetail }));
         } catch (eventError) {
@@ -139,13 +139,13 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
       // Credentials are stored in SecureCredentialManager, not in state
       setAuthenticatedUser({
         id: session.id,
-        // pnName removed - use SecureCredentialManager.getCredentials(session.id) if needed
+        // Key 1 removed - use SecureCredentialManager.getCredentials(session.id) if needed
         nickname: session.nickname,
         accessToken: session.accessToken,
         expiresIn: session.expiresIn,
         authenticatedAt: session.authenticatedAt,
         publicKey: session.publicKey || '',
-        // passcode removed - use SecureCredentialManager.getCredentials(session.id) if needed
+        // Key 2 removed - use SecureCredentialManager.getCredentials(session.id) if needed
         authToken: session.authToken || undefined,
       });
 
@@ -159,8 +159,8 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
               encryptedIdentity,
               publicKey: session.publicKey,
               did: session.id,
-              pnName: credentials.pnName,
-              passcode: credentials.passcode
+              key1: credentials.key1,
+              key2: credentials.key2
             });
             if (token) {
               try {
@@ -172,8 +172,8 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
                   authToken: token,
                   session: {
                     sessionId: session.id,
-                    pnName: credentials.pnName,
-                    passcode: credentials.passcode
+                    key1: credentials.key1,
+                    key2: credentials.key2
                   }
                 });
               } catch (deviceCloudErr) {
@@ -187,7 +187,7 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
       }
 
       // Set the unlocked identity for notifications
-      // SECURITY: pnName and passcode not passed - stored in SecureCredentialManager only
+      // SECURITY: Key 1 and Key 2 not passed - stored in SecureCredentialManager only
       notificationsService.setUnlockedIdentity(session.id, session.nickname || 'User');
 
       // SECURITY: Migrate plaintext integration credentials to encrypted storage
@@ -253,7 +253,7 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
 
       // Show success
     setError(null);
-            // pnName is secret - use nickname or generic message
+            // Key 1 is secret - use nickname or generic message
             showSuccessMessage(`Successfully unlocked identity: ${session.nickname || 'Your pN'}`, 5000);
     } catch (error: any) {
               logError('Failed to store session:', error);

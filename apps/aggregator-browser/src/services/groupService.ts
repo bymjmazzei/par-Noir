@@ -427,8 +427,8 @@ export async function sendGroupMessage(
   const identity = getDmIdentity();
   const sealSession = {
     sessionId: userPn,
-    pnName: 'browser-outbox',
-    passcode: identity.mlKemSecretKey
+    key1: 'browser-outbox',
+    key2: identity.mlKemSecretKey
   };
   const payload = {
     messageId,

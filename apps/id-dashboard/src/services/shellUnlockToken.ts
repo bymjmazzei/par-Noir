@@ -4,7 +4,7 @@ export type ShellUnlockStoredToken = {
   pnIdentifier: string;
 };
 
-/** Shell unlock has no passcode. The exchanged access token is the API token for this pN. */
+/** Shell unlock has no Key 2. The exchanged access token is the API token for this pN. */
 export async function shellUnlockStoredToken(
   accessToken: string,
   publicKey: string,

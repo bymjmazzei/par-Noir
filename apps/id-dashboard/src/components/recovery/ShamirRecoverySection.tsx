@@ -71,8 +71,8 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
       try {
         const shares = await resolveRecoveryShares({
           encryptedIdentity: auth.encryptedIdentity,
-          pnName: auth.pnName,
-          passcode: auth.passcode,
+          key1: auth.key1,
+          key2: auth.key2,
         });
         const sent = await sendPendingCustody({
           authToken: apiToken,

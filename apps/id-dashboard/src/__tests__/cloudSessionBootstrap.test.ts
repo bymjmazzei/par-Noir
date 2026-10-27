@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * Shell unlock has no passcode. A Google token already in the device vault
+ * Shell unlock has no Key 2. A Google token already in the device vault
  * must count as connected.
  */
 import {
@@ -71,7 +71,7 @@ beforeEach(() => {
   ensureCloudCredentialsReady.mockResolvedValue('ready');
 });
 
-test('shell unlock with a session Google token is ready without a passcode', async () => {
+test('shell unlock with a session Google token is ready without a Key 2', async () => {
   session.set('pn-abc', {
     googleDriveAccounts: [{ accessToken: 'ya29-test' }],
   });

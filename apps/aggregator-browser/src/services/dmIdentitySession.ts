@@ -52,7 +52,7 @@ export function hasSigningKeys(): boolean {
 
 /**
  * OAuth unlock success for browse: messaging KEM + authorship DSA.
- * Passcode re-derive may restore KEM only; full unlock needed for DSA.
+ * Key 2 re-derive may restore KEM only; full unlock needed for DSA.
  */
 export function isBrowseUnlockCryptoReady(): boolean {
   return isDmIdentityReady() && hasSigningKeys();

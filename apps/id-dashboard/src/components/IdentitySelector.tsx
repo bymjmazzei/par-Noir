@@ -234,7 +234,7 @@ export const IdentitySelector: React.FC<IdentitySelectorProps> = ({
                 </div>
                 <div className="text-xs text-blue-700">
                   Created {formatDate(selectedIdentity.createdAt)}
-                  {/* SECURITY: pnName is part of 2FA credentials - never display in UI */}
+                  {/* SECURITY: key1 is part of 2FA credentials - never display in UI */}
                 </div>
               </div>
             </div>

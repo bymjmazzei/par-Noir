@@ -7,7 +7,7 @@
  * 
  * SECURITY: Integration credentials are sensitive and should be encrypted at rest.
  * All credentials are encrypted using AES-GCM 256-bit encryption with a key
- * derived from the user's pnName + passcode, ensuring only authenticated users
+ * derived from the user's Key 1 + Key 2, ensuring only authenticated users
  * can decrypt their integration credentials.
  */
 
@@ -55,15 +55,15 @@ export class IntegrationCredentialManager {
 
   /**
    * Generate encryption key from user credentials
-   * Uses pnName + passcode to derive encryption key for integration credentials
+   * Uses Key 1 + Key 2 to derive encryption key for integration credentials
    */
   private static async deriveEncryptionKey(
     sessionId: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<CryptoKey> {
     const encoder = new TextEncoder();
-    const keyMaterial = encoder.encode(`${sessionId}::${pnName}::${passcode}`);
+    const keyMaterial = encoder.encode(`${sessionId}::${key1}::${key2}`);
     
     return crypto.subtle.importKey(
       'raw',
@@ -93,12 +93,12 @@ export class IntegrationCredentialManager {
   private static async encryptCredentials(
     credentials: IntegrationCredentials,
     sessionId: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<EncryptedCredential> {
     await this.initialize();
     
-    const key = await this.deriveEncryptionKey(sessionId, pnName, passcode);
+    const key = await this.deriveEncryptionKey(sessionId, key1, key2);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encoder = new TextEncoder();
     const data = encoder.encode(JSON.stringify(credentials));
@@ -122,12 +122,12 @@ export class IntegrationCredentialManager {
   private static async decryptCredentials(
     encrypted: EncryptedCredential,
     sessionId: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<IntegrationCredentials> {
     await this.initialize();
     
-    const key = await this.deriveEncryptionKey(sessionId, pnName, passcode);
+    const key = await this.deriveEncryptionKey(sessionId, key1, key2);
     const iv = Uint8Array.from(atob(encrypted.iv), c => c.charCodeAt(0));
     const encryptedData = Uint8Array.from(atob(encrypted.encryptedData), c => c.charCodeAt(0));
     
@@ -177,8 +177,8 @@ export class IntegrationCredentialManager {
     const encrypted = await this.encryptCredentials(
       merged,
       sessionId,
-      userCredentials.pnName,
-      userCredentials.passcode
+      userCredentials.key1,
+      userCredentials.key2
     );
 
     // Store in IndexedDB (encrypted)
@@ -232,8 +232,8 @@ export class IntegrationCredentialManager {
       return await this.decryptCredentials(
         encrypted,
         sessionId,
-        userCredentials.pnName,
-        userCredentials.passcode
+        userCredentials.key1,
+        userCredentials.key2
       );
     } catch (error) {
       console.error('[IntegrationCredentialManager] Failed to retrieve credentials:', error);

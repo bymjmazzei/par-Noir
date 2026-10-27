@@ -5,7 +5,7 @@
  * SECURITY NOTE: This class initializes IndexedDB on the client side.
  * While IndexedDB must be initialized client-side for browser storage,
  * we ensure that:
- * 1. NO plaintext credentials (pnName/passcode) are stored here
+ * 1. NO plaintext credentials (Key 1/Key 2) are stored here
  * 2. All sensitive data is encrypted before storage
  * 3. This database is used only for local PWA migration, not primary storage
  * 
@@ -315,22 +315,22 @@ class SecureLocalStorage {
 
   // Identity-specific storage methods
   // SECURITY: This method stores EncryptedIdentity objects only
-  // It should NEVER receive or store plaintext pnName or passcode
+  // It should NEVER receive or store plaintext Key 1 or Key 2
   async saveIdentity(identity: any): Promise<void> {
     if (!this.db) {
       throw new Error('IndexedDB not initialized');
     }
 
     // SECURITY: Sanitize identity data to ensure no plaintext credentials
-    // Only store encrypted identity data - never store pnName or passcode in plaintext
+    // Only store encrypted identity data - never store Key 1 or Key 2 in plaintext
     const sanitizedIdentity = { ...identity };
-    if (sanitizedIdentity.pnName) {
-      console.warn('[Security] Attempted to store pnName in IdentityDashboardDB - removing');
-      delete sanitizedIdentity.pnName;
+    if (sanitizedIdentity.key1) {
+      console.warn('[Security] Attempted to store Key 1 in IdentityDashboardDB - removing');
+      delete sanitizedIdentity.key1;
     }
-    if (sanitizedIdentity.passcode) {
-      console.warn('[Security] Attempted to store passcode in IdentityDashboardDB - removing');
-      delete sanitizedIdentity.passcode;
+    if (sanitizedIdentity.key2) {
+      console.warn('[Security] Attempted to store Key 2 in IdentityDashboardDB - removing');
+      delete sanitizedIdentity.key2;
     }
 
     return new Promise((resolve, reject) => {

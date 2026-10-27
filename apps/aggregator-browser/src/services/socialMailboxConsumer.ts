@@ -104,8 +104,8 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
         identityId,
         {
           sessionId: identityId,
-          pnName: 'browser-mailbox',
-          passcode: identity.mlKemSecretKey
+          key1: 'browser-mailbox',
+          key2: identity.mlKemSecretKey
         },
         api
       );

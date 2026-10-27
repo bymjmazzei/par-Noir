@@ -59,32 +59,32 @@ describe('physicalKeyCrypto', () => {
         binding: { type: 'usb', uid: uidToBase64(uid) },
         identities: [{ encrypted: 'x', iv: 'y', salt: 'z' }],
       });
-      const drivePasscode = 'test-drive-passcode-123';
+      const drivePassphrase = 'test-drive-passphrase-123';
 
       let encrypted: string;
       try {
-        encrypted = await encryptForDrive(uid, boundPnBlob, drivePasscode);
+        encrypted = await encryptForDrive(uid, boundPnBlob, drivePassphrase);
       } catch {
         return; // Skip when crypto.subtle is mocked (e.g. in Jest default setup)
       }
       expect(typeof encrypted).toBe('string');
       expect(encrypted.length).toBeGreaterThan(0);
 
-      const decrypted = await decryptFromDrive(encrypted, drivePasscode);
+      const decrypted = await decryptFromDrive(encrypted, drivePassphrase);
       expect(decrypted.uid).toBe(uidToBase64(uid));
       expect(decrypted.boundPnBlob).toBe(boundPnBlob);
     });
 
-    it('decryptFromDrive fails with wrong passcode', async () => {
+    it('decryptFromDrive fails with wrong passphrase', async () => {
       const uid = generateUid();
       const boundPnBlob = '{"version":"1.0"}';
       let encrypted: string;
       try {
-        encrypted = await encryptForDrive(uid, boundPnBlob, 'correct-passcode');
+        encrypted = await encryptForDrive(uid, boundPnBlob, 'correct-passphrase');
       } catch {
         return;
       }
-      await expect(decryptFromDrive(encrypted, 'wrong-passcode')).rejects.toThrow();
+      await expect(decryptFromDrive(encrypted, 'wrong-passphrase')).rejects.toThrow();
     });
   });
 
@@ -92,22 +92,22 @@ describe('physicalKeyCrypto', () => {
     it('roundtrips UID base64 string', async () => {
       const uid = generateUid();
       const uidBase64 = uidToBase64(uid);
-      const drivePasscode = 'key-file-passcode';
+      const drivePassphrase = 'key-file-passphrase';
 
       let encrypted: string;
       try {
-        encrypted = await encryptUidForDrive(uidBase64, drivePasscode);
+        encrypted = await encryptUidForDrive(uidBase64, drivePassphrase);
       } catch {
         return;
       }
       expect(typeof encrypted).toBe('string');
       expect(encrypted.length).toBeGreaterThan(0);
 
-      const decrypted = await decryptUidFromDrive(encrypted, drivePasscode);
+      const decrypted = await decryptUidFromDrive(encrypted, drivePassphrase);
       expect(decrypted).toBe(uidBase64);
     });
 
-    it('decryptUidFromDrive fails with wrong passcode', async () => {
+    it('decryptUidFromDrive fails with wrong passphrase', async () => {
       const uidBase64 = uidToBase64(generateUid());
       let encrypted: string;
       try {
@@ -129,11 +129,11 @@ describe('physicalKeyCrypto', () => {
         binding: { type: 'usb' },
         identities: [{ encrypted: 'x', iv: 'y', salt: 'z' }],
       });
-      const drivePasscode = 'drive123';
+      const drivePassphrase = 'drive123';
 
       let keyFileEnc: string;
       try {
-        keyFileEnc = await encryptUidForDrive(uidBase64, drivePasscode);
+        keyFileEnc = await encryptUidForDrive(uidBase64, drivePassphrase);
       } catch {
         return;
       }
@@ -141,7 +141,7 @@ describe('physicalKeyCrypto', () => {
       expect(parsedPayload.binding.uid).toBeUndefined();
       expect(parsedPayload.binding.type).toBe('usb');
 
-      const uidFromKey = await decryptUidFromDrive(keyFileEnc, drivePasscode);
+      const uidFromKey = await decryptUidFromDrive(keyFileEnc, drivePassphrase);
       expect(uidFromKey).toBe(uidBase64);
     });
   });

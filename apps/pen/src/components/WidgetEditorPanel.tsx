@@ -443,7 +443,7 @@ export function WidgetEditorPanel({
                   />
                   {secretPromptLayers(section, layer.parentGroupId || null).length > 0 && (
                     <span role="alert" data-widget-secret-block className="text-xs text-red-600">
-                      This form asks for a passcode, password, or other secret. It will not send.
+                      This form asks for a key, password, or other secret. It will not send.
                     </span>
                   )}
                 </label>

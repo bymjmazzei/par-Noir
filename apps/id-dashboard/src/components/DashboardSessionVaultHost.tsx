@@ -117,13 +117,13 @@ export function DashboardSessionVaultHost({
           salt: stored.salt,
           publicKey: stored.publicKey,
         } as any,
-        payload.passcode,
-        payload.pnName
+        payload.key2,
+        payload.key1
       );
       await onAuthSuccess({
         ...authSession,
-        pnName: payload.pnName,
-        passcode: payload.passcode,
+        key1: payload.key1,
+        key2: payload.key2,
         nickname: payload.nickname || authSession.nickname,
         publicKey: payload.publicKey || authSession.publicKey,
         id: payload.identityId || authSession.id,
@@ -151,8 +151,8 @@ export function DashboardSessionVaultHost({
         kind: 'dashboard_keys',
         identityId: authenticatedUser.id,
         publicKey: authenticatedUser.publicKey,
-        pnName: creds.pnName,
-        passcode: creds.passcode,
+        key1: creds.key1,
+        key2: creds.key2,
         nickname: authenticatedUser.nickname,
       });
       localStorage.removeItem(DECLINED_KEY);
@@ -171,7 +171,7 @@ export function DashboardSessionVaultHost({
       <SessionVaultUnlockOverlay
         open={showUnlock && !authenticatedUser}
         title="Unlock dashboard"
-        body="Use Face ID, fingerprint, or your device passcode to restore your session."
+        body="Use Face ID, fingerprint, or your device screen lock to restore your session."
         busy={busy}
         error={error}
         onUnlock={handleBiometricUnlock}

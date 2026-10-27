@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Lock, Shield } from 'lucide-react';
+import { secretKeyInputProps } from '@par-noir/oauth-ui';
 import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 import {
   KEY_1_LABEL,
@@ -21,8 +22,8 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
   const { isAuthenticated, startSession, clearAuth, auth } = useRecoveryAuth();
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [pnName, setPnName] = useState('');
-  const [passcode, setPasscode] = useState('');
+  const [key1, setKey1] = useState('');
+  const [key2, setKey2] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,8 +55,8 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
 
   const resetForm = () => {
     setFile(null);
-    setPnName('');
-    setPasscode('');
+    setKey1('');
+    setKey2('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -75,8 +76,8 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
       const { unlockRecoveryLocally } = await import('../../services/recoveryLocalUnlock');
       const session = await unlockRecoveryLocally({
         file,
-        pnName,
-        passcode,
+        key1,
+        key2,
         expectedPublicKey: expectedUser.publicKey,
       });
       startSession(session);
@@ -113,20 +114,18 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
                 disabled={loading}
               />
               <input
-                type="password"
-                autoComplete="off"
-                value={pnName}
-                onChange={(e) => setPnName(e.target.value)}
+                {...secretKeyInputProps('key1', 'unlock')}
+                value={key1}
+                onChange={(e) => setKey1(e.target.value)}
                 className={INPUT_CLASS}
                 placeholder={KEY_1_PLACEHOLDER}
                 aria-label={KEY_1_LABEL}
                 disabled={loading}
               />
               <input
-                type="password"
-                autoComplete="off"
-                value={passcode}
-                onChange={(e) => setPasscode(e.target.value)}
+                {...secretKeyInputProps('key2', 'unlock')}
+                value={key2}
+                onChange={(e) => setKey2(e.target.value)}
                 className={INPUT_CLASS}
                 placeholder={KEY_2_PLACEHOLDER}
                 aria-label={KEY_2_LABEL}
@@ -135,7 +134,7 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  disabled={loading || !file || !pnName || !passcode}
+                  disabled={loading || !file || !key1 || !key2}
                   className="px-4 py-2 modal-button rounded-md text-sm disabled:opacity-50"
                 >
                   {loading ? 'Unlocking…' : 'Unlock recovery'}

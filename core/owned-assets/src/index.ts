@@ -13,7 +13,7 @@ export type OwnedAssetKind =
 
 export type OwnedAssetStatus = 'active' | 'revoked' | 'suspended';
 
-/** Public-safe metadata (labels, model names — never passcodes). */
+/** Public-safe metadata (labels, model names — never Key 2s). */
 export type OwnedAssetMetadata = Record<string, unknown>;
 
 export interface OwnedAssetRecord {

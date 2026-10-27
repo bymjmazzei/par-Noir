@@ -15,7 +15,7 @@ const BROWSE_URL = process.env.BROWSE_URL || 'https://browse.parnoir.com';
 const OUT = resolve(ROOT, '.local/ux-playwright');
 mkdirSync(OUT, { recursive: true });
 
-const { identityPath, PN_NAME, PASSCODE } = loadTestPn(ROOT);
+const { identityPath, KEY1, KEY2 } = loadTestPn(ROOT);
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -42,8 +42,8 @@ await page.getByTitle('Unlock pN').click();
 const popup = await popupPromise;
 await popup.waitForURL(/oauth\/consent/, { timeout: 30_000 });
 await popup.locator('#identityFile').setInputFiles(identityPath);
-await popup.getByPlaceholder('Enter Key 1').fill(PN_NAME);
-await popup.getByPlaceholder('Enter Key 2').fill(PASSCODE);
+await popup.getByPlaceholder('Enter Key 1').fill(KEY1);
+await popup.getByPlaceholder('Enter Key 2').fill(KEY2);
 await popup.getByRole('button', { name: 'Unlock pN' }).click();
 const approve = popup.getByRole('button', { name: 'Approve' });
 try {

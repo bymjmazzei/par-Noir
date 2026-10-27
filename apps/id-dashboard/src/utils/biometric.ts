@@ -15,7 +15,7 @@ export interface BiometricAuthResult {
   success: boolean;
   credentialId?: string;
   error?: string;
-  fallbackToPasscode?: boolean;
+  fallbackToKeys?: boolean;
 }
 
 export class BiometricAuth {
@@ -76,7 +76,7 @@ export class BiometricAuth {
   /**
    * Register a new biometric credential for an identity
    */
-  static async registerCredential(identityId: string, username: string): Promise<BiometricCredential | null> {
+  static async registerCredential(identityId: string): Promise<BiometricCredential | null> {
     try {
       if (!(await this.isAvailable())) {
         throw new Error('Biometric authentication not available on this device');
@@ -95,8 +95,9 @@ export class BiometricAuth {
           },
           user: {
             id: new TextEncoder().encode(identityId),
-            name: username,
-            displayName: username,
+            // Shown by the OS passkey manager; never Key 1 or a nickname.
+            name: 'par Noir pN',
+            displayName: 'par Noir pN',
           },
           pubKeyCredParams: [
             { alg: -7, type: 'public-key' }, // ES256
@@ -173,7 +174,7 @@ export class BiometricAuth {
         return {
           success: false,
           error: 'Biometric authentication not available',
-          fallbackToPasscode: true,
+          fallbackToKeys: true,
         };
       }
 
@@ -183,7 +184,7 @@ export class BiometricAuth {
         return {
           success: false,
           error: 'No biometric credentials found for this identity',
-          fallbackToPasscode: true,
+          fallbackToKeys: true,
         };
       }
 
@@ -214,7 +215,7 @@ export class BiometricAuth {
         return {
           success: false,
           error: 'Biometric authentication failed',
-          fallbackToPasscode: true,
+          fallbackToKeys: true,
         };
       }
 
@@ -229,7 +230,7 @@ export class BiometricAuth {
         return {
           success: false,
           error: 'Credential not recognized',
-          fallbackToPasscode: true,
+          fallbackToKeys: true,
         };
       }
 
@@ -253,26 +254,26 @@ export class BiometricAuth {
         return {
           success: false,
           error: 'Biometric authentication cancelled',
-          fallbackToPasscode: true,
+          fallbackToKeys: true,
         };
       } else if (error.name === 'SecurityError') {
         return {
           success: false,
           error: 'Biometric authentication blocked by security policy',
-          fallbackToPasscode: true,
+          fallbackToKeys: true,
         };
       } else if (error.name === 'UnknownError') {
         return {
           success: false,
           error: 'Biometric sensor not available or failed',
-          fallbackToPasscode: true,
+          fallbackToKeys: true,
         };
       }
 
       return {
         success: false,
         error: error.message || 'Biometric authentication failed',
-        fallbackToPasscode: true,
+        fallbackToKeys: true,
       };
     }
   }

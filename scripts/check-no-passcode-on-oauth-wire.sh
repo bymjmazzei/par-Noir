@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Passcode must not be sent to the API for OAuth authenticate.
+# Key 1 / Key 2 must not be sent to the API for OAuth authenticate.
 #
 # Ratchet: files in scripts/passcode-oauth-wire-allowlist.txt are grandfathered.
 # No NEW file may POST passcode to /oauth/authorize/authenticate. Allowlist
@@ -19,8 +19,9 @@ cd "$ROOT"
 ALLOWLIST="scripts/passcode-oauth-wire-allowlist.txt"
 # String literal / template URL to authenticate — not JSDoc comments alone.
 AUTH_URL_PATTERN='['\''"`][^'\''"`\n]*oauth/authorize/authenticate[^'\''"`\n]*['\''"`]'
-# JSON body field — not TypeScript type annotations alone (those use "passcode: string").
-PASSCODE_BODY_PATTERN='passcode:[[:space:]]*(input\.|params\.|passcode|options\.|creds\.|credentials\.|[a-zA-Z_$][a-zA-Z0-9_$]*[,}])'
+# JSON body field — not TypeScript type annotations alone (those use "key2: string").
+# Key 1 / Key 2 were once named pnName / passcode; all four names are refused.
+PASSCODE_BODY_PATTERN='(passcode|pnName|pn_name|key1|key2):[[:space:]]*(input\.|params\.|passcode|pnName|key1|key2|options\.|creds\.|credentials\.|[a-zA-Z_$][a-zA-Z0-9_$]*[,}])'
 
 # Also refuse reintroduction of self-hosted OAuth unlock redirects (normalize plan).
 SELF_HOSTED_PATTERN='SELF_HOSTED_UNLOCK_CLIENT_IDS'
@@ -51,7 +52,7 @@ check_file() {
 
   if printf '%s' "$content" | grep -qE "$PASSCODE_BODY_PATTERN"; then
     if ! in_list "$ALLOWLIST" "$file"; then
-      violations="${violations}${file} (passcode in OAuth authenticate request body)"$'\n'
+      violations="${violations}${file} (Key 1 / Key 2 in OAuth authenticate request body)"$'\n'
     fi
   fi
 }
@@ -65,6 +66,10 @@ if [ "${PN_CHECK_ALL:-0}" = "1" ]; then
     --glob '!**/dist/**' \
     --glob '!**/dist-*/**' \
     --glob '!**/.git/**' \
+    --glob '!**/android/app/build/**' \
+    --glob '!**/android/app/src/main/assets/public/**' \
+    --glob '!**/ios/build/**' \
+    --glob '!**/ios/App/App/public/**' \
     2>/dev/null || true)
 
   # Fail closed if self-hosted OAuth unlock client redirect reappears in source.
@@ -87,10 +92,10 @@ else
 fi
 
 if [ -n "$violations" ]; then
-  echo "BLOCKED: passcode sent on OAuth authenticate wire."
+  echo "BLOCKED: Key 1 / Key 2 sent on OAuth authenticate wire."
   printf '%s' "$violations" | sed '/^$/d' | sed 's/^/  - /'
   echo
-  echo "Passcode must never leave the device for /oauth/authorize/authenticate."
+  echo "Key 1 and Key 2 must never leave the device for /oauth/authorize/authenticate."
   echo "Do NOT add entries to scripts/passcode-oauth-wire-allowlist.txt — only remove."
   echo "See .cursor/rules/auth-trust-boundary.mdc"
   exit 1

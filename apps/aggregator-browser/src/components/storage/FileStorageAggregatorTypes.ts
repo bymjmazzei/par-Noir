@@ -1,7 +1,7 @@
 export interface FileStorageAggregatorProps {
   authenticatedUser?: {
     id: string;
-    pnName?: string;
+    key1?: string;
     publicKey?: string;
     nickname?: string;
     accessToken?: string;

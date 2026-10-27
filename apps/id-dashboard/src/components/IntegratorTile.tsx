@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import { isBlockedDataPoint } from '@par-noir/standard-data-points';
 import { StandardDataPoint, STANDARD_DATA_POINTS } from '../types/standardDataPoints';
 
 interface IntegratorTileProps {
@@ -34,10 +35,7 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
     
     return Object.values(STANDARD_DATA_POINTS).filter(
       (dp: StandardDataPoint) => 
-        // NEVER allow access to pN File, pN Name, or passcode
-        dp.id !== 'pn_file' && 
-        dp.id !== 'pn_name' && 
-        dp.id !== 'passcode' &&
+        !isBlockedDataPoint(dp.id) &&
         // Show all data points that are requested by the tool (required or optional)
         allRequestedDataPoints.includes(dp.id)
     );

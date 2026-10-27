@@ -94,16 +94,16 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               identityId: pnIdentifier,
               session: {
                 sessionId: 'pn-cloud-creds-v1',
-                pnName: creds.pnName,
-                passcode: creds.passcode
+                key1: creds.key1,
+                key2: creds.key2
               }
             })) ||
             (await loadLocalCloudCredentials({
               identityId: pnIdentifier,
               session: {
                 sessionId,
-                pnName: creds.pnName,
-                passcode: creds.passcode
+                key1: creds.key1,
+                key2: creds.key2
               }
             }));
           if (env && envelopeHasUsableSecrets(env)) {
@@ -130,23 +130,23 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
             mlKemSecretKey = await resolveIdentityMlKemSecret({
               identityId: pnIdentifier,
               publicKey: sessionId,
-              pnName: creds.pnName,
-              passcode: creds.passcode
+              key1: creds.key1,
+              key2: creds.key2
             });
           } catch {
             mlKemSecretKey = null;
           }
         }
         if (!mlKemSecretKey && shellMlKem) mlKemSecretKey = shellMlKem;
-        const canUnseal = !!mlKemSecretKey || !!(creds?.pnName && creds?.passcode);
+        const canUnseal = !!mlKemSecretKey || !!(creds?.key1 && creds?.key2);
         if (canUnseal && !envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) {
           const status = await ensureCloudCredentialsReady({
             apiEndpoint: API_ENDPOINT,
             authToken: apiToken,
             pnIdentifier,
             mlKemSecretKey,
-            pnName: creds?.pnName,
-            passcode: creds?.passcode
+            key1: creds?.key1,
+            key2: creds?.key2
           });
           if (await discardIfCloudDisconnected(pnIdentifier, seenDisconnect)) {
             warmed = null;
@@ -165,8 +165,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               const vault = await publishCloudVaultForIdentity({
                 identityId: pnIdentifier,
                 authToken: apiToken,
-                pnName: creds.pnName,
-                passcode: creds.passcode,
+                key1: creds.key1,
+                key2: creds.key2,
                 credentials: toPublish,
                 publicKey: sessionId,
                 mlKemSecretKey
@@ -188,8 +188,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               credentials: toPublish,
               session: {
                 sessionId: 'pn-cloud-creds-v1',
-                pnName: creds.pnName,
-                passcode: creds.passcode
+                key1: creds.key1,
+                key2: creds.key2
               },
               mode: 'sealed'
             }).catch(() => null);
@@ -197,8 +197,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               await publishCloudVaultForIdentity({
                 identityId: pnIdentifier,
                 authToken: apiToken,
-                pnName: creds.pnName,
-                passcode: creds.passcode,
+                key1: creds.key1,
+                key2: creds.key2,
                 credentials: { googleDriveAccounts: [] },
                 publicKey: sessionId,
                 mlKemSecretKey
@@ -224,8 +224,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       identityId: pnIdentifier,
       session: {
         sessionId: 'pn-cloud-creds-v1',
-        pnName: creds.pnName,
-        passcode: creds.passcode
+        key1: creds.key1,
+        key2: creds.key2
       }
     });
     if (canonical) return canonical;
@@ -233,8 +233,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       identityId: pnIdentifier,
       session: {
         sessionId,
-        pnName: creds.pnName,
-        passcode: creds.passcode
+        key1: creds.key1,
+        key2: creds.key2
       }
     });
   }, [pnIdentifier, sessionId]);
@@ -257,8 +257,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         credentials: envelope,
         session: {
           sessionId: 'pn-cloud-creds-v1',
-          pnName: creds.pnName,
-          passcode: creds.passcode
+          key1: creds.key1,
+          key2: creds.key2
         },
         mode: effectivePersistMode
       });
@@ -269,8 +269,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         const vault = await publishCloudVaultForIdentity({
           identityId: pnIdentifier,
           authToken: apiToken,
-          pnName: creds.pnName,
-          passcode: creds.passcode,
+          key1: creds.key1,
+          key2: creds.key2,
           credentials: envelope,
           publicKey: sessionId
         });
@@ -281,8 +281,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           await publishCloudVaultForIdentity({
             identityId: pnIdentifier,
             authToken: apiToken,
-            pnName: creds.pnName,
-            passcode: creds.passcode,
+            key1: creds.key1,
+            key2: creds.key2,
             credentials: { googleDriveAccounts: [] },
             publicKey: sessionId
           }).catch(() => undefined);

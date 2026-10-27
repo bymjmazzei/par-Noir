@@ -19,21 +19,21 @@ import { KEYS_REQUIRED } from '../constants/credentialLabels';
 export interface RecoveryCompletionInput {
   envelope: RecoveryEnvelope;
   shares: ShamirShare[];
-  /** New Key 1 (internal: pnName) */
-  newPnName: string;
-  /** New Key 2 (internal: passcode) */
-  newPasscode: string;
+  /** New Key 1 (internal: Key 1) */
+  newKey1: string;
+  /** New Key 2 (internal: Key 2) */
+  newKey2: string;
   /** Identity public key the relay released shares for. */
   expectedPublicKey: string;
 }
 
 export interface RecoveryCompletionResult {
   identity: EncryptedIdentity;
-  pnName: string;
+  key1: string;
 }
 
-function assertNewKeys(newPnName: string, newPasscode: string): void {
-  if (!newPnName || !newPasscode) throw new Error(KEYS_REQUIRED);
+function assertNewKeys(newKey1: string, newKey2: string): void {
+  if (!newKey1 || !newKey2) throw new Error(KEYS_REQUIRED);
 }
 
 /**
@@ -43,29 +43,29 @@ function assertNewKeys(newPnName: string, newPasscode: string): void {
 export async function completeKeyRecovery(input: {
   keyEnvelope: KeyRecoveryEnvelope;
   recoveryKey: string;
-  newPnName: string;
-  newPasscode: string;
+  newKey1: string;
+  newKey2: string;
   expectedPublicKey: string;
 }): Promise<RecoveryCompletionResult> {
-  const newPnName = input.newPnName.trim();
-  assertNewKeys(newPnName, input.newPasscode);
+  const newKey1 = input.newKey1.trim();
+  assertNewKeys(newKey1, input.newKey2);
   const payload = await decryptKeyRecoveryEnvelope(input.recoveryKey, input.keyEnvelope);
   if (payload.publicKey !== input.expectedPublicKey) {
     throw new Error('Recovery data does not match this pN');
   }
   const { identity } = await IdentityCrypto.restoreIdentity({
     payload,
-    pnName: newPnName,
-    passcode: input.newPasscode,
+    key1: newKey1,
+    key2: input.newKey2,
   });
-  return { identity, pnName: newPnName };
+  return { identity, key1: newKey1 };
 }
 
 export async function completeRecoveryWithShares(
   input: RecoveryCompletionInput
 ): Promise<RecoveryCompletionResult> {
-  const newPnName = input.newPnName.trim();
-  assertNewKeys(newPnName, input.newPasscode);
+  const newKey1 = input.newKey1.trim();
+  assertNewKeys(newKey1, input.newKey2);
 
   const master = combineShares(input.shares.map((s) => normalizeShare(s)));
   const payload = await decryptRecoveryEnvelope(master, input.envelope);
@@ -76,7 +76,7 @@ export async function completeRecoveryWithShares(
 
   const identityData: Record<string, unknown> = {
     id: payload.identityId,
-    username: newPnName,
+    key1: newKey1,
     recoveryConfig: payload.recoveryConfig,
     custodiansRequired: true,
     custodiansSetup: true,
@@ -89,18 +89,18 @@ export async function completeRecoveryWithShares(
 
   const encryptedData = await IdentityCrypto.encryptData(
     JSON.stringify(identityData),
-    newPnName,
-    input.newPasscode
+    newKey1,
+    input.newKey2
   );
 
   const recoverySharesSealed = await sealRecoveryShares(
     input.shares.map((s) => normalizeShare(s)),
-    newPnName,
-    input.newPasscode
+    newKey1,
+    input.newKey2
   );
 
   return {
-    pnName: newPnName,
+    key1: newKey1,
     identity: {
       publicKey: payload.publicKey,
       mlKemPublicKey: payload.mlKemPublicKey,

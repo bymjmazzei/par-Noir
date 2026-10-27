@@ -13,7 +13,7 @@ Symptom-based (not “tests pass”).
 | Vault cancel (Mac) | Cancel Touch ID or picker → full unlock form; enrolled set kept |
 | Vault unavailable (Mac, no Touch ID) | Enroll prompt does not appear (`vault-available` false); full unlock still works |
 | Vault enroll (Windows) | Confirmation dialog; same multi-pN sealed payload |
-| Negative | Authenticate body has no passcode / pn name; vault file values opaque |
+| Negative | Authenticate body has no Key 1 / Key 2; vault file values opaque |
 | file:// / Electron CORS | Challenge + authenticate succeed against prod API (main stamps `Origin: https://unlock.parnoir.com`) |
 | Cold-start deep link | Argv / open-url OAuth params applied even if renderer was not listening yet (`getPendingDeepLink` + keep pending) |
 

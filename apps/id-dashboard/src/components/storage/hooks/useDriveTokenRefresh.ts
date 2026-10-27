@@ -172,8 +172,8 @@ export function useDriveTokenRefresh({
                 },
                 session: {
                   sessionId: 'pn-cloud-creds-v1',
-                  pnName: sessionCreds.pnName,
-                  passcode: sessionCreds.passcode
+                  key1: sessionCreds.key1,
+                  key2: sessionCreds.key2
                 },
                 mode
               });
@@ -188,8 +188,8 @@ export function useDriveTokenRefresh({
                   const vault = await publishCloudVaultForIdentity({
                     identityId: pnId,
                     authToken: authTok,
-                    pnName: sessionCreds.pnName,
-                    passcode: sessionCreds.passcode,
+                    key1: sessionCreds.key1,
+                    key2: sessionCreds.key2,
                     credentials: {
                       ...(existing || {}),
                       socialCloudProvider: 'google_drive',
@@ -207,8 +207,8 @@ export function useDriveTokenRefresh({
                     await publishCloudVaultForIdentity({
                       identityId: pnId,
                       authToken: authTok,
-                      pnName: sessionCreds.pnName,
-                      passcode: sessionCreds.passcode,
+                      key1: sessionCreds.key1,
+                      key2: sessionCreds.key2,
                       credentials: { googleDriveAccounts: [] }
                     }).catch(() => undefined);
                     return;

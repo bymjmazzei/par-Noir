@@ -99,8 +99,8 @@ function accountToken(acct: {
 }
 
 /**
- * Shell unlock has no passcode in this tab. The Google token lives in the
- * ML-KEM vault (or already in session memory). A passcode session still
+ * Shell unlock has no Key 2 in this tab. The Google token lives in the
+ * ML-KEM vault (or already in session memory). A Key 2 session still
  * unseals the local store.
  */
 async function envelopeForUnlock(opts: {
@@ -109,13 +109,13 @@ async function envelopeForUnlock(opts: {
   sessionId: string;
 }): Promise<StorageCredentialsEnvelope | null> {
   const creds = SecureCredentialManager.getCredentials(opts.sessionId);
-  if (creds?.pnName && creds?.passcode) {
+  if (creds?.key1 && creds?.key2) {
     return loadLocalCloudCredentials({
       identityId: opts.pnIdentifier,
       session: {
         sessionId: opts.sessionId,
-        pnName: creds.pnName,
-        passcode: creds.passcode
+        key1: creds.key1,
+        key2: creds.key2
       }
     });
   }

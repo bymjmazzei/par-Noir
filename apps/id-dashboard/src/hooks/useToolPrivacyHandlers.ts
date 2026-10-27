@@ -88,7 +88,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     if (!pn) {
       try {
         const credentials = SecureCredentialManager.getCredentials(sessionId);
-        if (credentials?.pnName && credentials?.passcode) {
+        if (credentials?.key1 && credentials?.key2) {
           const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
           pn = deriveCanonicalPnIdentifier(authenticatedUser.publicKey || sessionId);
         }
@@ -444,8 +444,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
 
                   const decryptedUserDataJson = await IdentityCrypto.decryptData(
                     encryptedDataObj,
-                    credentials.pnName,
-                    credentials.passcode
+                    credentials.key1,
+                    credentials.key2
                   );
                   existingData = JSON.parse(decryptedUserDataJson);
                 } catch (error) {
@@ -501,8 +501,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
                         : existingDataPoint.encryptedUserData;
                     const decryptedUserDataJson = await IdentityCrypto.decryptData(
                       encryptedDataObj,
-                      credentials.pnName,
-                      credentials.passcode
+                      credentials.key1,
+                      credentials.key2
                     );
                     existingData = JSON.parse(decryptedUserDataJson);
                   } catch {
@@ -580,8 +580,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         try {
           const encryptedDataObj = await IdentityCrypto.encryptData(
             JSON.stringify(userData),
-            credentials.pnName,
-            credentials.passcode
+            credentials.key1,
+            credentials.key2
           );
           mintParams.encryptedUserData = JSON.stringify(encryptedDataObj);
         } catch (error) {

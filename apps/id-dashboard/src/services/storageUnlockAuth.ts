@@ -9,7 +9,7 @@ type UnlockedUser = {
   authToken?: string;
 } | null | undefined;
 
-/** Public key on a shell or passcode unlock. A passcode is not part of this. */
+/** Public key on a shell or Key 2 unlock. A Key 2 is not part of this. */
 export function publicKeyFromUnlockedUser(user: UnlockedUser): string | null {
   if (!user) return null;
   if (typeof user.publicKey === 'string' && user.publicKey.length > 0) return user.publicKey;

@@ -11,8 +11,8 @@ export class DataPointProposalManager {
   static async proposeDataPoint(
     proposal: Omit<DataPointProposal, 'id' | 'proposedAt' | 'status' | 'votes'>,
     identityId: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<{ success: boolean; proposalId?: string; error?: string }> {
     try {
       // Validate proposal
@@ -72,8 +72,8 @@ export class DataPointProposalManager {
     proposalId: string,
     vote: 'upvote' | 'downvote',
     identityId: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // Get current metadata

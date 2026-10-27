@@ -59,15 +59,15 @@ export interface MigrationContext {
   predecessor: {
     encryptedIdentity: EncryptedIdentity;
     did: string;
-    pnName: string;
-    passcode: string;
+    key1: string;
+    key2: string;
     recoveryConfig?: { threshold: number; totalShares: number };
   };
   successor: {
     encryptedIdentity: EncryptedIdentity;
     did: string;
-    pnName: string;
-    passcode: string;
+    key1: string;
+    key2: string;
   };
   driveFolderId?: string;
   acknowledgeDriveFailures?: boolean;
@@ -92,13 +92,13 @@ export interface MigrationCoreResult {
 async function toKeyMaterial(
   did: string,
   encryptedIdentity: EncryptedIdentity,
-  pnName: string,
-  passcode: string
+  key1: string,
+  key2: string
 ): Promise<IdentityKeyMaterial> {
   const raw = await IdentityCrypto.decryptData(
     { encrypted: encryptedIdentity.encryptedData, iv: encryptedIdentity.iv, salt: encryptedIdentity.salt },
-    pnName,
-    passcode
+    key1,
+    key2
   );
   const identity = JSON.parse(raw) as {
     pqcSecrets?: { mlDsaSecretKey?: string; mlKemSecretKey?: string };
@@ -134,14 +134,14 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
   const predMat = await toKeyMaterial(
     ctx.predecessor.did,
     ctx.predecessor.encryptedIdentity,
-    ctx.predecessor.pnName,
-    ctx.predecessor.passcode
+    ctx.predecessor.key1,
+    ctx.predecessor.key2
   );
   const succMat = await toKeyMaterial(
     ctx.successor.did,
     ctx.successor.encryptedIdentity,
-    ctx.successor.pnName,
-    ctx.successor.passcode
+    ctx.successor.key1,
+    ctx.successor.key2
   );
 
   const plan = await buildMigrationPlan({
@@ -213,7 +213,6 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
     mlKemSecretKey: succMat.mlKemSecretKey,
     mlDsaSecretKey: bytesToBase64(succMat.mlDsaSecretKey),
     identityId: succMat.did,
-    pnName: ctx.successor.pnName,
     recoveryConfig: {
       threshold: recoveryConfig.threshold,
       totalShares: recoveryConfig.totalShares,
@@ -223,7 +222,7 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
   });
   const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
   const shares = splitSecret(recoveryMaster, recoveryConfig.threshold, recoveryConfig.totalShares);
-  const recoverySharesSealed = await sealRecoveryShares(shares, ctx.successor.pnName, ctx.successor.passcode);
+  const recoverySharesSealed = await sealRecoveryShares(shares, ctx.successor.key1, ctx.successor.key2);
   // Custodians are registered under the successor pN in the re-invite step (successor session).
   setPendingRecoverySharesBuffer({
     publicKey: succMat.publicKey,

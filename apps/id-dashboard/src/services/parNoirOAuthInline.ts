@@ -1,6 +1,6 @@
 /**
  * Dashboard API token session + thin decrypt→mint wrapper.
- * Unlock-proof mint lives in `@par-noir/oauth-ui` (never send passcode on the wire).
+ * Unlock-proof mint lives in `@par-noir/oauth-ui` (never send Key 2 on the wire).
  */
 
 import { API_ENDPOINT } from '../config/api';
@@ -31,8 +31,8 @@ export interface InlineOAuthAcquireInput {
   };
   publicKey: string;
   did: string;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   redirectUri?: string;
   scope?: string[];
 }
@@ -86,7 +86,7 @@ export function clearStoredToken(): void {
 
 /**
  * Decrypt on-device, then mint via shared oauth-ui unlock-proof helpers.
- * Passcode / pn name never leave this function onto the wire.
+ * Key 2 / Key 1 never leave this function onto the wire.
  */
 export async function acquireApiTokenInline(
   input: InlineOAuthAcquireInput
@@ -102,8 +102,8 @@ export async function acquireApiTokenInline(
       iv: input.encryptedIdentity.iv,
       salt: input.encryptedIdentity.salt,
     },
-    input.pnName,
-    input.passcode
+    input.key1,
+    input.key2
   );
   const decrypted = JSON.parse(raw) as {
     privateKey?: string;

@@ -98,7 +98,7 @@ jest.mock('@par-noir/device-cloud-credentials', () => ({
 }));
 
 jest.mock('@par-noir/identity-crypto', () => ({
-  SecureCredentialManager: { getCredentials: () => ({ pnName: 'key-one', passcode: 'key-two' }) },
+  SecureCredentialManager: { getCredentials: () => ({ key1: 'key-one', key2: 'key-two' }) },
 }));
 
 jest.mock('../services/resolveIdentityMlKem', () => ({

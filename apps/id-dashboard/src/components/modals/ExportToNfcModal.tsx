@@ -23,8 +23,8 @@ export function ExportToNfcModal({
   onError,
 }: ExportToNfcModalProps) {
   const [step, setStep] = useState<'verify' | 'scan' | 'writing'>('verify');
-  const [pnName, setPnName] = useState('');
-  const [passcode, setPasscode] = useState('');
+  const [key1, setKey1] = useState('');
+  const [key2, setKey2] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [hasNfcSupport, setHasNfcSupport] = useState(false);
 
@@ -34,16 +34,16 @@ export function ExportToNfcModal({
 
   const handleClose = () => {
     setStep('verify');
-    setPnName('');
-    setPasscode('');
+    setKey1('');
+    setKey2('');
     setError(null);
     onClose();
   };
 
   const handleConfirmVerify = () => {
     setError(null);
-    if (!pnName || !passcode) {
-      setError('Enter Key 1 and passcode to authorize the export');
+    if (!key1 || !key2) {
+      setError('Enter Key 1 and Key 2 to authorize the export');
       return;
     }
     setStep('scan');
@@ -52,8 +52,8 @@ export function ExportToNfcModal({
   const handleWriteToNfc = async () => {
     setError(null);
 
-    if (!pnName || !passcode) {
-      setError('Enter Key 1 and passcode first');
+    if (!key1 || !key2) {
+      setError('Enter Key 1 and Key 2 first');
       return;
     }
 
@@ -76,14 +76,14 @@ export function ExportToNfcModal({
 
       const plaintext = await IdentityCrypto.decryptData(
         encryptedData,
-        pnName,
-        passcode
+        key1,
+        key2
       );
 
       const boundEncrypted = await IdentityCrypto.encryptDataWithBinding(
         plaintext,
-        pnName,
-        passcode,
+        key1,
+        key2,
         cardUid
       );
 

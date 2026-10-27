@@ -233,7 +233,7 @@ export function useShareAndIndexing({
       }
     },
     [API_ENDPOINT, applyIndexersState, resolvedAuth?.publicKey, authenticatedUser?.id, authenticatedUser?.publicKey]
-    // SECURITY: Removed resolvedAuth?.pnName, authenticatedUser?.pnName - these are secrets
+    // SECURITY: Removed resolvedAuth?.Key 1, authenticatedUser?.Key 1 - these are secrets
   );
 
   const refreshMetadataInBackground = React.useCallback(

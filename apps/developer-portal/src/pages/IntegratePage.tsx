@@ -6,7 +6,7 @@ export function IntegratePage() {
         <p>
           One kit for third-party apps: <strong>pN login</strong>, <strong>user cloud silo</strong>,{' '}
           <strong>consented ZKPs</strong>, and <strong>hosted social iframes</strong>. Users grant and revoke; you never
-          collect pn name or passcode.
+          collect Key 1 or Key 2.
         </p>
       </section>
 

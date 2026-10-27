@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { STANDARD_DATA_POINTS } from '@par-noir/standard-data-points';
+import { STANDARD_DATA_POINTS, isBlockedDataPoint } from '@par-noir/standard-data-points';
 import { GlobalPrivacySettings } from '../../types/privacy';
 import { SectionInfo } from '../common/SectionInfo';
 
@@ -33,8 +33,7 @@ export const GlobalPrivacySettingsBody: React.FC<GlobalPrivacySettingsBodyProps>
     for (const id of ids) {
       const dp = STANDARD_DATA_POINTS[id];
       if (!dp) continue;
-      // Never expose identity secrets in this table
-      if (id === 'pn_file' || id === 'pn_name' || id === 'passcode') continue;
+      if (isBlockedDataPoint(id)) continue;
       const verified = verifiedDataPoints.has(id);
       const allowed = settings.dataPoints[id]?.globalSetting ?? true;
       list.push({

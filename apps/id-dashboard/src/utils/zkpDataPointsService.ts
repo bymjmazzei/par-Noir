@@ -28,7 +28,7 @@ export class ZKPDataPointsService {
    */
   private static async getPnIdentifier(
     identityId: string,
-    credentials: { pnName: string; passcode: string },
+    credentials: { key1: string; key2: string },
     publicKey?: string
   ): Promise<string> {
     const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
@@ -41,7 +41,7 @@ export class ZKPDataPointsService {
    */
   static async getAllDataPoints(
     identityId: string,
-    credentials: { pnName: string; passcode: string },
+    credentials: { key1: string; key2: string },
     authToken: string,
     publicKey?: string
   ): Promise<Array<{ dataPointId: string; verificationLevel: ZKPDataPoint['verificationLevel'] }> | null> {
@@ -69,7 +69,7 @@ export class ZKPDataPointsService {
    */
   static async getDataPoint(
     identityId: string,
-    credentials: { pnName: string; passcode: string },
+    credentials: { key1: string; key2: string },
     authToken: string,
     dataPointId: string,
     publicKey?: string
@@ -93,7 +93,7 @@ export class ZKPDataPointsService {
    */
   static async saveDataPoint(
     identityId: string,
-    credentials: { pnName: string; passcode: string },
+    credentials: { key1: string; key2: string },
     authToken: string,
     dataPoint: ZKPDataPoint,
     publicKey?: string
@@ -143,7 +143,7 @@ export class ZKPDataPointsService {
    */
   static async hasDataPoint(
     identityId: string,
-    credentials: { pnName: string; passcode: string },
+    credentials: { key1: string; key2: string },
     authToken: string,
     dataPointId: string,
     publicKey?: string

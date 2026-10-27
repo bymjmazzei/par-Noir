@@ -29,7 +29,7 @@
    - Choose a friendly nickname (this will be displayed instead of your username)
    - Select recovery contact type (Email or Phone)
    - Enter your recovery contact
-   - Create a strong passcode
+   - Create a strong key2
    - Set up at least 2 recovery custodians
    - Click "Create Identity"
 
@@ -44,12 +44,12 @@
 ### Multi-Factor Recovery
 Your identity is protected by a 4-factor recovery system:
 1. **Username** - Your unique identifier
-2. **Passcode** - Your chosen password
+2. **Key2** - Your chosen password
 3. **Nickname** - Your friendly display name
 4. **Recovery Contact** - Email or phone for recovery
 
 ### Recovery Custodians
-**🚨 CRITICAL: Without custodians, you could permanently lose your identity if you lose your device or forget your passcode.**
+**🚨 CRITICAL: Without custodians, you could permanently lose your identity if you lose your device or forget your Key 2.**
 
 - Up to 5 custodians can be set up
 - Minimum 2 custodians required
@@ -96,7 +96,7 @@ Once signed in, you can:
 
 ### If You Lose Access
 1. **Go to Recovery Page**: Visit the dashboard recovery section
-2. **Enter 4-Factor Info**: Username, passcode, nickname, recovery contact
+2. **Enter 4-Factor Info**: Username, key2, nickname, recovery contact
 3. **Custodian Approval**: Your custodians will be notified
 4. **Regain Access**: Once approved, you can reset your credentials
 
@@ -140,7 +140,7 @@ If you completely lose access:
 - Try refreshing the page
 - Check if your browser supports PWA installation
 
-**Forgot Passcode:**
+**Forgot Key2:**
 - Use the recovery process with your custodians
 - You'll need your username, nickname, and recovery contact
 
@@ -159,14 +159,14 @@ If you completely lose access:
 
 ## 🔒 Security Best Practices
 
-1. **Strong Passcode**: Use a unique, strong passcode
+1. **Strong Key2**: Use a unique, strong key2
 2. **Trusted Custodians**: Only add people you trust completely - this is your lifeline for recovery
 3. **Identity File Backup**: Export your identity file regularly and store it securely
 4. **Secure Storage**: Keep recovery keys and backup files in safe places
 5. **Update Recovery Info**: Keep your recovery contact current
 6. **Test Recovery**: Periodically test that your custodians can help you recover
 7. **Multiple Backups**: Store your identity file in multiple secure locations
-8. **Never Share Passcode**: Your passcode is the key to your identity - never share it
+8. **Never Share Key2**: Your key2 is the key to your identity - never share it
 
 ## 📱 Mobile Usage
 
@@ -181,7 +181,7 @@ The dashboard is fully optimized for mobile devices:
 Your identity data is stored locally on your device:
 - **Privacy First**: Your data never leaves your device
 - **Offline Access**: Works without internet connection
-- **Encrypted Storage**: All data is encrypted with your passcode
+- **Encrypted Storage**: All data is encrypted with your key2
 - **Export Only**: Data is only shared when you explicitly export
 - **User Control**: You are in complete control - no company or server controls your identity
 - **No Recovery Service**: There is no "forgot password" or customer support - you must set up your own recovery methods

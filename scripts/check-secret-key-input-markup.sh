@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Key 1 / Key 2 inputs must not look like username/password login fields.
+# Key 1 / Key 2 inputs must not look like username/password login fields, and Key 1 must
+# never be handled as a name.
 #
 # Ratchet: live unlock/create surfaces must use secretKeyInputProps (React) or
-# matching HTML attrs (oauth-consent). Never autocomplete=username, name/id=username,
+# matching HTML attrs. Never autocomplete=username, name/id=username,
 # or a default type="text" Key 1 field.
+#
+# Key 1 / Key 2 were once called "pN name" / "passcode". Those names may appear only in the
+# denylists that reject them (LEGACY_NAME_ALLOW). No nickname or displayName may be
+# assigned from Key 1. These two checks always scan apps/, packages/, api/src, core/, sdk/.
 #
 # Set PN_CHECK_ALL=1 for full scan (CI). Default: staged files that intersect the live set.
 # Set PN_FALSIFY=1 to prove the check fails on a synthetic violation (then exit 0 if it did).
@@ -13,22 +18,40 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 LIVE_FILES=(
-  apps/id-dashboard/src/App/UnlockGate.tsx
-  apps/id-dashboard/src/App/CreateDidModal.tsx
-  apps/id-dashboard/src/App/ImportDidModal.tsx
-  apps/id-dashboard/src/components/security/BiometricPasscodeModal.tsx
-  apps/id-dashboard/src/components/recovery/RecoveryPasscodeModal.tsx
-  apps/id-dashboard/src/components/modals/ExportAuthModal.tsx
-  apps/id-dashboard/src/components/modals/ExportToUsbModal.tsx
-  apps/id-dashboard/src/components/modals/ExportToNfcModal.tsx
-  apps/id-dashboard/src/components/unlock/UnlockFromUsbModal.tsx
-  apps/id-dashboard/src/components/unlock/UnlockFromNfcModal.tsx
-  apps/id-dashboard/src/pages/SyncReceiver.tsx
-  apps/id-dashboard/src/components/identity/IdentityRotationWizard.tsx
-  apps/id-dashboard/src/components/subpn/SubPnTab.tsx
-  apps/aggregator-browser/src/components/DmCryptoUnlockModal.tsx
-  api/src/templates/oauth-consent.html
+  apps/id-dashboard/src/components/recovery/RecoveryAuthGate.tsx
+  apps/id-dashboard/src/components/recovery/RecoveryKeysModal.tsx
+  packages/oauth-ui/src/consentUnlock/ConsentUnlockApp.tsx
 )
+
+LEGACY_NAME_ROOTS=(apps packages api/src core sdk)
+LEGACY_NAME_PATTERN='pn_?name|passcode'
+LEGACY_NAME_ALLOW=(
+  api/src/server/modules/pnOAuthRoutes.ts
+  api/src/server/modules/brokerPrivateKeys.ts
+  api/src/utils/logger.ts
+  packages/oauth-ui/src/oauthUnlockProofMint.ts
+  packages/oauth-ui/src/oauthUnlockProofMint.test.ts
+  packages/oauth-ui/src/handoffSeal.ts
+  packages/oauth-ui/src/hostedShell/session.ts
+  packages/oauth-ui/src/consentUnlock/mintConsentCode.ts
+  packages/oauth-ui/src/consentUnlock/consentUnlock.test.ts
+  packages/oauth-ui/src/consentUnlock/vaultEnroll.ts
+  packages/standard-data-points/src/blocked.ts
+  packages/standard-data-points/src/blocked.test.ts
+)
+SOURCE_GLOBS=(
+  --glob '!**/node_modules/**'
+  --glob '!**/dist/**'
+  --glob '!**/dist-*/**'
+  --glob '!**/build/**'
+  --glob '!**/static/**'
+  --glob '!**/Pods/**'
+  --glob '!**/coverage/**'
+  --glob '!**/*.md'
+  --glob '!**/package-lock.json'
+)
+# nickname / displayName = <...>key1 or = <...> || <...>key1 (comparisons against Key 1 are fine).
+KEY1_NAME_PATTERN='\b(nickname|displayName)\s*[:=]\s*([A-Za-z_$][\w$?]*\.)*[A-Za-z_$]*[kK]ey1\b|\b(nickname|displayName)\s*[:=][^;,]*\|\|\s*([A-Za-z_$][\w$?]*\.)*[A-Za-z_$]*[kK]ey1\b'
 
 violations=""
 
@@ -41,6 +64,32 @@ has_match() {
   local pattern="$1"
   local file="$2"
   rg -q -- "$pattern" "$file"
+}
+
+is_legacy_allowed() {
+  local f="$1"
+  local allowed
+  for allowed in "${LEGACY_NAME_ALLOW[@]}"; do
+    if [ "$f" = "$allowed" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+check_key1_names() {
+  local line
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    if ! is_legacy_allowed "${line%%:*}"; then
+      append_violation "$line: legacy Key 1 / Key 2 name (use key1 / key2, \"Key 1\" / \"Key 2\")"
+    fi
+  done < <(rg -n -i "${SOURCE_GLOBS[@]}" -- "$LEGACY_NAME_PATTERN" "$@" 2>/dev/null || true)
+
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    append_violation "$line: nickname/displayName assigned from Key 1"
+  done < <(rg -n -P "${SOURCE_GLOBS[@]}" -- "$KEY1_NAME_PATTERN" "$@" 2>/dev/null || true)
 }
 
 check_file() {
@@ -88,9 +137,6 @@ check_file() {
       if ! has_match 'data-1p-ignore' "$file"; then
         append_violation "$file: missing data-1p-ignore on Key inputs"
       fi
-      if has_match 'id=["'\'']pnName["'\'']' "$file"; then
-        append_violation "$file: legacy id=pnName (rename to pn-key-1)"
-      fi
       ;;
   esac
 }
@@ -116,7 +162,23 @@ EOF
     echo "❌ falsify failed: synthetic Key 1 username markup was not detected"
     exit 1
   fi
-  echo "✅ falsify ok: synthetic violation detected"
+
+  violations=""
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/pn-key-names-XXXXXX")"
+  printf '%s\n' "const pnName = form.value;" >"$tmpdir/legacy.ts"
+  printf '%s\n' "const session = { nickname: creds.key1 };" >"$tmpdir/nickname.ts"
+  printf '%s\n' "const label = { displayName: saved || newKey1 };" >"$tmpdir/fallback.ts"
+  set +e
+  check_key1_names "$tmpdir"
+  set -e
+  rm -rf "$tmpdir"
+  for expect in legacy.ts nickname.ts fallback.ts; do
+    if ! printf '%s' "$violations" | grep -q "$expect"; then
+      echo "❌ falsify failed: $expect was not detected"
+      exit 1
+    fi
+  done
+  echo "✅ falsify ok: synthetic violations detected"
   exit 0
 fi
 
@@ -130,6 +192,8 @@ is_live() {
   done
   return 1
 }
+
+check_key1_names "${LEGACY_NAME_ROOTS[@]}"
 
 if [ "${PN_CHECK_ALL:-0}" = "1" ]; then
   for file in "${LIVE_FILES[@]}"; do
@@ -145,9 +209,10 @@ else
 fi
 
 if [ -n "$violations" ]; then
-  echo "❌ check-secret-key-input-markup: Key 1/Key 2 must not look like username/password login"
+  echo "❌ check-secret-key-input-markup: Key 1/Key 2 must be handled as secrets"
   printf '%s' "$violations"
   echo "Use secretKeyInputProps('key1'|'key2', mode) from @par-noir/oauth-ui (HTML: id pn-key-1/pn-key-2 + data-1p-ignore)."
+  echo "Name the factors key1 / key2 (\"Key 1\" / \"Key 2\" in copy); never derive a nickname from Key 1."
   exit 1
 fi
 

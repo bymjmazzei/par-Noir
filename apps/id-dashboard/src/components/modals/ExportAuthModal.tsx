@@ -5,12 +5,12 @@ import { HostedShellLaunch } from '@par-noir/oauth-ui';
 interface ExportAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  exportAuthData: { pnName: string; passcode: string };
-  setExportAuthData: React.Dispatch<React.SetStateAction<{ pnName: string; passcode: string }>>;
-  showExportPnName: boolean;
-  setShowExportPnName: (show: boolean) => void;
-  showExportPasscode: boolean;
-  setShowExportPasscode: (show: boolean) => void;
+  exportAuthData: { key1: string; key2: string };
+  setExportAuthData: React.Dispatch<React.SetStateAction<{ key1: string; key2: string }>>;
+  showExportKey1: boolean;
+  setShowExportKey1: (show: boolean) => void;
+  showExportKey2: boolean;
+  setShowExportKey2: (show: boolean) => void;
   onAuth: () => void;
   /** Shown when auth is for a specific export type */
   purpose?: 'download' | 'usb' | 'nfc' | 'device-bound';
@@ -21,19 +21,19 @@ export function ExportAuthModal({
   onClose,
   exportAuthData,
   setExportAuthData,
-  showExportPnName,
-  setShowExportPnName,
-  showExportPasscode,
-  setShowExportPasscode,
+  showExportKey1,
+  setShowExportKey1,
+  showExportKey2,
+  setShowExportKey2,
   onAuth,
   purpose
 }: ExportAuthModalProps) {
   if (!isOpen) return null;
 
   const handleClose = () => {
-    setExportAuthData({ pnName: '', passcode: '' });
-    setShowExportPnName(false);
-    setShowExportPasscode(false);
+    setExportAuthData({ key1: '', key2: '' });
+    setShowExportKey1(false);
+    setShowExportKey2(false);
     onClose();
   };
 

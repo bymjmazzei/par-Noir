@@ -28,8 +28,8 @@ export interface UseExportTransferHandlersParams {
   canExportIdentity: boolean;
   deviceAuth: ReturnType<typeof useDeviceAuthState>;
 
-  exportAuthData: { pnName: string; passcode: string };
-  setExportAuthData: React.Dispatch<React.SetStateAction<{ pnName: string; passcode: string }>>;
+  exportAuthData: { key1: string; key2: string };
+  setExportAuthData: React.Dispatch<React.SetStateAction<{ key1: string; key2: string }>>;
   pendingExportAction: ExportAction;
   setPendingExportAction: React.Dispatch<React.SetStateAction<ExportAction>>;
   setShowExportAuthModal: React.Dispatch<React.SetStateAction<boolean>>;
@@ -40,10 +40,10 @@ export interface UseExportTransferHandlersParams {
   setIdentityForNfcExport: React.Dispatch<React.SetStateAction<ExportIdentityPayload | null>>;
 
   setShowTransferSetupModal: React.Dispatch<React.SetStateAction<boolean>>;
-  transferPasscode: string;
+  transferCode: string;
   setTransferUrl: React.Dispatch<React.SetStateAction<string>>;
   setTransferId: React.Dispatch<React.SetStateAction<string>>;
-  setTransferPasscode: React.Dispatch<React.SetStateAction<string>>;
+  setTransferCode: React.Dispatch<React.SetStateAction<string>>;
   setTransferCreated: React.Dispatch<React.SetStateAction<boolean>>;
   generateQRCode: (url: string) => Promise<void>;
 
@@ -71,10 +71,10 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
     setIdentityForUsbExport,
     setIdentityForNfcExport,
     setShowTransferSetupModal,
-    transferPasscode,
+    transferCode,
     setTransferUrl,
     setTransferId,
-    setTransferPasscode,
+    setTransferCode,
     setTransferCreated,
     generateQRCode,
     setError,
@@ -119,8 +119,8 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
       // Authenticate using the same crypto function as unlock
       const authSession = await IdentityCrypto.authenticateIdentity(
         identityToUnlock as any,
-        exportAuthData.passcode,
-        exportAuthData.pnName
+        exportAuthData.key2,
+        exportAuthData.key1
       );
 
       // Authentication successful
@@ -154,7 +154,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
       setTimeout(() => setError(null), 9000);
       return;
     }
-    if (!exportAuthData.pnName || !exportAuthData.passcode) {
+    if (!exportAuthData.key1 || !exportAuthData.key2) {
       setPendingExportAction('download');
       setShowExportOptionsModal(false);
       setShowExportAuthModal(true);
@@ -235,7 +235,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
       setTimeout(() => setError(null), 9000);
       return;
     }
-    if (!exportAuthData.pnName || !exportAuthData.passcode) {
+    if (!exportAuthData.key1 || !exportAuthData.key2) {
       setPendingExportAction('device-bound');
       setShowExportOptionsModal(false);
       setShowExportAuthModal(true);
@@ -280,8 +280,8 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
           salt: identityToExport.salt,
           publicKey: currentIdentity.publicKey ?? identityToExport.publicKey,
         },
-        pnName: exportAuthData.pnName,
-        passcode: exportAuthData.passcode,
+        key1: exportAuthData.key1,
+        key2: exportAuthData.key2,
         nickname: authenticatedUser.nickname,
       });
 
@@ -317,7 +317,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
     }
   };
 
-  // Handle export to NFC - open modal directly; pN + passcode collected as last step before write
+  // Handle export to NFC - open modal directly; pN + Key 2 collected as last step before write
   const handleExportToNfc = async () => {
     if (!canExportIdentity) {
       setError(deviceAuth.deviceRequiredMessage);
@@ -352,7 +352,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
     }
   };
 
-  // Handle export to USB - open modal directly; pN + passcode collected as last step before write
+  // Handle export to USB - open modal directly; pN + Key 2 collected as last step before write
   const handleExportToUsb = async () => {
     if (!canExportIdentity) {
       setError(deviceAuth.deviceRequiredMessage);
@@ -394,7 +394,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
         throw new Error('No identity is currently unlocked.');
       }
 
-      // Show transfer setup modal to get transfer passcode
+      // Show transfer setup modal to get transfer code
       setShowTransferSetupModal(true);
 
     } catch (error: any) {
@@ -405,8 +405,8 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
 
   const handleTransferSetup = async () => {
     try {
-      if (!transferPasscode || transferPasscode.length < 4) {
-        throw new Error('Transfer passcode must be at least 4 characters.');
+      if (!transferCode || transferCode.length < 4) {
+        throw new Error('Transfer code must be at least 4 characters.');
       }
 
       // Generate short transfer ID
@@ -442,7 +442,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
         id: transferId,
         ipfsCid: `direct-transfer-${transferId}`,
         nickname: authenticatedUser.nickname || 'Transferred pN',
-        transferPasscode: transferPasscode,
+        transferCode: transferCode,
         expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
         directData: transferFileContent
       };
@@ -456,7 +456,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
       // Show transfer URL and QR code
       setTransferUrl(transferUrl);
       setTransferId(transferId);
-      setTransferPasscode('');
+      setTransferCode('');
       setTransferCreated(true);
 
       // Generate QR code

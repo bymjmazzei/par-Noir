@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
  * only renders once `authenticatedUser` is set by a real three-factor unlock. The dashboard
  * deliberately refuses to shortcut that — `useAppBootstrapEffects` clears any restored session
  * on boot ("user must unlock their ID each time"), so there is no seeded-localStorage or
- * deep-link path that mounts the storage shell without a real pn file, pn name, and passcode.
+ * deep-link path that mounts the storage shell without a real pn file, Key 1, and Key 2.
  * Driving a real unlock would mean shipping a fixture identity and its secrets, which the
  * no-plaintext-secrets rule forbids.
  *
@@ -59,7 +59,7 @@ test.describe('storage surface pre-unlock smoke', () => {
     });
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByPlaceholder('Enter your pN Name')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByPlaceholder('Enter your Key 1')).toBeVisible({ timeout: 30_000 });
 
     // Let deferred effects run; a boot-time Drive call would fire in this window.
     await page.waitForTimeout(3000);
@@ -78,7 +78,7 @@ test.describe('storage surface pre-unlock smoke', () => {
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByPlaceholder('Enter your pN Name')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByPlaceholder('Enter your Key 1')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('button', { name: 'Unlock pN' })).toBeEnabled();
 
     await page.waitForTimeout(2000);

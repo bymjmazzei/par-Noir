@@ -20,8 +20,8 @@ Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: tr
 
 const OWNER_PK = 'owner-identity-public-key';
 const PN = 'pn-owner';
-const PN_NAME = 'fixture-name';
-const PASSCODE = 'fixture-passcode-123';
+const KEY1 = 'fixture-name';
+const KEY2 = 'fixture-key2-123';
 
 const mockOldShares: { current: Array<{ index: number; share: string }> } = { current: [] };
 const updateIdentity = jest.fn(async () => undefined);
@@ -73,7 +73,7 @@ const payload = {
   mlKemSecretKey: 'kem-sk',
   mlDsaSecretKey: 'dsa-sk',
   identityId: 'id-1',
-  pnName: PN_NAME,
+  key1: KEY1,
   recoveryConfig: { threshold: 2, totalShares: 3, version: 1 as const, createdAt: '2025-01-01T00:00:00Z' },
 };
 
@@ -98,14 +98,14 @@ describe('resecureRecovery', () => {
       identityId: 'id-1',
       auth: {
         encryptedIdentity: { publicKey: OWNER_PK, recoveryEnvelope: oldEnvelope } as never,
-        pnName: PN_NAME,
-        passcode: PASSCODE,
+        key1: KEY1,
+        key2: KEY2,
         expiresAt: Date.now() + 60_000,
       },
       threshold: 3,
     });
 
-    const newShares = await unsealRecoveryShares(encryptedIdentity.recoverySharesSealed as never, PN_NAME, PASSCODE);
+    const newShares = await unsealRecoveryShares(encryptedIdentity.recoverySharesSealed as never, KEY1, KEY2);
     expect(newShares).toHaveLength(5);
     const opened = await decryptRecoveryEnvelope(
       combineShares(newShares.slice(0, 3)),
@@ -155,8 +155,8 @@ describe('resecureRecovery', () => {
         identityId: 'id-1',
         auth: {
           encryptedIdentity: { publicKey: OWNER_PK, recoveryEnvelope: oldEnvelope } as never,
-          pnName: PN_NAME,
-          passcode: PASSCODE,
+          key1: KEY1,
+          key2: KEY2,
           expiresAt: Date.now() + 60_000,
         },
         threshold: 2,

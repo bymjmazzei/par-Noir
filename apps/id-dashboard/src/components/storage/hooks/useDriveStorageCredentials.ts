@@ -64,8 +64,8 @@ export interface UseDriveStorageCredentialsParams {
   ) => Promise<boolean>;
   resolveOwnerApiToken: (wantedPn?: string | null) => string | null;
   waitForOwnerApiToken: (wantedPn?: string | null, maxMs?: number) => Promise<string | null>;
-  getResolvedAuthCredentials: () => { pnName: string; publicKey: string; passcode?: string } | null;
-  getPasscodeFromSecureStorage: (sessionId: string | null | undefined) => string | null;
+  getResolvedAuthCredentials: () => { key1: string; publicKey: string; key2?: string } | null;
+  getKey2FromSecureStorage: (sessionId: string | null | undefined) => string | null;
   getPnIdentifier: () => Promise<string | null>;
   getStorageIdentityCandidates: () => string[];
   /** Shared refs owned by FileStorageAggregator. */
@@ -99,7 +99,7 @@ export function useDriveStorageCredentials({
   resolveOwnerApiToken,
   waitForOwnerApiToken,
   getResolvedAuthCredentials,
-  getPasscodeFromSecureStorage,
+  getKey2FromSecureStorage,
   getPnIdentifier,
   getStorageIdentityCandidates,
   authenticatedUserRef,
@@ -252,7 +252,7 @@ export function useDriveStorageCredentials({
 
       // CRITICAL: Use STANDARDIZED pn identifier for all API calls
       // This ensures consistency - same credentials always produce same identifier
-      // Generate pn identifier from pnName:passcode:publicKey
+      // Generate pn identifier from key1:key2:publicKey
       const currentUser = authenticatedUserRef.current;
       if (!currentUser?.publicKey) {
         console.warn('⚠️ [StorageCredentials] No publicKey available for pn identifier generation', {
@@ -767,7 +767,7 @@ export function useDriveStorageCredentials({
     resolveIdentifiersForEmail,
     upsertDriveAccount,
     persistStorageCredentialsToAPI,
-    getPasscodeFromSecureStorage,
+    getKey2FromSecureStorage,
     getPnIdentifier,
     getStorageIdentityCandidates,
     disconnectTimestampRef,

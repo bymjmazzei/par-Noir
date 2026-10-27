@@ -16,12 +16,12 @@ interface CustodianAcceptanceModalProps {
   custodianAcceptanceData: {
     contactType: 'email' | 'phone';
     contactValue: string;
-    passcode: string;
+    acceptanceCode: string;
   };
   setCustodianAcceptanceData: React.Dispatch<React.SetStateAction<{
     contactType: 'email' | 'phone';
     contactValue: string;
-    passcode: string;
+    acceptanceCode: string;
   }>>;
   onCustodianAcceptance: () => void;
 }
@@ -39,7 +39,7 @@ export function CustodianAcceptanceModal({
 
   const handleClose = () => {
     setPendingCustodianInvitationData(null);
-    setCustodianAcceptanceData({ contactType: 'email', contactValue: '', passcode: '' });
+    setCustodianAcceptanceData({ contactType: 'email', contactValue: '', acceptanceCode: '' });
     onClose();
   };
 
@@ -64,7 +64,7 @@ export function CustodianAcceptanceModal({
                 <ul>
                   <li>You must have your own identity unlocked to accept</li>
                   <li>Your contact information must match the invitation</li>
-                  <li>You need the correct 6-digit passcode from the identity owner</li>
+                  <li>You need the correct 6-digit acceptance code from the identity owner</li>
                   <li>You can revoke this custodianship at any time</li>
                 </ul>
               </div>
@@ -113,19 +113,19 @@ export function CustodianAcceptanceModal({
 
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-1">
-                  Passcode *
+                  Acceptance code *
                 </label>
                 <input
                   type="text"
-                  value={custodianAcceptanceData.passcode}
-                  onChange={(e) => setCustodianAcceptanceData(prev => ({ ...prev, passcode: e.target.value }))}
+                  value={custodianAcceptanceData.acceptanceCode}
+                  onChange={(e) => setCustodianAcceptanceData(prev => ({ ...prev, acceptanceCode: e.target.value }))}
                   maxLength={6}
                   pattern="[0-9]{6}"
                   className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Enter 6-digit passcode"
+                  placeholder="Enter 6-digit acceptance code"
                 />
                 <p className="text-xs text-text-secondary mt-1">
-                  Enter the 6-digit passcode provided by the identity owner
+                  Enter the 6-digit acceptance code provided by the identity owner
                 </p>
               </div>
             </div>

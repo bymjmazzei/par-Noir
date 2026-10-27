@@ -8,7 +8,7 @@
 "Hi, I'm demonstrating our Google Drive integration for API approval. Our dashboard platform provides identity management and secure document storage using the par Noir protocol with AES-256-GCM encryption. Let me connect using OAuth 2.0 with limited drive.file scope."
 
 ### File Explorer & Security (35 seconds)
-"Once connected, you see our file explorer interface. All files are encrypted with AES-256-GCM using the user's pN file, name, and passcode - only the user with these credentials can decrypt their files."
+"Once connected, you see our file explorer interface. All files are encrypted with AES-256-GCM using the user's pN file, name, and key2 - only the user with these credentials can decrypt their files."
 
 ### Key Operations (30 seconds)
 "Let me demonstrate key operations. File preview shows the decrypted file content. Downloading provides the decrypted file to the user. Uploading encrypts files client-side with AES-256-GCM before sending to Google Drive. Files are stored in our app-specific folder with comprehensive error handling and full API compliance."

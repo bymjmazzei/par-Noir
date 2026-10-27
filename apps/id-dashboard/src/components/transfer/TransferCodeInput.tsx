@@ -1,31 +1,31 @@
 import React from 'react';
 
-interface TransferPasscodeInputProps {
-  transferPasscode: string;
-  onPasscodeChange: (passcode: string) => void;
+interface TransferCodeInputProps {
+  transferCode: string;
+  onCodeChange: (code: string) => void;
   loading: boolean;
 }
 
-export const TransferPasscodeInput: React.FC<TransferPasscodeInputProps> = React.memo(({ 
-  transferPasscode, 
-  onPasscodeChange, 
+export const TransferCodeInput: React.FC<TransferCodeInputProps> = React.memo(({ 
+  transferCode, 
+  onCodeChange, 
   loading 
 }) => {
   return (
     <div>
       <label className="block text-sm font-medium text-text-primary mb-2">
-        Transfer Passcode
+        Transfer code
       </label>
       <input
         type="password"
-        value={transferPasscode}
-        onChange={(e) => onPasscodeChange(e.target.value)}
+        value={transferCode}
+        onChange={(e) => onCodeChange(e.target.value)}
         className="w-full px-3 py-2 bg-input-bg border border-border rounded-md text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-        placeholder="Enter the transfer passcode"
+        placeholder="Enter the transfer code"
         disabled={loading}
       />
     </div>
   );
 });
 
-TransferPasscodeInput.displayName = 'TransferPasscodeInput';
+TransferCodeInput.displayName = 'TransferCodeInput';

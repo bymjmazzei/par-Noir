@@ -29,8 +29,8 @@ const auth = {
     salt: 's',
     recoveryEnvelope: { version: 1 as const, iv: 'mi', ciphertext: 'mc' },
   },
-  pnName: 'old-key-one',
-  passcode: 'old-key-two',
+  key1: 'old-key-one',
+  key2: 'old-key-two',
   expiresAt: Date.now() + 60_000,
 };
 
@@ -66,9 +66,9 @@ describe('registerRecoveryKey', () => {
         mlKemSecretKey: 'kem-sk',
         mlDsaSecretKey: 'dsa-sk',
         identityId: 'did:key:x',
-        pnName: '',
       })
     );
+    expect(payload).not.toHaveProperty('key1');
     expect(JSON.stringify(payload)).not.toContain('old-key-one');
     expect(signRecoverySetupChallenge).toHaveBeenCalledWith('tok', auth, expect.objectContaining({ id: 'did:key:x' }));
     expect(decryptRecoverySessionIdentity).toHaveBeenCalledTimes(1);

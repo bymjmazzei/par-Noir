@@ -130,7 +130,7 @@ export class SecureMetadataCrypto {
   static async encryptMetadata(
     metadata: MetadataContent,
     _username: string,
-    passcode: string,
+    key2: string,
     identityId: string
   ): Promise<SecureMetadata> {
     try {
@@ -138,8 +138,8 @@ export class SecureMetadataCrypto {
       const metadataString = JSON.stringify(metadata);
       
       // Use the same encryption as ID file
-      // SECURITY: Requires both pnName (username) and passcode
-      const encryptedData = await IdentityCrypto.encryptData(metadataString, _username, passcode);
+      // SECURITY: Requires both Key 1 and Key 2
+      const encryptedData = await IdentityCrypto.encryptData(metadataString, _username, key2);
       
       return {
         encryptedData: encryptedData.encrypted,
@@ -162,7 +162,7 @@ export class SecureMetadataCrypto {
   static async decryptMetadata(
     secureMetadata: SecureMetadata,
     _username: string,
-    passcode: string
+    key2: string
   ): Promise<MetadataContent> {
     try {
       // Use the same decryption as ID file
@@ -172,8 +172,8 @@ export class SecureMetadataCrypto {
         salt: secureMetadata.salt
       };
       
-      // SECURITY: Requires both pnName (username) and passcode
-      const decryptedString = await IdentityCrypto.decryptData(encryptedData, _username, passcode);
+      // SECURITY: Requires both Key 1 and Key 2
+      const decryptedString = await IdentityCrypto.decryptData(encryptedData, _username, key2);
       return JSON.parse(decryptedString);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
@@ -188,7 +188,7 @@ export class SecureMetadataCrypto {
   static async updateMetadataField(
     secureMetadata: SecureMetadata,
     _username: string,
-    passcode: string,
+    key2: string,
     field: keyof MetadataContent,
     value: any
   ): Promise<SecureMetadata> {
@@ -197,7 +197,7 @@ export class SecureMetadataCrypto {
       const currentMetadata = await this.decryptMetadata(
         secureMetadata,
         _username,
-        passcode
+        key2
       );
       
       // Update the specific field
@@ -224,7 +224,7 @@ export class SecureMetadataCrypto {
       return await this.encryptMetadata(
         updatedMetadata,
         _username,
-        passcode,
+        key2,
         secureMetadata.identityId
       );
     } catch (error) {
@@ -240,10 +240,10 @@ export class SecureMetadataCrypto {
   static async verifyMetadata(
     secureMetadata: SecureMetadata,
     _username: string,
-    passcode: string
+    key2: string
   ): Promise<boolean> {
     try {
-      await this.decryptMetadata(secureMetadata, _username, passcode);
+      await this.decryptMetadata(secureMetadata, _username, key2);
       return true;
     } catch (error) {
       return false;
@@ -255,7 +255,7 @@ export class SecureMetadataCrypto {
    */
   static async createInitialMetadata(
     _username: string,
-    passcode: string,
+    key2: string,
     identityId: string,
     initialData: Partial<MetadataContent> = {}
   ): Promise<SecureMetadata> {
@@ -268,6 +268,6 @@ export class SecureMetadataCrypto {
       privacySettings: initialData.privacySettings || {}
     };
 
-    return await this.encryptMetadata(initialMetadata, _username, passcode, identityId);
+    return await this.encryptMetadata(initialMetadata, _username, key2, identityId);
   }
 }

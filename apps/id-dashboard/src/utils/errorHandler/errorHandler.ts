@@ -24,7 +24,7 @@ export class ErrorHandler {
       errorRetentionDays: 30,
       sensitiveDataPatterns: [
         /password/gi,
-        /passcode/gi,
+        /key2/gi,
         /privatekey/gi,
         /secret/gi,
         /token/gi,

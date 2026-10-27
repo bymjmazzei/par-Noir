@@ -27,7 +27,7 @@ interface IdentityRotationWizardProps {
 type WizardStep =
   | 'intro'
   | 'unlock_old'
-  | 'new_passcode'
+  | 'new_keys'
   | 'migrating'
   | 'drive_failures'
   | 'custodian_reinvite'
@@ -59,10 +59,10 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
 
   const [step, setStep] = useState<WizardStep>('intro');
   const [oldPnFile, setOldPnFile] = useState<File | null>(null);
-  const [oldPasscode, setOldPasscode] = useState('');
-  const [oldPnName, setOldPnName] = useState('');
-  const [newPasscode, setNewPasscode] = useState('');
-  const [confirmPasscode, setConfirmPasscode] = useState('');
+  const [oldKey2, setOldKey2] = useState('');
+  const [oldKey1, setOldKey1] = useState('');
+  const [newKey2, setNewKey2] = useState('');
+  const [confirmKey2, setConfirmKey2] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [progressLabel, setProgressLabel] = useState('');
   const [progressPct, setProgressPct] = useState(0);
@@ -73,8 +73,8 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
   const [migrationCtx, setMigrationCtx] = useState<{
     predIdentity: EncryptedIdentity;
     predDid: string;
-    pnName: string;
-    predPasscode: string;
+    key1: string;
+    predKey2: string;
     rotatedIdentity: EncryptedIdentity;
     successorDid: string;
     recoveryConfig?: { threshold: number; totalShares: number };
@@ -82,12 +82,12 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
 
   const handleStart = () => {
     setError(null);
-    setStep(storedIdentity ? 'new_passcode' : 'unlock_old');
+    setStep(storedIdentity ? 'new_keys' : 'unlock_old');
   };
 
   const handleUnlockOld = async () => {
     setError(null);
-    if (!oldPnFile || !oldPasscode || !oldPnName) {
+    if (!oldPnFile || !oldKey2 || !oldKey1) {
       setError('Provide your current .pn file, Key 1, and Key 2.');
       return;
     }
@@ -98,10 +98,10 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       if (!identity?.encryptedData) throw new Error('Invalid .pn file');
       await IdentityCrypto.decryptData(
         { encrypted: identity.encryptedData, iv: identity.iv, salt: identity.salt },
-        oldPnName,
-        oldPasscode
+        oldKey1,
+        oldKey2
       );
-      setStep('new_passcode');
+      setStep('new_keys');
     } catch {
       setError('Could not unlock old identity. Check Key 1 and Key 2.');
     }
@@ -116,15 +116,15 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
         predecessor: {
           encryptedIdentity: migrationCtx.predIdentity,
           did: migrationCtx.predDid,
-          pnName: migrationCtx.pnName,
-          passcode: migrationCtx.predPasscode,
+          key1: migrationCtx.key1,
+          key2: migrationCtx.predKey2,
           recoveryConfig: migrationCtx.recoveryConfig,
         },
         successor: {
           encryptedIdentity: migrationCtx.rotatedIdentity,
           did: migrationCtx.successorDid,
-          pnName: migrationCtx.pnName,
-          passcode: newPasscode,
+          key1: migrationCtx.key1,
+          key2: newKey2,
         },
         acknowledgeDriveFailures,
         onProgress: (label, pct) => {
@@ -148,26 +148,26 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
         return;
       }
       setError(e instanceof Error ? e.message : 'Migration failed');
-      setStep('new_passcode');
+      setStep('new_keys');
     }
   };
 
   const handleMigrate = async () => {
     setError(null);
-    if (newPasscode.length < KEY_MIN_LENGTH) {
+    if (newKey2.length < KEY_MIN_LENGTH) {
       setError(`New Key 2 must be at least ${KEY_MIN_LENGTH} characters.`);
       return;
     }
-    if (newPasscode !== confirmPasscode) {
-      setError('Passcodes do not match.');
+    if (newKey2 !== confirmKey2) {
+      setError('Key 2 entries do not match.');
       return;
     }
 
     try {
       let predIdentity = storedIdentity;
       let predDid = currentDid || '';
-      let predPnName = oldPnName;
-      let predPasscode = oldPasscode;
+      let predKey1 = oldKey1;
+      let predKey2 = oldKey2;
 
       if (!predIdentity && oldPnFile) {
         const text = await oldPnFile.text();
@@ -180,8 +180,8 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
             iv: predIdentity.iv,
             salt: predIdentity.salt,
           },
-          oldPnName,
-          oldPasscode
+          oldKey1,
+          oldKey2
         );
         const identityJson = JSON.parse(raw) as { id?: string };
         predDid = identityJson.id || '';
@@ -192,9 +192,12 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       }
 
       const creds = currentDid ? SecureCredentialManager.getCredentials(currentDid) : null;
-      const pnName = predPnName || creds?.pnName || 'user';
-      if (storedIdentity && !predPasscode && creds?.passcode) {
-        predPasscode = creds.passcode;
+      const key1 = predKey1 || creds?.key1;
+      if (!key1) {
+        throw new Error('Enter Key 1 to rotate this pN.');
+      }
+      if (storedIdentity && !predKey2 && creds?.key2) {
+        predKey2 = creds.key2;
       }
       const predRaw = await IdentityCrypto.decryptData(
         {
@@ -202,8 +205,8 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           iv: predIdentity.iv,
           salt: predIdentity.salt,
         },
-        pnName,
-        predPasscode
+        key1,
+        predKey2
       );
       const predData = JSON.parse(predRaw) as {
         nickname?: string;
@@ -213,8 +216,8 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       };
 
       const rotated = await IdentityCrypto.prepareRotatedIdentity({
-        pnName,
-        newPasscode,
+        key1,
+        newKey2,
         predecessorDecrypted: predData,
       });
 
@@ -226,8 +229,8 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
               iv: rotated.identity.iv,
               salt: rotated.identity.salt,
             },
-            pnName,
-            newPasscode
+            key1,
+            newKey2
           )
         ) as { id: string }
       ).id;
@@ -235,8 +238,8 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       setMigrationCtx({
         predIdentity,
         predDid,
-        pnName,
-        predPasscode,
+        key1,
+        predKey2,
         rotatedIdentity: rotated.identity,
         successorDid,
         recoveryConfig: predData.recoveryConfig,
@@ -245,7 +248,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       await runCore(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Migration failed');
-      setStep('new_passcode');
+      setStep('new_keys');
     }
   };
 
@@ -314,7 +317,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
         </button>
       )}
 
-      {step === 'unlock_old' || step === 'new_passcode' ? (
+      {step === 'unlock_old' || step === 'new_keys' ? (
         <HostedShellLaunch op="rotate" onSession={(session) => {
           void import('../../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session, 'par-noir-rotated.json'));
         }} />

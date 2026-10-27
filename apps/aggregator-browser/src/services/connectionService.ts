@@ -80,8 +80,8 @@ export async function sendConnectionRequest(
     requesterPnIdentifier,
     {
       sessionId: requesterPnIdentifier,
-      pnName: 'browser-mailbox',
-      passcode: identity.mlKemSecretKey
+      key1: 'browser-mailbox',
+      key2: identity.mlKemSecretKey
     },
     {
       apiBaseUrl: API_ENDPOINT,
@@ -222,8 +222,8 @@ export async function acceptConnectionRequest(
     userPnIdentifier,
     {
       sessionId: userPnIdentifier,
-      pnName: 'browser-mailbox',
-      passcode: identity.mlKemSecretKey
+      key1: 'browser-mailbox',
+      key2: identity.mlKemSecretKey
     },
     {
       apiBaseUrl: API_ENDPOINT,

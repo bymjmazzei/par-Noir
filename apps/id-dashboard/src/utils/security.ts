@@ -195,31 +195,6 @@ export class AdvancedSecurity {
   }
 
   /**
-   * Validate input data
-   */
-  validateInput(input: string, type: 'email' | 'phone' | 'username' | 'passcode'): boolean {
-    // Check for threats first
-    const threats = this.checkForThreats(input, type);
-    if (threats.length > 0) {
-      return false;
-    }
-
-    // Type-specific validation
-    switch (type) {
-      case 'email':
-        return this.validateEmail(input);
-      case 'phone':
-        return this.validatePhone(input);
-      case 'username':
-        return this.validateUsername(input);
-      case 'passcode':
-        return this.validatePasscode(input);
-      default:
-        return true;
-    }
-  }
-
-  /**
    * Sanitize input data
    */
   sanitizeInput(input: string): string {
@@ -356,36 +331,6 @@ export class AdvancedSecurity {
       e.type === 'authentication_failure' && 
       e.userId === userId
     ).length;
-  }
-
-  /**
-   * Validate email format
-   */
-  private validateEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  /**
-   * Validate phone format
-   */
-  private validatePhone(phone: string): boolean {
-    const phoneRegex = /^[+]?[1-9][\d]{0,15}$/;
-    return phoneRegex.test(phone.replace(/[\s\-()]/g, ''));
-  }
-
-  /**
-   * Validate username format
-   */
-  private validateUsername(username: string): boolean {
-    return username.length >= 3 && username.length <= 50 && /^[a-zA-Z0-9_]+$/.test(username);
-  }
-
-  /**
-   * Validate passcode strength
-   */
-  private validatePasscode(passcode: string): boolean {
-    return passcode.length >= 4 && passcode.length <= 128;
   }
 
   /**

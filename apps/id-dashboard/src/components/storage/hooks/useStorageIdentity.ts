@@ -5,7 +5,7 @@
  * and the standardized pN identifier derived from it.
  *
  * STANDARDIZED pN Identifier - Single source of truth
- * Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
+ * Formula: SHA256(key1:key2:publicKey) → first 12 hex chars → pn-{hash}
  * This is the ONLY method used across all implementations (web, desktop, mobile)
  */
 import React from 'react';
@@ -20,15 +20,15 @@ import {
 export interface UseStorageIdentityParams {
   authenticatedUser: any;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
-  getPasscodeFromSecureStorage: (sessionId: string | null | undefined) => string | null;
+  getKey2FromSecureStorage: (sessionId: string | null | undefined) => string | null;
 }
 
 export function useStorageIdentity({
   authenticatedUser,
   setError,
-  getPasscodeFromSecureStorage,
+  getKey2FromSecureStorage,
 }: UseStorageIdentityParams) {
-  // SECURITY: resolvedAuth should NOT contain secrets (pnName, passcode)
+  // SECURITY: resolvedAuth should NOT contain secrets (Key 1, Key 2)
   // Use SecureCredentialManager.getCredentials(sessionId) to retrieve secrets when needed
   const [resolvedAuth, setResolvedAuth] = React.useState<{ publicKey: string; authToken?: string } | null>(null);
 
@@ -117,7 +117,7 @@ export function useStorageIdentity({
   // Use a function declaration (not const arrow function) so it's hoisted and available during initialization
   // This function reads from refs to avoid circular dependency issues
   // CRITICAL: Returns ONLY the standardized pn identifier - no other candidates
-  // SECURITY: NEVER include pnName in identity candidates - it's a secret credential
+  // SECURITY: NEVER include Key 1 in identity candidates - it's a secret credential
   function getStorageIdentityCandidates(): string[] {
     const candidates: string[] = [];
     
@@ -128,7 +128,7 @@ export function useStorageIdentity({
       candidates.push(pnIdentifierRef.current);
     }
     
-    // REMOVED: All other candidates (DID, public key, pn name) - they cause duplicate API calls
+    // REMOVED: All other candidates (DID, public key, Key 1) - they cause duplicate API calls
     // Only use standardized pn identifier: pn-{12-char-hex-hash}
     
     return Array.from(new Set(candidates.filter((value) => value && value.trim().length > 0)));
@@ -136,7 +136,7 @@ export function useStorageIdentity({
 
   React.useEffect(() => {
     // SECURITY: Check if credentials exist in SecureCredentialManager
-    // resolvedAuth no longer contains passcode (it's a secret)
+    // resolvedAuth no longer contains Key 2 (it's a secret)
     try {
       const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
       const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
@@ -157,7 +157,6 @@ export function useStorageIdentity({
       if (import.meta.env.DEV) {
         console.log('🔍 [FileStorageAggregator] Resolving auth...');
       }
-      // pnName is secret - not logged
       if (import.meta.env.DEV) {
         console.log('🔍 [FileStorageAggregator] authenticatedUser prop received');
       }
@@ -166,8 +165,6 @@ export function useStorageIdentity({
       if (authenticatedUser) {
         if (import.meta.env.DEV) {
           try {
-            const safeKeys = Object.keys(authenticatedUser).filter(k => k !== 'pnName' && k !== 'passcode');
-            console.log('🔍 [FileStorageAggregator] authenticatedUser keys:', safeKeys);
             console.log('🔍 [FileStorageAggregator] authenticatedUser structure:', {
               hasId: !!authenticatedUser.id,
               hasPublicKey: !!authenticatedUser.publicKey,
@@ -178,11 +175,11 @@ export function useStorageIdentity({
           }
         }
         
-        // SECURITY: Get pnName from SecureCredentialManager ONLY (secrets)
-        // Never extract pnName from authenticatedUser - it's a SECRET and shouldn't be there
+        // SECURITY: Get Key 1 from SecureCredentialManager ONLY (secrets)
+        // Never extract Key 1 from authenticatedUser - it's a SECRET and shouldn't be there
         const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-        const pnName = credentials?.pnName || null;
+        const key1 = credentials?.key1 || null;
         
         // Try multiple ways to extract publicKey
         let publicKey = authenticatedUser.publicKey;
@@ -196,16 +193,16 @@ export function useStorageIdentity({
         }
         
         if (import.meta.env.DEV) {
-          console.log('🔍 [FileStorageAggregator] Extracted from prop:', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasId: !!authenticatedUser.id });
+          console.log('🔍 [FileStorageAggregator] Extracted from prop:', { hasKey1: !!key1, hasPublicKey: !!publicKey, hasId: !!authenticatedUser.id });
         }
         
-        let passcode: string | null = null;
+        let key2: string | null = null;
         try {
-          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+          // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
           const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-          passcode = getPasscodeFromSecureStorage(sessionId);
+          key2 = getKey2FromSecureStorage(sessionId);
           if (import.meta.env.DEV) {
-            console.log('🔍 [FileStorageAggregator] Passcode from SecureCredentialManager:', passcode ? 'found' : 'not found');
+            console.log('🔍 [FileStorageAggregator] Key 2 from SecureCredentialManager:', key2 ? 'found' : 'not found');
           }
         } catch (e) {
           if (import.meta.env.DEV) {
@@ -221,21 +218,21 @@ export function useStorageIdentity({
         });
 
         if (fromUnlock) {
-          // Passcode credentials are optional. Shell unlock has a public key and no passcode.
+          // Key 2 credentials are optional. Shell unlock has a public key and no Key 2.
           const credentialSessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-          if (credentialSessionId && pnName && passcode) {
-            SecureCredentialManager.setCredentials(credentialSessionId, pnName, passcode);
+          if (credentialSessionId && key1 && key2) {
+            SecureCredentialManager.setCredentials(credentialSessionId, key1, key2);
           }
 
           if (import.meta.env.DEV) {
-            console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, hasPublicKey: !!fromUnlock.publicKey });
+            console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasKey1: !!key1, hasPublicKey: !!fromUnlock.publicKey });
           }
           setResolvedAuth(fromUnlock);
           setError(null);
           return;
         } else {
           if (import.meta.env.DEV) {
-            console.warn('⚠️ [FileStorageAggregator] Missing credentials from prop:', { hasPnName: !!pnName, hasPublicKey: !!publicKey, authenticatedUserKeys: Object.keys(authenticatedUser || {}) });
+            console.warn('⚠️ [FileStorageAggregator] Missing credentials from prop:', { hasKey1: !!key1, hasPublicKey: !!publicKey, authenticatedUserKeys: Object.keys(authenticatedUser || {}) });
           }
         }
       } else {
@@ -304,10 +301,10 @@ export function useStorageIdentity({
       return;
     }
 
-    // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
+    // SECURITY: Check credentials instead of resolvedAuth.Key 1 (secret)
     const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
     const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-    const hasAuth = Boolean(credentials?.pnName && resolvedAuth?.publicKey && resolvedAuth?.authToken);
+    const hasAuth = Boolean(credentials?.key1 && resolvedAuth?.publicKey && resolvedAuth?.authToken);
 
     if (!hasAuth) {
       if (lastDesktopAuthStateRef.current === 'unlocked') {
@@ -327,15 +324,14 @@ export function useStorageIdentity({
     void (async () => {
       let pnIdentifier: string | undefined;
 
-      // STANDARDIZED: Use VolumeIdGenerator - the ONLY method for pN identifier
-      // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
+      // Canonical pN id: SHA256(publicKey) → first 12 hex chars → pn-{hash}
       try {
         const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
         const sessionId = authenticatedUser?.id;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
-        // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
-        if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+        // SECURITY: Get Key 1 from credentials (secrets), publicKey from resolvedAuth (public)
+        if (credentials?.key1 && credentials?.key2 && resolvedAuth?.publicKey) {
           pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(resolvedAuth.publicKey);
           console.log('[DesktopUnlock] Generated pN identifier (standardized):', (pnIdentifier || '').substring(0, 8) + '...');
         } else {
@@ -349,15 +345,12 @@ export function useStorageIdentity({
         return;
       }
 
-      // SECURITY: Get pnName from credentials (secrets) for desktop unlock payload
-      const pnNameForPayload = credentials?.pnName || null;
-      if (!pnNameForPayload || !resolvedAuth?.publicKey || !resolvedAuth.authToken) {
+      if (!resolvedAuth?.publicKey || !resolvedAuth.authToken) {
         console.error('[DesktopUnlock] Missing credentials or publicKey');
         return;
       }
 
       const payload: DesktopUnlockPayload = {
-        pnName: pnNameForPayload,
         publicKey: resolvedAuth.publicKey,
         authToken: resolvedAuth.authToken,
         pnIdentifier,

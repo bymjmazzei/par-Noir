@@ -1,4 +1,4 @@
-/** User-facing labels for the two knowledge factors. Internal code still uses pnName / passcode. */
+/** User-facing labels for the two knowledge factors. Internal code still uses Key 1 / Key 2. */
 export const KEY_1_LABEL = 'Key 1';
 export const KEY_2_LABEL = 'Key 2';
 

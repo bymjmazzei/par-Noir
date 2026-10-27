@@ -94,7 +94,7 @@ This wizard will guide you through each important feature step by step. You can 
 
 Options:
 • Download - Save a portable pN file to your device (works everywhere)
-• Export to USB - Bind to a passcode-protected USB drive (uncopyable)
+• Export to USB - Bind to a key2-protected USB drive (uncopyable)
 • Export to NFC - Bind to an NFC card or fob (requires Chrome on Android)
 
 Security features:
@@ -454,7 +454,7 @@ You can always return to this wizard or access any feature from the main dashboa
                         <Usb className="w-6 h-6 text-orange-600 flex-shrink-0" />
                         <div>
                           <div className="font-medium text-text-primary">Export to USB</div>
-                          <div className="text-sm text-text-secondary">Bind to passcode-protected drive</div>
+                          <div className="text-sm text-text-secondary">Bind to passphrase-protected drive</div>
                         </div>
                       </button>
                     )}

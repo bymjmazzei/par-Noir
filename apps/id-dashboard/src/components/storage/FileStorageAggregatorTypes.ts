@@ -20,14 +20,12 @@ export const isDesktopShell =
   typeof window !== 'undefined' && Boolean(window.parNoirDesktop);
 
 export type DesktopUnlockPayload = {
-  pnName: string;
   publicKey: string;
   authToken: string;
   pnIdentifier?: string;
 };
 
 export type DesktopLockPayload = {
-  pnName?: string;
   publicKey?: string;
   pnIdentifier?: string;
 };

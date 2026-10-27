@@ -10,7 +10,6 @@ import { fetchRecoverySetupChallenge, type RecoverySetupOwnerProof } from './rec
 
 export interface RecoverySessionIdentity {
   id: string;
-  username?: string;
   recoveryConfig?: { threshold: number; totalShares: number; version?: 1; createdAt?: string };
   pqcSecrets?: { mlDsaSecretKey?: string; mlKemSecretKey?: string };
 }
@@ -23,8 +22,8 @@ export async function decryptRecoverySessionIdentity(auth: RecoveryAuthSession):
       iv: auth.encryptedIdentity.iv,
       salt: auth.encryptedIdentity.salt,
     },
-    auth.pnName,
-    auth.passcode
+    auth.key1,
+    auth.key2
   );
   return JSON.parse(raw) as RecoverySessionIdentity;
 }

@@ -261,10 +261,6 @@ export abstract class VeraCryptDriver implements VolumeDriver {
       return `pn-${this.shortHash(payload.publicKey.trim())}`;
     }
 
-    if (payload.pnName?.trim()) {
-      return `pn-${this.shortHash(payload.pnName.trim())}`;
-    }
-
     return 'pn-default';
   }
 

@@ -10,9 +10,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { analytics } from '../utils/analytics';
-import { MigrationManager, WebIdentityData } from '../utils/migration';
 import { cloudSyncManager } from '../utils/cloudSync';
-import { SessionDataMigration } from '../utils/sessionDataMigration';
 import { IntegrationCredentialManager } from '../utils/integrationCredentialManager';
 import { ScreenProtection } from '../utils/security/screenProtection';
 import { ExtensionDetector } from '../utils/security/extensionDetector';
@@ -38,10 +36,6 @@ export interface UseAppBootstrapEffectsParams {
   setPendingCustodianInvitationData: React.Dispatch<React.SetStateAction<any>>;
   setShowCustodianAcceptanceModal: React.Dispatch<React.SetStateAction<boolean>>;
 
-  migrationChecked: boolean;
-  setMigrationChecked: React.Dispatch<React.SetStateAction<boolean>>;
-  setPendingMigrations: React.Dispatch<React.SetStateAction<WebIdentityData[]>>;
-  setShowMigrationModal: React.Dispatch<React.SetStateAction<boolean>>;
 
   pwaState: any;
   isPWALocked: boolean;
@@ -74,10 +68,6 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
     pendingCustodianInvitationData,
     setPendingCustodianInvitationData,
     setShowCustodianAcceptanceModal,
-    migrationChecked,
-    setMigrationChecked,
-    setPendingMigrations,
-    setShowMigrationModal,
     pwaState,
     isPWALocked,
     setIsPWALocked,
@@ -225,22 +215,6 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
     }
   }, [authenticatedUser, pendingCustodianInvitationData]);
 
-  // Migration check function
-  const checkForMigration = async () => {
-    try {
-      if (await MigrationManager.isMigrationNeeded()) {
-        const pendingIdentities = await MigrationManager.getPendingMigrations();
-        if (pendingIdentities.length > 0) {
-          setPendingMigrations(pendingIdentities);
-          setShowMigrationModal(true);
-          logDebug(`Found ${pendingIdentities.length} identities to migrate`);
-        }
-      }
-    } catch (error) {
-      logError('Migration check failed:', error);
-    }
-  };
-
   // Initialize systems
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -287,16 +261,6 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
           logError('Failed to start extension detection:', extensionError);
         }
 
-        // SECURITY: Run session data migration to remove pnName/passcode from IndexedDB
-        try {
-          const migrationResult = await SessionDataMigration.runMigration();
-          if (migrationResult.cleaned > 0) {
-            logDebug(`[Security] Cleaned ${migrationResult.cleaned} sessions with exposed credentials`);
-          }
-        } catch (migrationError) {
-          logError('Session data migration failed:', migrationError);
-        }
-
         // SECURITY: Immediately clean up ALL plaintext Google Drive credentials
         // This runs on every app load, even before user authentication
         try {
@@ -306,12 +270,6 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
           }
         } catch (cleanupError) {
           logError('Plaintext credential cleanup failed:', cleanupError);
-        }
-
-        // Check for migration needs (PWA only)
-        if (!migrationChecked) {
-          await checkForMigration();
-          setMigrationChecked(true);
         }
       } catch (error) {
         logError('Failed to initialize systems:', error);
@@ -325,7 +283,7 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
       ScreenProtection.disable();
       ExtensionDetector.stopMonitoring();
     };
-  }, [migrationChecked]);
+  }, []);
 
   // Initialize storage and load existing data
   useEffect(() => {
@@ -339,7 +297,7 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
         logDebug('Available identities:', identities);
 
         // Since all data is encrypted, we can't display identities without decrypting
-        // The user will need to enter pnName and passcode to unlock
+        // The user will need to enter Key 1 and Key 2 to unlock
         logDebug('Found', identities.length, 'encrypted identities - user must unlock with credentials');
         // Don't set dids here - let the other useEffect handle PWA identity loading
 
@@ -514,7 +472,7 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
     }
   };
 
-  // Handle PWA fallback to passcode (mobile only)
+  // Handle PWA fallback to Key 2 (mobile only)
   const handlePWAFallback = () => {
     setIsPWALocked(false);
   };
@@ -531,7 +489,6 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
   }, [pwaState]);
 
   return {
-    checkForMigration,
     handlePWAUnlock,
     handlePWAFallback
   };

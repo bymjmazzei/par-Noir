@@ -66,8 +66,8 @@ export async function createDeviceBoundPnExport(params: {
   pnIdentifier: string;
   deviceId: string;
   identityToExport: { encryptedData: string; iv: string; salt: string; publicKey?: string };
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   nickname?: string;
 }): Promise<DeviceBoundPnEnvelope> {
   const reg = await loadDeviceRegistration(params.pnIdentifier);
@@ -81,12 +81,12 @@ export async function createDeviceBoundPnExport(params: {
     salt: params.identityToExport.salt,
   };
 
-  const plaintext = await IdentityCrypto.decryptData(encryptedData, params.pnName, params.passcode);
+  const plaintext = await IdentityCrypto.decryptData(encryptedData, params.key1, params.key2);
   const bindingFactor = await deriveDeviceBindingFactor(reg.privateKeyPkcs8, reg.deviceId);
   const boundEncrypted = await IdentityCrypto.encryptDataWithBinding(
     plaintext,
-    params.pnName,
-    params.passcode,
+    params.key1,
+    params.key2,
     bindingFactor
   );
 
@@ -113,8 +113,8 @@ export async function createDeviceBoundPnExport(params: {
 
 export async function authenticateDeviceBoundPn(params: {
   envelope: DeviceBoundPnEnvelope;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   pnIdentifier?: string | null;
 }): Promise<{ authSession: AuthSession; identityRecord: Record<string, unknown>; identity: Record<string, unknown> }> {
   if (!params.envelope.binding || params.envelope.binding.type !== 'device') {
@@ -131,8 +131,8 @@ export async function authenticateDeviceBoundPn(params: {
 
   const plaintext = await IdentityCrypto.decryptDataWithBinding(
     encryptedData,
-    params.pnName,
-    params.passcode,
+    params.key1,
+    params.key2,
     bindingFactor
   );
 
@@ -143,10 +143,10 @@ export async function authenticateDeviceBoundPn(params: {
   }
 
   const authSession = await IdentityCrypto.buildAuthSessionFromDecrypted(
-    identity as { id: string; username: string; nickname?: string },
+    identity as { id: string; key1: string; nickname?: string },
     publicKey,
-    params.pnName,
-    params.passcode
+    params.key1,
+    params.key2
   );
 
   return { authSession, identityRecord, identity };

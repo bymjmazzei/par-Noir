@@ -1,6 +1,6 @@
 /**
  * Shared Playwright unlock helpers for live UX diagnostics.
- * Agent default: .local/cursor-test-pn — never log Key 1 / Key 2 / passcode / pn name.
+ * Agent default: .local/cursor-test-pn — never log Key 1 / Key 2 / Key 1 / Key 2.
  * User dual-pN A (.local/test-pn) only via loadPnFixture(root, 'test-pn') when asked.
  */
 import { readFileSync, existsSync } from 'fs';
@@ -40,14 +40,14 @@ export function loadPnFixture(root, which = 'cursor-test-pn') {
     );
   }
   const keys = readFileSync(keysPath, 'utf8');
-  const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)?.[1]?.trim();
-  const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)?.[1]?.trim();
-  if (!PN_NAME || !PASSCODE) throw new Error(`keys.env in ${which} must define PN_NAME and PASSCODE`);
+  const KEY1 = keys.match(/^KEY1=(.+)$/m)?.[1]?.trim();
+  const KEY2 = keys.match(/^KEY2=(.+)$/m)?.[1]?.trim();
+  if (!KEY1 || !KEY2) throw new Error(`keys.env in ${which} must define KEY1 and KEY2`);
   const identityPath = resolveIdentityInDir(dir, keys);
   if (!identityPath) {
     throw new Error(`Missing identity .pn under .local/${which}`);
   }
-  return { identityPath, PN_NAME, PASSCODE, fixture: which };
+  return { identityPath, KEY1, KEY2, fixture: which };
 }
 
 export function trackOAuth(page, bag) {
@@ -85,13 +85,13 @@ export function trackApi(page, bag) {
   });
 }
 
-export async function fillConsentAndUnlock(popupOrPage, { identityPath, PN_NAME, PASSCODE, expectClose = true }) {
+export async function fillConsentAndUnlock(popupOrPage, { identityPath, KEY1, KEY2, expectClose = true }) {
   await popupOrPage.waitForURL(/oauth\/consent|authorize/, { timeout: 45_000 });
   const fileInput = popupOrPage.locator('#identityFile, input[type="file"]').first();
   await fileInput.waitFor({ state: 'attached', timeout: 45_000 });
   await fileInput.setInputFiles(identityPath);
-  await popupOrPage.getByPlaceholder('Enter Key 1').fill(PN_NAME);
-  await popupOrPage.getByPlaceholder('Enter Key 2').fill(PASSCODE);
+  await popupOrPage.getByPlaceholder('Enter Key 1').fill(KEY1);
+  await popupOrPage.getByPlaceholder('Enter Key 2').fill(KEY2);
   await popupOrPage.getByRole('button', { name: 'Unlock pN' }).click();
   const approve = popupOrPage.getByRole('button', { name: 'Approve' });
   try {
@@ -158,13 +158,13 @@ export function identityUploadPayload(identityPath, displayName = 'cursor-test-p
   };
 }
 
-export async function unlockDashboard(page, notes, { identityPath, PN_NAME, PASSCODE, uploadName = 'cursor-test-pn.pn' }) {
+export async function unlockDashboard(page, notes, { identityPath, KEY1, KEY2, uploadName = 'cursor-test-pn.pn' }) {
   await page.getByRole('button', { name: 'Unlock pN' }).waitFor({ state: 'visible', timeout: 30_000 });
   const fileInput = page.locator('#file-upload-web, #file-upload-pwa, #file-upload').first();
   await fileInput.setInputFiles(identityUploadPayload(identityPath, uploadName));
   await page.getByText(uploadName, { exact: false }).first().waitFor({ state: 'visible', timeout: 15_000 });
-  await fillReactControlled(page, 'Enter Key 1', PN_NAME);
-  await fillReactControlled(page, 'Enter Key 2', PASSCODE);
+  await fillReactControlled(page, 'Enter Key 1', KEY1);
+  await fillReactControlled(page, 'Enter Key 2', KEY2);
   notes.push('reactProps onChange applied for Key 1/2');
   await page.getByRole('button', { name: 'Unlock pN' }).click();
   const started = await page

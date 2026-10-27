@@ -35,14 +35,14 @@ function slog(...a) {
 function loadPn(which) {
   const dir = resolve(ROOT, `.local/${which}`);
   const keys = readFileSync(resolve(dir, 'keys.env'), 'utf8');
-  const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)[1].trim();
-  const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)[1].trim();
+  const KEY1 = keys.match(/^KEY1=(.+)$/m)[1].trim();
+  const KEY2 = keys.match(/^KEY2=(.+)$/m)[1].trim();
   const fileName = keys.match(/^IDENTITY_FILE=(.+)$/m)?.[1]?.trim();
   let identityPath = resolve(dir, fileName || 'identity.pn');
   if (!existsSync(identityPath)) {
     identityPath = resolve(dir, which === 'cursor-test-pn' ? 'live-created.pn' : 'identity.pn');
   }
-  return { which, identityPath, PN_NAME, PASSCODE };
+  return { which, identityPath, KEY1, KEY2 };
 }
 
 const whichArg = process.argv[2];

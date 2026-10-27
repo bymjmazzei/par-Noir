@@ -3,14 +3,14 @@ import {
   storageAuthFromUnlockedUser,
 } from '../services/storageUnlockAuth';
 
-test('shell unlock resolves storage auth from the public key without a passcode', () => {
+test('shell unlock resolves storage auth from the public key without a Key 2', () => {
   const auth = storageAuthFromUnlockedUser({
     id: 'did:key:z6Mkexample',
     publicKey: 'mlkem-public-key',
     authToken: 'api-token',
   });
   expect(auth).toEqual({ publicKey: 'mlkem-public-key', authToken: 'api-token' });
-  expect(auth).not.toHaveProperty('passcode');
+  expect(auth).not.toHaveProperty('key2');
   expect(canEncryptUnlockedFiles({ id: 'did:key:z6Mkexample' }, auth?.publicKey ?? null)).toBe(true);
 });
 

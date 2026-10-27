@@ -72,7 +72,7 @@ export interface CustodianContactInfo {
   contactType: 'email' | 'phone';
   contactValue: string;
   type: 'person' | 'service' | 'self';
-  passcode: string;
+  acceptanceCode: string;
 }
 
 export interface RecoveryKeyContactInfo {
@@ -84,7 +84,7 @@ export interface RecoveryKeyContactInfo {
 export interface CustodianAcceptanceData {
   contactType: 'email' | 'phone';
   contactValue: string;
-  passcode: string;
+  acceptanceCode: string;
 }
 
 export interface UseRecoveryCustodianHandlersParams {
@@ -136,7 +136,7 @@ export interface UseRecoveryCustodianHandlersParams {
 
   pendingRecoveryCompletion: PendingRecoveryCompletion | null;
   setPendingRecoveryCompletion: React.Dispatch<React.SetStateAction<PendingRecoveryCompletion | null>>;
-  setShowRecoveryPasscodeModal: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowRecoveryKeysModal: React.Dispatch<React.SetStateAction<boolean>>;
   recoveredIdentityExport: EncryptedIdentity | null;
   setRecoveredIdentityExport: React.Dispatch<React.SetStateAction<EncryptedIdentity | null>>;
   recoveredDID: DIDInfo | null;
@@ -215,7 +215,7 @@ export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandler
     setRecoveryKeyContactInfo,
     pendingRecoveryCompletion,
     setPendingRecoveryCompletion,
-    setShowRecoveryPasscodeModal,
+    setShowRecoveryKeysModal,
     recoveredIdentityExport,
     setRecoveredIdentityExport,
     recoveredDID,
@@ -272,8 +272,8 @@ export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandler
         threshold: recoveryThreshold,
         apiToken,
         userPnIdentifier: pnId,
-        pnName: recoveryAuth.pnName,
-        passcode: recoveryAuth.passcode,
+        key1: recoveryAuth.key1,
+        key2: recoveryAuth.key2,
         unrevokable: custodianData.unrevokable === true,
         resendExisting: Boolean(vaultInvited || existingCustodian?.status === 'pending'),
       });
@@ -356,13 +356,13 @@ export function useRecoveryCustodianHandlers(params: UseRecoveryCustodianHandler
 To accept this custodianship:
 1. Click this link: ${directLink}
 2. Unlock your pN identity
-3. Enter the passcode provided by the identity owner
+3. Enter the acceptance code provided by the identity owner
 4. Confirm the custodianship
 
 This invitation expires in 24 hours.`;
       window.open(`mailto:${contactValue}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
     } else if (contactType === 'phone') {
-      const message = `You've been invited as a custodian for ${authenticatedUser?.nickname || 'an identity'}. Click: ${directLink} (Passcode required)`;
+      const message = `You've been invited as a custodian for ${authenticatedUser?.nickname || 'an identity'}. Click: ${directLink} (Acceptance code required)`;
       window.open(`sms:${contactValue}?body=${encodeURIComponent(message)}`);
     }
   };
@@ -398,7 +398,7 @@ This invitation expires in 24 hours.`;
         contactValue: custodianData.contactValue,
         publicKey: crypto.randomUUID(), // Generate a unique public key
         trustLevel: 'medium', // Default trust level
-        passcode: custodianData.passcode // Store the 6-digit passcode
+        acceptanceCode: custodianData.acceptanceCode
       };
 
       setCustodians(prev => [...prev, newCustodian]);
@@ -438,18 +438,17 @@ This invitation expires in 24 hours.`;
         throw new Error('No pending invitation found');
       }
 
-      if (!custodianAcceptanceData.contactValue.trim() || !custodianAcceptanceData.passcode.trim()) {
-        throw new Error('Please enter your contact information and the passcode');
+      if (!custodianAcceptanceData.contactValue.trim() || !custodianAcceptanceData.acceptanceCode.trim()) {
+        throw new Error('Please enter your contact information and the acceptance code');
       }
 
       if (custodianAcceptanceData.contactValue !== pendingCustodianInvitationData.contactValue) {
         throw new Error('Contact information does not match the invitation');
       }
 
-      const acceptancePasscode = custodianAcceptanceData.passcode.trim();
-      const isValidPasscode = /^\d{6}$/.test(acceptancePasscode);
-      if (!isValidPasscode) {
-        throw new Error('Invalid passcode. Enter the 6-digit code from the identity owner.');
+      const acceptanceCode = custodianAcceptanceData.acceptanceCode.trim();
+      if (!/^\d{6}$/.test(acceptanceCode)) {
+        throw new Error('Invalid acceptance code. Enter the 6-digit code from the identity owner.');
       }
 
       const invitation = pendingCustodianInvitationData as {
@@ -488,7 +487,7 @@ This invitation expires in 24 hours.`;
         identityPnId: invitation.identityPnId || '',
         shareIndex: invitation.shareIndex || 0,
         custodianshipZkp: invitation.custodianshipZkp,
-        custodianPasscode: acceptancePasscode,
+        custodianAcceptanceCode: acceptanceCode,
         acceptedAt: new Date().toISOString()
       });
 
@@ -511,7 +510,7 @@ This invitation expires in 24 hours.`;
 
       setShowCustodianAcceptanceModal(false);
       setPendingCustodianInvitationData(null);
-      setCustodianAcceptanceData({ contactType: 'email', contactValue: '', passcode: '' });
+      setCustodianAcceptanceData({ contactType: 'email', contactValue: '', acceptanceCode: '' });
 
       setSuccessWithTimeout(
         'Custodianship accepted. Their recovery share will be stored, encrypted, on your cloud storage once they send it.'
@@ -577,7 +576,7 @@ This invitation expires in 24 hours.`;
     }
   };
 
-  const handleRecoveryPasscodeSubmit = async (newPnName: string, newPasscode: string) => {
+  const handleRecoveryKeysSubmit = async (newKey1: string, newKey2: string) => {
     if (!pendingRecoveryCompletion) return;
     const completion = pendingRecoveryCompletion;
     setLoading(true);
@@ -587,15 +586,15 @@ This invitation expires in 24 hours.`;
           ? await completeKeyRecovery({
               keyEnvelope: completion.keyEnvelope,
               recoveryKey: completion.recoveryKey,
-              newPnName,
-              newPasscode,
+              newKey1,
+              newKey2,
               expectedPublicKey: completion.publicKey,
             })
           : await completeRecoveryWithShares({
               envelope: completion.envelope,
               shares: completion.shares,
-              newPnName,
-              newPasscode,
+              newKey1,
+              newKey2,
               expectedPublicKey: completion.publicKey
             });
 
@@ -615,13 +614,13 @@ This invitation expires in 24 hours.`;
 
       const authSession = await IdentityCrypto.authenticateIdentity(
         result.identity,
-        newPasscode,
-        result.pnName
+        newKey2,
+        result.key1
       );
       setAuthenticatedUser({ ...authSession, nickname: displayName });
       setRecoveredIdentityExport(result.identity);
       downloadRecoveredPn(result.identity);
-      setShowRecoveryPasscodeModal(false);
+      setShowRecoveryKeysModal(false);
       setPendingRecoveryCompletion(null);
       (await import('../services/recoveryRelayFlows')).clearRelayRecoveryKey(completion.requestId);
       clearRecoveryActiveSession();
@@ -699,7 +698,7 @@ This invitation expires in 24 hours.`;
           publicKey,
           recoveryKey,
         });
-        setShowRecoveryPasscodeModal(true);
+        setShowRecoveryKeysModal(true);
         return;
       }
       if (Date.now() < session.releaseAfter) {
@@ -724,7 +723,7 @@ This invitation expires in 24 hours.`;
         shares: released.shares,
       });
       updateRecoveryActiveSession({ status: 'ready' });
-      setShowRecoveryPasscodeModal(true);
+      setShowRecoveryKeysModal(true);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'Could not continue recovery');
       setTimeout(() => setError(null), 9000);
@@ -769,7 +768,7 @@ This invitation expires in 24 hours.`;
     }
     clearRecoveryActiveSession();
     setPendingRecoveryCompletion(null);
-    setShowRecoveryPasscodeModal(false);
+    setShowRecoveryKeysModal(false);
     if (!opts?.silent) {
       setSuccessWithTimeout('Recovery cancelled. You can start again.');
       setTimeout(() => setSuccessWithTimeout(null), 4000);
@@ -1289,7 +1288,7 @@ This invitation expires in 24 hours.`;
     handleAddCustodian,
     handleCustodianAcceptance,
     handleApproveRecovery,
-    handleRecoveryPasscodeSubmit,
+    handleRecoveryKeysSubmit,
     handleContinueReadyRecovery,
     handleRefreshActiveRecovery,
     handleCancelActiveRecovery,

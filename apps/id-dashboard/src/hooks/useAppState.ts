@@ -7,14 +7,14 @@ export type { DIDInfo };
 
 export interface ImportFormState {
   backupFile: File | null;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
 }
 
 const EMPTY_IMPORT_FORM: ImportFormState = {
   backupFile: null,
-  pnName: '',
-  passcode: ''
+  key1: '',
+  key2: ''
 };
 
 // Production-safe logging utility

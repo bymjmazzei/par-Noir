@@ -46,8 +46,8 @@ export async function uploadZkpDocEncrypted(opts: {
   file: File;
   pnIdentifier: string;
   authToken: string;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   sessionId?: string;
 }): Promise<string> {
   if (opts.sessionId) {
@@ -74,8 +74,8 @@ export async function uploadZkpDocEncrypted(opts: {
       name: opts.file.name,
       dataBase64: b64
     }),
-    opts.pnName,
-    opts.passcode
+    opts.key1,
+    opts.key2
   );
 
   const packageJson = JSON.stringify(encrypted);

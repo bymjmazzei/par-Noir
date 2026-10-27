@@ -49,7 +49,7 @@ export function useLoadFileMetadata({
     try {
       console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
       const { backend, backendId, keyPrefix } = resolveActiveBackendEntry();
-      // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
+      // SECURITY: Check credentials instead of resolvedAuth.Key 1 (secret)
       const publicKeyForLoad = resolvedAuth?.publicKey || authenticatedUser?.publicKey || null;
       if (backend && backend.isConnected() && publicKeyForLoad) {
         try {
@@ -69,7 +69,7 @@ export function useLoadFileMetadata({
               const sessionId = authenticatedUser?.id;
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
-              // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
+              // SECURITY: Get Key 1 from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
               const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
               
               if (publicKey) {
@@ -88,8 +88,8 @@ export function useLoadFileMetadata({
                 }
               } else {
                 console.warn('⚠️ [Metadata] Missing credentials for volume ID generation:', {
-                  hasPnName: !!credentials?.pnName,
-                  hasPasscode: !!credentials?.passcode,
+                  hasKey1: !!credentials?.key1,
+                  hasKey2: !!credentials?.key2,
                   hasPublicKey: !!publicKey,
                   hasResolvedAuth: !!resolvedAuth,
                   hasAuthenticatedUser: !!authenticatedUser

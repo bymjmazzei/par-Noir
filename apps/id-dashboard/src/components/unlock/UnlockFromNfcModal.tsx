@@ -28,8 +28,8 @@ export function UnlockFromNfcModal({
   onError,
 }: UnlockFromNfcModalProps) {
   const [step, setStep] = useState<'scan' | 'credentials'>('scan');
-  const [pnName, setPnName] = useState('');
-  const [passcode, setPasscode] = useState('');
+  const [key1, setKey1] = useState('');
+  const [key2, setKey2] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasNfcSupport, setHasNfcSupport] = useState(false);
@@ -41,8 +41,8 @@ export function UnlockFromNfcModal({
 
   const handleClose = () => {
     setStep('scan');
-    setPnName('');
-    setPasscode('');
+    setKey1('');
+    setKey2('');
     setError(null);
     setLoading(false);
     setNfcScanResult(null);
@@ -69,7 +69,7 @@ export function UnlockFromNfcModal({
 
   const handleUnlock = async () => {
     setError(null);
-    if (!pnName || !passcode) {
+    if (!key1 || !key2) {
       setError('Please enter Key 1 and Key 2');
       return;
     }
@@ -95,8 +95,8 @@ export function UnlockFromNfcModal({
       };
       const plaintext = await IdentityCrypto.decryptDataWithBinding(
         encryptedData,
-        pnName,
-        passcode,
+        key1,
+        key2,
         uid
       );
       const identity = JSON.parse(plaintext);
@@ -105,8 +105,8 @@ export function UnlockFromNfcModal({
       const authSession = await IdentityCrypto.buildAuthSessionFromDecrypted(
         identity,
         publicKey,
-        pnName,
-        passcode
+        key1,
+        key2
       );
       setNfcScanResult(null);
       const identityForStorage = {
@@ -181,8 +181,8 @@ export function UnlockFromNfcModal({
             <button
               onClick={() => {
                 setStep('scan');
-                setPnName('');
-                setPasscode('');
+                setKey1('');
+                setKey2('');
                 setError(null);
                 setNfcScanResult(null);
               }}

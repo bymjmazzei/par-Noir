@@ -2,7 +2,7 @@
  * pN OAuth Client Service
  * Handles OAuth 2.0 authorization code flow for browser app
  *
- * SECURITY: pN name and passcode are NEVER sent to the server.
+ * SECURITY: Key 1 and Key 2 are NEVER sent to the server.
  * Unlock proof is an ML-DSA-65 signature over a server challenge.
  */
 
@@ -34,13 +34,13 @@ export interface OAuthTokenResponse {
 export interface OAuthUserInfo {
   sub: string;
   did: string;
-  // pN name is NOT returned - it's a secret
+  // Key 1 is NOT returned - it's a secret
   nickname?: string; // Optional nickname if available
   pn_identifier?: string; // pN identifier from database (e.g., "83c1db813607")
   public_key?: string; // Public key from OAuth for file decryption
 }
 
-/** Feed token metadata only; pn name and passcode are never sent to or stored on the client. */
+/** Feed token metadata only; Key 1 and Key 2 are never sent to or stored on the client. */
 export interface FeedToken {
   feedId: string;
   feedName: string;
@@ -54,7 +54,7 @@ export interface AuthSession {
   expiresAt: number;
   did: string;
   publicKey?: string; // Public key needed for file decryption
-  // pN name is NOT stored - it's a secret
+  // Key 1 is NOT stored - it's a secret
   nickname?: string; // Optional nickname if available
   pnIdentifier?: string; // pN identifier from database (e.g., "83c1db813607")
   feedTokens?: FeedToken[]; // Safe metadata for context switching; no credentials

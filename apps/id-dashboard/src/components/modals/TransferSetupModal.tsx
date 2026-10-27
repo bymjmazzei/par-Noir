@@ -6,8 +6,8 @@ interface TransferSetupModalProps {
   onClose: () => void;
   transferCreated: boolean;
   setTransferCreated: (created: boolean) => void;
-  transferPasscode: string;
-  setTransferPasscode: (passcode: string) => void;
+  transferCode: string;
+  setTransferCode: (code: string) => void;
   transferUrl: string;
   onTransferSetup: () => void;
   onCopyUrl: () => void;
@@ -19,8 +19,8 @@ export function TransferSetupModal({
   onClose,
   transferCreated,
   setTransferCreated,
-  transferPasscode,
-  setTransferPasscode,
+  transferCode,
+  setTransferCode,
   transferUrl,
   onTransferSetup,
   onCopyUrl,
@@ -45,7 +45,7 @@ export function TransferSetupModal({
               <SectionInfo title="Transfer Instructions">
                 <ul>
                   <li>Target device opens the URL</li>
-                  <li>Enters the transfer passcode</li>
+                  <li>Enters the transfer code</li>
                   <li>Downloads the pN file</li>
                   <li>Uses normal unlock flow with the file</li>
                   <li>Transfer expires in 30 minutes</li>
@@ -64,22 +64,22 @@ export function TransferSetupModal({
         {!transferCreated ? (
           <div className="space-y-4">
             <div className="text-sm text-text-secondary mb-4">
-              Create a transfer passcode to secure the pN file transfer:
+              Create a transfer code to secure the pN file transfer:
             </div>
             
             <div>
               <label className="block text-sm font-medium text-text-primary mb-2">
-                Transfer Passcode
+                Transfer code
               </label>
               <input
                 type="password"
-                value={transferPasscode}
-                onChange={(e) => setTransferPasscode(e.target.value)}
+                value={transferCode}
+                onChange={(e) => setTransferCode(e.target.value)}
                 className="w-full px-3 py-2 bg-input-bg border border-border rounded-md text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Enter a transfer passcode (min 4 characters)"
+                placeholder="Enter a transfer code (min 4 characters)"
               />
               <p className="text-xs text-text-secondary mt-1">
-                This passcode will be required to download the pN file on the target device.
+                This code will be required to download the pN file on the target device.
               </p>
             </div>
             
@@ -92,7 +92,7 @@ export function TransferSetupModal({
               </button>
               <button
                 onClick={onTransferSetup}
-                disabled={!transferPasscode || transferPasscode.length < 4}
+                disabled={!transferCode || transferCode.length < 4}
                 className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Create Transfer

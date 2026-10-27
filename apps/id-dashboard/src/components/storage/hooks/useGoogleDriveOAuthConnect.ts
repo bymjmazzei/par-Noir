@@ -46,8 +46,8 @@ export interface UseGoogleDriveOAuthConnectParams {
   clearDriveSetupProgress: () => void;
   checkDeviceCapability: (cap: 'drive.read' | 'drive.upload' | 'profile.write') => boolean;
   resolveOwnerApiToken: (wantedPn?: string | null) => string | null;
-  getResolvedAuthCredentials: () => { pnName: string; publicKey: string; passcode?: string } | null;
-  getPasscodeFromSecureStorage: (sessionId: string | null | undefined) => string | null;
+  getResolvedAuthCredentials: () => { key1: string; publicKey: string; key2?: string } | null;
+  getKey2FromSecureStorage: (sessionId: string | null | undefined) => string | null;
   getStorageIdentityCandidates: () => string[];
   /** Credential surface from useDriveStorageCredentials. */
   driveCredentialCacheRef: UseDriveStorageCredentialsResult['driveCredentialCacheRef'];
@@ -86,7 +86,7 @@ export function useGoogleDriveOAuthConnect({
   checkDeviceCapability,
   resolveOwnerApiToken,
   getResolvedAuthCredentials,
-  getPasscodeFromSecureStorage,
+  getKey2FromSecureStorage,
   getStorageIdentityCandidates,
   driveCredentialCacheRef,
   resolveIdentifiersForEmail,
@@ -356,8 +356,8 @@ export function useGoogleDriveOAuthConnect({
           credentials: cloudEnvelope,
           session: {
             sessionId: 'pn-cloud-creds-v1',
-            pnName: sessionCreds.pnName,
-            passcode: sessionCreds.passcode
+            key1: sessionCreds.key1,
+            key2: sessionCreds.key2
           },
           mode
         });
@@ -373,8 +373,8 @@ export function useGoogleDriveOAuthConnect({
         const vault = await publishCloudVaultForIdentity({
           identityId: pnIdentifier,
           authToken: authTok,
-          pnName: sessionCreds.pnName,
-          passcode: sessionCreds.passcode,
+          key1: sessionCreds.key1,
+          key2: sessionCreds.key2,
           credentials: cloudEnvelope,
           publicKey: authenticatedUser.publicKey
         });
@@ -475,8 +475,8 @@ export function useGoogleDriveOAuthConnect({
       !canSealCloudDisconnect({
         pnIdentifier: pnId,
         authToken: disconnectToken,
-        pnName: sessionCreds?.pnName,
-        passcode: sessionCreds?.passcode,
+        key1: sessionCreds?.key1,
+        key2: sessionCreds?.key2,
         mlKemSecretKey,
       })
     ) {
@@ -495,8 +495,8 @@ export function useGoogleDriveOAuthConnect({
       await commitDashboardGoogleDriveDisconnect({
         pnIdentifier: pnId!,
         authToken: disconnectToken!,
-        pnName: sessionCreds?.pnName,
-        passcode: sessionCreds?.passcode,
+        key1: sessionCreds?.key1,
+        key2: sessionCreds?.key2,
         publicKey: authenticatedUser?.publicKey ?? sessionId,
         mlKemSecretKey,
         backendId,
@@ -522,15 +522,15 @@ export function useGoogleDriveOAuthConnect({
           const { SecureMetadataStorage } = await import('../../../utils/secureMetadataStorage');
           const { SecureMetadataCrypto } = await import('../../../utils/secureMetadata');
 
-          // SECURITY: Get pnName from SecureCredentialManager (secrets), not from state
+          // SECURITY: Get Key 1 from SecureCredentialManager (secrets), not from state
           const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
           const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-          const effectivePnName = credentials?.pnName || null;
+          const effectiveKey1 = credentials?.key1 || null;
 
-          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
-          const passcode = getPasscodeFromSecureStorage(sessionId);
+          // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
+          const key2 = getKey2FromSecureStorage(sessionId);
 
-          if (effectivePnName && passcode) {
+          if (effectiveKey1 && key2) {
             // Sync from cloud first to get latest metadata
             try {
               await SecureMetadataStorage.syncMetadataFromCloud(authenticatedUser.id);
@@ -550,7 +550,7 @@ export function useGoogleDriveOAuthConnect({
 
             if (metadata) {
               // Decrypt metadata
-              const decrypted = await SecureMetadataCrypto.decryptMetadata(metadata, effectivePnName, passcode);
+              const decrypted = await SecureMetadataCrypto.decryptMetadata(metadata, effectiveKey1, key2);
 
               // Remove account from storageCredentials
               if (decrypted.storageCredentials) {
@@ -581,8 +581,8 @@ export function useGoogleDriveOAuthConnect({
                 // Update encrypted metadata with removed account
                 await SecureMetadataStorage.updateMetadataField(
                   authenticatedUser.id,
-                  effectivePnName,
-                  passcode,
+                  effectiveKey1,
+                  key2,
                   'storageCredentials',
                   updatedCredentials
                 );
@@ -591,7 +591,7 @@ export function useGoogleDriveOAuthConnect({
               }
             }
           } else {
-            console.warn('⚠️ [handleDisconnect] Missing pnName or passcode - cannot update encrypted metadata');
+            console.warn('⚠️ [handleDisconnect] Missing Key 1 or Key 2 - cannot update encrypted metadata');
             console.warn('⚠️ [handleDisconnect] Will rely on API storage credentials update instead');
           }
         } catch (metadataError) {

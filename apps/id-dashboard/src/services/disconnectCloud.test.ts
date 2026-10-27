@@ -67,7 +67,7 @@ afterEach(() => {
   clearAllSessionCloudCredentials();
 });
 
-test('shell unlock can disconnect without a passcode', () => {
+test('shell unlock can disconnect without a Key 2', () => {
   expect(
     canSealCloudDisconnect({
       pnIdentifier: PN,

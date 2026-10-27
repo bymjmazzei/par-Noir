@@ -20,17 +20,17 @@ export class InputValidator {
   }
 
   /**
-   * Validate pN Name
+   * Validate Key 1
    */
-  static validatePNName(pnName: string): ValidationResult {
-    return IdentityValidator.validatePNName(pnName);
+  static validateKey1(key1: string): ValidationResult {
+    return IdentityValidator.validateKey1(key1);
   }
 
   /**
-   * Validate passcode strength
+   * Validate Key 2 strength
    */
-  static validatePasscode(passcode: string): ValidationResult {
-    return IdentityValidator.validatePasscode(passcode);
+  static validateKey2(key2: string): ValidationResult {
+    return IdentityValidator.validateKey2(key2);
   }
 
   /**
@@ -100,9 +100,9 @@ export class InputValidator {
    * Comprehensive validation for identity creation
    */
   static validateIdentityCreation(data: {
-    pnName: string;
+    key1: string;
     nickname: string;
-    passcode: string;
+    key2: string;
     email?: string;
     phone?: string;
   }): ValidationResult {

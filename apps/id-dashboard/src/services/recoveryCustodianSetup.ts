@@ -24,8 +24,8 @@ export async function assignCustodianVaultAndIssueCredential(params: {
   userPnIdentifier?: string;
   unrevokable?: boolean;
   /** Omit when shares come from the in-memory migration buffer. */
-  pnName?: string;
-  passcode?: string;
+  key1?: string;
+  key2?: string;
   resendExisting?: boolean;
 }): Promise<{ custodianshipZkp: string; shareIndex: number }> {
   if (!params.apiToken) throw new Error('Sign in to the par Noir API before inviting custodians.');
@@ -42,8 +42,8 @@ export async function assignCustodianVaultAndIssueCredential(params: {
 
   const shares = await resolveRecoveryShares({
     encryptedIdentity: params.encryptedIdentity,
-    pnName: params.pnName,
-    passcode: params.passcode,
+    key1: params.key1,
+    key2: params.key2,
   });
   if (!summary?.configured) {
     await setupRecoveryEpoch(params.apiToken, {

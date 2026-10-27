@@ -13,7 +13,6 @@ import { ownerGet } from './services/ownerApiService';
 import { resolveOwnerApiToken } from './services/ownerApiToken';
 import { getRecoveryAuthSession } from './services/recoveryAuthSession';
 
-import { MigrationResult } from './utils/migration';
 
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
@@ -62,7 +61,6 @@ import { usePwaSyncHelpers } from './hooks/usePwaSyncHelpers';
 import { useAppBootstrapEffects } from './hooks/useAppBootstrapEffects';
 
 // Lazy load heavy components
-const BiometricSetup = lazy(() => import('./components/BiometricSetup').then(module => ({ default: module.BiometricSetup })));
 const PWALockScreen = lazy(() => import('./components/PWALockScreen').then(module => ({ default: module.default })));
 
 
@@ -89,7 +87,7 @@ function App() {
 
   const [pendingRecoveryCompletion, setPendingRecoveryCompletion] =
     useState<PendingRecoveryCompletion | null>(null);
-  const [showRecoveryPasscodeModal, setShowRecoveryPasscodeModal] = useState(false);
+  const [showRecoveryKeysModal, setShowRecoveryKeysModal] = useState(false);
   const [recoveredIdentityExport, setRecoveredIdentityExport] = useState<EncryptedIdentity | null>(null);
 
   // Destructure the most commonly used state for easier access
@@ -272,8 +270,8 @@ function App() {
       encryptedIdentity,
       publicKey: authenticatedUser.publicKey || identityKey,
       did: authenticatedUser.id,
-      pnName: credentials.pnName,
-      passcode: credentials.passcode,
+      key1: credentials.key1,
+      key2: credentials.key2,
     });
   }, [authenticatedUser, ensureApiTokenAfterUnlock, getEncryptedIdentityForApiToken]);
 
@@ -313,8 +311,8 @@ function App() {
           encryptedIdentity,
           publicKey: authenticatedUser.publicKey || identityKey,
           did: authenticatedUser.id,
-          pnName: credentials.pnName,
-          passcode: credentials.passcode
+          key1: credentials.key1,
+          key2: credentials.key2
         }).then(async (token) => {
           if (!token || cancelled) return;
           try {
@@ -328,8 +326,8 @@ function App() {
               authToken: token,
               session: {
                 sessionId: authenticatedUser.id,
-                pnName: credentials.pnName,
-                passcode: credentials.passcode
+                key1: credentials.key1,
+                key2: credentials.key2
               },
               canFlushMailbox: deviceAuth.isKeyedSession || !deviceAuth.hasKeyedDevices
             });
@@ -382,12 +380,6 @@ function App() {
 
   // Destructure migration state from custom hook
   const {
-    showMigrationModal,
-    setShowMigrationModal,
-    pendingMigrations,
-    setPendingMigrations,
-    migrationChecked,
-    setMigrationChecked,
     showIntegrationDebugger,
     setShowIntegrationDebugger,
     custodianships,
@@ -512,10 +504,10 @@ function App() {
     setPendingExportAction,
     exportAuthData,
     setExportAuthData,
-    showExportPasscode,
-    setShowExportPasscode,
-    showExportPnName,
-    setShowExportPnName,
+    showExportKey2,
+    setShowExportKey2,
+    showExportKey1,
+    setShowExportKey1,
     showTransferReceiver,
     setShowTransferReceiver,
     showTermsOfService,
@@ -534,8 +526,8 @@ function App() {
     setActiveDelegations,
     transferId,
     setTransferId,
-    transferPasscode,
-    setTransferPasscode,
+    transferCode,
+    setTransferCode,
     transferCreated,
     setTransferCreated
   } = exportState;
@@ -942,24 +934,6 @@ function App() {
     // This function is no longer needed since we removed the offline mode state
   };
 
-  // Handle migration completion
-  const handleMigrationComplete = (result: MigrationResult) => {
-    if (result.success && result.migratedCount > 0) {
-      setSuccessWithTimeout(`Successfully migrated ${result.migratedCount} identity(ies) to PWA storage!`);
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-      
-      // Refresh the app to load migrated identities
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
-    } else if (result.errors.length > 0) {
-      setError(`Migration completed with ${result.errors.length} error(s). Some identities may not have been migrated.`);
-      setTimeout(() => setError(null), 8000);
-    }
-    
-    setShowMigrationModal(false);
-  };
-
   const { handleImportDID } = useCreateImportHandlers({
     storage,
     recoveryVaultPnId,
@@ -1053,10 +1027,10 @@ function App() {
     setIdentityForUsbExport,
     setIdentityForNfcExport,
     setShowTransferSetupModal,
-    transferPasscode,
+    transferCode,
     setTransferUrl,
     setTransferId,
-    setTransferPasscode,
+    setTransferCode,
     setTransferCreated,
     generateQRCode,
     setError,
@@ -1122,7 +1096,7 @@ function App() {
     handleAddCustodian,
     handleCustodianAcceptance,
     handleApproveRecovery,
-    handleRecoveryPasscodeSubmit,
+    handleRecoveryKeysSubmit,
     handleContinueReadyRecovery,
     handleRefreshActiveRecovery,
     handleCancelActiveRecovery,
@@ -1175,7 +1149,7 @@ function App() {
     setRecoveryKeyContactInfo,
     pendingRecoveryCompletion,
     setPendingRecoveryCompletion,
-    setShowRecoveryPasscodeModal,
+    setShowRecoveryKeysModal,
     recoveredIdentityExport,
     setRecoveredIdentityExport,
     recoveredDID,
@@ -1219,10 +1193,6 @@ function App() {
     pendingCustodianInvitationData,
     setPendingCustodianInvitationData,
     setShowCustodianAcceptanceModal,
-    migrationChecked,
-    setMigrationChecked,
-    setPendingMigrations,
-    setShowMigrationModal,
     pwaState,
     isPWALocked,
     setIsPWALocked,
@@ -1410,10 +1380,6 @@ function App() {
 
 
         <AppModals
-          showMigrationModal={showMigrationModal}
-          setShowMigrationModal={setShowMigrationModal}
-          pendingMigrations={pendingMigrations}
-          handleMigrationComplete={handleMigrationComplete}
           showRecoveryModal={showRecoveryModal}
           setShowRecoveryModal={setShowRecoveryModal}
           handleInitiateRecoveryWithKey={handleInitiateRecoveryWithKey}
@@ -1465,11 +1431,11 @@ function App() {
           recoveryThreshold={recoveryThreshold}
           handleApproveRecovery={handleApproveRecovery}
           setSuccessWithTimeout={setSuccessWithTimeout}
-          showRecoveryPasscodeModal={showRecoveryPasscodeModal}
-          setShowRecoveryPasscodeModal={setShowRecoveryPasscodeModal}
+          showRecoveryKeysModal={showRecoveryKeysModal}
+          setShowRecoveryKeysModal={setShowRecoveryKeysModal}
           setPendingRecoveryCompletion={setPendingRecoveryCompletion}
           loading={loading}
-          handleRecoveryPasscodeSubmit={handleRecoveryPasscodeSubmit}
+          handleRecoveryKeysSubmit={handleRecoveryKeysSubmit}
           showRecoveryCompleteModal={showRecoveryCompleteModal}
           setShowRecoveryCompleteModal={setShowRecoveryCompleteModal}
           recoveredDID={recoveredDID}
@@ -1515,10 +1481,10 @@ function App() {
           setShowExportOptionsModal={setShowExportOptionsModal}
           exportAuthData={exportAuthData}
           setExportAuthData={setExportAuthData}
-          showExportPnName={showExportPnName}
-          setShowExportPnName={setShowExportPnName}
-          showExportPasscode={showExportPasscode}
-          setShowExportPasscode={setShowExportPasscode}
+          showExportKey1={showExportKey1}
+          setShowExportKey1={setShowExportKey1}
+          showExportKey2={showExportKey2}
+          setShowExportKey2={setShowExportKey2}
           handleExportAuth={handleExportAuth}
           pendingExportAction={pendingExportAction}
           showExportOptionsModal={showExportOptionsModal}
@@ -1540,8 +1506,8 @@ function App() {
           setShowTransferSetupModal={setShowTransferSetupModal}
           transferCreated={transferCreated}
           setTransferCreated={setTransferCreated}
-          transferPasscode={transferPasscode}
-          setTransferPasscode={setTransferPasscode}
+          transferCode={transferCode}
+          setTransferCode={setTransferCode}
           transferUrl={transferUrl}
           handleTransferSetup={handleTransferSetup}
           success={success}

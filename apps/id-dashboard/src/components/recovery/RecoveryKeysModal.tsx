@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { secretKeyInputProps } from '@par-noir/oauth-ui';
 import { SectionInfo } from '../common/SectionInfo';
 import {
   KEY_1_LABEL,
@@ -13,24 +14,24 @@ import {
   KEYS_REQUIRED,
 } from '../../constants/credentialLabels';
 
-interface RecoveryPasscodeModalProps {
+interface RecoveryKeysModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** newPnName = Key 1, newPasscode = Key 2 */
-  onSubmit: (newPnName: string, newPasscode: string) => Promise<void>;
+  /** newKey1 = Key 1, newKey2 = Key 2 */
+  onSubmit: (newKey1: string, newKey2: string) => Promise<void>;
   loading?: boolean;
 }
 
-export function RecoveryPasscodeModal({
+export function RecoveryKeysModal({
   isOpen,
   onClose,
   onSubmit,
   loading = false
-}: RecoveryPasscodeModalProps) {
-  const [newPnName, setNewPnName] = useState('');
-  const [confirmPnName, setConfirmPnName] = useState('');
-  const [newPasscode, setNewPasscode] = useState('');
-  const [confirmPasscode, setConfirmPasscode] = useState('');
+}: RecoveryKeysModalProps) {
+  const [newKey1, setNewKey1] = useState('');
+  const [confirmKey1, setConfirmKey1] = useState('');
+  const [newKey2, setNewKey2] = useState('');
+  const [confirmKey2, setConfirmKey2] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -38,24 +39,24 @@ export function RecoveryPasscodeModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!newPnName.trim() || !newPasscode) {
+    if (!newKey1.trim() || !newKey2) {
       setError(KEYS_REQUIRED);
       return;
     }
-    if (newPnName.trim() !== confirmPnName.trim()) {
+    if (newKey1.trim() !== confirmKey1.trim()) {
       setError(KEY_1_MISMATCH);
       return;
     }
-    if (newPasscode !== confirmPasscode) {
+    if (newKey2 !== confirmKey2) {
       setError(KEYS_MISMATCH);
       return;
     }
     try {
-      await onSubmit(newPnName.trim(), newPasscode);
-      setNewPnName('');
-      setConfirmPnName('');
-      setNewPasscode('');
-      setConfirmPasscode('');
+      await onSubmit(newKey1.trim(), newKey2);
+      setNewKey1('');
+      setConfirmKey1('');
+      setNewKey2('');
+      setConfirmKey2('');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Recovery failed');
     }
@@ -78,20 +79,18 @@ export function RecoveryPasscodeModal({
           <div>
             <label className="block text-sm font-medium mb-1">New {KEY_1_LABEL}</label>
             <input
-              type="password"
-              value={newPnName}
-              onChange={(e) => setNewPnName(e.target.value)}
+              {...secretKeyInputProps('key1', 'create')}
+              value={newKey1}
+              onChange={(e) => setNewKey1(e.target.value)}
               placeholder={KEY_1_PLACEHOLDER}
-              autoComplete="new-password"
               className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md"
               required
             />
             <input
-              type="password"
-              value={confirmPnName}
-              onChange={(e) => setConfirmPnName(e.target.value)}
+              {...secretKeyInputProps('key1', 'create')}
+              value={confirmKey1}
+              onChange={(e) => setConfirmKey1(e.target.value)}
               placeholder={KEY_1_CONFIRM_PLACEHOLDER}
-              autoComplete="new-password"
               className="w-full px-3 py-2 mt-2 border border-input-border bg-input-bg rounded-md"
               required
             />
@@ -99,22 +98,20 @@ export function RecoveryPasscodeModal({
           <div>
             <label className="block text-sm font-medium mb-1">New {KEY_2_LABEL}</label>
             <input
-              type="password"
-              value={newPasscode}
-              onChange={(e) => setNewPasscode(e.target.value)}
+              {...secretKeyInputProps('key2', 'create')}
+              value={newKey2}
+              onChange={(e) => setNewKey2(e.target.value)}
               placeholder={KEY_2_PLACEHOLDER}
-              autoComplete="new-password"
               className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md"
               required
             />
           </div>
           <div>
             <input
-              type="password"
-              value={confirmPasscode}
-              onChange={(e) => setConfirmPasscode(e.target.value)}
+              {...secretKeyInputProps('key2', 'create')}
+              value={confirmKey2}
+              onChange={(e) => setConfirmKey2(e.target.value)}
               placeholder={KEY_2_CONFIRM_PLACEHOLDER}
-              autoComplete="new-password"
               className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md"
               required
             />

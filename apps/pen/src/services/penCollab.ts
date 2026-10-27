@@ -73,8 +73,8 @@ export function sealSessionFromPen(session: PenSession): SealSession | null {
   // Same convention as aggregator-browser outbox seal (pn + ML-KEM secret).
   return {
     sessionId: session.pnIdentifier,
-    pnName: session.pnIdentifier,
-    passcode: session.mlKemSecretKey
+    key1: session.pnIdentifier,
+    key2: session.mlKemSecretKey
   };
 }
 

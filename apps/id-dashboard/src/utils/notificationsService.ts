@@ -20,7 +20,7 @@ export interface Notification {
 
 interface UnlockedIdentity {
   id: string;
-  // SECURITY: pnName and passcode removed - use SecureCredentialManager instead
+  // SECURITY: Key 1 and Key 2 removed - use SecureCredentialManager instead
   nickname: string;
 }
 
@@ -73,7 +73,7 @@ class NotificationsService {
   }
 
   setUnlockedIdentity(identityId: string, nickname: string): void {
-    // SECURITY: pnName and passcode removed - credentials stored in SecureCredentialManager
+    // SECURITY: Key 1 and Key 2 removed - credentials stored in SecureCredentialManager
     this.currentUnlockedIdentity = { id: identityId, nickname };
     if (process.env.NODE_ENV === 'development') {
       // Identity unlocked - notifications enabled

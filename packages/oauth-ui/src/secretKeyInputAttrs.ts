@@ -53,24 +53,3 @@ export function secretKeyInputProps(
     'data-form-type': 'other',
   };
 }
-
-/** HTML attribute bag for static templates (oauth-consent.html). */
-export function secretKeyHtmlAttrs(
-  which: SecretKeyWhich,
-  mode: SecretKeyMode = 'unlock'
-): Record<string, string> {
-  const props = secretKeyInputProps(which, mode);
-  return {
-    type: props.type,
-    name: props.name,
-    id: which === 'key1' ? SECRET_KEY_1_ID : SECRET_KEY_2_ID,
-    autocomplete: props.autoComplete,
-    spellcheck: 'false',
-    autocapitalize: 'off',
-    autocorrect: 'off',
-    'data-1p-ignore': 'true',
-    'data-lpignore': 'true',
-    'data-bwignore': 'true',
-    'data-form-type': 'other',
-  };
-}

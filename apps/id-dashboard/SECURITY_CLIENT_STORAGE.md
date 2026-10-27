@@ -20,11 +20,11 @@ IndexedDB is a browser API that **must** be initialized on the client side. It c
 
 **Critical**: The following databases **NEVER** store plaintext credentials:
 
-- ✅ `IdentityDashboardDB` - Only stores encrypted identity data (no pnName/passcode)
-- ✅ `IdentityProtocolDB` - Only stores encrypted identity data (no pnName/passcode)
+- ✅ `IdentityDashboardDB` - Only stores encrypted identity data (no key1/key2)
+- ✅ `IdentityProtocolDB` - Only stores encrypted identity data (no key1/key2)
 
 **Credentials Storage**:
-- pnName and passcode are stored **ONLY** in memory via `SecureCredentialManager`
+- key1 and key2 are stored **ONLY** in memory via `SecureCredentialManager`
 - Credentials are **NEVER** persisted to IndexedDB, localStorage, or sessionStorage
 - Credentials are cleared on logout and expire after session timeout
 
@@ -53,7 +53,7 @@ Encryption keys are generated client-side because:
 **Stored Data**:
 - Encrypted identity objects (`EncryptedIdentity`)
 - Settings and configuration
-- **NO** plaintext pnName or passcode
+- **NO** plaintext key1 or key2
 
 **Security**:
 - All data is encrypted before storage
@@ -67,7 +67,7 @@ Encryption keys are generated client-side because:
 **Stored Data**:
 - Encrypted identity data
 - Session metadata (without credentials)
-- **NO** plaintext pnName or passcode
+- **NO** plaintext key1 or key2
 
 **Security**:
 - All sensitive data encrypted
@@ -81,7 +81,7 @@ Encryption keys are generated client-side because:
 1. **Never store credentials in IndexedDB**:
    ```typescript
    // ❌ BAD
-   await storage.saveIdentity({ pnName: 'user', passcode: '123456' });
+   await storage.saveIdentity({ key1: 'user', key2: '123456' });
    
    // ✅ GOOD
    await storage.saveIdentity({ publicKey: '...', encryptedData: '...' });
@@ -90,21 +90,21 @@ Encryption keys are generated client-side because:
 2. **Use SecureCredentialManager for credentials**:
    ```typescript
    // ✅ GOOD
-   SecureCredentialManager.setCredentials(sessionId, pnName, passcode);
+   SecureCredentialManager.setCredentials(sessionId, key1, key2);
    ```
 
 3. **Sanitize data before storage**:
    ```typescript
    // ✅ GOOD
    const sanitized = { ...data };
-   delete sanitized.pnName;
-   delete sanitized.passcode;
+   delete sanitized.key1;
+   delete sanitized.key2;
    ```
 
 ### Security Audit Checklist
 
-- [x] No plaintext pnName in IndexedDB
-- [x] No plaintext passcode in IndexedDB
+- [x] No plaintext key1 in IndexedDB
+- [x] No plaintext key2 in IndexedDB
 - [x] Credentials stored only in SecureCredentialManager
 - [x] Session data excludes credentials
 - [x] All sensitive data encrypted before storage

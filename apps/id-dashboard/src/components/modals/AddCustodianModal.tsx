@@ -10,7 +10,7 @@ interface AddCustodianModalProps {
     contactType: 'email' | 'phone';
     contactValue: string;
     type: 'person' | 'service' | 'self';
-    passcode: string;
+    acceptanceCode: string;
     unrevokable?: boolean;
   }) => Promise<void>;
 }
@@ -55,7 +55,7 @@ export function AddCustodianModal({
             contactType: formData.get('contactType') as 'email' | 'phone',
             contactValue: formData.get('contactValue') as string,
             type: (formData.get('custodianType') as 'person' | 'service' | 'self') || 'person',
-            passcode: formData.get('passcode') as string,
+            acceptanceCode: formData.get('acceptanceCode') as string,
             unrevokable: formData.get('unrevokable') === 'on',
           };
           
@@ -139,11 +139,11 @@ export function AddCustodianModal({
 
           <div>
             <label className="block text-sm font-medium text-text-primary mb-1">
-              Custodian Passcode *
+              Custodian acceptance code *
             </label>
             <input
               type="text"
-              name="passcode"
+              name="acceptanceCode"
               required
               maxLength={6}
               pattern="[0-9]{6}"

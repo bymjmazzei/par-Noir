@@ -138,33 +138,33 @@ export async function commitGoogleDriveDisconnect(opts: {
   return remaining;
 }
 
-/** Shell unlock has no passcode. The ML-KEM key from that unlock can still seal the vault. */
+/** Shell unlock has no Key 2. The ML-KEM key from that unlock can still seal the vault. */
 export function canSealCloudDisconnect(opts: {
   pnIdentifier: string | null | undefined;
   authToken: string | null | undefined;
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
   mlKemSecretKey?: string | null;
 }): boolean {
   if (!opts.pnIdentifier?.startsWith('pn-') || !opts.authToken) return false;
   if (opts.mlKemSecretKey) return true;
-  return Boolean(opts.pnName && opts.passcode);
+  return Boolean(opts.key1 && opts.key2);
 }
 
 async function currentDriveEnvelope(opts: {
   pnIdentifier: string;
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
 }): Promise<StorageCredentialsEnvelope | null> {
   const fromSession = getSessionCloudCredentials(opts.pnIdentifier);
   if (fromSession) return fromSession;
-  if (!opts.pnName || !opts.passcode) return null;
+  if (!opts.key1 || !opts.key2) return null;
   return loadLocalCloudCredentials({
     identityId: opts.pnIdentifier,
     session: {
       sessionId: 'pn-cloud-creds-v1',
-      pnName: opts.pnName,
-      passcode: opts.passcode,
+      key1: opts.key1,
+      key2: opts.key2,
     },
   });
 }
@@ -173,8 +173,8 @@ async function currentDriveEnvelope(opts: {
 export async function commitDashboardGoogleDriveDisconnect(opts: {
   pnIdentifier: string;
   authToken: string;
-  pnName?: string | null;
-  passcode?: string | null;
+  key1?: string | null;
+  key2?: string | null;
   publicKey?: string | null;
   mlKemSecretKey?: string | null;
   backendId?: string | null;
@@ -183,8 +183,8 @@ export async function commitDashboardGoogleDriveDisconnect(opts: {
     !canSealCloudDisconnect({
       pnIdentifier: opts.pnIdentifier,
       authToken: opts.authToken,
-      pnName: opts.pnName,
-      passcode: opts.passcode,
+      key1: opts.key1,
+      key2: opts.key2,
       mlKemSecretKey: opts.mlKemSecretKey,
     })
   ) {
@@ -201,8 +201,8 @@ export async function commitDashboardGoogleDriveDisconnect(opts: {
       publishCloudVaultForIdentity({
         identityId: opts.pnIdentifier,
         authToken: opts.authToken,
-        pnName: opts.pnName,
-        passcode: opts.passcode,
+        key1: opts.key1,
+        key2: opts.key2,
         credentials,
         publicKey: opts.publicKey,
         mlKemSecretKey: opts.mlKemSecretKey,

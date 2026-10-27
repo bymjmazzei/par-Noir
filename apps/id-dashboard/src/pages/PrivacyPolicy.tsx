@@ -52,7 +52,7 @@ const PrivacyPolicy: React.FC = () => {
                 We do not collect, store, or process your personal information, including:
               </p>
               <ul className="list-disc list-inside text-text-secondary mb-6 space-y-2">
-                <li><strong>Identity Data:</strong> Your pN names, passcodes, or identity details</li>
+                <li><strong>Identity Data:</strong> Your Key 1, Key 2, or identity details</li>
                 <li><strong>Personal Information:</strong> Names, addresses, phone numbers, or email addresses</li>
                 <li><strong>Usage Data:</strong> How you use the service or which features you access</li>
                 <li><strong>Device Information:</strong> Device identifiers, IP addresses, or location data</li>

@@ -179,7 +179,6 @@ export {
   SECRET_KEY_2_ID,
   SECRET_KEY_FORM_ATTRS,
   secretKeyInputProps,
-  secretKeyHtmlAttrs,
 } from './secretKeyInputAttrs';
 export type {
   SecretKeyWhich,

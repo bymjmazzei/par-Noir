@@ -16,7 +16,7 @@ export const SECRETS = {
   did: 'did:pn:owner-secret-did',
   email: 'owner.secret@example.com',
   key2: 'key2-hunter2-secret',
-  key1: 'pnname-secret-owner',
+  key1: 'key1-secret-owner',
   accessToken: 'at-secret-access-token',
   refreshToken: 'rt-secret-refresh-token',
   newAccessToken: 'at-secret-rotated-access',

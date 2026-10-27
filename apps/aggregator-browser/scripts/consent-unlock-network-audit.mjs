@@ -20,9 +20,9 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.REPO_ROOT || resolve(scriptDir, '../../..');
 const BROWSE_URL = process.env.BROWSE_URL || 'https://browse.parnoir.com';
 
-let identityPath, PN_NAME, PASSCODE;
+let identityPath, KEY1, KEY2;
 try {
-  ({ identityPath, PN_NAME, PASSCODE } = loadTestPn(ROOT));
+  ({ identityPath, KEY1, KEY2 } = loadTestPn(ROOT));
 } catch (e) {
   console.error(e.message || e);
   process.exit(2);
@@ -84,8 +84,8 @@ const popup = await popupPromise;
 
 await popup.waitForURL(/oauth\/consent/, { timeout: 30_000 });
 await popup.locator('#identityFile').setInputFiles(identityPath);
-await popup.getByPlaceholder('Enter Key 1').fill(PN_NAME);
-await popup.getByPlaceholder('Enter Key 2').fill(PASSCODE);
+await popup.getByPlaceholder('Enter Key 1').fill(KEY1);
+await popup.getByPlaceholder('Enter Key 2').fill(KEY2);
 await popup.getByRole('button', { name: 'Unlock pN' }).click();
 
 const approve = popup.getByRole('button', { name: 'Approve' });

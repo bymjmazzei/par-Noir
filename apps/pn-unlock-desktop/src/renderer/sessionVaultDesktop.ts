@@ -70,8 +70,8 @@ export async function hasUnlockVaultIdentity(identityId: string): Promise<boolea
 
 export async function enrollUnlockSessionVault(payload: UnlockKeysPayload): Promise<void> {
   if (
-    !payload.pnName?.trim() ||
-    !payload.passcode?.trim() ||
+    !payload.key1?.trim() ||
+    !payload.key2?.trim() ||
     !payload.encryptedIdentityJson?.trim()
   ) {
     throw new Error('Vault enroll requires identity file, Key 1, and Key 2');

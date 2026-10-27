@@ -113,9 +113,9 @@ export async function bootstrapThisDevice(params: {
     throw new Error('Unlock messaging identity before keying this device');
   }
   const identity = getDmIdentity();
-  const pnName = 'browser';
-  const passcode = identity.mlKemSecretKey;
-  if (!passcode) {
+  const key1 = 'browser';
+  const key2 = identity.mlKemSecretKey;
+  if (!key2) {
     throw new Error('Unlock messaging before keying this device');
   }
   const keypair = await generateDeviceKeypair();
@@ -135,8 +135,8 @@ export async function bootstrapThisDevice(params: {
       deviceType,
       lastSeenAt: new Date().toISOString(),
     },
-    pnName,
-    passcode
+    key1,
+    key2
   );
   await registerDeviceOnServer({
     userPnIdentifier: params.userPnIdentifier,

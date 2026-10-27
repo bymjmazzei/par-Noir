@@ -46,44 +46,44 @@ export class IdentityValidator {
   }
 
   /**
-   * Validate Key 1 (internal: pnName) — same strength rules as Key 2.
+   * Validate Key 1 (internal: Key 1) — same strength rules as Key 2.
    */
-  static validatePNName(pnName: string): ValidationResult {
-    const errors = keyStrengthErrors(pnName, KEY_1_LABEL);
+  static validateKey1(key1: string): ValidationResult {
+    const errors = keyStrengthErrors(key1, KEY_1_LABEL);
     return {
       isValid: errors.length === 0,
       errors,
       warnings: [],
-      sanitizedValue: pnName
+      sanitizedValue: key1
     };
   }
 
   /**
-   * Validate Key 2 (internal: passcode) strength
+   * Validate Key 2 (internal: Key 2) strength
    */
-  static validatePasscode(passcode: string): ValidationResult {
-    const errors = keyStrengthErrors(passcode, KEY_2_LABEL);
+  static validateKey2(key2: string): ValidationResult {
+    const errors = keyStrengthErrors(key2, KEY_2_LABEL);
     const warnings: string[] = [];
 
     if (
-      passcode &&
-      ValidationPatterns.WEAK_PASSCODE_PATTERNS.some((pattern) =>
-        passcode.toLowerCase().includes(pattern)
+      key2 &&
+      ValidationPatterns.WEAK_KEY2_PATTERNS.some((pattern) =>
+        key2.toLowerCase().includes(pattern)
       )
     ) {
       warnings.push('Key 2 contains common weak patterns');
     }
 
     if (
-      passcode &&
+      key2 &&
       ValidationPatterns.KEYBOARD_PATTERNS.some((pattern) =>
-        passcode.toLowerCase().includes(pattern)
+        key2.toLowerCase().includes(pattern)
       )
     ) {
       warnings.push('Key 2 contains keyboard patterns');
     }
 
-    if (passcode && /(.)\1{3,}/.test(passcode)) {
+    if (key2 && /(.)\1{3,}/.test(key2)) {
       warnings.push('Key 2 contains repeated characters');
     }
 
@@ -91,7 +91,7 @@ export class IdentityValidator {
       isValid: errors.length === 0,
       errors,
       warnings,
-      sanitizedValue: passcode
+      sanitizedValue: key2
     };
   }
 }

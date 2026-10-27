@@ -99,13 +99,13 @@ export function restoreMessagingAfterOAuth(): void {
   restoreDmSessionFromStorage();
 }
 
-/** Encrypted identity on disk — passcode re-derive after tab refresh only; not OAuth unlock success. */
+/** Encrypted identity on disk — Key 2 re-derive after tab refresh only; not OAuth unlock success. */
 export function hasRestorableMessagingMaterial(): boolean {
   return hasStoredEncryptedIdentity();
 }
 
 /**
- * @deprecated Use isDmIdentityReady() for OAuth gates or hasRestorableMessagingMaterial() for passcode modal.
+ * @deprecated Use isDmIdentityReady() for OAuth gates or hasRestorableMessagingMaterial() for Key 2 modal.
  */
 export function isMessagingUnlockSatisfied(): boolean {
   return isDmIdentityReady() || hasStoredEncryptedIdentity();

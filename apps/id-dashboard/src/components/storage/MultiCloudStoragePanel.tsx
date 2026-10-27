@@ -294,8 +294,8 @@ export function MultiCloudStoragePanel({
             credentials: envelope,
             session: {
               sessionId,
-              pnName: creds.pnName,
-              passcode: creds.passcode
+              key1: creds.key1,
+              key2: creds.key2
             },
             mode: resolveCloudPersistMode({ hasKeyedDevices: false })
           });
@@ -372,8 +372,8 @@ export function MultiCloudStoragePanel({
               credentials: localEnvelope as import('@par-noir/user-owned-storage').StorageCredentialsEnvelope,
               session: {
                 sessionId,
-                pnName: creds.pnName,
-                passcode: creds.passcode
+                key1: creds.key1,
+                key2: creds.key2
               },
               mode: resolveCloudPersistMode({ hasKeyedDevices: false })
             });

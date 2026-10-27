@@ -3,7 +3,6 @@ import { StandardDataPoint, ZKPProof, DataPointProposal } from './standardDataPo
 // Core Identity Types
 export interface Identity {
   id: string;
-  username: string;
   displayName?: string;
   email?: string;
   createdAt: string;

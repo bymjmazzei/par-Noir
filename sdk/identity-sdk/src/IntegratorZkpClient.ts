@@ -21,7 +21,7 @@ export class IntegratorZkpClient {
   }
 
   /**
-   * Returns ZKP proofs only — never pn name, passcode, or raw PII.
+   * Returns ZKP proofs only — never Key 1, Key 2, or raw PII.
    * Request scopes like zkp:age_attestation or pass dataPoints explicitly.
    */
   async getDataPoints(

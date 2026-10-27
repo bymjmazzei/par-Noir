@@ -1,5 +1,5 @@
 /**
- * Allows messaging UI to trigger passcode restore when encrypted identity exists on device.
+ * Allows messaging UI to trigger Key 2 restore when encrypted identity exists on device.
  */
 
 import { isDmIdentityReady, hasStoredEncryptedIdentity } from './dmIdentitySession';
@@ -24,7 +24,7 @@ export function isMessagingKeysError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
     lower.includes('messaging keys') ||
-    (lower.includes('messaging') && (lower.includes('unlock') || lower.includes('passcode')))
+    (lower.includes('messaging') && lower.includes('unlock'))
   );
 }
 
@@ -43,7 +43,7 @@ const REQUESTER_KEY_MESSAGE =
 const LOCAL_KEYS_MESSAGE =
   'Messaging keys unavailable. Lock and unlock your pN again to accept connections.';
 
-function promptPasscodeUnlock(): void {
+function promptKeysUnlock(): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('pn_show_dm_unlock_modal'));
   }
@@ -51,7 +51,7 @@ function promptPasscodeUnlock(): void {
 
 function promptMessagingReconnect(): void {
   if (hasStoredEncryptedIdentity()) {
-    promptPasscodeUnlock();
+    promptKeysUnlock();
   } else {
     requestMessagingReconnect();
   }

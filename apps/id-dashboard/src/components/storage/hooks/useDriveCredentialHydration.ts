@@ -34,7 +34,7 @@ export interface UseDriveCredentialHydrationParams {
   resolveIdentifiersForEmail: (email?: string | null) => ResolvedDriveIdentifiers;
   upsertDriveAccount: (params: UpsertDriveAccountParams) => Promise<GoogleDriveBackend | null>;
   persistStorageCredentialsToAPI: (credentialsPayload?: any, cid?: string | null) => Promise<void>;
-  getPasscodeFromSecureStorage: (sessionId: string | null | undefined) => string | null;
+  getKey2FromSecureStorage: (sessionId: string | null | undefined) => string | null;
   getPnIdentifier: () => Promise<string | null>;
   getStorageIdentityCandidates: () => string[];
   disconnectTimestampRef: React.MutableRefObject<number>;
@@ -116,8 +116,8 @@ export function useDriveCredentialHydration({
             identityId: pnId,
             session: {
               sessionId: sessionId!,
-              pnName: sessionCreds.pnName,
-              passcode: sessionCreds.passcode
+              key1: sessionCreds.key1,
+              key2: sessionCreds.key2
             }
           });
           accounts = (local?.googleDriveAccounts ?? []) as Array<Record<string, any>>;

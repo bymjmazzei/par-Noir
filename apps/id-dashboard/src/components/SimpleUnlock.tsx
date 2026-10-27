@@ -2,7 +2,7 @@ import React from 'react';
 import { HostedShellLaunch } from '@par-noir/oauth-ui';
 
 interface SimpleUnlockProps {
-  onUnlock: (file: File, passcode: string) => Promise<void>;
+  onUnlock: (file: File, key2: string) => Promise<void>;
   onCancel: () => void;
 }
 

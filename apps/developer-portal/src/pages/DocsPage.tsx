@@ -6,7 +6,7 @@ export function DocsPage() {
         <p>
           One kit for <strong>external</strong> L5 apps: register an OAuth client on Credentials, then wire{' '}
           <code>createPnIntegratorClient</code> + <code>@par-noir/oauth-ui</code>. User unlock is interactive{' '}
-          <code>/oauth/*</code> — never collect pn name or passcode in your UI.
+          <code>/oauth/*</code> — never collect Key 1 or Key 2 in your UI.
         </p>
       </section>
 

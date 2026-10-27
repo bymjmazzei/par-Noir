@@ -20,7 +20,7 @@ export function useIdentityState() {
     contactType: 'email' as 'email' | 'phone',
     contactValue: '',
     type: 'person' as 'person' | 'service' | 'self',
-    passcode: ''
+    acceptanceCode: ''
   });
   const [showRecoveryKeyInputModal, setShowRecoveryKeyInputModal] = useState(false);
   const [recoveryThreshold, setRecoveryThreshold] = useState(2);

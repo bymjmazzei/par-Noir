@@ -45,21 +45,21 @@ test.describe('create pN deep link smoke', () => {
     await page.goto('/?create=1', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: CREATE_MODAL })).toBeVisible({ timeout: 30_000 });
 
-    // pn name and passcode are the two factors the user chooses here. Both are secrets: they
+    // Key 1 and Key 2 are the two factors the user chooses here. Both are secrets: they
     // must start masked and empty, never seeded from a previous session or the URL.
-    const pnName = page.getByPlaceholder('Enter pN Name');
-    const passcode = page.getByPlaceholder('Enter passcode');
+    const key1 = page.getByPlaceholder('Enter Key 1');
+    const key2 = page.getByPlaceholder('Enter Key 2');
 
-    await expect(pnName).toHaveAttribute('type', 'password');
-    await expect(passcode).toHaveAttribute('type', 'password');
-    await expect(pnName).toHaveValue('');
-    await expect(passcode).toHaveValue('');
+    await expect(key1).toHaveAttribute('type', 'password');
+    await expect(key2).toHaveAttribute('type', 'password');
+    await expect(key1).toHaveValue('');
+    await expect(key2).toHaveValue('');
   });
 
   test('leaves the unlock gate alone when the deep link is disabled', async ({ page }) => {
     await page.goto('/?create=0', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByPlaceholder('Enter your pN Name')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByPlaceholder('Enter your Key 1')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('heading', { name: CREATE_MODAL })).toHaveCount(0);
   });
 });

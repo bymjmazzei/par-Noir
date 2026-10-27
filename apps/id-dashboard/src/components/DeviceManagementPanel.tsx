@@ -96,12 +96,12 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
       const creds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
       const resolved: DisplayDevice[] = [];
       for (const d of rows) {
-        if (d.privateDisplay && creds?.pnName && creds?.passcode) {
+        if (d.privateDisplay && creds?.key1 && creds?.key2) {
           try {
             const open = await unsealDevicePrivateDisplay(
               d.privateDisplay,
-              creds.pnName,
-              creds.passcode
+              creds.key1,
+              creds.key2
             );
             resolved.push({
               deviceId: d.deviceId,

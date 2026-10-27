@@ -68,11 +68,11 @@ See [`../pn-unlock-desktop/ACCEPTANCE.md`](../pn-unlock-desktop/ACCEPTANCE.md) a
 ## Negative
 
 1. Integrator UI must not render Key 1 / Key 2 inputs (kit only launches broker URL).
-2. `POST /oauth/authorize/authenticate` body must not contain passcode / pn name (existing ratchets).
+2. `POST /oauth/authorize/authenticate` body must not contain Key 1 / Key 2 (existing ratchets).
 
 | Check | Status | Observed |
 |-------|--------|----------|
-| Passcode-on-wire ratchet | PASS | `scripts/check-no-passcode-on-oauth-wire.sh` |
+| Key2-on-wire ratchet | PASS | `scripts/check-no-key2-on-oauth-wire.sh` |
 | Vault secrets not on wire (unit) | PASS | `assertNoVaultSecretsOnWire` tests |
 
 ## Store association

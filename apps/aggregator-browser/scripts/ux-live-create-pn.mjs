@@ -70,8 +70,8 @@ async function fillReact(page, placeholder, value) {
   await typeInto(page, placeholder, value);
 }
 
-const PN_NAME = strongKey(process.env.PN_NAME_PREFIX || 'Live');
-const PASSCODE = strongKey(process.env.PASSCODE_PREFIX || 'Drive');
+const KEY1 = strongKey(process.env.KEY1_PREFIX || 'Live');
+const KEY2 = strongKey(process.env.KEY2_PREFIX || 'Drive');
 const RECOVERY_EMAIL = `qa-live-${webcrypto.getRandomValues(new Uint32Array(1))[0]}@example.com`;
 const FIXTURE_LABEL = basename(OUT);
 
@@ -85,8 +85,8 @@ try {
   await page.getByText('Create New pN').first().waitFor({ state: 'visible', timeout: 15_000 });
 
   // Step 1
-  await fillReact(page, 'Enter Key 1', PN_NAME);
-  await fillReact(page, 'Enter Key 2', PASSCODE);
+  await fillReact(page, 'Enter Key 1', KEY1);
+  await fillReact(page, 'Enter Key 2', KEY2);
   await fillReact(page, 'Enter recovery email', RECOVERY_EMAIL);
 
   // Wait until strength rules clear / Next enables
@@ -103,8 +103,8 @@ try {
 
   // Step 2 confirm — keys + recovery (always fill; field may be below fold)
   await page.getByText('Step 2: Confirm Your Information').waitFor({ state: 'visible', timeout: 15_000 });
-  await fillReact(page, 'Confirm Key 1', PN_NAME);
-  await fillReact(page, 'Confirm Key 2', PASSCODE);
+  await fillReact(page, 'Confirm Key 1', KEY1);
+  await fillReact(page, 'Confirm Key 2', KEY2);
   await fillReact(page, 'Confirm your recovery email', RECOVERY_EMAIL);
 
   await page.waitForFunction(
@@ -132,8 +132,8 @@ try {
     resolve(OUT, 'keys.env'),
     [
       '# Live-created on pn.parnoir.com via product Create New pN — never commit',
-      `PN_NAME=${PN_NAME}`,
-      `PASSCODE=${PASSCODE}`,
+      `KEY1=${KEY1}`,
+      `KEY2=${KEY2}`,
       `IDENTITY_FILE=${destName}`,
       `RECOVERY_EMAIL=${RECOVERY_EMAIL}`,
       `CREATED_ON=https://pn.parnoir.com/`,
@@ -149,7 +149,7 @@ try {
       '',
       'Created on production dashboard Create New pN → auto-download.',
       `File: \`${destName}\` (also \`live-created.pn\`)`,
-      'Keys: `keys.env` (Key 1 = PN_NAME, Key 2 = PASSCODE)',
+      'Keys: `keys.env` (Key 1 = KEY1, Key 2 = KEY2)',
       '',
       'Do not use a filename of literally `identity.pn` on live until nickname fix is deployed.',
       '',

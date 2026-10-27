@@ -21,7 +21,6 @@ interface HeaderProps {
   onPWAInstall?: () => Promise<void>;
   onPWACheckUpdate?: () => Promise<void>;
   onExport?: () => Promise<void>;
-  onPasscodeLogout?: () => Promise<void>;
   onPinRefresh?: () => void;
   apiToken?: string | null;
   pnIdentifier?: string | null;
@@ -29,7 +28,7 @@ interface HeaderProps {
   onOpenRecoveryForPairing?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineModeChange, isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true, pwaState, onPWAInstall, onPWACheckUpdate, onExport, onPasscodeLogout, onPinRefresh, apiToken = null, pnIdentifier = null, isKeyedSession = false, onOpenRecoveryForPairing }) => {
+const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineModeChange, isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true, pwaState, onPWAInstall, onPWACheckUpdate, onExport, onPinRefresh, apiToken = null, pnIdentifier = null, isKeyedSession = false, onOpenRecoveryForPairing }) => {
   const [isPWA, setIsPWA] = useState(false);
 
   // Check if running as PWA or native app (Capacitor) - hide Install in both
@@ -95,18 +94,6 @@ const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineM
                 onClick={onLogout}
                 className="px-3 py-1 text-sm border border-border rounded hover:bg-hover transition-colors flex items-center gap-2"
                 title="Lock Identity"
-              >
-                <LockIcon className="w-4 h-4" />
-                Lock
-              </button>
-            )}
-            
-            {/* Passcode Logout Button - For PWA with passcode system */}
-            {isPWA && authenticatedUser && onPasscodeLogout && (
-              <button
-                onClick={onPasscodeLogout}
-                className="px-3 py-1 text-sm border border-border rounded hover:bg-hover transition-colors flex items-center gap-2"
-                title="Return to Passcode Screen"
               >
                 <LockIcon className="w-4 h-4" />
                 Lock

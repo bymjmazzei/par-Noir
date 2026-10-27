@@ -167,35 +167,35 @@ export function useDriveFileActions({
     console.log('📥 [Download] Starting download...', { fileName: file.name, fileId: file.backendFileId });
 
     // Resolve auth credentials - try multiple sources (same as upload)
-    let pnName: string | null = null;
+    let key1: string | null = null;
     let publicKey: string | null = null;
-    let passcodeToUse: string | null = null;
+    let key2ToUse: string | null = null;
 
     // SECURITY: Get credentials from SecureCredentialManager (secrets)
     const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
     const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
 
     // Try 1: Use credentials and resolvedAuth (public data)
-    if (credentials?.pnName && resolvedAuth?.publicKey) {
-      pnName = credentials.pnName;
+    if (credentials?.key1 && resolvedAuth?.publicKey) {
+      key1 = credentials.key1;
       publicKey = resolvedAuth.publicKey;
-      passcodeToUse = credentials.passcode || null;
+      key2ToUse = credentials.key2 || null;
       console.log('✅ [Download] Using credentials and resolvedAuth');
     }
 
     // Try 2: Extract from authenticatedUser prop and credentials
-    if (!pnName || !publicKey) {
+    if (!key1 || !publicKey) {
       if (authenticatedUser && credentials) {
-        pnName = credentials.pnName;
+        key1 = credentials.key1;
         publicKey = authenticatedUser.publicKey ||
           (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
-        passcodeToUse = credentials.passcode || null;
-        console.log('✅ [Download] Using authenticatedUser prop and credentials:', { pnName: !!pnName, publicKey: !!publicKey });
+        key2ToUse = credentials.key2 || null;
+        console.log('✅ [Download] Using authenticatedUser prop and credentials:', { key1: !!key1, publicKey: !!publicKey });
       }
     }
 
     // Try 3: Load from storage
-    if (!pnName || !publicKey) {
+    if (!key1 || !publicKey) {
       console.log('📥 [Download] Loading from storage...');
       try {
         const { SecureStorage } = await import('../../../utils/storage');
@@ -204,13 +204,13 @@ export function useDriveFileActions({
         const session = await storage.getCurrentSession();
 
         if (session) {
-          // SECURITY: Get pnName from SecureCredentialManager (secrets), not from session storage
+          // SECURITY: Get Key 1 from SecureCredentialManager (secrets), not from session storage
           const sessionId = session.id || (session as any)?.publicKey || null;
           const sessionCredentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-          pnName = sessionCredentials?.pnName || null;
+          key1 = sessionCredentials?.key1 || null;
           publicKey = (session as any).publicKey ||
             (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
-          console.log('✅ [Download] Loaded from storage:', { pnName: !!pnName, publicKey: !!publicKey });
+          console.log('✅ [Download] Loaded from storage:', { key1: !!key1, publicKey: !!publicKey });
         }
       } catch (err) {
         console.error('❌ [Download] Storage load failed:', err);
@@ -221,7 +221,7 @@ export function useDriveFileActions({
       publicKey = resolvedAuth?.publicKey || publicKeyFromUnlockedUser(authenticatedUser);
     }
 
-    // Decryption uses the unlocked id and public key. A passcode is not required.
+    // Decryption uses the unlocked id and public key. A Key 2 is not required.
     if (!canEncryptUnlockedFiles(authenticatedUser, publicKey)) {
       console.error('❌ [Download] Could not resolve auth from any source');
       setError('Please unlock your pN first to decrypt files');
@@ -231,7 +231,7 @@ export function useDriveFileActions({
     try {
       setIsLoading(true);
       setError(null);
-      console.log('📥 [Download] Proceeding with download', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasId: !!authenticatedUser?.id });
+      console.log('📥 [Download] Proceeding with download', { hasKey1: !!key1, hasPublicKey: !!publicKey, hasId: !!authenticatedUser?.id });
 
       // Download encrypted file from backend
       const encryptedBlob = await aggregatorService.downloadFromBackend(

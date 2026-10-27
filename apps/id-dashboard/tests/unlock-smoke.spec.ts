@@ -57,9 +57,9 @@ test.describe('unlock screen smoke', () => {
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    // pn file + pn name + passcode: all three unlock factors must be reachable.
-    await expect(page.getByPlaceholder('Enter your pN Name')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByPlaceholder('Enter your passcode')).toBeVisible();
+    // pn file + Key 1 + Key 2: all three unlock factors must be reachable.
+    await expect(page.getByPlaceholder('Enter your Key 1')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByPlaceholder('Enter your Key 2')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Unlock pN' })).toBeVisible();
     await expect(page.locator('input[type="file"]').first()).toBeAttached();
 
@@ -69,20 +69,20 @@ test.describe('unlock screen smoke', () => {
   test('keeps the unlock factors masked and never prefilled', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    const pnName = page.getByPlaceholder('Enter your pN Name');
-    const passcode = page.getByPlaceholder('Enter your passcode');
-    await expect(pnName).toBeVisible({ timeout: 30_000 });
+    const key1 = page.getByPlaceholder('Enter your Key 1');
+    const key2 = page.getByPlaceholder('Enter your Key 2');
+    await expect(key1).toBeVisible({ timeout: 30_000 });
 
-    // pn name and passcode are both secrets: masked by default, never pre-populated.
-    await expect(pnName).toHaveAttribute('type', 'password');
-    await expect(passcode).toHaveAttribute('type', 'password');
-    await expect(pnName).toHaveValue('');
-    await expect(passcode).toHaveValue('');
+    // Key 1 and Key 2 are both secrets: masked by default, never pre-populated.
+    await expect(key1).toHaveAttribute('type', 'password');
+    await expect(key2).toHaveAttribute('type', 'password');
+    await expect(key1).toHaveValue('');
+    await expect(key2).toHaveValue('');
   });
 
   test('does not navigate away from the unlock gate on load', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByPlaceholder('Enter your pN Name')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByPlaceholder('Enter your Key 1')).toBeVisible({ timeout: 30_000 });
 
     // A stale session or bad redirect would drop us somewhere other than the gate.
     expect(new URL(page.url()).pathname.replace(/\/index\.html$/, '/')).toBe('/');

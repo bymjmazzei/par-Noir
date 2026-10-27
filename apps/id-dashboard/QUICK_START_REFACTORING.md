@@ -27,12 +27,12 @@ import React from 'react';
 interface ExportAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  exportAuthData: { pnName: string; passcode: string };
-  setExportAuthData: (data: { pnName: string; passcode: string }) => void;
-  showExportPnName: boolean;
-  setShowExportPnName: (show: boolean) => void;
-  showExportPasscode: boolean;
-  setShowExportPasscode: (show: boolean) => void;
+  exportAuthData: { key1: string; key2: string };
+  setExportAuthData: (data: { key1: string; key2: string }) => void;
+  showExportKey1: boolean;
+  setShowExportKey1: (show: boolean) => void;
+  showExportKey2: boolean;
+  setShowExportKey2: (show: boolean) => void;
   onAuth: () => void;
 }
 
@@ -41,10 +41,10 @@ export function ExportAuthModal({
   onClose,
   exportAuthData,
   setExportAuthData,
-  showExportPnName,
-  setShowExportPnName,
-  showExportPasscode,
-  setShowExportPasscode,
+  showExportKey1,
+  setShowExportKey1,
+  showExportKey2,
+  setShowExportKey2,
   onAuth
 }: ExportAuthModalProps) {
   if (!isOpen) return null;
@@ -57,9 +57,9 @@ export function ExportAuthModal({
           <button 
             onClick={() => {
               onClose();
-              setExportAuthData({ pnName: '', passcode: '' });
-              setShowExportPnName(false);
-              setShowExportPasscode(false);
+              setExportAuthData({ key1: '', key2: '' });
+              setShowExportKey1(false);
+              setShowExportKey2(false);
             }}
             className="text-gray-500 hover:text-gray-700"
           >
@@ -72,38 +72,38 @@ export function ExportAuthModal({
             <label className="block text-sm font-medium mb-2">pN Name</label>
             <div className="relative">
               <input
-                type={showExportPnName ? "text" : "password"}
-                value={exportAuthData.pnName}
-                onChange={(e) => setExportAuthData(prev => ({ ...prev, pnName: e.target.value }))}
+                type={showExportKey1 ? "text" : "password"}
+                value={exportAuthData.key1}
+                onChange={(e) => setExportAuthData(prev => ({ ...prev, key1: e.target.value }))}
                 className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
                 placeholder="Enter your pN name"
               />
               <button
                 type="button"
-                onClick={() => setShowExportPnName(!showExportPnName)}
+                onClick={() => setShowExportKey1(!showExportKey1)}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
               >
-                {showExportPnName ? "👁️" : "👁️‍🗨️"}
+                {showExportKey1 ? "👁️" : "👁️‍🗨️"}
               </button>
             </div>
           </div>
           
           <div>
-            <label className="block text-sm font-medium mb-2">Passcode</label>
+            <label className="block text-sm font-medium mb-2">Key2</label>
             <div className="relative">
               <input
-                type={showExportPasscode ? "text" : "password"}
-                value={exportAuthData.passcode}
-                onChange={(e) => setExportAuthData(prev => ({ ...prev, passcode: e.target.value }))}
+                type={showExportKey2 ? "text" : "password"}
+                value={exportAuthData.key2}
+                onChange={(e) => setExportAuthData(prev => ({ ...prev, key2: e.target.value }))}
                 className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
-                placeholder="Enter your passcode"
+                placeholder="Enter your key2"
               />
               <button
                 type="button"
-                onClick={() => setShowExportPasscode(!showExportPasscode)}
+                onClick={() => setShowExportKey2(!showExportKey2)}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
               >
-                {showExportPasscode ? "👁️" : "👁️‍🗨️"}
+                {showExportKey2 ? "👁️" : "👁️‍🗨️"}
               </button>
             </div>
           </div>
@@ -142,16 +142,16 @@ import { ExportAuthModal } from './components/modals/ExportAuthModal';
   isOpen={showExportAuthModal}
   onClose={() => {
     setShowExportAuthModal(false);
-    setExportAuthData({ pnName: '', passcode: '' });
-    setShowExportPnName(false);
-    setShowExportPasscode(false);
+    setExportAuthData({ key1: '', key2: '' });
+    setShowExportKey1(false);
+    setShowExportKey2(false);
   }}
   exportAuthData={exportAuthData}
   setExportAuthData={setExportAuthData}
-  showExportPnName={showExportPnName}
-  setShowExportPnName={setShowExportPnName}
-  showExportPasscode={showExportPasscode}
-  setShowExportPasscode={setShowExportPasscode}
+  showExportKey1={showExportKey1}
+  setShowExportKey1={setShowExportKey1}
+  showExportKey2={showExportKey2}
+  setShowExportKey2={setShowExportKey2}
   onAuth={handleExportAuth}
 />
 ```

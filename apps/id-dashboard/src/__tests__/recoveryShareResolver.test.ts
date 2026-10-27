@@ -37,8 +37,8 @@ import {
 } from '../services/recoveryShareResolver';
 import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 
-const PN_NAME = 'alice';
-const PASSCODE = 'SecretPass1!';
+const KEY1 = 'alice';
+const KEY2 = 'SecretPass1!';
 const PUBLIC_KEY = 'test-public-key';
 
 function baseIdentity(overrides: Partial<EncryptedIdentity> = {}): EncryptedIdentity {
@@ -59,11 +59,11 @@ describe('resolveRecoveryShares', () => {
   it('unseals shares from recoverySharesSealed on identity', async () => {
     const master = generateRecoveryMaster(32);
     const shares = splitSecret(master, 2, 5);
-    const recoverySharesSealed = await sealRecoveryShares(shares, PN_NAME, PASSCODE);
+    const recoverySharesSealed = await sealRecoveryShares(shares, KEY1, KEY2);
     const out = await resolveRecoveryShares({
       encryptedIdentity: baseIdentity({ recoverySharesSealed }),
-      pnName: PN_NAME,
-      passcode: PASSCODE,
+      key1: KEY1,
+      key2: KEY2,
     });
     expect(out).toHaveLength(5);
     expect(out[0].share).toBe(shares[0].share);
@@ -75,8 +75,8 @@ describe('resolveRecoveryShares', () => {
     bufferState = { publicKey: PUBLIC_KEY, shares, threshold: 2 };
     const out = await resolveRecoveryShares({
       encryptedIdentity: baseIdentity(),
-      pnName: PN_NAME,
-      passcode: PASSCODE,
+      key1: KEY1,
+      key2: KEY2,
       publicKey: PUBLIC_KEY,
     });
     expect(out).toHaveLength(5);
@@ -87,8 +87,8 @@ describe('resolveRecoveryShares', () => {
     await expect(
       resolveRecoveryShares({
         encryptedIdentity: baseIdentity(),
-        pnName: PN_NAME,
-        passcode: PASSCODE,
+        key1: KEY1,
+        key2: KEY2,
       })
     ).rejects.toBeInstanceOf(RecoverySharesUnavailableError);
   });

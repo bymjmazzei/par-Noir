@@ -2,7 +2,6 @@ import type { Identity } from '../src/types';
 
 const mockUser: Identity = {
   id: 'user-1',
-  username: 'tester',
   displayName: 'Test User',
   email: 'test@example.com',
   createdAt: new Date().toISOString(),

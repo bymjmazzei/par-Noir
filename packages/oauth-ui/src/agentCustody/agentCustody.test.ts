@@ -13,9 +13,9 @@ import { findAgentOnThisMac, resolveAgentOwner } from './ownerMapping';
 import { readPrivateFileText, searchPrivate } from './privateReads';
 
 const SECRETS = {
-  ownerKey1: 'owner-PNNAME-do-not-leak',
+  ownerKey1: 'owner-KEY1-do-not-leak',
   ownerKey2: 'owner-KEY2-do-not-leak',
-  agentKey1: 'agent-PNNAME-do-not-leak',
+  agentKey1: 'agent-KEY1-do-not-leak',
   agentKey2: 'agent-KEY2-do-not-leak',
   driveToken: 'ya29.DRIVE-TOKEN-do-not-leak',
   mlKem: 'MLKEM-SECRET-do-not-leak',

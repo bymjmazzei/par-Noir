@@ -3,7 +3,6 @@ import {
   SECRET_KEY_1_NAME,
   SECRET_KEY_2_NAME,
   SECRET_KEY_FORM_ATTRS,
-  secretKeyHtmlAttrs,
   secretKeyInputProps,
 } from './secretKeyInputAttrs';
 
@@ -45,14 +44,5 @@ describe('secretKeyInputProps', () => {
 
   it('form attrs disable autocomplete', () => {
     expect(SECRET_KEY_FORM_ATTRS.autoComplete).toBe('off');
-  });
-
-  it('html attrs mirror react props for static templates', () => {
-    const html = secretKeyHtmlAttrs('key1', 'unlock');
-    expect(html.type).toBe('password');
-    expect(html.name).toBe(SECRET_KEY_1_NAME);
-    expect(html.id).toBe('pn-key-1');
-    expect(html.autocomplete).toBe('off');
-    expect(html['data-1p-ignore']).toBe('true');
   });
 });

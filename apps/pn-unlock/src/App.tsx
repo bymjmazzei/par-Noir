@@ -66,12 +66,12 @@ function openCallerViaCustomScheme(resumeUrl: string): void {
 }
 
 function factorsFromEntry(entry: UnlockKeysPayload): ConsentVaultFactors | null {
-  if (!entry.encryptedIdentityJson?.trim() || !entry.pnName?.trim() || !entry.passcode?.trim()) {
+  if (!entry.encryptedIdentityJson?.trim() || !entry.key1?.trim() || !entry.key2?.trim()) {
     return null;
   }
   return {
-    pnName: entry.pnName,
-    passcode: entry.passcode,
+    key1: entry.key1,
+    key2: entry.key2,
     encryptedIdentityJson: entry.encryptedIdentityJson,
   };
 }
@@ -277,10 +277,10 @@ export default function App(): React.ReactElement {
     setVaultBusy(true);
     setVaultError(null);
     try {
-      const pnName = pendingEnroll.pnName?.trim() ?? '';
-      const passcode = pendingEnroll.passcode?.trim() ?? '';
+      const key1 = pendingEnroll.key1?.trim() ?? '';
+      const key2 = pendingEnroll.key2?.trim() ?? '';
       const encryptedIdentityJson = pendingEnroll.encryptedIdentityJson?.trim() ?? '';
-      if (!pnName || !passcode || !encryptedIdentityJson) {
+      if (!key1 || !key2 || !encryptedIdentityJson) {
         setVaultError('Vault enroll requires identity file, Key 1, and Key 2');
         return;
       }
@@ -288,8 +288,8 @@ export default function App(): React.ReactElement {
         kind: 'unlock_keys',
         identityId: pendingEnroll.identityId,
         publicKey: pendingEnroll.publicKey,
-        pnName,
-        passcode,
+        key1,
+        key2,
         encryptedIdentityJson,
       };
       await enrollUnlockSessionVault(payload);

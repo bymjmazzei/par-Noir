@@ -76,8 +76,8 @@ function loadFixture(which) {
   const keysPath = resolve(dir, 'keys.env');
   if (!existsSync(keysPath)) throw new Error(`Missing .local/${which}/keys.env`);
   const keys = readFileSync(keysPath, 'utf8');
-  const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)?.[1]?.trim();
-  const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)?.[1]?.trim();
+  const KEY1 = keys.match(/^KEY1=(.+)$/m)?.[1]?.trim();
+  const KEY2 = keys.match(/^KEY2=(.+)$/m)?.[1]?.trim();
   const fileName = keys.match(/^IDENTITY_FILE=(.+)$/m)?.[1]?.trim();
   const candidates = [
     fileName ? resolve(dir, fileName) : null,
@@ -86,8 +86,8 @@ function loadFixture(which) {
     resolve(dir, 'pn374951080.pn'),
   ].filter(Boolean);
   const identityPath = candidates.find((p) => existsSync(p));
-  if (!identityPath || !PN_NAME || !PASSCODE) throw new Error(`Incomplete fixture ${which}`);
-  return { which, identityPath, PN_NAME, PASSCODE };
+  if (!identityPath || !KEY1 || !KEY2) throw new Error(`Incomplete fixture ${which}`);
+  return { which, identityPath, KEY1, KEY2 };
 }
 
 const google = loadEnv(resolve(ROOT, '.local/test-google-drive/credentials.env'));

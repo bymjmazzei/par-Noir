@@ -149,7 +149,7 @@ describe('widget trigger panel', () => {
       id: 'in',
       kind: 'text',
       widgetElement: 'input',
-      name: 'Passcode',
+      name: 'Key2',
       parentGroupId: 'g',
       x: 0,
       y: 0,

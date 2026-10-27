@@ -95,21 +95,21 @@ export declare class SecureMetadataCrypto {
     /**
      * Encrypt metadata using ID file credentials
      */
-    static encryptMetadata(metadata: MetadataContent, _username: string, passcode: string, identityId: string): Promise<SecureMetadata>;
+    static encryptMetadata(metadata: MetadataContent, _username: string, key2: string, identityId: string): Promise<SecureMetadata>;
     /**
      * Decrypt metadata using ID file credentials
      */
-    static decryptMetadata(secureMetadata: SecureMetadata, _username: string, passcode: string): Promise<MetadataContent>;
+    static decryptMetadata(secureMetadata: SecureMetadata, _username: string, key2: string): Promise<MetadataContent>;
     /**
      * Update specific fields in encrypted metadata
      */
-    static updateMetadataField(secureMetadata: SecureMetadata, _username: string, passcode: string, field: keyof MetadataContent, value: any): Promise<SecureMetadata>;
+    static updateMetadataField(secureMetadata: SecureMetadata, _username: string, key2: string, field: keyof MetadataContent, value: any): Promise<SecureMetadata>;
     /**
      * Verify metadata integrity
      */
-    static verifyMetadata(secureMetadata: SecureMetadata, _username: string, passcode: string): Promise<boolean>;
+    static verifyMetadata(secureMetadata: SecureMetadata, _username: string, key2: string): Promise<boolean>;
     /**
      * Create initial metadata for a new identity
      */
-    static createInitialMetadata(_username: string, passcode: string, identityId: string, initialData?: Partial<MetadataContent>): Promise<SecureMetadata>;
+    static createInitialMetadata(_username: string, key2: string, identityId: string, initialData?: Partial<MetadataContent>): Promise<SecureMetadata>;
 }

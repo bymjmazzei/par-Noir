@@ -1,7 +1,7 @@
 /**
  * Physical key crypto utilities for USB drive binding.
  * - UID generation for USB-bound pN files
- * - Encrypt/decrypt container for drive passcode protection
+ * - Encrypt/decrypt container for drive passphrase protection
  */
 
 const PBKDF2_ITERATIONS = 600000;
@@ -44,18 +44,18 @@ export function base64ToUid(base64: string): Uint8Array {
 }
 
 /**
- * Encrypt UID + bound pN blob with drive passcode.
+ * Encrypt UID + bound pN blob with drive passphrase.
  * Returns base64-encoded container for storage on drive.
  */
 export async function encryptForDrive(
   uid: Uint8Array,
   boundPnBlob: string,
-  drivePasscode: string
+  drivePassphrase: string
 ): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
-  const key = await deriveDriveKey(drivePasscode, salt);
+  const key = await deriveDriveKey(drivePassphrase, salt);
 
   const container: DriveContainer = {
     uid: uidToBase64(uid),
@@ -78,19 +78,19 @@ export async function encryptForDrive(
 }
 
 /**
- * Decrypt drive container with drive passcode.
+ * Decrypt drive container with drive passphrase.
  * Returns { uid, boundPnBlob }.
  */
 export async function decryptFromDrive(
   encryptedBase64: string,
-  drivePasscode: string
+  drivePassphrase: string
 ): Promise<DriveContainer> {
   const combined = new Uint8Array(base64ToArrayBuffer(encryptedBase64));
   const salt = combined.slice(0, SALT_LENGTH);
   const iv = combined.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
   const ciphertext = combined.slice(SALT_LENGTH + IV_LENGTH);
 
-  const key = await deriveDriveKey(drivePasscode, salt);
+  const key = await deriveDriveKey(drivePassphrase, salt);
 
   const decrypted = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
@@ -103,16 +103,16 @@ export async function decryptFromDrive(
 }
 
 /**
- * Encrypt only the UID with drive passcode (for binary-system key file).
+ * Encrypt only the UID with drive passphrase (for binary-system key file).
  * Returns base64-encoded blob: salt + iv + ciphertext.
  */
 export async function encryptUidForDrive(
   uidBase64: string,
-  drivePasscode: string
+  drivePassphrase: string
 ): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const key = await deriveDriveKey(drivePasscode, salt);
+  const key = await deriveDriveKey(drivePassphrase, salt);
   const plaintext = new TextEncoder().encode(uidBase64);
   const encrypted = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
@@ -127,17 +127,17 @@ export async function encryptUidForDrive(
 }
 
 /**
- * Decrypt key file with drive passcode to get UID (base64 string).
+ * Decrypt key file with drive passphrase to get UID (base64 string).
  */
 export async function decryptUidFromDrive(
   encryptedBase64: string,
-  drivePasscode: string
+  drivePassphrase: string
 ): Promise<string> {
   const combined = new Uint8Array(base64ToArrayBuffer(encryptedBase64));
   const salt = combined.slice(0, SALT_LENGTH);
   const iv = combined.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
   const ciphertext = combined.slice(SALT_LENGTH + IV_LENGTH);
-  const key = await deriveDriveKey(drivePasscode, salt);
+  const key = await deriveDriveKey(drivePassphrase, salt);
   const decrypted = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
     key,
@@ -146,11 +146,11 @@ export async function decryptUidFromDrive(
   return new TextDecoder().decode(decrypted);
 }
 
-async function deriveDriveKey(passcode: string, salt: ArrayBuffer): Promise<CryptoKey> {
+async function deriveDriveKey(key2: string, salt: ArrayBuffer): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(passcode),
+    encoder.encode(key2),
     'PBKDF2',
     false,
     ['deriveBits', 'deriveKey']

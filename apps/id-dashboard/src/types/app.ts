@@ -35,7 +35,7 @@ export interface RecoveryCustodian {
   publicKey: string; // Public key for ZK proof verification
   recoveryKeyShare?: string; // Encrypted share of the recovery key (custodian doesn't know the full key)
   trustLevel: 'high' | 'medium' | 'low';
-  passcode?: string; // 6-digit numeric passcode for custodian acceptance
+  acceptanceCode?: string; // 6-digit code the custodian enters to accept
 }
 
 export interface RecoveryRequest {
@@ -87,35 +87,8 @@ export interface CustodianInvitationForm {
   contactType: 'email' | 'phone';
   contactValue: string;
   type: 'person' | 'service' | 'self';
-  passcode: string;
+  acceptanceCode: string;
   unrevokable?: boolean;
-}
-
-export interface DeviceSyncData {
-  deviceId: string;
-  deviceName: string;
-  deviceType: 'mobile' | 'desktop' | 'tablet' | 'other';
-  syncKey: string;
-  identityId: string;
-  expiresAt: string;
-  qrCodeDataURL: string;
-}
-
-export interface ExportAuthData {
-  passcode: string;
-  pnName: string;
-}
-
-export interface TransferSetupData {
-  passcode: string;
-  deviceName: string;
-}
-
-export interface RecoveryData {
-  pnName: string;
-  nickname: string;
-  emailOrPhone: string;
-  passcode: string;
 }
 
 export interface CustodianInvitationData {
@@ -156,26 +129,4 @@ export interface PWAState {
 export interface PWAHandlers {
   install: () => Promise<void>;
   checkForUpdates: () => Promise<void>;
-}
-
-export interface IdentityData {
-  pnName: string;
-  nickname?: string;
-  email?: string;
-  phone?: string;
-  recoveryEmail?: string;
-  recoveryPhone?: string;
-  custodiansRequired?: boolean;
-}
-
-export interface AuthSession {
-  id: string;
-  pnName: string;
-  nickname: string;
-  accessToken: string;
-  expiresIn: number;
-  authenticatedAt: string;
-  publicKey: string;
-  passcode?: string;
-  authToken?: string;
 }

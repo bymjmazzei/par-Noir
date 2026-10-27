@@ -114,7 +114,7 @@ export const DataPointProposalModal: React.FC<DataPointProposalModalProps> = ({
       // SECURITY: Check credentials from SecureCredentialManager (secrets)
       const sessionId = session.id;
       const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-      if (!sessionId || !credentials?.pnName || !credentials?.passcode) {
+      if (!sessionId || !credentials?.key1 || !credentials?.key2) {
         setErrors({ submit: 'No active session found. Please unlock your pN first.' });
         return;
       }
@@ -123,8 +123,8 @@ export const DataPointProposalModal: React.FC<DataPointProposalModalProps> = ({
       const result = await ZKPGenerator.proposeDataPoint(
         proposal,
         sessionId,
-        credentials.pnName,
-        credentials.passcode
+        credentials.key1,
+        credentials.key2
       );
 
       if (result.success && result.proposalId) {

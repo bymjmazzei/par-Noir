@@ -1,5 +1,4 @@
 import { EncryptedIdentity, AuthSession } from '@par-noir/identity-crypto';
-import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 export interface StoredIdentity {
   publicKey: string;
@@ -7,9 +6,7 @@ export interface StoredIdentity {
   iv: string;
   salt: string;
   lastAccessed: string;
-  // Additional properties for compatibility
   id?: string;
-  username?: string;
   nickname?: string;
   createdAt?: string;
   profilePicture?: string;
@@ -22,11 +19,8 @@ export interface StoredSession {
   accessToken: string;
   expiresAt: string;
   createdAt: string;
-  // SECURITY: pnName and passcode are 2FA credentials - NEVER stored in IndexedDB
-  // Use SecureCredentialManager for temporary in-memory storage only
+  // Key 1 / Key 2 live only in SecureCredentialManager memory, never in IndexedDB.
   publicKey?: string;
-  // SECURITY: authToken removed - it's derived from pnName+passcode and is sensitive
-  // authToken?: string; // REMOVED - derived from credentials
 }
 
 export interface StoredCustodian {
@@ -159,136 +153,6 @@ export class SecureStorage {
   }
 
   /**
-   * Create a new identity
-   */
-  async createIdentity(name: string): Promise<StoredIdentity> {
-    // Generate secure identity data
-    const identityId = this.generateSecureId();
-    const publicKey = await this.generatePublicKey();
-    const encryptedData = await this.encryptIdentityData({
-      pnName: name,
-      nickname: name,
-      email: '',
-      phone: '',
-      recoveryEmail: '',
-      recoveryPhone: '',
-      createdAt: new Date().toISOString(),
-      status: 'active',
-      custodiansRequired: false,
-      custodiansSetup: false
-    });
-    
-    const identity: StoredIdentity = {
-      publicKey,
-      encryptedData: encryptedData.data,
-      iv: encryptedData.iv,
-      salt: encryptedData.salt,
-      lastAccessed: new Date().toISOString(),
-      id: identityId,
-      username: name,
-      nickname: name,
-      createdAt: new Date().toISOString()
-    };
-    
-    await this.storeIdentity(identity as any);
-    return identity;
-  }
-
-  /**
-   * Generate a secure random ID
-   */
-  private generateSecureId(): string {
-    const array = new Uint8Array(16);
-    crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
-  }
-
-  /**
-   * Generate a public key for the identity
-   */
-  private async generatePublicKey(): Promise<string> {
-    try {
-      const keyPair = await crypto.subtle.generateKey(
-        {
-          name: 'RSA-OAEP',
-          modulusLength: 2048,
-          publicExponent: new Uint8Array([1, 0, 1]),
-          hash: 'SHA-256',
-        },
-        true,
-        ['encrypt', 'decrypt']
-      );
-      
-      const publicKeyBuffer = await crypto.subtle.exportKey('spki', keyPair.publicKey);
-      return btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
-    } catch (error) {
-      // Fallback to timestamp-based key if crypto fails
-      const randomBytes = crypto.getRandomValues(new Uint8Array(8));
-      const randomString = Array.from(randomBytes).map(b => b.toString(36)).join('').substring(0, 8);
-      return `pk_${Date.now()}_${randomString}`;
-    }
-  }
-
-  /**
-   * Encrypt identity data
-   */
-  private async encryptIdentityData(data: any): Promise<{data: string, iv: string, salt: string}> {
-    try {
-      const key = await crypto.subtle.generateKey(
-        { name: 'AES-GCM', length: 256 },
-        true,
-        ['encrypt', 'decrypt']
-      );
-      
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      
-      const dataString = JSON.stringify(data);
-      const dataBuffer = new TextEncoder().encode(dataString);
-      
-      const encryptedBuffer = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        dataBuffer
-      );
-      
-      return {
-        data: btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer))),
-        iv: btoa(String.fromCharCode(...iv)),
-        salt: btoa(String.fromCharCode(...salt))
-      };
-    } catch (error) {
-      // Fallback to base64 encoding if crypto fails
-      const dataString = JSON.stringify(data);
-      return {
-        data: btoa(dataString),
-        iv: btoa('fallback-iv'),
-        salt: btoa('fallback-salt')
-      };
-    }
-  }
-
-  /**
-   * Update an existing identity
-   */
-  async updateIdentity(id: string, newName: string): Promise<StoredIdentity> {
-    // Mock implementation - in real app, this would update the encrypted identity
-    const existingIdentity = await this.getIdentity(id);
-    if (!existingIdentity) {
-      throw new Error('Identity not found');
-    }
-    
-    const updatedIdentity: StoredIdentity = {
-      ...existingIdentity,
-      nickname: newName,
-      lastAccessed: new Date().toISOString()
-    };
-    
-    await this.storeIdentity(updatedIdentity as any);
-    return updatedIdentity;
-  }
-
-  /**
    * Delete identity by public key
    */
   async deleteIdentity(publicKey: string): Promise<void> {
@@ -300,60 +164,23 @@ export class SecureStorage {
   }
 
   /**
-   * Store authentication session
-   * SECURITY: Explicitly filters out credentials even if they're in the session object
+   * Store authentication session. Only the fields below are persisted; Key 1, Key 2 and
+   * authToken never reach IndexedDB.
    */
   async storeSession(session: AuthSession): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    // SECURITY: Explicitly create a clean session object, removing ALL credentials
-    // Even if the AuthSession object contains pnName/passcode/authToken, we don't store them
     const storedSession: StoredSession = {
       id: session.id,
-      // SECURITY: accessToken is a JWT for API calls - keeping for API authentication
-      // It should be short-lived and expire quickly
       accessToken: session.accessToken,
       expiresAt: new Date(Date.now() + session.expiresIn * 1000).toISOString(),
       createdAt: session.authenticatedAt,
       publicKey: session.publicKey,
-      // CRITICAL: Do NOT store these fields even if they exist in session:
-      // - pnName: 2FA credential
-      // - passcode: 2FA credential  
-      // - authToken: derived from credentials
-      // These are explicitly excluded from StoredSession interface
     };
 
     return this.performTransaction('sessions', 'readwrite', (store) => {
-      // SECURITY: Create a completely new object with ONLY the fields we want
-      // This prevents IndexedDB from storing any extra fields that might exist
-      const cleanSession: any = {
-        id: storedSession.id,
-        accessToken: storedSession.accessToken,
-        expiresAt: storedSession.expiresAt,
-        createdAt: storedSession.createdAt,
-        publicKey: storedSession.publicKey,
-        // Explicitly do NOT include: pnName, passcode, authToken
-      };
-      store.put(cleanSession);
-    }).then(() => {
-      // SECURITY: Immediately clean up any credentials that might have been stored
-      // This ensures that even if something bypasses our checks, credentials are removed
-      return this.cleanupSessionCredentials(storedSession.id);
+      store.put(storedSession);
     });
-  }
-
-  /**
-   * Clean up credentials from a specific session
-   * SECURITY: Ensures no credentials are stored in IndexedDB
-   */
-  private async cleanupSessionCredentials(sessionId: string): Promise<void> {
-    try {
-      const { SessionDataMigration } = await import('./sessionDataMigration');
-      // Run migration to clean this specific session
-      await SessionDataMigration.cleanupSession(sessionId);
-    } catch (error) {
-      console.warn('[SecureStorage] Failed to cleanup session credentials:', error);
-    }
   }
 
   /**

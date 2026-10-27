@@ -15,7 +15,7 @@ export function useCustodianState() {
   const [custodianAcceptanceData, setCustodianAcceptanceData] = useState({
     contactType: 'email' as 'email' | 'phone',
     contactValue: '',
-    passcode: ''
+    acceptanceCode: ''
   });
 
   // Biometric authentication state

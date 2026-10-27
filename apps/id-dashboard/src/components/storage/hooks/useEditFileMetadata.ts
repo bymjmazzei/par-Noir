@@ -161,10 +161,10 @@ export function useEditFileMetadata({
 
       // Also update companion + indexes via API (Sheets) when Drive backend is connected
       const backend = aggregatorService?.getBackend(editingFile.backend);
-      // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
+      // SECURITY: Check credentials instead of resolvedAuth.Key 1 (secret)
       const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
       const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-      if (backend && backend.isConnected() && credentials?.pnName) {
+      if (backend && backend.isConnected() && credentials?.key1) {
         try {
           const { GoogleDriveMetadataService } = await import('../../../services/storage/GoogleDriveMetadataService');
           const publicKey = resolvedAuth?.publicKey;

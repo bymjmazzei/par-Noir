@@ -6,12 +6,12 @@ import { RECOVERY_AUTH_TTL_MS, type RecoveryAuthSession } from './recoveryAuthSe
 /** Decrypts the .pn in this browser only. Nothing is sent or stored. */
 export async function unlockRecoveryLocally(params: {
   file: File;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   expectedPublicKey: string;
 }): Promise<RecoveryAuthSession> {
-  const { file, pnName, passcode, expectedPublicKey } = params;
-  if (!pnName || !passcode) throw new Error(KEYS_REQUIRED);
+  const { file, key1, key2, expectedPublicKey } = params;
+  if (!key1 || !key2) throw new Error(KEYS_REQUIRED);
 
   let parsed: unknown;
   try {
@@ -25,15 +25,15 @@ export async function unlockRecoveryLocally(params: {
   }
 
   try {
-    await IdentityCrypto.authenticateIdentity(encryptedIdentity, passcode, pnName);
+    await IdentityCrypto.authenticateIdentity(encryptedIdentity, key2, key1);
   } catch {
     throw new Error(KEYS_INCORRECT);
   }
 
   return {
     encryptedIdentity,
-    pnName,
-    passcode,
+    key1,
+    key2,
     expiresAt: Date.now() + RECOVERY_AUTH_TTL_MS,
   };
 }

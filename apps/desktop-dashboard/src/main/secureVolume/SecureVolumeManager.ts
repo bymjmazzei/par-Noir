@@ -53,7 +53,6 @@ export class SecureVolumeManager {
 
   public async setUnlockContext(payload: SecureVolumeUnlockPayload): Promise<void> {
     this.identity = {
-      pnName: payload.pnName,
       publicKey: payload.publicKey,
       pnIdentifier: payload.pnIdentifier
     };
@@ -66,7 +65,6 @@ export class SecureVolumeManager {
     }
 
     const context: SecureVolumeUnlockPayload = {
-      pnName: payload.pnName,
       publicKey: payload.publicKey,
       pnIdentifier: payload.pnIdentifier,
       authToken: tokenToUse

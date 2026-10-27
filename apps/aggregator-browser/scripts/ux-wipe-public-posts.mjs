@@ -8,7 +8,7 @@
  * 2) DELETE /api/aggregator/metadata-index/:fileId for each (Drive + index cleanup)
  * 3) DELETE /api/aggregator/metadata-index/user/:pn as a final aggregator purge
  *
- * Does not log secrets / pn names / passcodes.
+ * Does not log secrets, Key 1, or Key 2.
  *
  *   node apps/aggregator-browser/scripts/ux-wipe-public-posts.mjs
  */

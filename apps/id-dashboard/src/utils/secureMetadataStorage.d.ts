@@ -7,8 +7,8 @@ export declare class SecureMetadataStorage {
     static storeMetadataInCloud(identityId: string, secureMetadata: SecureMetadata): Promise<void>;
     static getMetadataFromCloud(identityId: string): Promise<SecureMetadata | null>;
     static updateMetadata(identityId: string, secureMetadata: SecureMetadata): Promise<void>;
-    static updateMetadataField(identityId: string, pnName: string, passcode: string, field: keyof MetadataContent, value: any): Promise<void>;
-    static applyMetadataToIdentity(identityData: any, pnName: string, passcode: string): Promise<any>;
+    static updateMetadataField(identityId: string, key1: string, key2: string, field: keyof MetadataContent, value: any): Promise<void>;
+    static applyMetadataToIdentity(identityData: any, key1: string, key2: string): Promise<any>;
     static getPendingSync(): Record<string, {
         metadata: SecureMetadata;
         timestamp: string;
@@ -22,5 +22,5 @@ export declare class SecureMetadataStorage {
     private static getStoredMetadata;
     static clearMetadata(identityId: string): Promise<void>;
     static syncFromOtherDevices(identityId: string): Promise<boolean>;
-    static verifyMetadataIntegrity(identityId: string, pnName: string, passcode: string): Promise<boolean>;
+    static verifyMetadataIntegrity(identityId: string, key1: string, key2: string): Promise<boolean>;
 }

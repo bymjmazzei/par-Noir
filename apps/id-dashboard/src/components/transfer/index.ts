@@ -1,5 +1,5 @@
 export { TransferReceiverHeader } from './TransferReceiverHeader';
 export { TransferInfoCard } from './TransferInfoCard';
-export { TransferPasscodeInput } from './TransferPasscodeInput';
+export { TransferCodeInput } from './TransferCodeInput';
 export { TransferActions } from './TransferActions';
 export { TransferStatus } from './TransferStatus';

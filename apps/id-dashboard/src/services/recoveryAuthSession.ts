@@ -4,8 +4,8 @@ const RECOVERY_AUTH_TTL_MS = 15 * 60 * 1000;
 
 export interface RecoveryAuthSession {
   encryptedIdentity: EncryptedIdentity;
-  pnName: string;
-  passcode: string;
+  key1: string;
+  key2: string;
   expiresAt: number;
 }
 

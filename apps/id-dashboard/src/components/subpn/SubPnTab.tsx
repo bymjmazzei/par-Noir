@@ -119,8 +119,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [exportPassConfirm, setExportPassConfirm] = useState('');
   const [showExportAuthModal, setShowExportAuthModal] = useState(false);
   const [rotatePending, setRotatePending] = useState(false);
-  const [authPnName, setAuthPnName] = useState('');
-  const [authPasscode, setAuthPasscode] = useState('');
+  const [authKey1, setAuthKey1] = useState('');
+  const [authKey2, setAuthKey2] = useState('');
   const [authFile, setAuthFile] = useState<File | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -271,10 +271,10 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     setErr(null);
     setLoading(true);
     try {
-      const subPnName = `sub-${randomSecret(16)}`;
+      const subKey1 = `sub-${randomSecret(16)}`;
       const subPass = randomSecret(32);
       const nickname = label.trim() || `Sub ${createKind}`;
-      const creation = await IdentityCrypto.createIdentity(subPnName, nickname, subPass);
+      const creation = await IdentityCrypto.createIdentity(subKey1, nickname, subPass);
       const encrypted = creation.identity;
       const subject = await VolumeIdGenerator.generateCanonicalVolumeId(encrypted.publicKey);
       if (!pnIdentifier) throw new Error('Missing pn identifier');
@@ -284,8 +284,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         metadata: { label: nickname, parentWrapped: true }
       });
       const portable = JSON.stringify({
-        pnName: subPnName,
-        passcode: subPass,
+        key1: subKey1,
+        key2: subPass,
         encryptedIdentity: encrypted,
         kind: createKind,
         assetId: asset.id
@@ -406,8 +406,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     if (authLoading) return;
     setRotatePending(false);
     setShowExportAuthModal(false);
-    setAuthPnName('');
-    setAuthPasscode('');
+    setAuthKey1('');
+    setAuthKey2('');
     setAuthFile(null);
     setAuthError(null);
   };
@@ -464,7 +464,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       setAuthError('Select a sub-pN first.');
       return;
     }
-    if (!shellAuthorized && (!authFile || !authPnName.trim() || !authPasscode.trim())) {
+    if (!shellAuthorized && (!authFile || !authKey1.trim() || !authKey2.trim())) {
       setAuthError('Unlock in par Noir Unlock to rotate this sub identity.');
       return;
     }
@@ -484,20 +484,20 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         const encryptedIdentity = await parseIdentityFile(authFile!);
         const authSession = await IdentityCrypto.authenticateIdentity(
           encryptedIdentity,
-          authPasscode.trim(),
-          authPnName.trim()
+          authKey2.trim(),
+          authKey1.trim()
         );
         if (authSession.id !== sessionId) {
           throw new Error('Re-authenticated identity does not match the currently unlocked root pN.');
         }
       }
 
-      const subPnName = `sub-${randomSecret(16)}`;
+      const subKey1 = `sub-${randomSecret(16)}`;
       const subPass = randomSecret(32);
       const nickname =
         (typeof selected.metadata?.label === 'string' ? selected.metadata.label : null) ||
         `Rotated ${selected.kind}`;
-      const creation = await IdentityCrypto.createIdentity(subPnName, nickname, subPass);
+      const creation = await IdentityCrypto.createIdentity(subKey1, nickname, subPass);
       const encrypted = creation.identity;
       const subject = await VolumeIdGenerator.generateCanonicalVolumeId(encrypted.publicKey);
 
@@ -510,8 +510,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       });
 
       const portable = JSON.stringify({
-        pnName: subPnName,
-        passcode: subPass,
+        key1: subKey1,
+        key2: subPass,
         encryptedIdentity: encrypted,
         kind: newAsset.kind,
         assetId: newAsset.id,
@@ -541,7 +541,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       setAuthError('Unlock in par Noir Unlock to export this sub backup.');
       return;
     }
-    if (!shellAuthorized && (!authPnName.trim() || !authPasscode.trim())) {
+    if (!shellAuthorized && (!authKey1.trim() || !authKey2.trim())) {
       setAuthError('Unlock in par Noir Unlock to export this sub backup.');
       return;
     }
@@ -557,8 +557,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         const encryptedIdentity = await parseIdentityFile(authFile!);
         const authSession = await IdentityCrypto.authenticateIdentity(
           encryptedIdentity,
-          authPasscode.trim(),
-          authPnName.trim()
+          authKey2.trim(),
+          authKey1.trim()
         );
         if (authSession.id !== sessionId) {
           throw new Error('Re-authenticated identity does not match the currently unlocked root pN.');
@@ -645,7 +645,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
           <SectionInfo title="Sub-pN and owned assets">
             <p>
               Create sub-identities bound to your main pN (agents, devices, feeds). Register on the par Noir API with
-              your session token. Export requires your main passcode and the export passphrase you set at creation.
+              your session token. Export requires your main key2 and the export passphrase you set at creation.
             </p>
           </SectionInfo>
         </h3>
@@ -960,7 +960,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               Export sub backup
               <SectionInfo title="Export sub backup">
                 <p>
-                  Full re-auth is required before export: root identity file + pN name + passcode, then export
+                  Full re-auth is required before export: root identity file + Key 1 + Key 2, then export
                   passphrase.
                 </p>
               </SectionInfo>
@@ -1132,7 +1132,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
             <p className="text-xs text-text-secondary">
               {rotatePending
                 ? 'Re-authenticate to rotate this sub identity and download a new export backup.'
-                : 'Re-authenticate with your root identity file, pN name, and passcode to export this sub backup.'}
+                : 'Re-authenticate with your root identity file, Key 1, and Key 2 to export this sub backup.'}
             </p>
             <HostedShellLaunch
               op="sub_pn"

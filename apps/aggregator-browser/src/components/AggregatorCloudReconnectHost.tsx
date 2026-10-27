@@ -112,8 +112,8 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
             identityId: pnIdentifier,
             session: {
               sessionId: CLOUD_VAULT_MLKEM_SESSION_ID,
-              pnName: 'mlkem',
-              passcode: mlKemSecretKey
+              key1: 'mlkem',
+              key2: mlKemSecretKey
             }
           });
           if (localMlKem && envelopeHasUsableSecrets(localMlKem, 'google_drive')) {
@@ -154,8 +154,8 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         identityId: pnIdentifier,
         session: {
           sessionId: CLOUD_VAULT_MLKEM_SESSION_ID,
-          pnName: 'mlkem',
-          passcode: identity.mlKemSecretKey
+          key1: 'mlkem',
+          key2: identity.mlKemSecretKey
         }
       });
       if (mlkem && envelopeHasUsableSecrets(mlkem, 'google_drive')) return mlkem;
@@ -196,8 +196,8 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
           credentials: envelope,
           session: {
             sessionId: CLOUD_VAULT_MLKEM_SESSION_ID,
-            pnName: 'mlkem',
-            passcode: identity.mlKemSecretKey
+            key1: 'mlkem',
+            key2: identity.mlKemSecretKey
           },
           mode
         });

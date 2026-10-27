@@ -23,7 +23,7 @@ interface ExportToUsbModalProps {
   isOpen: boolean;
   onClose: () => void;
   identityToExport: { encryptedData: string; iv: string; salt: string; publicKey?: string };
-  /** Used only to verify - collect pN + passcode as the last step before write */
+  /** Used only to verify - collect Key 1 + Key 2 as the last step before write */
   onSuccess: () => void;
   onError: (message: string) => void;
 }
@@ -35,31 +35,31 @@ export function ExportToUsbModal({
   onSuccess,
   onError,
 }: ExportToUsbModalProps) {
-  const [step, setStep] = useState<'passcode' | 'verify' | 'writing'>('passcode');
-  const [drivePasscode, setDrivePasscode] = useState('');
-  const [confirmDrivePasscode, setConfirmDrivePasscode] = useState('');
-  const [pnName, setPnName] = useState('');
-  const [passcode, setPasscode] = useState('');
+  const [step, setStep] = useState<'drivePassphrase' | 'verify' | 'writing'>('drivePassphrase');
+  const [drivePassphrase, setDrivePassphrase] = useState('');
+  const [confirmDrivePassphrase, setConfirmDrivePassphrase] = useState('');
+  const [key1, setKey1] = useState('');
+  const [key2, setKey2] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handleClose = () => {
-    setStep('passcode');
-    setDrivePasscode('');
-    setConfirmDrivePasscode('');
-    setPnName('');
-    setPasscode('');
+    setStep('drivePassphrase');
+    setDrivePassphrase('');
+    setConfirmDrivePassphrase('');
+    setKey1('');
+    setKey2('');
     setError(null);
     onClose();
   };
 
-  const handleConfirmDrivePasscode = () => {
+  const handleConfirmDrivePassphrase = () => {
     setError(null);
-    if (!drivePasscode || drivePasscode !== confirmDrivePasscode) {
-      setError('Passcodes do not match');
+    if (!drivePassphrase || drivePassphrase !== confirmDrivePassphrase) {
+      setError('Passphrases do not match');
       return;
     }
-    if (drivePasscode.length < 6) {
-      setError('Drive passcode must be at least 6 characters');
+    if (drivePassphrase.length < 6) {
+      setError('Drive passphrase must be at least 6 characters');
       return;
     }
     setStep('verify');
@@ -68,7 +68,7 @@ export function ExportToUsbModal({
   const handleDownload = async () => {
     setError(null);
 
-    if (!pnName || !passcode) {
+    if (!key1 || !key2) {
       setError('Enter your Key 1 and Key 2 to authorize the export');
       return;
     }
@@ -84,8 +84,8 @@ export function ExportToUsbModal({
 
       const plaintext = await IdentityCrypto.decryptData(
         encryptedData,
-        pnName,
-        passcode
+        key1,
+        key2
       );
 
       const uid = generateUid();
@@ -93,8 +93,8 @@ export function ExportToUsbModal({
 
       const boundEncrypted = await IdentityCrypto.encryptDataWithBinding(
         plaintext,
-        pnName,
-        passcode,
+        key1,
+        key2,
         uidBase64
       );
 
@@ -108,7 +108,7 @@ export function ExportToUsbModal({
         identities: [identityRecord],
       });
 
-      const keyFileBase64 = await encryptUidForDrive(uidBase64, drivePasscode);
+      const keyFileBase64 = await encryptUidForDrive(uidBase64, drivePassphrase);
 
       downloadBlob(new Blob([payloadBlob], { type: 'application/json' }), 'parnoir-payload.enc');
       downloadBlob(new Blob([keyFileBase64], { type: 'text/plain' }), 'parnoir-key.enc');
@@ -134,7 +134,7 @@ export function ExportToUsbModal({
             </h2>
             <SectionInfo title="Export to USB">
               <p>
-                You will get two files: a payload file and a key file. Both are needed to unlock. Store them on the same or different USBs. Set a passcode to protect the key file; you will need it when unlocking.
+                You will get two files: a payload file and a key file. Both are needed to unlock. Store them on the same or different USBs. Set a key2 to protect the key file; you will need it when unlocking.
               </p>
             </SectionInfo>
           </div>
@@ -147,34 +147,34 @@ export function ExportToUsbModal({
           </button>
         </div>
 
-        {step === 'passcode' && (
+        {step === 'drivePassphrase' && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">
-                Drive passcode
+                Drive passphrase
               </label>
               <input
                 type="password"
-                value={drivePasscode}
-                onChange={(e) => setDrivePasscode(e.target.value)}
+                value={drivePassphrase}
+                onChange={(e) => setDrivePassphrase(e.target.value)}
                 placeholder="At least 6 characters"
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">
-                Confirm passcode
+                Confirm passphrase
               </label>
               <input
                 type="password"
-                value={confirmDrivePasscode}
-                onChange={(e) => setConfirmDrivePasscode(e.target.value)}
-                placeholder="Confirm passcode"
+                value={confirmDrivePassphrase}
+                onChange={(e) => setConfirmDrivePassphrase(e.target.value)}
+                placeholder="Confirm passphrase"
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>
             <button
-              onClick={handleConfirmDrivePasscode}
+              onClick={handleConfirmDrivePassphrase}
               className="w-full bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 transition-colors"
             >
               Continue

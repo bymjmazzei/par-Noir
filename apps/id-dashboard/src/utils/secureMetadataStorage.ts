@@ -60,8 +60,8 @@ export class SecureMetadataStorage {
    */
   static async updateMetadataField(
     identityId: string,
-    pnName: string,
-    passcode: string,
+    key1: string,
+    key2: string,
     field: keyof MetadataContent,
     value: any
   ): Promise<void> {
@@ -79,8 +79,8 @@ export class SecureMetadataStorage {
 
         const updatedMetadata = await SecureMetadataCrypto.updateMetadataField(
           currentMetadata,
-          pnName,
-          passcode,
+          key1,
+          key2,
           field,
           value
         );
@@ -88,8 +88,8 @@ export class SecureMetadataStorage {
         await this.storeMetadata(identityId, updatedMetadata);
       } else {
         const newMetadata = await SecureMetadataCrypto.createInitialMetadata(
-          pnName,
-          passcode,
+          key1,
+          key2,
           identityId,
           { [field]: value }
         );
@@ -106,8 +106,8 @@ export class SecureMetadataStorage {
    */
   static async applyMetadataToIdentity(
     identityData: any,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<any> {
     try {
       const identityId = identityData.id || identityData.publicKey;
@@ -116,8 +116,8 @@ export class SecureMetadataStorage {
       if (metadata) {
         const decryptedMetadata = await SecureMetadataCrypto.decryptMetadata(
           metadata,
-          pnName,
-          passcode
+          key1,
+          key2
         );
 
         return {
@@ -184,14 +184,14 @@ export class SecureMetadataStorage {
 
   static async verifyMetadataIntegrity(
     identityId: string,
-    pnName: string,
-    passcode: string
+    key1: string,
+    key2: string
   ): Promise<boolean> {
     try {
       const metadata = await this.getMetadata(identityId);
       if (!metadata) return true;
 
-      return await SecureMetadataCrypto.verifyMetadata(metadata, pnName, passcode);
+      return await SecureMetadataCrypto.verifyMetadata(metadata, key1, key2);
     } catch (error) {
       return false;
     }

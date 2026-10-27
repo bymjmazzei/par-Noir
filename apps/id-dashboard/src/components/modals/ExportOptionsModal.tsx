@@ -7,10 +7,10 @@ import * as nfcAdapter from '../../utils/nfcAdapter';
 interface ExportOptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  exportAuthData: { pnName: string; passcode: string };
-  setExportAuthData: (data: { pnName: string; passcode: string }) => void;
-  setShowExportPnName: (show: boolean) => void;
-  setShowExportPasscode: (show: boolean) => void;
+  exportAuthData: { key1: string; key2: string };
+  setExportAuthData: (data: { key1: string; key2: string }) => void;
+  setShowExportKey1: (show: boolean) => void;
+  setShowExportKey2: (show: boolean) => void;
   onDownloadExport: () => void;
   onExportToUsb?: () => void;
   onExportToNfc?: () => void;
@@ -24,8 +24,8 @@ export function ExportOptionsModal({
   onClose,
   exportAuthData,
   setExportAuthData,
-  setShowExportPnName,
-  setShowExportPasscode,
+  setShowExportKey1,
+  setShowExportKey2,
   onDownloadExport,
   onExportToUsb,
   onExportToNfc,
@@ -41,9 +41,9 @@ export function ExportOptionsModal({
   if (!isOpen) return null;
 
   const handleClose = () => {
-    setExportAuthData({ pnName: '', passcode: '' });
-    setShowExportPnName(false);
-    setShowExportPasscode(false);
+    setExportAuthData({ key1: '', key2: '' });
+    setShowExportKey1(false);
+    setShowExportKey2(false);
     onClose();
   };
 
@@ -92,7 +92,7 @@ export function ExportOptionsModal({
                 </div>
                 <div>
                   <div className="font-medium">Export to USB</div>
-                  <div className="text-sm text-text-secondary">Bind to passcode-protected drive</div>
+                  <div className="text-sm text-text-secondary">Bind to passphrase-protected drive</div>
                 </div>
               </div>
             </button>

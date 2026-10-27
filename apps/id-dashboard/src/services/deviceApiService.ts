@@ -157,14 +157,14 @@ async function loadSealedCloudEnvelope(
     const sessionId = user?.id || user?.publicKey || null;
     if (!sessionId) return null;
     const creds = SecureCredentialManager.getCredentials(sessionId);
-    if (!creds?.pnName || !creds?.passcode) return null;
+    if (!creds?.key1 || !creds?.key2) return null;
     const { loadLocalCloudCredentials } = await import('@par-noir/device-cloud-credentials');
     return await loadLocalCloudCredentials({
       identityId: pnIdentifier,
       session: {
         sessionId,
-        pnName: creds.pnName,
-        passcode: creds.passcode,
+        key1: creds.key1,
+        key2: creds.key2,
       },
     });
   } catch {
@@ -291,12 +291,12 @@ async function apiFetch(
   });
 }
 
-function resolveSessionSecrets(sessionId: string): { pnName: string; passcode: string } {
+function resolveSessionSecrets(sessionId: string): { key1: string; key2: string } {
   const creds = SecureCredentialManager.getCredentials(sessionId);
-  if (!creds?.pnName || !creds?.passcode) {
+  if (!creds?.key1 || !creds?.key2) {
     throw new Error('Unlock required to seal device display fields');
   }
-  return { pnName: creds.pnName, passcode: creds.passcode };
+  return { key1: creds.key1, key2: creds.key2 };
 }
 
 async function buildPrivateDisplayBlob(params: {
@@ -305,7 +305,7 @@ async function buildPrivateDisplayBlob(params: {
   deviceType: DeviceType | string;
   lastSeenAt?: string;
 }): Promise<string> {
-  const { pnName, passcode } = resolveSessionSecrets(params.sessionId);
+  const { key1, key2 } = resolveSessionSecrets(params.sessionId);
   const deviceType = (params.deviceType || 'other') as DeviceType;
   return sealDevicePrivateDisplay(
     {
@@ -319,8 +319,8 @@ async function buildPrivateDisplayBlob(params: {
           : 'other',
       lastSeenAt: params.lastSeenAt || new Date().toISOString(),
     },
-    pnName,
-    passcode
+    key1,
+    key2
   );
 }
 
@@ -378,7 +378,7 @@ export async function createPairingNonce(
   return res.json();
 }
 
-/** Coarse browser class only — never include pn name, email, or other PII. */
+/** Coarse browser class only — never include Key 1, email, or other PII. */
 export function coarseDeviceHint(): string {
   if (typeof navigator === 'undefined') return 'browser';
   const ua = navigator.userAgent || '';

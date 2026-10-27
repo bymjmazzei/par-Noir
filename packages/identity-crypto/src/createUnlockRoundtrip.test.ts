@@ -138,7 +138,6 @@ describe('create → unlock → oauth unlock proof', () => {
       expect(decrypted.nickname).toBe('');
       expect(decrypted.key1).toBe(key1);
       expect(decrypted).not.toHaveProperty('username');
-      expect(decrypted).not.toHaveProperty('pnName');
     }
   }, 120_000);
 

@@ -38,7 +38,7 @@ function loadPnFixture(which) {
   if (!existsSync(identityPath)) {
     identityPath = resolve(dir, which === 'cursor-test-pn' ? 'live-created.pn' : 'identity.pn');
   }
-  return { which, identityPath, PN_NAME: keys.PN_NAME, PASSCODE: keys.PASSCODE };
+  return { which, identityPath, KEY1: keys.KEY1, KEY2: keys.KEY2 };
 }
 
 const whichArg = process.argv[2];

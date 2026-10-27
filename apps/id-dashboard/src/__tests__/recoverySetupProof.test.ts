@@ -30,8 +30,8 @@ describe('signRecoverySetupChallenge', () => {
     fetchRecoverySetupChallenge.mockResolvedValue({ challengeId: 'cid', challenge: 'chal', expiresAt: 0 });
     const auth = {
       encryptedIdentity: { publicKey, encryptedData: 'e', iv: 'i', salt: 's' },
-      pnName: 'key-one',
-      passcode: 'key-two',
+      key1: 'key-one',
+      key2: 'key-two',
       expiresAt: Date.now() + 60_000,
     };
 
@@ -54,8 +54,8 @@ describe('signRecoverySetupChallenge', () => {
     await expect(
       signRecoverySetupChallenge('t', {
         encryptedIdentity: { publicKey: 'pk', encryptedData: 'e', iv: 'i', salt: 's' },
-        pnName: 'a',
-        passcode: 'b',
+        key1: 'a',
+        key2: 'b',
         expiresAt: Date.now() + 1000,
       })
     ).rejects.toThrow('no signing key');

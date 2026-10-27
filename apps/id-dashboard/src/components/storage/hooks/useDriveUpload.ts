@@ -28,7 +28,7 @@ export interface UseDriveUploadParams {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   checkDeviceCapability: (cap: 'drive.read' | 'drive.upload' | 'profile.write') => boolean;
-  getPasscodeFromSecureStorage: (sessionId: string | null | undefined) => string | null;
+  getKey2FromSecureStorage: (sessionId: string | null | undefined) => string | null;
   makeShareTokenCacheKey: (backendId: string, backendFileId: string) => string;
   /** Shared refs owned by FileStorageAggregator. */
   shareTokenCache: React.MutableRefObject<Map<string, ShareToken>>;
@@ -48,7 +48,7 @@ export function useDriveUpload({
   setError,
   setIsLoading,
   checkDeviceCapability,
-  getPasscodeFromSecureStorage,
+  getKey2FromSecureStorage,
   makeShareTokenCacheKey,
   shareTokenCache,
   pnIdentifierRef,
@@ -69,35 +69,35 @@ export function useDriveUpload({
     const overrideBackendId = targetBackendIdAttr && typeof targetBackendIdAttr === 'string' ? targetBackendIdAttr : null;
 
     // Resolve auth credentials - try multiple sources
-    let pnName: string | null = null;
+    let key1: string | null = null;
     let publicKey: string | null = null;
-    let passcodeToUse: string | null = null;
+    let key2ToUse: string | null = null;
 
     // SECURITY: Get credentials from SecureCredentialManager (secrets)
     const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
     const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
 
     // Try 1: Use credentials and resolvedAuth (public data)
-    if (credentials?.pnName && resolvedAuth?.publicKey) {
-      pnName = credentials.pnName;
+    if (credentials?.key1 && resolvedAuth?.publicKey) {
+      key1 = credentials.key1;
       publicKey = resolvedAuth.publicKey;
-      passcodeToUse = credentials.passcode || null;
+      key2ToUse = credentials.key2 || null;
       console.log('✅ [Upload] Using credentials and resolvedAuth');
     }
 
     // Try 2: Extract from authenticatedUser prop and credentials
-    if (!pnName || !publicKey) {
+    if (!key1 || !publicKey) {
       if (authenticatedUser && credentials) {
-        pnName = credentials.pnName;
+        key1 = credentials.key1;
         publicKey = authenticatedUser.publicKey ||
           (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
-        passcodeToUse = credentials.passcode || null;
-        console.log('✅ [Upload] Using authenticatedUser prop and credentials:', { pnName: !!pnName, publicKey: !!publicKey });
+        key2ToUse = credentials.key2 || null;
+        console.log('✅ [Upload] Using authenticatedUser prop and credentials:', { key1: !!key1, publicKey: !!publicKey });
       }
     }
 
     // Try 3: Load from storage
-    if (!pnName || !publicKey) {
+    if (!key1 || !publicKey) {
       console.log('📤 [Upload] Loading from storage...');
       try {
         const { SecureStorage } = await import('../../../utils/storage');
@@ -106,13 +106,13 @@ export function useDriveUpload({
         const session = await storage.getCurrentSession();
 
         if (session) {
-          // SECURITY: Get pnName from SecureCredentialManager (secrets), not from session storage
+          // SECURITY: Get Key 1 from SecureCredentialManager (secrets), not from session storage
           const sessionId = session.id || (session as any)?.publicKey || null;
           const sessionCredentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-          pnName = sessionCredentials?.pnName || null;
+          key1 = sessionCredentials?.key1 || null;
           publicKey = (session as any).publicKey ||
             (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
-          console.log('✅ [Upload] Loaded from storage:', { pnName: !!pnName, publicKey: !!publicKey });
+          console.log('✅ [Upload] Loaded from storage:', { key1: !!key1, publicKey: !!publicKey });
         }
       } catch (err) {
         console.error('❌ [Upload] Storage load failed:', err);
@@ -123,7 +123,7 @@ export function useDriveUpload({
       publicKey = resolvedAuth?.publicKey || publicKeyFromUnlockedUser(authenticatedUser);
     }
 
-    // Encryption uses the unlocked id and public key. A passcode is not required.
+    // Encryption uses the unlocked id and public key. A Key 2 is not required.
     if (!canEncryptUnlockedFiles(authenticatedUser, publicKey)) {
       console.error('❌ [Upload] Could not resolve auth from any source');
       setError('Please unlock your pN first to encrypt files');
@@ -132,20 +132,20 @@ export function useDriveUpload({
 
     // Update resolvedAuth state for future use (only public data)
     if (!resolvedAuth || resolvedAuth.publicKey !== publicKey) {
-      let sessionPasscode: string | null = passcodeToUse;
-      if (!sessionPasscode) {
+      let sessionKey2: string | null = key2ToUse;
+      if (!sessionKey2) {
         try {
-          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+          // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
           const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-          sessionPasscode = getPasscodeFromSecureStorage(sessionId);
+          sessionKey2 = getKey2FromSecureStorage(sessionId);
         } catch (e) {
-          sessionPasscode = null;
+          sessionKey2 = null;
         }
       }
       // SECURITY: Store secrets in SecureCredentialManager, not in resolvedAuth state
       const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-      if (sessionId && pnName && sessionPasscode) {
-        SecureCredentialManager.setCredentials(sessionId, pnName, sessionPasscode);
+      if (sessionId && key1 && sessionKey2) {
+        SecureCredentialManager.setCredentials(sessionId, key1, sessionKey2);
       }
 
       // SECURITY: Only store public data in resolvedAuth (no secrets)
@@ -156,10 +156,10 @@ export function useDriveUpload({
       // Ensure credentials are stored if they exist
           const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
       const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-      if (!credentials && passcodeToUse && pnName) {
+      if (!credentials && key2ToUse && key1) {
         // Store credentials if we have them but they're not in SecureCredentialManager
         if (sessionId) {
-          SecureCredentialManager.setCredentials(sessionId, pnName, passcodeToUse);
+          SecureCredentialManager.setCredentials(sessionId, key1, key2ToUse);
         }
       }
     }
@@ -167,7 +167,7 @@ export function useDriveUpload({
     try {
       setIsLoading(true);
       setError(null);
-      console.log('📤 [Upload] Proceeding with upload', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasId: !!authenticatedUser?.id });
+      console.log('📤 [Upload] Proceeding with upload', { hasKey1: !!key1, hasPublicKey: !!publicKey, hasId: !!authenticatedUser?.id });
 
       // Create session object for encryption using stable pN identity
       // We use id (DID) + publicKey for encryption, which are stable across sessions
@@ -178,7 +178,7 @@ export function useDriveUpload({
         nickname: authenticatedUser?.nickname
       };
 
-      // Encrypt file using stable pN identity (no passcode needed)
+      // Encrypt file using stable pN identity (no Key 2 needed)
       if (!encryptionService) {
         setError('Encryption service not available');
         return;

@@ -297,8 +297,8 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
         file,
         pnIdentifier,
         authToken,
-        pnName: credentials.pnName,
-        passcode: credentials.passcode,
+        key1: credentials.key1,
+        key2: credentials.key2,
         sessionId: identityId || undefined
       });
       handleInputChange('fileId', fileId);

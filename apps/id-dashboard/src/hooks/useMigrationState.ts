@@ -1,14 +1,9 @@
 import { useState } from 'react';
-import type { WebIdentityData } from '../utils/migration';
 import type { DIDInfo, SyncedDevice, RecoveryRequest } from '../types/app';
 
-export type { WebIdentityData, DIDInfo, SyncedDevice, RecoveryRequest };
+export type { DIDInfo, SyncedDevice, RecoveryRequest };
 
 export function useMigrationState() {
-  // Migration states
-  const [showMigrationModal, setShowMigrationModal] = useState(false);
-  const [pendingMigrations, setPendingMigrations] = useState<WebIdentityData[]>([]);
-  const [migrationChecked, setMigrationChecked] = useState(false);
 
   const [showIntegrationDebugger, setShowIntegrationDebugger] = useState(false);
 
@@ -61,13 +56,6 @@ export function useMigrationState() {
   const [pendingCustodianInvitation, setPendingCustodianInvitation] = useState<any>(null);
 
   return {
-    // Migration
-    showMigrationModal,
-    setShowMigrationModal,
-    pendingMigrations,
-    setPendingMigrations,
-    migrationChecked,
-    setMigrationChecked,
 
     // Integration debugger (DEV)
     showIntegrationDebugger,

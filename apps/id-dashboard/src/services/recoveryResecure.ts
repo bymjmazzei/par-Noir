@@ -71,14 +71,14 @@ export async function resecureRecovery(params: {
   threshold: number;
 }): Promise<{ encryptedIdentity: EncryptedIdentity; invited: number }> {
   const { auth, authToken, pnIdentifier } = params;
-  const { pnName, passcode } = auth;
+  const { key1, key2 } = auth;
   const oldEnvelope = auth.encryptedIdentity.recoveryEnvelope as RecoveryEnvelope | undefined;
   if (!oldEnvelope) throw new Error('This pN has no recovery envelope. Download a fresh .pn and unlock with it.');
 
   const oldShares = await resolveRecoveryShares({
     encryptedIdentity: auth.encryptedIdentity,
-    pnName,
-    passcode,
+    key1,
+    key2,
   });
   const payload = await decryptRecoveryEnvelope(
     combineShares(oldShares.map((s) => normalizeShare(s))),
@@ -98,7 +98,7 @@ export async function resecureRecovery(params: {
     recoveryConfig: { threshold, totalShares, version: 1, createdAt: new Date().toISOString() },
   });
   const shares = splitSecret(master, threshold, totalShares);
-  const recoverySharesSealed = await sealRecoveryShares(shares, pnName, passcode);
+  const recoverySharesSealed = await sealRecoveryShares(shares, key1, key2);
   const encryptedIdentity: EncryptedIdentity = {
     ...auth.encryptedIdentity,
     recoveryEnvelope,
@@ -138,8 +138,8 @@ export async function resecureRecovery(params: {
         apiToken: authToken,
         userPnIdentifier: pnIdentifier,
         unrevokable: c.unrevokable === true,
-        pnName,
-        passcode,
+        key1,
+        key2,
       });
       invited += 1;
     }

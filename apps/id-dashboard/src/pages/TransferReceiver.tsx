@@ -5,7 +5,7 @@ interface TransferData {
   /** Legacy field retained for URL shape; direct transfers use `direct-transfer-*`. */
   ipfsCid: string;
   nickname: string;
-  transferPasscode: string;
+  transferCode: string;
   expiresAt: string;
   directData?: unknown;
 }
@@ -17,11 +17,11 @@ interface TransferReceiverProps {
 
 const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose }) => {
   const [transferData, setTransferData] = useState<TransferData | null>(null);
-  const [transferPasscode, setTransferPasscode] = useState('');
+  const [transferCode, setTransferCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showTransferPasscode, setShowTransferPasscode] = useState(false);
+  const [showTransferCode, setShowTransferCode] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
 
   useEffect(() => {
@@ -61,19 +61,19 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
     }
   }, [transferId]);
 
-  const handleVerifyTransferPasscode = async () => {
+  const handleVerifyTransferCode = async () => {
     if (!transferData) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      if (!transferPasscode) {
-        throw new Error('Transfer passcode is required');
+      if (!transferCode) {
+        throw new Error('Transfer code is required');
       }
 
-      if (transferPasscode !== transferData.transferPasscode) {
-        throw new Error('Invalid transfer passcode');
+      if (transferCode !== transferData.transferCode) {
+        throw new Error('Invalid transfer code');
       }
 
       const originalPnFileData = transferData.directData;
@@ -103,7 +103,7 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
       setSuccess('pN file downloaded successfully! You can now unlock it using the normal unlock flow.');
       setShowTransferModal(false);
     } catch (err: any) {
-      setError(err.message || 'Failed to verify transfer passcode');
+      setError(err.message || 'Failed to verify transfer code');
     } finally {
       setLoading(false);
     }
@@ -175,21 +175,21 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
         ) : (
           <>
             <div className="mb-4">
-              <label className="block text-sm text-text-secondary mb-2">Transfer passcode</label>
+              <label className="block text-sm text-text-secondary mb-2">Transfer code</label>
               <div className="relative">
                 <input
-                  type={showTransferPasscode ? 'text' : 'password'}
-                  value={transferPasscode}
-                  onChange={(e) => setTransferPasscode(e.target.value)}
+                  type={showTransferCode ? 'text' : 'password'}
+                  value={transferCode}
+                  onChange={(e) => setTransferCode(e.target.value)}
                   className="w-full px-3 py-2 bg-secondary border border-border rounded-md text-text-primary"
-                  placeholder="Enter passcode"
+                  placeholder="Enter transfer code"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowTransferPasscode(!showTransferPasscode)}
+                  onClick={() => setShowTransferCode(!showTransferCode)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary text-xs"
                 >
-                  {showTransferPasscode ? 'Hide' : 'Show'}
+                  {showTransferCode ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
@@ -202,7 +202,7 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
                 Cancel
               </button>
               <button
-                onClick={handleVerifyTransferPasscode}
+                onClick={handleVerifyTransferCode}
                 disabled={loading}
                 className="flex-1 px-4 py-2 bg-primary text-white rounded-md disabled:opacity-50"
               >

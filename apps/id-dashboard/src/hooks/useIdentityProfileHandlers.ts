@@ -159,8 +159,8 @@ export function useIdentityProfileHandlers(params: UseIdentityProfileHandlersPar
 
         await SecureMetadataStorage.updateMetadataField(
           identityId,
-          credentials.pnName,
-          credentials.passcode,
+          credentials.key1,
+          credentials.key2,
           'nickname',
           newNickname
         );
@@ -288,8 +288,8 @@ export function useIdentityProfileHandlers(params: UseIdentityProfileHandlersPar
 
         await SecureMetadataStorage.updateMetadataField(
           identityId,
-          credentials.pnName,
-          credentials.passcode,
+          credentials.key1,
+          credentials.key2,
           'profilePicture',
           newProfilePicture
         );

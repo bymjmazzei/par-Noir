@@ -16,9 +16,9 @@ if (!consentUrl) {
   process.exit(2);
 }
 
-let identityPath, PN_NAME, PASSCODE;
+let identityPath, KEY1, KEY2;
 try {
-  ({ identityPath, PN_NAME, PASSCODE } = loadTestPn(ROOT));
+  ({ identityPath, KEY1, KEY2 } = loadTestPn(ROOT));
 } catch (e) {
   console.error(e.message || e);
   process.exit(2);
@@ -28,8 +28,8 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 await page.goto(consentUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 await page.locator('#identityFile').setInputFiles(identityPath);
-await page.getByPlaceholder('Enter Key 1').fill(PN_NAME);
-await page.getByPlaceholder('Enter Key 2').fill(PASSCODE);
+await page.getByPlaceholder('Enter Key 1').fill(KEY1);
+await page.getByPlaceholder('Enter Key 2').fill(KEY2);
 await page.getByRole('button', { name: 'Unlock pN' }).click();
 
 const approve = page.getByRole('button', { name: 'Approve' });

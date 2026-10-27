@@ -90,9 +90,9 @@ export class DataValidator {
    * Comprehensive validation for identity creation
    */
   static validateIdentityCreation(data: {
-    pnName: string;
+    key1: string;
     nickname: string;
-    passcode: string;
+    key2: string;
     email?: string;
     phone?: string;
   }): ValidationResult {
@@ -100,11 +100,11 @@ export class DataValidator {
     const warnings: string[] = [];
 
     // Validate required fields
-    const pnNameValidation = IdentityValidator.validatePNName(data.pnName);
-    if (!pnNameValidation.isValid) {
-      errors.push(...pnNameValidation.errors);
+    const key1Validation = IdentityValidator.validateKey1(data.key1);
+    if (!key1Validation.isValid) {
+      errors.push(...key1Validation.errors);
     }
-    warnings.push(...pnNameValidation.warnings);
+    warnings.push(...key1Validation.warnings);
 
     const nicknameValidation = DisplayValidator.validateNickname(data.nickname);
     if (!nicknameValidation.isValid) {
@@ -112,11 +112,11 @@ export class DataValidator {
     }
     warnings.push(...nicknameValidation.warnings);
 
-    const passcodeValidation = IdentityValidator.validatePasscode(data.passcode);
-    if (!passcodeValidation.isValid) {
-      errors.push(...passcodeValidation.errors);
+    const key2Validation = IdentityValidator.validateKey2(data.key2);
+    if (!key2Validation.isValid) {
+      errors.push(...key2Validation.errors);
     }
-    warnings.push(...passcodeValidation.warnings);
+    warnings.push(...key2Validation.warnings);
 
     // Validate optional fields
     if (data.email) {

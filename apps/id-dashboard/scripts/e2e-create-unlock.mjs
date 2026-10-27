@@ -3,8 +3,8 @@ import { writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-const pnName = `test${Date.now().toString(36).slice(-6)}`;
-const passcode = 'TestPass123!@#';
+const key1 = `test${Date.now().toString(36).slice(-6)}`;
+const key2 = 'TestPass123!@#';
 const recoveryEmail = 'test@example.com';
 
 async function main() {
@@ -21,14 +21,14 @@ async function main() {
   await page.getByRole('button', { name: 'Create New pN' }).click();
 
   // Step 1
-  await page.getByPlaceholder('Enter pN Name').fill(pnName);
-  await page.getByPlaceholder('Enter passcode').fill(passcode);
+  await page.getByPlaceholder('Enter Key 1').fill(key1);
+  await page.getByPlaceholder('Enter Key 2').fill(key2);
   await page.getByPlaceholder('Enter recovery email').fill(recoveryEmail);
   await page.getByRole('button', { name: 'Next' }).click();
 
   // Step 2
-  await page.getByPlaceholder('Confirm your pN Name').fill(pnName);
-  await page.getByPlaceholder('Confirm your passcode').fill(passcode);
+  await page.getByPlaceholder('Confirm your Key 1').fill(key1);
+  await page.getByPlaceholder('Confirm your Key 2').fill(key2);
   await page.getByPlaceholder('Confirm your recovery email').fill(recoveryEmail);
 
   const downloadPromise = page.waitForEvent('download', { timeout: 120_000 });
@@ -61,7 +61,7 @@ async function main() {
     });
   }
 
-  console.log('PN_NAME', pnName);
+  console.log('KEY1', key1);
   console.log('UNLOCKED_AFTER_CREATE', unlocked);
   console.log('BODY_SNIPPET', bodyText.slice(0, 800));
   console.log('DOWNLOAD_SIZE', fileContent.length);
@@ -78,8 +78,8 @@ async function main() {
     const page2 = await context.newPage();
     await page2.goto('https://par-noir-dashboard.web.app/', { waitUntil: 'networkidle' });
     await page2.locator('input[type="file"]').first().setInputFiles(filePath);
-    await page2.getByPlaceholder('Enter your pN Name').fill(pnName);
-    await page2.getByPlaceholder('Enter your passcode').fill(passcode);
+    await page2.getByPlaceholder('Enter your Key 1').fill(key1);
+    await page2.getByPlaceholder('Enter your Key 2').fill(key2);
     await page2.getByRole('button', { name: 'Unlock pN' }).click();
     await page2.waitForTimeout(5000);
     const body2 = await page2.locator('body').innerText();

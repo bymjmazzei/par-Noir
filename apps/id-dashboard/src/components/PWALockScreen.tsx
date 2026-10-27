@@ -28,7 +28,7 @@ const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFal
       }
       
       // On mobile, show the lock screen but don't auto-trigger biometrics
-      // User must explicitly choose to use biometrics or passcode
+      // User must explicitly choose to use biometrics or Key 2
     };
 
     checkDevice();
@@ -116,7 +116,7 @@ const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFal
             <ArrowRight className="w-4 h-4" />
           </button>
 
-          {/* Fallback to Passcode - Only on mobile */}
+          {/* Fallback to Key2 - Only on mobile */}
           <button
             onClick={onFallback}
             disabled={isAuthenticating}

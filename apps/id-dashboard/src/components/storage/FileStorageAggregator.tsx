@@ -71,12 +71,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     [resolveOwnerApiToken]
   );
 
-  // Helper function to get passcode from SecureCredentialManager
-  const getPasscodeFromSecureStorage = React.useCallback((sessionId: string | null | undefined): string | null => {
+  // Helper function to get Key 2 from SecureCredentialManager
+  const getKey2FromSecureStorage = React.useCallback((sessionId: string | null | undefined): string | null => {
     if (!sessionId) return null;
     try {
       const credentials = SecureCredentialManager.getCredentials(sessionId);
-      return credentials?.passcode || null;
+      return credentials?.key2 || null;
     } catch (e) {
       return null;
     }
@@ -203,7 +203,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   } = useStorageIdentity({
     authenticatedUser,
     setError,
-    getPasscodeFromSecureStorage,
+    getKey2FromSecureStorage,
   });
 
   const [portableCloudAccounts, setPortableCloudAccounts] = React.useState<
@@ -289,13 +289,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   }, [portableCloudAccounts.length]);
   
   const getResolvedAuthCredentials = React.useCallback(() => {
-    // SECURITY: Get pnName and passcode from SecureCredentialManager ONLY (secrets)
-    // Never get pnName from resolvedAuth or authenticatedUser state - it's a SECRET
+    // SECURITY: Get Key 1 and Key 2 from SecureCredentialManager ONLY (secrets)
+    // Never get Key 1 from resolvedAuth or authenticatedUser state - it's a SECRET
     const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
     const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
     
-    // SECURITY: pnName is a SECRET - only get from SecureCredentialManager
-    const pnName = credentials?.pnName || null;
+    // SECURITY: Key 1 is a SECRET - only get from SecureCredentialManager
+    const key1 = credentials?.key1 || null;
 
     // Get publicKey from resolvedAuth or authenticatedUser (public data)
     let publicKey =
@@ -304,17 +304,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       (typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : null) ||
       null;
 
-    // SECURITY: Get passcode from SecureCredentialManager (secrets)
-    const passcode = credentials?.passcode || null;
+    // SECURITY: Get Key 2 from SecureCredentialManager (secrets)
+    const key2 = credentials?.key2 || null;
 
-    if (!pnName || !publicKey) {
+    if (!key1 || !publicKey) {
       return null;
     }
 
     return {
-      pnName,
+      key1,
       publicKey,
-      passcode: passcode || undefined,
+      key2: key2 || undefined,
     };
   }, [authenticatedUser, resolvedAuth]);
   
@@ -366,7 +366,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     resolveOwnerApiToken,
     waitForOwnerApiToken,
     getResolvedAuthCredentials,
-    getPasscodeFromSecureStorage,
+    getKey2FromSecureStorage,
     getPnIdentifier,
     getStorageIdentityCandidates,
     authenticatedUserRef,
@@ -534,7 +534,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     driveReadBlocked,
     deviceGate,
     resolveOwnerApiToken,
-    getPasscodeFromSecureStorage,
+    getKey2FromSecureStorage,
     makeShareTokenCacheKey,
     shareTokenCache,
     pnIdentifierRef,
@@ -595,7 +595,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     checkDeviceCapability,
     resolveOwnerApiToken,
     getResolvedAuthCredentials,
-    getPasscodeFromSecureStorage,
+    getKey2FromSecureStorage,
     getStorageIdentityCandidates,
     driveCredentialCacheRef,
     cleanupDuplicateCacheEntries,
@@ -625,7 +625,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setError,
     setIsLoading,
     checkDeviceCapability,
-    getPasscodeFromSecureStorage,
+    getKey2FromSecureStorage,
     makeShareTokenCacheKey,
     shareTokenCache,
     pnIdentifierRef,
@@ -736,8 +736,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             await commitDashboardGoogleDriveDisconnect({
               pnIdentifier: cloudPnIdentifier || '',
               authToken: token || '',
-              pnName: creds?.pnName,
-              passcode: creds?.passcode,
+              key1: creds?.key1,
+              key2: creds?.key2,
               publicKey: authenticatedUser?.publicKey ?? sessionId,
               mlKemSecretKey:
                 readShellMlKem(cloudPnIdentifier) ||

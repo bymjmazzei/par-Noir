@@ -126,16 +126,16 @@ export async function togglePublicVisibility(
       });
     } else {
       // Make public - create metadata and index
-      // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
+      // SECURITY: Check credentials instead of resolvedAuth.Key 1 (secret)
       const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
       const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-      if (!credentials?.pnName || !resolvedAuth?.publicKey) {
+      if (!credentials?.key1 || !resolvedAuth?.publicKey) {
         setError('Please unlock your pN to make files public');
         return;
       }
 
       // Generate public metadata with Semantic Web standards (JSON-LD)
-      // CRITICAL: Never include pN name (username) in public metadata - it's a secret
+      // CRITICAL: Never include Key 1 in public metadata - it's a secret
       const fileTitle = file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name;
 
       // Detect file type from mimeType (if original) or filename
@@ -340,18 +340,18 @@ export async function togglePublicVisibility(
         const sessionId = authenticatedUser?.id;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
 
-        // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
+        // SECURITY: Get Key 1 from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
         const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
 
-        if (credentials?.pnName && credentials?.passcode && publicKey) {
+        if (credentials?.key1 && credentials?.key2 && publicKey) {
           // Use VolumeIdGenerator for consistent identifier (same as folder naming)
           metadataPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
           console.log('📁 [Phase 3] Generated pN identifier (standardized):', (metadataPnIdentifier || '').substring(0, 8) + '...');
         } else {
           // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
           console.warn('⚠️ [Phase 3] Cannot generate standardized pN identifier - credentials required:', {
-            hasPnName: !!credentials?.pnName,
-            hasPasscode: !!credentials?.passcode,
+            hasKey1: !!credentials?.key1,
+            hasKey2: !!credentials?.key2,
             hasPublicKey: !!publicKey,
             hasResolvedAuth: !!resolvedAuth,
             hasAuthenticatedUser: !!authenticatedUser

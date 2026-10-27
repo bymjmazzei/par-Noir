@@ -26,7 +26,7 @@ import { CustodianInvitationModal } from '../components/modals/CustodianInvitati
 import { CustodianAcceptanceModal } from '../components/modals/CustodianAcceptanceModal';
 import { CustodianApprovalModal } from '../components/modals/CustodianApprovalModal';
 import { CustodianInvitationAcceptanceModal } from '../components/modals/CustodianInvitationAcceptanceModal';
-import { RecoveryPasscodeModal } from '../components/recovery/RecoveryPasscodeModal';
+import { RecoveryKeysModal } from '../components/recovery/RecoveryKeysModal';
 import { ownerFetch } from '../services/ownerApiService';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
@@ -34,14 +34,9 @@ const EnhancedPrivacyPanel = lazy(() => import('../components/EnhancedPrivacyPan
 const ToolSettingsModal = lazy(() => import('../components/ToolSettingsModal').then(module => ({ default: module.ToolSettingsModal })));
 const IntegrationDebugger = lazy(() => import('../components/IntegrationDebugger').then(module => ({ default: module.default })));
 const SessionManager = lazy(() => import('../components/SessionManager').then(module => ({ default: module.SessionManager })));
-const MigrationModal = lazy(() => import('../components/MigrationModal').then(module => ({ default: module.MigrationModal })));
 const ProfilePictureEditor = lazy(() => import('../components/ProfilePictureEditor').then(module => ({ default: module.ProfilePictureEditor })));
 
 export interface AppModalsProps {
-  showMigrationModal: any;
-  setShowMigrationModal: any;
-  pendingMigrations: any;
-  handleMigrationComplete: any;
   showRecoveryModal: any;
   setShowRecoveryModal: any;
   handleInitiateRecoveryWithKey: any;
@@ -93,11 +88,11 @@ export interface AppModalsProps {
   recoveryThreshold: any;
   handleApproveRecovery: any;
   setSuccessWithTimeout: any;
-  showRecoveryPasscodeModal: any;
-  setShowRecoveryPasscodeModal: any;
+  showRecoveryKeysModal: any;
+  setShowRecoveryKeysModal: any;
   setPendingRecoveryCompletion: any;
   loading: any;
-  handleRecoveryPasscodeSubmit: any;
+  handleRecoveryKeysSubmit: any;
   showRecoveryCompleteModal: any;
   setShowRecoveryCompleteModal: any;
   recoveredDID: any;
@@ -143,10 +138,10 @@ export interface AppModalsProps {
   setShowExportOptionsModal: any;
   exportAuthData: any;
   setExportAuthData: any;
-  showExportPnName: any;
-  setShowExportPnName: any;
-  showExportPasscode: any;
-  setShowExportPasscode: any;
+  showExportKey1: any;
+  setShowExportKey1: any;
+  showExportKey2: any;
+  setShowExportKey2: any;
   handleExportAuth: any;
   pendingExportAction: any;
   showExportOptionsModal: any;
@@ -168,8 +163,8 @@ export interface AppModalsProps {
   setShowTransferSetupModal: any;
   transferCreated: any;
   setTransferCreated: any;
-  transferPasscode: any;
-  setTransferPasscode: any;
+  transferCode: any;
+  setTransferCode: any;
   transferUrl: any;
   handleTransferSetup: any;
   success: any;
@@ -206,10 +201,6 @@ export interface AppModalsProps {
 
 export function AppModals(props: AppModalsProps) {
   const {
-    showMigrationModal,
-    setShowMigrationModal,
-    pendingMigrations,
-    handleMigrationComplete,
     showRecoveryModal,
     setShowRecoveryModal,
     handleInitiateRecoveryWithKey,
@@ -261,11 +252,11 @@ export function AppModals(props: AppModalsProps) {
     recoveryThreshold,
     handleApproveRecovery,
     setSuccessWithTimeout,
-    showRecoveryPasscodeModal,
-    setShowRecoveryPasscodeModal,
+    showRecoveryKeysModal,
+    setShowRecoveryKeysModal,
     setPendingRecoveryCompletion,
     loading,
-    handleRecoveryPasscodeSubmit,
+    handleRecoveryKeysSubmit,
     showRecoveryCompleteModal,
     setShowRecoveryCompleteModal,
     recoveredDID,
@@ -311,10 +302,10 @@ export function AppModals(props: AppModalsProps) {
     setShowExportOptionsModal,
     exportAuthData,
     setExportAuthData,
-    showExportPnName,
-    setShowExportPnName,
-    showExportPasscode,
-    setShowExportPasscode,
+    showExportKey1,
+    setShowExportKey1,
+    showExportKey2,
+    setShowExportKey2,
     handleExportAuth,
     pendingExportAction,
     showExportOptionsModal,
@@ -336,8 +327,8 @@ export function AppModals(props: AppModalsProps) {
     setShowTransferSetupModal,
     transferCreated,
     setTransferCreated,
-    transferPasscode,
-    setTransferPasscode,
+    transferCode,
+    setTransferCode,
     transferUrl,
     handleTransferSetup,
     success,
@@ -372,18 +363,6 @@ export function AppModals(props: AppModalsProps) {
 
   return (
     <>
-        {/* PWA identity migration */}
-        {showMigrationModal && (
-          <Suspense fallback={<LoadingSpinner />}>
-            <MigrationModal
-              isOpen={showMigrationModal}
-              onClose={() => setShowMigrationModal(false)}
-              pendingIdentities={pendingMigrations}
-              onMigrationComplete={handleMigrationComplete}
-            />
-          </Suspense>
-        )}
-
         {/* Recovery Modal */}
         <RecoveryModal
           isOpen={showRecoveryModal}
@@ -472,15 +451,15 @@ export function AppModals(props: AppModalsProps) {
           onApproveRecovery={handleApproveRecovery}
         />
 
-        <RecoveryPasscodeModal
-          isOpen={showRecoveryPasscodeModal}
+        <RecoveryKeysModal
+          isOpen={showRecoveryKeysModal}
           onClose={() => {
-            setShowRecoveryPasscodeModal(false);
+            setShowRecoveryKeysModal(false);
             setPendingRecoveryCompletion(null);
           }}
           loading={loading}
-          onSubmit={async (newPnName, newPasscode) =>
-            handleRecoveryPasscodeSubmit(newPnName, newPasscode)
+          onSubmit={async (newKey1, newKey2) =>
+            handleRecoveryKeysSubmit(newKey1, newKey2)
           }
         />
 
@@ -617,10 +596,10 @@ export function AppModals(props: AppModalsProps) {
           }}
           exportAuthData={exportAuthData}
           setExportAuthData={setExportAuthData}
-          showExportPnName={showExportPnName}
-          setShowExportPnName={setShowExportPnName}
-          showExportPasscode={showExportPasscode}
-          setShowExportPasscode={setShowExportPasscode}
+          showExportKey1={showExportKey1}
+          setShowExportKey1={setShowExportKey1}
+          showExportKey2={showExportKey2}
+          setShowExportKey2={setShowExportKey2}
           onAuth={handleExportAuth}
           purpose={
             pendingExportAction === 'download'
@@ -641,8 +620,8 @@ export function AppModals(props: AppModalsProps) {
           onClose={() => setShowExportOptionsModal(false)}
           exportAuthData={exportAuthData}
           setExportAuthData={setExportAuthData}
-          setShowExportPnName={setShowExportPnName}
-          setShowExportPasscode={setShowExportPasscode}
+          setShowExportKey1={setShowExportKey1}
+          setShowExportKey2={setShowExportKey2}
           onDownloadExport={handleDownloadExport}
           onExportToUsb={handleExportToUsb}
           onExportToNfc={handleExportToNfc}
@@ -695,8 +674,8 @@ export function AppModals(props: AppModalsProps) {
           onClose={() => setShowTransferSetupModal(false)}
           transferCreated={transferCreated}
           setTransferCreated={setTransferCreated}
-          transferPasscode={transferPasscode}
-          setTransferPasscode={setTransferPasscode}
+          transferCode={transferCode}
+          setTransferCode={setTransferCode}
           transferUrl={transferUrl}
           onTransferSetup={handleTransferSetup}
           onCopyUrl={async () => {
@@ -882,8 +861,8 @@ export function AppModals(props: AppModalsProps) {
                   };
                   const enc = await IdentityCrypto.encryptData(
                     JSON.stringify(nameFields),
-                    credentials.pnName,
-                    credentials.passcode
+                    credentials.key1,
+                    credentials.key2
                   );
                   mintParams.encryptedUserData = JSON.stringify(enc);
                   const ids = await mintDerivedNameZkps(nameFields, mintParams);
@@ -895,8 +874,8 @@ export function AppModals(props: AppModalsProps) {
                 if (dateOfBirth) {
                   const enc = await IdentityCrypto.encryptData(
                     JSON.stringify({ dateOfBirth }),
-                    credentials.pnName,
-                    credentials.passcode
+                    credentials.key1,
+                    credentials.key2
                   );
                   mintParams.encryptedUserData = JSON.stringify(enc);
                   const ids = await mintDerivedAgeZkps(dateOfBirth, mintParams);

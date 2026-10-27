@@ -20,7 +20,7 @@ const payload = {
   mlKemSecretKey: 'kem-sk',
   mlDsaSecretKey: 'dsa-sk',
   identityId: 'did:key:x',
-  pnName: '',
+  key1: '',
   recoveryConfig: { threshold: 2, totalShares: 5, version: 1 as const, createdAt: 'now' },
 };
 const NEW_KEY_1 = 'Brand-New-Key-One-2026!';
@@ -37,13 +37,13 @@ describe('completeKeyRecovery', () => {
     const result = await completeKeyRecovery({
       keyEnvelope,
       recoveryKey: 'recovery-abc',
-      newPnName: ` ${NEW_KEY_1} `,
-      newPasscode: NEW_KEY_2,
+      newKey1: ` ${NEW_KEY_1} `,
+      newKey2: NEW_KEY_2,
       expectedPublicKey: 'pk',
     });
     expect(decryptKeyRecoveryEnvelope).toHaveBeenCalledWith('recovery-abc', keyEnvelope);
-    expect(restoreIdentity).toHaveBeenCalledWith({ payload, pnName: NEW_KEY_1, passcode: NEW_KEY_2 });
-    expect(result).toEqual({ identity: { publicKey: 'pk', encryptedData: 'new' }, pnName: NEW_KEY_1 });
+    expect(restoreIdentity).toHaveBeenCalledWith({ payload, key1: NEW_KEY_1, key2: NEW_KEY_2 });
+    expect(result).toEqual({ identity: { publicKey: 'pk', encryptedData: 'new' }, key1: NEW_KEY_1 });
   });
 
   it('refuses recovery data for another pN', async () => {
@@ -51,8 +51,8 @@ describe('completeKeyRecovery', () => {
       completeKeyRecovery({
         keyEnvelope,
         recoveryKey: 'recovery-abc',
-        newPnName: NEW_KEY_1,
-        newPasscode: NEW_KEY_2,
+        newKey1: NEW_KEY_1,
+        newKey2: NEW_KEY_2,
         expectedPublicKey: 'other-pk',
       })
     ).rejects.toThrow('does not match');
@@ -64,8 +64,8 @@ describe('completeKeyRecovery', () => {
       completeKeyRecovery({
         keyEnvelope,
         recoveryKey: 'recovery-abc',
-        newPnName: '  ',
-        newPasscode: NEW_KEY_2,
+        newKey1: '  ',
+        newKey2: NEW_KEY_2,
         expectedPublicKey: 'pk',
       })
     ).rejects.toThrow();

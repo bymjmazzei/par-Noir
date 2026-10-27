@@ -46,8 +46,8 @@ function loadPnFixture(which) {
     if (!existsSync(alt)) throw new Error(`No identity file in ${dir}`);
     identityPath = alt;
   }
-  if (!keys.PN_NAME || !keys.PASSCODE) throw new Error(`${which} keys.env incomplete`);
-  return { which, identityPath, PN_NAME: keys.PN_NAME, PASSCODE: keys.PASSCODE };
+  if (!keys.KEY1 || !keys.KEY2) throw new Error(`${which} keys.env incomplete`);
+  return { which, identityPath, KEY1: keys.KEY1, KEY2: keys.KEY2 };
 }
 
 const google = loadEnvFile(resolve(ROOT, '.local/test-google-drive/credentials.env'));

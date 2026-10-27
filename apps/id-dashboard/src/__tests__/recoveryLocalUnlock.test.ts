@@ -35,8 +35,8 @@ describe('Recovery tab local unlock', () => {
 
     const session = await unlockRecoveryLocally({
       file: pnFile(ownerRow),
-      pnName: 'Key1-Value!',
-      passcode: 'Key2-Value!',
+      key1: 'Key1-Value!',
+      key2: 'Key2-Value!',
       expectedPublicKey: OWNER_PK,
     });
 
@@ -47,8 +47,8 @@ describe('Recovery tab local unlock', () => {
     );
     expect(session.encryptedIdentity.recoveryEnvelope).toEqual(ENVELOPE);
     expect(session.encryptedIdentity.recoverySharesSealed).toEqual(SEALED);
-    expect(session.pnName).toBe('Key1-Value!');
-    expect(session.passcode).toBe('Key2-Value!');
+    expect(session.key1).toBe('Key1-Value!');
+    expect(session.key2).toBe('Key2-Value!');
     expect(session.expiresAt).toBeGreaterThan(Date.now());
   });
 
@@ -58,8 +58,8 @@ describe('Recovery tab local unlock', () => {
     await expect(
       unlockRecoveryLocally({
         file: pnFile(ownerRow),
-        pnName: 'wrong',
-        passcode: 'wrong',
+        key1: 'wrong',
+        key2: 'wrong',
         expectedPublicKey: OWNER_PK,
       })
     ).rejects.toThrow('Incorrect Key 1 or Key 2');
@@ -69,8 +69,8 @@ describe('Recovery tab local unlock', () => {
     await expect(
       unlockRecoveryLocally({
         file: pnFile({ ...ownerRow, publicKey: 'someone-else' }),
-        pnName: 'Key1-Value!',
-        passcode: 'Key2-Value!',
+        key1: 'Key1-Value!',
+        key2: 'Key2-Value!',
         expectedPublicKey: OWNER_PK,
       })
     ).rejects.toThrow('different pN than the one signed in');

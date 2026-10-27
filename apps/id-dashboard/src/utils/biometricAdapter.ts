@@ -11,7 +11,7 @@ export interface BiometricAuthResult {
   success: boolean;
   credentialId?: string;
   error?: string;
-  fallbackToPasscode?: boolean;
+  fallbackToKeys?: boolean;
 }
 
 export interface BiometricCapabilityInfo {
@@ -58,12 +58,12 @@ export async function authenticate(options?: {
       return { success: true };
     } catch (err: unknown) {
       const code = (err as { code?: number })?.code;
-      // User cancel, fallback, etc. - offer passcode
+      // User cancel, fallback, etc. - offer Key 1 / Key 2 unlock
       const fallbackCodes = [11, 15, 16, 17]; // APP_CANCEL, SYSTEM_CANCEL, USER_CANCEL, USER_FALLBACK
       return {
         success: false,
         error: 'Biometric authentication failed',
-        fallbackToPasscode: fallbackCodes.includes(code ?? -1) || true,
+        fallbackToKeys: fallbackCodes.includes(code ?? -1) || true,
       };
     }
   }
@@ -72,7 +72,7 @@ export async function authenticate(options?: {
     return {
       success: false,
       error: 'Identity required for web biometric authentication',
-      fallbackToPasscode: true,
+      fallbackToKeys: true,
     };
   }
   return BiometricAuth.authenticate(identityId);
@@ -114,16 +114,13 @@ export async function getCapabilityInfo(): Promise<BiometricCapabilityInfo> {
  * Register credential. On native, this is a no-op (device already has biometrics);
  * we only need to verify. On web, registers WebAuthn credential.
  */
-export async function registerCredential(
-  identityId: string,
-  username: string
-): Promise<{ id: string } | null> {
+export async function registerCredential(identityId: string): Promise<{ id: string } | null> {
   if (isNative()) {
     // On native, just verify identity works - no WebAuthn registration
     const result = await authenticate({ identityId, reason: 'Confirm biometric setup' });
     return result.success ? { id: `native_${identityId}` } : null;
   }
-  const cred = await BiometricAuth.registerCredential(identityId, username);
+  const cred = await BiometricAuth.registerCredential(identityId);
   return cred ? { id: cred.id } : null;
 }
 

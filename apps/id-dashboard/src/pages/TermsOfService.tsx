@@ -82,7 +82,7 @@ const TermsOfService: React.FC = () => {
               <h3 className="text-xl font-semibold text-text-primary mb-3">Your Responsibilities</h3>
               <ul className="list-disc list-inside text-text-secondary mb-6 space-y-2">
                 <li><strong>Secure Devices:</strong> Keep your devices secure and updated</li>
-                <li><strong>Strong Passcodes:</strong> Use strong, unique passcodes</li>
+                <li><strong>Strong keys:</strong> Use a strong, unique Key 1 and Key 2</li>
                 <li><strong>Backup Management:</strong> Maintain secure backups of your data</li>
                 <li><strong>Custodian Management:</strong> Keep recovery custodians active</li>
                 <li><strong>Legal Compliance:</strong> Use the service in compliance with applicable laws</li>
@@ -106,7 +106,7 @@ const TermsOfService: React.FC = () => {
               <h3 className="text-xl font-semibold text-text-primary mb-3">Your Security Responsibilities</h3>
               <ul className="list-disc list-inside text-text-secondary mb-6 space-y-2">
                 <li><strong>Device Security:</strong> Secure your devices against unauthorized access</li>
-                <li><strong>Passcode Management:</strong> Use strong, unique passcodes</li>
+                <li><strong>Key management:</strong> Keep Key 1 and Key 2 secret; never share them</li>
                 <li><strong>Recovery Setup:</strong> Maintain active recovery custodians</li>
                 <li><strong>Backup Security:</strong> Secure your encrypted backups</li>
                 <li><strong>Third-Party Security:</strong> Secure third-party integrations</li>

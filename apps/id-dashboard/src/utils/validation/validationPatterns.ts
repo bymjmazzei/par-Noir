@@ -57,8 +57,8 @@ export class ValidationPatterns {
     /\/sys\/class\/net/gi
   ];
 
-  // Weak passcode patterns
-  static readonly WEAK_PASSCODE_PATTERNS = [
+  // Weak Key 2 patterns
+  static readonly WEAK_KEY2_PATTERNS = [
     'password', '123456', 'qwerty', 'admin', 'letmein', 'welcome',
     'monkey', 'dragon', 'master', 'football', 'baseball', 'shadow'
   ];

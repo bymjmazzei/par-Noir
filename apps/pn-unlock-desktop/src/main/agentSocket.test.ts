@@ -84,7 +84,7 @@ describe('agent socket', () => {
     const server = startAgentSocket(
       dir,
       async () => {
-        throw new Error('pn name and passcode in a stack trace');
+        throw new Error('Key 1 and Key 2 in a stack trace');
       },
       () => undefined
     );
@@ -92,7 +92,7 @@ describe('agent socket', () => {
     const p = await listening(dir);
     const [line] = await exchange(p, '{"v":1,"id":"req-9","token":"t"}\n', 1);
     expect(JSON.parse(line!)).toEqual({ v: 1, id: 'req-9', ok: false, error: 'unavailable' });
-    expect(line).not.toMatch(/passcode|stack/);
+    expect(line).not.toMatch(/key2|stack/);
   });
 
   it('refuses oversized lines', async () => {

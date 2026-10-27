@@ -15,7 +15,7 @@ Integration credentials (OAuth tokens, API keys) for services like Google Drive 
 
 ### After (Secure)
 - ✅ All integration credentials **encrypted** before storage
-- ✅ Encryption key derived from user's pnName + passcode (2FA credentials)
+- ✅ Encryption key derived from user's key1 + key2 (2FA credentials)
 - ✅ Credentials **cannot be decrypted** without user authentication
 - ✅ Credentials **automatically cleared** on logout
 - ✅ **Automatic migration** of existing plaintext tokens to encrypted storage
@@ -54,7 +54,7 @@ await IntegrationCredentialManager.clearAll();
 ### Encryption Details
 
 1. **Key Derivation**: Uses PBKDF2 with 100,000 iterations
-   - Derived from: `sessionId + pnName + passcode`
+   - Derived from: `sessionId + key1 + key2`
    - Ensures credentials are tied to user authentication
 
 2. **Encryption**: AES-GCM 256-bit
@@ -103,7 +103,7 @@ const migrated = await IntegrationCredentialManager.migratePlaintextCredentials(
 ## Security Guarantees
 
 1. **No Plaintext Storage**: All credentials encrypted at rest
-2. **User-Dependent**: Cannot decrypt without user's pnName + passcode
+2. **User-Dependent**: Cannot decrypt without user's key1 + key2
 3. **Session-Based**: Credentials cleared on logout
 4. **Automatic Cleanup**: Plaintext tokens automatically migrated/removed
 
@@ -153,7 +153,7 @@ On logout:
 - ✅ All integration credentials cleared from encrypted storage
 - ✅ All plaintext tokens removed (if any remain)
 - ✅ User must re-authenticate to access integrations
-- ✅ Credentials cannot be decrypted without user's pnName + passcode
+- ✅ Credentials cannot be decrypted without user's key1 + key2
 
 ## Threat Model
 
@@ -171,7 +171,7 @@ On logout:
 ### Attack Mitigation
 1. **LocalStorage Inspection**: Attackers see encrypted blobs, not tokens
 2. **Code Analysis**: Encryption algorithms visible, but keys are user-dependent
-3. **Session Hijacking**: Credentials require user's pnName + passcode to decrypt
+3. **Session Hijacking**: Credentials require user's key1 + key2 to decrypt
 4. **Logout**: All credentials cleared, requiring re-authentication
 
 ## Conclusion

@@ -9,8 +9,8 @@ import { getRecoveryAuthSession, type RecoveryAuthSession } from '../services/re
 function session(expiresInMs: number): RecoveryAuthSession {
   return {
     encryptedIdentity: { publicKey: 'pk', encryptedData: 'e', iv: 'i', salt: 's' },
-    pnName: 'k1',
-    passcode: 'k2',
+    key1: 'k1',
+    key2: 'k2',
     expiresAt: Date.now() + expiresInMs,
   };
 }

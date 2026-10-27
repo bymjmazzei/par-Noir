@@ -4,7 +4,7 @@ interface TransferData {
   id: string;
   ipfsCid: string;
   nickname: string;
-  transferPasscode: string;
+  transferCode: string;
   expiresAt: string;
   directData?: unknown;
 }
