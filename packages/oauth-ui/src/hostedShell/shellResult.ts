@@ -29,6 +29,13 @@ function identityFile(identity: unknown): string {
   return JSON.stringify(identity);
 }
 
+/** Display name for a new pN: "pN" + 9 random digits. The dashboard names the .pn file after it. */
+export function randomPnNickname(): string {
+  const random = new Uint32Array(1);
+  crypto.getRandomValues(random);
+  return `pN${Math.floor((random[0] / 0xffffffff) * 900000000) + 100000000}`;
+}
+
 export async function buildShellResult(args: {
   op: ShellOp;
   key1: string;
@@ -77,12 +84,14 @@ export async function buildShellResult(args: {
   }
 
   if (args.op === 'create') {
-    const created = await IdentityCrypto.createIdentity(args.key1, '', args.key2);
+    const nickname = randomPnNickname();
+    const created = await IdentityCrypto.createIdentity(args.key1, nickname, args.key2);
     const session = await IdentityCrypto.authenticateIdentity(created.identity, args.key2, args.key1);
     return {
       identityFile: identityFile(created.identity),
       did: session.id,
       publicKey: session.publicKey,
+      nickname,
     };
   }
 
