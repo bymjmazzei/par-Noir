@@ -306,15 +306,11 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           </div>
                         )}
                       </div>
-                      <SharePnCard
-                        accessToken={apiToken}
-                        pnIdentifier={recoveryVaultPnId || null}
-                        nickname={authenticatedUser?.nickname}
-                      />
                     </div>
                   </div>
                   
                   {/* Action Buttons */}
+                  <div className="flex flex-col items-center gap-2">
                   <div className="flex flex-wrap items-center justify-center gap-2">
                     <button 
                       onClick={() => setShowOnboardingWizard(true)}
@@ -338,6 +334,12 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                     >
                       Lock
                     </button>
+                  </div>
+                  <SharePnCard
+                    accessToken={apiToken}
+                    pnIdentifier={recoveryVaultPnId || null}
+                    nickname={authenticatedUser?.nickname}
+                  />
                   </div>
                 </div>
               </div>
