@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { ownerFetch, ownerGet } from '../services/ownerApiService';
 
 export interface DataPointRequest {
@@ -25,6 +26,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
   const [requests, setRequests] = useState<DataPointRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [waitingForCloud, setWaitingForCloud] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pnIdentifier, setPnIdentifier] = useState<string | null>(null);
   const loadedKeyRef = useRef<string | null>(null);
@@ -56,6 +58,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
     if (!opts?.force && loadedKeyRef.current === key) return;
     setLoading(true);
     setLoadError(null);
+    setWaitingForCloud(false);
     try {
       const res = await ownerGet(
         authToken,
@@ -66,6 +69,10 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
         const data = await res.json();
         setRequests(data.requests || []);
         loadedKeyRef.current = key;
+      } else if (res.status === 409) {
+        // Drive token not handed to the API yet (fresh unlock/recovery); reload on cloud-ready.
+        setRequests([]);
+        setWaitingForCloud(true);
       } else {
         setLoadError('Could not load requests');
         setRequests([]);
@@ -80,6 +87,14 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const onReady = () => {
+      void load();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
   }, [load]);
 
   const respond = async (requestId: string, action: 'approve' | 'decline') => {
@@ -111,6 +126,17 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
 
   if (loading) {
     return <p className="text-xs text-text-secondary">Loading data sharing requests…</p>;
+  }
+
+  if (waitingForCloud) {
+    return (
+      <div className="mb-6">
+        <p className="text-xs text-text-secondary">Connecting to your storage…</p>
+        <button type="button" className="text-xs text-primary mt-2 underline" onClick={() => void load({ force: true })}>
+          Retry
+        </button>
+      </div>
+    );
   }
 
   if (loadError && requests.length === 0) {
