@@ -28,6 +28,7 @@ import {
   updateRecoveryActiveSession,
 } from '../services/recoveryActiveSession';
 import { storeCustodianshipCredential } from '../services/recoveryCredentialStorage';
+import { pnFileName } from '../services/pnFileName';
 import type { SecureStorage } from '../utils/storage';
 import type {
   CustodianInvitationForm,
@@ -168,7 +169,7 @@ function downloadRecoveredPn(identity: EncryptedIdentity): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'recovered-identity.pn';
+  a.download = pnFileName(identity.publicKey);
   a.click();
   URL.revokeObjectURL(url);
 }

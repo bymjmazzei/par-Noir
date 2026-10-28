@@ -91,7 +91,7 @@ export const WizardStepContent: React.FC<WizardStepContentProps> = ({
           </div>
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
             <p className="text-sm text-blue-800 dark:text-blue-300">
-              <strong>File format:</strong> Your backup will be saved as "your-nickname-backup.json" and can be imported on any device using the "Import Identity" feature.
+              <strong>File format:</strong> Your backup will be saved as your pN identifier, like "pn-87f49f0fb345.pn", and can be imported on any device using the "Import Identity" feature.
             </p>
           </div>
           <button

@@ -13,6 +13,7 @@ import { MigrationCustodianReinviteStep } from './MigrationCustodianReinviteStep
 import { fetchOwnedAssets } from '../../services/ownedAssetsApi';
 import { summarizeOwnedAssetsByKind } from '../../services/ownedAssetsManifestService';
 import { SimpleStorage } from '../../utils/simpleStorage';
+import { pnFileName } from '../../services/pnFileName';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { HostedShellLaunch } from '@par-noir/oauth-ui';
 import { KEY_MIN_LENGTH } from '../../constants/credentialLabels';
@@ -289,7 +290,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
     });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'rotated-identity.pn';
+    a.download = pnFileName(resultIdentity.publicKey);
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -319,7 +320,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
 
       {step === 'unlock_old' || step === 'new_keys' ? (
         <HostedShellLaunch op="rotate" onSession={(session) => {
-          void import('../../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session, 'par-noir-rotated.json'));
+          void import('../../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session));
         }} />
       ) : null}
 

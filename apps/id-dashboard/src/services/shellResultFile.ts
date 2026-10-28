@@ -1,23 +1,25 @@
 import type { HostedShellSession } from '@par-noir/oauth-ui';
-import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import { pnFileName, pnFilePublicKey } from './pnFileName';
 
-/** The pN identifier derived from the public key, e.g. "pn-87f49f0fb345.pn". */
+/** Named from the returned file's own key: a rotated pN gets its new identifier, not the old session's. */
 export function shellIdentityFilename(session: HostedShellSession): string {
-  if (!session.publicKey) return 'par-noir-identity.pn';
-  return `${deriveCanonicalPnIdentifier(session.publicKey)}.pn`;
+  let filePublicKey: string | undefined;
+  try {
+    filePublicKey = pnFilePublicKey(JSON.parse(session.result?.identityFile || 'null'));
+  } catch {
+    filePublicKey = undefined;
+  }
+  return pnFileName(filePublicKey || session.publicKey || undefined);
 }
 
-export function downloadShellIdentityFile(
-  session: HostedShellSession,
-  filename = shellIdentityFilename(session)
-): void {
+export function downloadShellIdentityFile(session: HostedShellSession): void {
   const file = session.result?.identityFile;
   if (!file) return;
   const blob = new Blob([file], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = shellIdentityFilename(session);
   a.click();
   URL.revokeObjectURL(url);
 }

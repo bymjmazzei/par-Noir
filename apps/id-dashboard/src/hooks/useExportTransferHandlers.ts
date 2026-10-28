@@ -7,6 +7,7 @@ import type React from 'react';
 import { IdentityCrypto } from '@par-noir/identity-crypto';
 import SimpleStorage from '../utils/simpleStorage';
 import { createDeviceBoundPnExport } from '../services/deviceBoundPnService';
+import { pnFileName } from '../services/pnFileName';
 import type { SecureStorage } from '../utils/storage';
 import type { DIDInfo } from '../types/app';
 import type { useDeviceAuthState } from './useDeviceAuthState';
@@ -79,7 +80,6 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
     generateQRCode,
     setError,
     showSuccessMessage,
-    logError
   } = params;
 
   // Open export options directly (auth happens when user picks an option that needs it)
@@ -188,23 +188,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
       };
       const exportedData = JSON.stringify(exportData, null, 2);
 
-      let filename = 'identity-backup.pn';
-      try {
-        let nickname = 'identity';
-        if (authenticatedUser && authenticatedUser.nickname) {
-          nickname = authenticatedUser.nickname;
-        }
-
-        const cleanNickname = nickname
-          .replace(/[^a-zA-Z0-9\s]/g, '')
-          .replace(/\s+/g, '-')
-          .toLowerCase()
-          .substring(0, 20);
-
-        filename = `${cleanNickname}-backup.json`;
-      } catch (parseError) {
-        logError('Parse error:', parseError);
-      }
+      const filename = pnFileName(currentIdentity.publicKey ?? identityToExport.publicKey);
 
       const blob = new Blob([exportedData], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -287,18 +271,7 @@ export function useExportTransferHandlers(params: UseExportTransferHandlersParam
 
       const exportedData = JSON.stringify(exportData, null, 2);
 
-      let filename = 'identity-device-bound.pn.json';
-      try {
-        const nickname = authenticatedUser.nickname || 'identity';
-        const cleanNickname = nickname
-          .replace(/[^a-zA-Z0-9\s]/g, '')
-          .replace(/\s+/g, '-')
-          .toLowerCase()
-          .substring(0, 20);
-        filename = `${cleanNickname}-device-bound.pn.json`;
-      } catch {
-        // keep default filename
-      }
+      const filename = pnFileName(currentIdentity.publicKey ?? identityToExport.publicKey, 'device-bound');
 
       const blob = new Blob([exportedData], { type: 'application/json' });
       const url = URL.createObjectURL(blob);

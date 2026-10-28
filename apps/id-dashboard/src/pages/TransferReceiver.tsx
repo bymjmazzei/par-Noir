@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { pnFileName, pnFilePublicKey } from '../services/pnFileName';
 
 interface TransferData {
   id: string;
@@ -84,12 +85,7 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
       const jsonString = JSON.stringify(originalPnFileData, null, 2);
       const pnFileBlob = new Blob([jsonString], { type: 'application/json' });
 
-      const cleanNickname = transferData.nickname
-        .replace(/[^a-zA-Z0-9\s]/g, '')
-        .replace(/\s+/g, '-')
-        .toLowerCase()
-        .substring(0, 20);
-      const filename = `${cleanNickname}-backup.json`;
+      const filename = pnFileName(pnFilePublicKey(originalPnFileData));
 
       const downloadUrl = URL.createObjectURL(pnFileBlob);
       const downloadLink = document.createElement('a');

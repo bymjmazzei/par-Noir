@@ -1,5 +1,11 @@
 // Test setup file for Jest
 import '@testing-library/jest-dom';
+import { TextDecoder, TextEncoder } from 'util';
+
+// jsdom has no TextEncoder; pN identifiers (file names, Drive paths) hash with it.
+if (typeof globalThis.TextEncoder === 'undefined') {
+  Object.assign(globalThis, { TextEncoder, TextDecoder });
+}
 
 // Mock crypto for tests
 Object.defineProperty(global, 'crypto', {
