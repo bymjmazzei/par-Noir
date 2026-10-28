@@ -20,6 +20,7 @@ import {
   scopeNeedsConsentScreen,
 } from './mintConsentCode';
 import { parseConsentUnlockParams, type ConsentUnlockParams } from './parseConsentParams';
+import { validateCreateKeys } from './createKeys';
 
 function isDesktopUnlockApp(): boolean {
   if (typeof window === 'undefined') return false;
@@ -358,7 +359,12 @@ function ConsentUnlockInner(props: {
   const [unlockMode, setUnlockMode] = useState<UnlockMode>('file');
   const [key1, setKey1] = useState('');
   const [key2, setKey2] = useState('');
+  const [key1Confirm, setKey1Confirm] = useState('');
+  const [key2Confirm, setKey2Confirm] = useState('');
   const shellFactorRef = useRef({ key1: '', key2: '' });
+  /** op=create: the pN built from the form. finishWithCode returns it instead of building a second one. */
+  const createdShellResultRef = useRef<Record<string, string> | null>(null);
+  const isCreate = params.flow === 'shell' && params.shellOp === 'create';
   const [fileName, setFileName] = useState('');
   const [identityJson, setIdentityJson] = useState<unknown>(null);
   const [usbKeyName, setUsbKeyName] = useState('');
@@ -481,21 +487,27 @@ function ConsentUnlockInner(props: {
       const active = consentParamsNow(params);
       if (active.flow === 'shell') {
         const factors = shellFactorRef.current;
-        const built = await buildShellResult({
-          op: active.shellOp || 'session',
-          key1: factors.key1,
-          key2: factors.key2,
-          vaultPayload: active.vaultPayload,
-          agentLabel: active.agentLabel,
-          agentDelegation: active.agentDelegation,
-          saveAgentIdentity,
-          unlocked: {
-            did: unlocked.did,
-            publicKey: unlocked.publicKey,
-            decryptedIdentity: unlocked.decryptedIdentity as unknown as Record<string, unknown>,
-            encryptedIdentity: unlocked.encryptedIdentity as unknown as Record<string, unknown>,
-          },
-        });
+        let built: Record<string, string> | undefined;
+        if (active.shellOp === 'create') {
+          if (!createdShellResultRef.current) throw new Error('Create failed');
+          built = createdShellResultRef.current;
+        } else {
+          built = await buildShellResult({
+            op: active.shellOp || 'session',
+            key1: factors.key1,
+            key2: factors.key2,
+            vaultPayload: active.vaultPayload,
+            agentLabel: active.agentLabel,
+            agentDelegation: active.agentDelegation,
+            saveAgentIdentity,
+            unlocked: {
+              did: unlocked.did,
+              publicKey: unlocked.publicKey,
+              decryptedIdentity: unlocked.decryptedIdentity as unknown as Record<string, unknown>,
+              encryptedIdentity: unlocked.encryptedIdentity as unknown as Record<string, unknown>,
+            },
+          });
+        }
         const shellSession = {
           v: 1 as const,
           op: active.shellOp || 'session',
@@ -567,6 +579,9 @@ function ConsentUnlockInner(props: {
   const resetFormAfterBrokerHandoff = useCallback(() => {
     setKey1('');
     setKey2('');
+    setKey1Confirm('');
+    setKey2Confirm('');
+    createdShellResultRef.current = null;
     setFileName('');
     setIdentityJson(null);
     setUsbKeyName('');
@@ -752,33 +767,34 @@ function ConsentUnlockInner(props: {
       e.preventDefault();
       if (busy) return;
       setError(null);
-      if (!key1 || !key2) {
-        setError('Please enter Key 1 and Key 2');
-        return;
-      }
-      shellFactorRef.current = { key1, key2 };
-
-      if (params.flow === 'shell' && params.shellOp === 'create') {
+      if (isCreate) {
+        const problem = validateCreateKeys({ key1, key1Confirm, key2, key2Confirm });
+        if (problem) {
+          setError(problem);
+          return;
+        }
+        shellFactorRef.current = { key1, key2 };
         setBusy(true);
         try {
           const built = await buildShellResult({ op: 'create', key1, key2 });
-          const fragment = encodeShellReturn({
-            v: 1,
-            op: 'create',
-            did: built?.did || '',
-            publicKey: built?.publicKey || '',
-            accessToken: '',
-            result: built,
-          });
-          const target = applyShellFragment(params.redirectUri, fragment);
-          await returnShellToCaller(target);
+          if (!built?.identityFile) throw new Error('Create failed');
+          createdShellResultRef.current = built;
+          const row = parseIdentityFileJson(JSON.parse(built.identityFile));
+          const unlocked = await decryptIdentityFileLocal(row, key1, key2);
+          await afterUnlock(unlocked, key1, key2);
         } catch (err) {
+          createdShellResultRef.current = null;
           setError(err instanceof Error ? err.message : 'Create failed');
         } finally {
           setBusy(false);
         }
         return;
       }
+      if (!key1 || !key2) {
+        setError('Please enter Key 1 and Key 2');
+        return;
+      }
+      shellFactorRef.current = { key1, key2 };
 
       if (unlockMode === 'file' && !identityJson) {
         setError('Please select your pN identity file');
@@ -834,6 +850,9 @@ function ConsentUnlockInner(props: {
       busy,
       key1,
       key2,
+      key1Confirm,
+      key2Confirm,
+      isCreate,
       unlockMode,
       identityJson,
       usbKeyText,
@@ -842,7 +861,6 @@ function ConsentUnlockInner(props: {
       nfcPayload,
       params,
       afterUnlock,
-      returnShellToCaller,
     ]
   );
 
@@ -869,8 +887,8 @@ function ConsentUnlockInner(props: {
     }
   }, [authCode, bundle, dataPointIds, dataPointChoices, availableDataPoints, finishWithCode]);
 
-  const key1Props = secretKeyInputProps('key1', 'unlock');
-  const key2Props = secretKeyInputProps('key2', 'unlock');
+  const key1Props = secretKeyInputProps('key1', isCreate ? 'create' : 'unlock');
+  const key2Props = secretKeyInputProps('key2', isCreate ? 'create' : 'unlock');
   const resolvedAssetBase = resolveConsentAssetBase(assetBase);
   const logoSrc = logoUrl || `${resolvedAssetBase}/branding/Par-Noir-Logo-White.png`;
   const broker = layout === 'broker';
@@ -923,34 +941,40 @@ function ConsentUnlockInner(props: {
 
         {step === 'unlock' && !vaultFactors && !handoffDone && (
           <div className="form-container">
-            {!broker ? <div className="step-indicator">Step 1: Unlock Your pN</div> : null}
+            {isCreate ? (
+              <div className="step-indicator">Create a new pN</div>
+            ) : !broker ? (
+              <div className="step-indicator">Step 1: Unlock Your pN</div>
+            ) : null}
 
-            <div className="mode-row" role="tablist" aria-label="Unlock method">
-              <button
-                type="button"
-                className={`mode-btn${unlockMode === 'file' ? ' active' : ''}`}
-                onClick={() => changeMode('file')}
-              >
-                File
-              </button>
-              <button
-                type="button"
-                className={`mode-btn${unlockMode === 'usb' ? ' active' : ''}`}
-                onClick={() => changeMode('usb')}
-              >
-                USB
-              </button>
-              <button
-                type="button"
-                className={`mode-btn${unlockMode === 'nfc' ? ' active' : ''}`}
-                onClick={() => changeMode('nfc')}
-              >
-                NFC
-              </button>
-            </div>
+            {!isCreate && (
+              <div className="mode-row" role="tablist" aria-label="Unlock method">
+                <button
+                  type="button"
+                  className={`mode-btn${unlockMode === 'file' ? ' active' : ''}`}
+                  onClick={() => changeMode('file')}
+                >
+                  File
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn${unlockMode === 'usb' ? ' active' : ''}`}
+                  onClick={() => changeMode('usb')}
+                >
+                  USB
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn${unlockMode === 'nfc' ? ' active' : ''}`}
+                  onClick={() => changeMode('nfc')}
+                >
+                  NFC
+                </button>
+              </div>
+            )}
 
             <form {...SECRET_KEY_FORM_ATTRS} onSubmit={onUnlock}>
-              {unlockMode === 'file' && (
+              {!isCreate && unlockMode === 'file' && (
                 <div className="form-group">
                   <label>pN Identity File</label>
                   <FileDrop
@@ -964,7 +988,7 @@ function ConsentUnlockInner(props: {
                 </div>
               )}
 
-              {unlockMode === 'usb' && (
+              {!isCreate && unlockMode === 'usb' && (
                 <>
                   <p className="physical-hint">
                     Use the same USB backup as in the dashboard: key file (and payload if you use two
@@ -1003,7 +1027,7 @@ function ConsentUnlockInner(props: {
                 </>
               )}
 
-              {unlockMode === 'nfc' && (
+              {!isCreate && unlockMode === 'nfc' && (
                 <>
                   <p className="physical-hint">
                     Hold your NFC card or fob to the back of your phone (Chrome on Android). Then enter
@@ -1043,6 +1067,22 @@ function ConsentUnlockInner(props: {
                 </div>
               </div>
 
+              {isCreate && (
+                <div className="form-group">
+                  <label>Confirm Key 1</label>
+                  <div className="input-wrapper">
+                    <input
+                      {...key1Props}
+                      name={`${key1Props.name}-confirm`}
+                      type={showKey1 ? 'text' : 'password'}
+                      placeholder="Enter Key 1 again"
+                      value={key1Confirm}
+                      onChange={(ev) => setKey1Confirm(ev.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="form-group">
                 <label>Key 2</label>
                 <div className="input-wrapper">
@@ -1064,14 +1104,32 @@ function ConsentUnlockInner(props: {
                 </div>
               </div>
 
+              {isCreate && (
+                <div className="form-group">
+                  <label>Confirm Key 2</label>
+                  <div className="input-wrapper">
+                    <input
+                      {...key2Props}
+                      name={`${key2Props.name}-confirm`}
+                      type={showKey2 ? 'text' : 'password'}
+                      placeholder="Enter Key 2 again"
+                      value={key2Confirm}
+                      onChange={(ev) => setKey2Confirm(ev.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
               {error ? <div className="error">{error}</div> : null}
 
               <button type="submit" className="btn-primary btn-full" disabled={busy}>
                 {busy ? (
                   <>
                     <span className="loading" />
-                    Unlocking…
+                    {isCreate ? 'Creating…' : 'Unlocking…'}
                   </>
+                ) : isCreate ? (
+                  'Create pN'
                 ) : (
                   'Unlock pN'
                 )}

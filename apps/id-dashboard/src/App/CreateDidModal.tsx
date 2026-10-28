@@ -1,13 +1,14 @@
 import React from 'react';
-import { HostedShellLaunch } from '@par-noir/oauth-ui';
+import { HostedShellLaunch, type HostedShellSession } from '@par-noir/oauth-ui';
 
 export interface CreateDidModalProps {
   showCreateForm: boolean;
   setShowCreateForm: React.Dispatch<React.SetStateAction<boolean>>;
+  onCreateSession: (session: HostedShellSession) => void;
 }
 
 export function CreateDidModal(props: CreateDidModalProps) {
-  const { showCreateForm, setShowCreateForm } = props;
+  const { showCreateForm, setShowCreateForm, onCreateSession } = props;
   if (!showCreateForm) return null;
 
   return (
@@ -23,16 +24,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
           op="create"
           label="Create in par Noir Unlock"
           onSession={(session) => {
-            const file = session.result?.identityFile;
-            if (file) {
-              const blob = new Blob([file], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'par-noir-identity.json';
-              a.click();
-              URL.revokeObjectURL(url);
-            }
+            onCreateSession(session);
             setShowCreateForm(false);
           }}
         />

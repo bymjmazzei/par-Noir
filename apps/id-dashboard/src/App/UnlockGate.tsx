@@ -10,7 +10,7 @@ export interface UnlockGateProps {
   selectedStoredIdentity: any;
   handleIdentitySelect: any;
   handleDeleteIdentity: any;
-  setShowCreateForm: any;
+  handleCreateSession: (session: HostedShellSession) => void;
   setSelectedStoredIdentity: any;
   setShowUnlockFromUsbModal: any;
   hasNfcSupport: any;
@@ -20,7 +20,8 @@ export interface UnlockGateProps {
 }
 
 export function UnlockGate(props: UnlockGateProps) {
-  const { authenticatedUser, showTransferReceiver, handleShellSession, loading, setShowRecoveryModal } = props;
+  const { authenticatedUser, showTransferReceiver, handleShellSession, handleCreateSession, loading, setShowRecoveryModal } =
+    props;
 
   return (
     <>
@@ -54,9 +55,7 @@ export function UnlockGate(props: UnlockGateProps) {
                 }}
               />
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <HostedShellLaunch buttonOnly op="create" label="Create New pN" onSession={(session) => {
-                  void import('../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session));
-                }} />
+                <HostedShellLaunch buttonOnly op="create" label="Create New pN" onSession={handleCreateSession} />
                 <button
                   type="button"
                   className="w-full text-sm font-medium"

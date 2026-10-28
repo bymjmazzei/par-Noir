@@ -10,6 +10,7 @@ import {
   encodeShellReturn,
   parseShellReturn,
   shellHandoffDisposition,
+  shellSessionFromBrokerPayload,
 } from './session';
 
 describe('hosted shell session', () => {
@@ -113,6 +114,22 @@ describe('hosted shell session', () => {
     expect(url.startsWith('https://pn.parnoir.com/#pn_shell=')).toBe(true);
     expect(url).not.toContain('key2');
     expect(parseShellReturn(url)?.code).toBe('auth-code');
+  });
+
+  it('accepts a create result from the broker once Unlock has minted a code for the new pN', () => {
+    const created = shellSessionFromBrokerPayload({
+      shellSession: {
+        v: 1,
+        op: 'create',
+        did: 'did:pn:new',
+        publicKey: 'pub-new',
+        code: 'auth-code',
+        result: { identityFile: '{"publicKey":"pub-new","encryptedData":"ct"}' },
+      },
+    });
+    expect(created?.op).toBe('create');
+    expect(created?.code).toBe('auth-code');
+    expect(created?.result?.identityFile).toContain('pub-new');
   });
 
   it('keeps the app only when the page hides, and opens the web page when a browser click stays visible', () => {

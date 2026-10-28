@@ -35,7 +35,8 @@ import { AppChrome } from './App/AppChrome';
 import { CloudReconnectHost } from './components/storage/CloudReconnectHost';
 import { UnkeyedUnlockAlertEmitter } from './components/UnkeyedUnlockAlertEmitter';
 import { CloudSessionProvider } from './contexts/CloudSessionContext';
-import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT, type HostedShellSession } from '@par-noir/oauth-ui';
+import { downloadShellIdentityFile } from './services/shellResultFile';
 import { resolveLocalGoogleAccessTokenAsync } from './services/deviceApiService';
 
 // Custom hooks for state management
@@ -980,6 +981,11 @@ function App() {
     logError
   });
 
+  const handleCreateSession = (session: HostedShellSession) => {
+    downloadShellIdentityFile(session);
+    void handleShellSession(session);
+  };
+
 
 
 
@@ -1244,7 +1250,7 @@ function App() {
           selectedStoredIdentity={selectedStoredIdentity}
           handleIdentitySelect={handleIdentitySelect}
           handleDeleteIdentity={handleDeleteIdentity}
-          setShowCreateForm={setShowCreateForm}
+          handleCreateSession={handleCreateSession}
           setSelectedStoredIdentity={setSelectedStoredIdentity}
           setShowUnlockFromUsbModal={setShowUnlockFromUsbModal}
           hasNfcSupport={hasNfcSupport}
@@ -1261,6 +1267,7 @@ function App() {
         <CreateDidModal
           showCreateForm={showCreateForm}
           setShowCreateForm={setShowCreateForm}
+          onCreateSession={handleCreateSession}
         />
 
         <ImportDidModal

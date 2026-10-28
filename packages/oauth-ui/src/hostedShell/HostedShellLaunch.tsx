@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { pollUnlockDesktopBrokerOnce } from '../unlockDesktopBrokerPoll';
 import { tryPreferUnlockApp } from '../unlockPreferApp';
 import { bindHandoffKem } from '../handoffSeal';
@@ -14,6 +14,7 @@ import {
   shellHandoffDisposition,
   shellSessionFromBrokerPayload,
   type HostedShellSession,
+  type ShellLaunchArgs,
   type ShellOp,
 } from './session';
 
@@ -65,6 +66,8 @@ export type HostedShellLaunchProps = {
 export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [handedOff, setHandedOff] = useState(false);
+  const [waitingForApp, setWaitingForApp] = useState(false);
+  const launchRef = useRef<ShellLaunchArgs | null>(null);
   const returnTo =
     props.returnTo ||
     (typeof window !== 'undefined'
@@ -87,6 +90,7 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
       if (!session) return;
       if (props.op && session.op !== props.op && session.op !== 'session') return;
       applied = true;
+      setWaitingForApp(false);
       props.onSession(session);
       window.dispatchEvent(new CustomEvent('pn-hosted-shell-session', { detail: session }));
       try {
@@ -161,6 +165,8 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
       agentLabel: props.agentLabel,
       agentDelegation,
     };
+    launchRef.current = launch;
+    setWaitingForApp(true);
     void (async () => {
       const choice = await tryPreferUnlockApp(buildShellLaunchUrl(launch));
       if (!choice.opened) {
@@ -180,8 +186,15 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
         props.onSession(session);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unlock did not return to this tab');
+      } finally {
+        setWaitingForApp(false);
       }
     })();
+  };
+
+  const openWebUnlock = () => {
+    if (!launchRef.current) return;
+    window.location.assign(buildShellWebUrl(launchRef.current));
   };
 
   return (
@@ -210,6 +223,16 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
           {props.label || 'Continue in par Noir Unlock'}
         </button>
       )}
+      {waitingForApp && !handedOff ? (
+        <button
+          type="button"
+          className="w-full text-xs mt-2"
+          style={{ background: 'none', border: 'none', color: '#d1d5db', textDecoration: 'underline' }}
+          onClick={openWebUnlock}
+        >
+          Use the web version instead
+        </button>
+      ) : null}
       {error ? <p className="text-sm text-red-400 mt-2">{error}</p> : null}
     </div>
   );

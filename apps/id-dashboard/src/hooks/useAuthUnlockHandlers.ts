@@ -438,8 +438,14 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     showSuccessMessage('pN unlocked from USB successfully!');
   };
 
+  const handledShellCodesRef = React.useRef(new Set<string>());
   const handleShellSession = async (session: HostedShellSession) => {
     if (!session.code && !session.accessToken && session.op !== 'seal_vault') return;
+    // onSession and the pn-hosted-shell-session event both deliver a fragment return; a code is single-use.
+    if (session.code) {
+      if (handledShellCodesRef.current.has(session.code)) return;
+      handledShellCodesRef.current.add(session.code);
+    }
     setLoading(true);
     setError(null);
     try {
