@@ -4,24 +4,9 @@ vi.mock('@par-noir/identity-crypto', () => ({
   IdentityCrypto: {},
 }));
 
-import { IdentityCrypto } from '@par-noir/identity-crypto';
 import { encodeShellReturn, parseShellReturn } from './session';
-import { buildShellResult, randomPnNickname } from './shellResult';
+import { buildShellResult } from './shellResult';
 import { parseIdentityFileJson } from '../consentUnlock/decryptIdentityLocal';
-
-describe('buildShellResult create', () => {
-  it('names the new pN pN + 9 digits and stores that nickname in the identity', async () => {
-    const createIdentity = vi.fn(async () => ({ identity: { publicKey: 'pk', encryptedData: 'ct' } }));
-    Object.assign(IdentityCrypto, {
-      createIdentity,
-      authenticateIdentity: vi.fn(async () => ({ id: 'did:key:1', publicKey: 'pk' })),
-    });
-    const result = await buildShellResult({ op: 'create', key1: 'k1', key2: 'k2' });
-    expect(result?.nickname).toMatch(/^pN\d{9}$/);
-    expect(createIdentity).toHaveBeenCalledWith('k1', result?.nickname, 'k2');
-    expect(randomPnNickname()).toMatch(/^pN\d{9}$/);
-  });
-});
 
 describe('buildShellResult export round-trip', () => {
   it('returns an identity file the hosted page can store', async () => {

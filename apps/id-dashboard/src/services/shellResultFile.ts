@@ -1,14 +1,10 @@
 import type { HostedShellSession } from '@par-noir/oauth-ui';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
-/** "pN977164442" -> "pn977164442.pn", the name create has always used for the portable file. */
+/** The pN identifier derived from the public key, e.g. "pn-87f49f0fb345.pn". */
 export function shellIdentityFilename(session: HostedShellSession): string {
-  const nickname = session.result?.nickname || session.nickname || '';
-  const clean = nickname
-    .replace(/[^a-zA-Z0-9\s]/g, '')
-    .replace(/\s+/g, '-')
-    .toLowerCase()
-    .substring(0, 20);
-  return `${clean || 'par-noir-identity'}.pn`;
+  if (!session.publicKey) return 'par-noir-identity.pn';
+  return `${deriveCanonicalPnIdentifier(session.publicKey)}.pn`;
 }
 
 export function downloadShellIdentityFile(
