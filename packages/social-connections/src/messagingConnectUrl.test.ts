@@ -4,20 +4,30 @@ import {
   parseMessagingConnectPath
 } from './messagingConnectUrl.js';
 
+const HEX = 'abc123def4567890'.repeat(4);
+const PN = `pn-${HEX}`;
+
 describe('messagingConnectUrl', () => {
   it('builds connect URL with normalized lowercase pn id', () => {
-    const url = buildMessagingConnectUrl('https://messaging.parnoir.com', 'PN-ABC123DEF456');
-    expect(url).toBe('https://messaging.parnoir.com/connect/pn-abc123def456');
+    const url = buildMessagingConnectUrl('https://messaging.parnoir.com', PN.toUpperCase());
+    expect(url).toBe(`https://messaging.parnoir.com/connect/${PN}`);
   });
 
   it('parses pn connect path without vanity resolve', () => {
-    expect(parseMessagingConnectPath('/connect/pn-abc123def456')).toEqual({
+    expect(parseMessagingConnectPath(`/connect/${PN}`)).toEqual({
       kind: 'pn',
-      pnIdentifier: 'pn-abc123def456'
+      pnIdentifier: PN
     });
-    expect(parseMessagingConnectPath('/connect/PN-ABC123DEF456')).toEqual({
+    expect(parseMessagingConnectPath(`/connect/${PN.toUpperCase()}`)).toEqual({
       kind: 'pn',
-      pnIdentifier: 'pn-abc123def456'
+      pnIdentifier: PN
+    });
+  });
+
+  it('treats a short legacy pn id as a vanity slug', () => {
+    expect(parseMessagingConnectPath('/connect/pn-abc123def456')).toEqual({
+      kind: 'vanity',
+      slug: 'pn-abc123def456'
     });
   });
 

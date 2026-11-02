@@ -474,7 +474,7 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         // Otherwise, if parentFolderName is provided, find it (but don't create - use auto-find instead)
         else if (parentFolderName) {
           // SECURITY: Reject parentFolderName with DID - this should never happen
-          if (parentFolderName.includes('did:key:')) {
+          if (parentFolderName.includes('did:')) {
             console.error(`[CreateFolder] Rejected parentFolderName with DID: ${parentFolderName}`);
             // Don't return error - just ignore parentFolderName and use auto-find instead
             console.log(`[CreateFolder] Ignoring parentFolderName with DID, using auto-find instead`);

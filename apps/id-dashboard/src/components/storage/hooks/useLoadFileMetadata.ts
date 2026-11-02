@@ -63,9 +63,8 @@ export function useLoadFileMetadata({
           console.log('✅ [Metadata] Loading owner index from the device sheet...');
           let pnIdentifier: string | undefined;
             
-            // Use VolumeIdGenerator for consistent pnIdentifier generation (same as desktop app)
             try {
-              const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+              const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
               const sessionId = authenticatedUser?.id;
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
@@ -73,8 +72,8 @@ export function useLoadFileMetadata({
               const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
               
               if (publicKey) {
-                pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
-                console.log(`✅ [Metadata] Generated pN identifier (VolumeIdGenerator): ${(pnIdentifier || '').substring(0, 8)}...`);
+                pnIdentifier = deriveCanonicalPnIdentifier(publicKey);
+                console.log(`✅ [Metadata] Generated pN identifier: ${(pnIdentifier || '').substring(0, 8)}...`);
                 console.log(`📁 [Metadata] Expected folder: "par Noir - ${(pnIdentifier || '').substring(0, 8)}..."`);
                 
                 // Also log fallback for comparison
@@ -99,7 +98,7 @@ export function useLoadFileMetadata({
               console.warn('⚠️ [Metadata] Failed to generate volume ID, using fallback:', volumeIdError);
             }
             
-            // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
+            // STANDARDIZED: Only use deriveCanonicalPnIdentifier - no fallbacks
             // If credentials aren't available, we cannot generate the identifier
             if (!pnIdentifier) {
               console.warn('⚠️ [Metadata] Cannot generate standardized pN identifier - credentials required');
@@ -194,21 +193,6 @@ export function useLoadFileMetadata({
       }
 
       await metadataIndexService.initialize();
-
-      try {
-        const preferredDid =
-          resolvedAuth?.publicKey
-            ? (resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`)
-            : authenticatedUser?.id && authenticatedUser.id.startsWith('did:')
-              ? authenticatedUser.id
-              : undefined;
-
-        // Dashboard reads metadata directly from Google Drive, not from aggregator API
-        // The aggregator API is for browser app and third-party consumers
-        // Skip syncFromCentralAggregator - dashboard should read companion metadata from Google Drive files
-      } catch (centralSyncError) {
-        console.warn('⚠️ [Metadata] Central aggregator sync failed (non-blocking):', centralSyncError);
-      }
 
       const metadataMap = new Map<string, PublicMetadata>();
       const allPublicMetadata = await metadataIndexService.getAllPublicMetadata();

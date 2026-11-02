@@ -13,7 +13,6 @@ type UnlockedUser = {
 export function publicKeyFromUnlockedUser(user: UnlockedUser): string | null {
   if (!user) return null;
   if (typeof user.publicKey === 'string' && user.publicKey.length > 0) return user.publicKey;
-  if (typeof user.id === 'string' && user.id.startsWith('did:key:')) return user.id;
   return null;
 }
 

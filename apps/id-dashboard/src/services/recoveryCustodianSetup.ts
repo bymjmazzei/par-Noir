@@ -29,10 +29,10 @@ export async function assignCustodianVaultAndIssueCredential(params: {
   resendExisting?: boolean;
 }): Promise<{ custodianshipZkp: string; shareIndex: number }> {
   if (!params.apiToken) throw new Error('Sign in to the par Noir API before inviting custodians.');
-  const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+  const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
   const pnId =
     params.userPnIdentifier
-    || (await VolumeIdGenerator.generateCanonicalVolumeId(params.encryptedIdentity.publicKey));
+    || deriveCanonicalPnIdentifier(params.encryptedIdentity.publicKey);
 
   let summary = await fetchRecoveryCustodianSummary(pnId, params.apiToken);
   const existing = summary?.custodians.find((c) => c.custodianId === params.custodianId);

@@ -31,8 +31,8 @@ export class ZKPDataPointsService {
     credentials: { key1: string; key2: string },
     publicKey?: string
   ): Promise<string> {
-    const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-    return await VolumeIdGenerator.generateCanonicalVolumeId(publicKey || '');
+    const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+    return deriveCanonicalPnIdentifier(publicKey || '');
   }
 
   /**

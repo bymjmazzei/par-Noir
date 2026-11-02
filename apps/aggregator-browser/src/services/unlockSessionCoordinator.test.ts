@@ -49,8 +49,8 @@ describe('runUnlockPostPrefetch', () => {
     expect(isEngagementPrefetchAllowed()).toBe(true);
   });
 
-  it('skips did:key identifiers', async () => {
-    await runUnlockPostPrefetch('did:key:abc');
+  it('skips did:pn identifiers', async () => {
+    await runUnlockPostPrefetch(`did:pn:${'a'.repeat(64)}`);
     expect(fetchStorageAccounts).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,11 @@
 // Self-contained cryptographic utilities
-import { mlDsa65Keygen, mlKem768Keygen, bytesToBase64, deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto';
+import {
+  mlDsa65Keygen,
+  mlKem768Keygen,
+  bytesToBase64,
+  deriveCanonicalPnIdentifier,
+  deriveDidFromPublicKey,
+} from '@par-noir/pqc-crypto';
 import {
   splitSecret,
   generateRecoveryMaster,
@@ -30,7 +36,6 @@ export type {
 const DEFAULT_PROFILE_PICTURE = '/branding/Par-Noir-Icon-White.png';
 
 export class IdentityCrypto {
-  private static readonly DID_PREFIX = 'did:key:';
   private static readonly TOKEN_EXPIRY = 3600; // 1 hour
 
   /**
@@ -41,7 +46,7 @@ export class IdentityCrypto {
       const dsa = mlDsa65Keygen();
       const kem = mlKem768Keygen();
       const publicKey = bytesToBase64(dsa.publicKey);
-      const did = this.DID_PREFIX + (await this.generateDIDIdentifier(publicKey));
+      const did = deriveDidFromPublicKey(publicKey);
 
       return {
         publicKey,
@@ -719,25 +724,6 @@ export class IdentityCrypto {
       return bytes.buffer;
     } catch (error) {
       throw new Error(`Failed to convert base64 to ArrayBuffer: ${error}`);
-    }
-  }
-
-  /**
-   * Generate DID identifier from public key with cryptographic fallback
-   */
-  private static async generateDIDIdentifier(publicKey: string): Promise<string> {
-    try {
-      const encoder = new TextEncoder();
-      const keyBuffer = encoder.encode(publicKey);
-      
-      // Generate a deterministic identifier from the public key
-      const hashBuffer = await crypto.subtle.digest('SHA-256', keyBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-    } catch (error) {
-      // Cryptographic fallback using crypto.getRandomValues()
-      const randomBytes = crypto.getRandomValues(new Uint8Array(8));
-      return Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
     }
   }
 

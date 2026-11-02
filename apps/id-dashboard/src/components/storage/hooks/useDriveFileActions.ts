@@ -187,8 +187,7 @@ export function useDriveFileActions({
     if (!key1 || !publicKey) {
       if (authenticatedUser && credentials) {
         key1 = credentials.key1;
-        publicKey = authenticatedUser.publicKey ||
-          (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
+        publicKey = authenticatedUser.publicKey || null;
         key2ToUse = credentials.key2 || null;
         console.log('✅ [Download] Using authenticatedUser prop and credentials:', { key1: !!key1, publicKey: !!publicKey });
       }
@@ -208,8 +207,7 @@ export function useDriveFileActions({
           const sessionId = session.id || (session as any)?.publicKey || null;
           const sessionCredentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
           key1 = sessionCredentials?.key1 || null;
-          publicKey = (session as any).publicKey ||
-            (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
+          publicKey = (session as any).publicKey || null;
           console.log('✅ [Download] Loaded from storage:', { key1: !!key1, publicKey: !!publicKey });
         }
       } catch (err) {

@@ -1,8 +1,9 @@
 /**
  * @par-noir/identity-crypto
  *
- * Canonical IdentityCrypto (create/unlock) plus VolumeIdGenerator, EncryptionManager,
- * cryptoWorkerManager, and SecureCredentialManager.
+ * Canonical IdentityCrypto (create/unlock) plus EncryptionManager,
+ * cryptoWorkerManager, and SecureCredentialManager. pN ids come from
+ * `deriveCanonicalPnIdentifier` in `@par-noir/pqc-crypto`.
  *
  * Export leaf modules before IdentityCrypto to keep init order stable under bundlers.
  */
@@ -14,7 +15,6 @@ export { SecureCredentialManager } from './secureCredentialManager';
 export { EncryptionManager } from './encryptionManager';
 export { decryptPrivateFile, decryptPrivateFileBlob } from './privateFile';
 export type { PrivateFileOwner, PrivateFilePackageShape } from './privateFile';
-export { VolumeIdGenerator } from './volumeIdGenerator';
 export { safePnDisplayName } from './displayName';
 
 export { IdentityCrypto } from './identityCrypto';

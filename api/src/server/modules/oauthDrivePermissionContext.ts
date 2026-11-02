@@ -7,6 +7,7 @@
  */
 
 import type { Request } from 'express';
+import { pnIdentifierFromDid } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   isPnDriveIndexComplete,
   readPnDriveIndex,
@@ -55,10 +56,7 @@ export function buildOAuthIdentityCandidates(params: {
   }
   if (params.did) {
     add(params.did);
-    if (params.did.startsWith('did:key:')) {
-      const keyPart = params.did.split(':').pop();
-      if (keyPart) add(keyPart);
-    }
+    add(pnIdentifierFromDid(params.did) ?? undefined);
   }
 
   return candidates;

@@ -22,7 +22,7 @@ echo "📌 Using VITE_API_ENDPOINT=$VITE_API_ENDPOINT (set env before ./deploy.s
 
 # Pen: verified-author bypass for agent/user QA fixtures (.local/cursor-test-pn + .local/test-pn).
 # OAuth pn_identifier values only — not pn name / passcode. Override to empty to disable.
-export VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST="${VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST:-did:key:b2f31d3ddf7661ea,did:key:87f49f0fb34520b3,pn374951080}"
+export VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST="${VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST:-}"
 echo "📌 Pen template allowlist: ${VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST:-(empty)}"
 
 # PQC crypto (dashboard + API + apps depend on dist/)

@@ -18,7 +18,7 @@ import {
   MIGRATION_STATE_KEY,
   type MigrationReport,
 } from '@par-noir/identity-migration';
-import { VolumeIdGenerator } from '@par-noir/aggregator-domain';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { base64ToBytes, bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
 import {
   generateRecoveryMaster,
@@ -107,7 +107,7 @@ async function toKeyMaterial(
   const mlDsaPublicKey = base64ToBytes(encryptedIdentity.publicKey);
   const mlKemSecretKey = identity.pqcSecrets?.mlKemSecretKey || encryptedIdentity.mlKemPublicKey || '';
   const mlKemPublicKey = encryptedIdentity.mlKemPublicKey || '';
-  const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(encryptedIdentity.publicKey);
+  const pnIdentifier = deriveCanonicalPnIdentifier(encryptedIdentity.publicKey);
   return {
     did,
     publicKey: encryptedIdentity.publicKey,

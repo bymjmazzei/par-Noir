@@ -211,11 +211,6 @@ export const FileViewer: React.FC<{ file: DriveFile; accountId: string; backend:
             }
           }
           
-          // Fallback: extract from DID if it's in did:key format
-          if (!publicKey && session.did.startsWith('did:key:')) {
-            publicKey = session.did.substring(8);
-          }
-          
           if (!publicKey) {
             setError(true);
             setLoading(false);

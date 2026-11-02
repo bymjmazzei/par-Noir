@@ -2,6 +2,7 @@
  * Single unlock bootstrap: userinfo, feed tokens, profile, device registry wire.
  */
 
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { API_ENDPOINT } from '../config/api';
 import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PNOAuthService, type FeedToken, type OAuthUserInfo } from './pnOAuthService';
@@ -85,7 +86,7 @@ async function loadFeedTokens(
 }
 
 async function loadOwnProfileDisplayName(pnIdentifier: string | undefined): Promise<string | null> {
-  if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) return null;
+  if (!pnIdentifier || pnIdentifier.startsWith(PN_DID_PREFIX)) return null;
   try {
     const profile = await getUserProfile(pnIdentifier);
     return profile.displayName ?? null;

@@ -1,7 +1,5 @@
+import { isPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { withPnPrefix } from './normalize.js';
-
-/** Canonical pN volume id: pn- + 12 hex chars (public-key hash). */
-export const MESSAGING_CONNECT_PN_ID_RE = /^pn-[0-9a-f]{12}$/i;
 
 export function normalizeConnectPnIdentifier(pnIdentifier: string): string {
   const trimmed = String(pnIdentifier || '').trim();
@@ -35,7 +33,7 @@ export function parseMessagingConnectPath(pathname: string): MessagingConnectPat
   if (segment.includes('.')) return null;
   const slug = segment.replace(/^@+/, '').toLowerCase();
   if (!slug) return null;
-  if (MESSAGING_CONNECT_PN_ID_RE.test(slug)) {
+  if (isPnIdentifier(slug)) {
     return { kind: 'pn', pnIdentifier: slug };
   }
   return { kind: 'vanity', slug };

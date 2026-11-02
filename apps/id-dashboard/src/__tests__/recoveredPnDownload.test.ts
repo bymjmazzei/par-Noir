@@ -19,7 +19,7 @@ describe('recovered .pn download', () => {
     const setError = jest.fn();
 
     const handlers = useRecoveryCustodianHandlers({
-      recoveredIdentityExport: { publicKey: 'pk', encryptedData: 'e', iv: 'i', salt: 's' },
+      recoveredIdentityExport: { publicKey: Buffer.alloc(1952, 1).toString('base64'), encryptedData: 'e', iv: 'i', salt: 's' },
       deviceAuth: { isKeyedSession: false, deviceRequiredMessage: 'This action requires a keyed device.' },
       setError,
     } as unknown as Parameters<typeof useRecoveryCustodianHandlers>[0]);

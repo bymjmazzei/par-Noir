@@ -175,8 +175,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
       }
 
       // Get pN identifier
-      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-      const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey || '');
+      const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+      const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey || '');
 
       // Store permissions via API (will be saved to Google Drive)
       const path = `/api/users/${pnIdentifier}/third-party-permissions`;
@@ -248,8 +248,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         return;
       }
       const authToken = await resolveOwnerAuthToken();
-      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-      const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey || '');
+      const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+      const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey || '');
       const path = `/api/users/${pnIdentifier}/third-party-permissions`;
       const response = await ownerFetch(
         authToken,
@@ -313,8 +313,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         const credentials = SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
         if (!credentials || !authenticatedUser?.id) return;
         const authToken = await resolveOwnerAuthToken();
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey || '');
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+        const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey || '');
         const path = `/api/users/${pnIdentifier}/third-party-permissions`;
         await Promise.all(
           Object.entries(nextToolPermissions).map(([toolId, permission]) =>

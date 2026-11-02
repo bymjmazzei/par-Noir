@@ -53,7 +53,7 @@ async function signJwt(priv: CryptoKey, payload: Record<string, unknown>, kid = 
 }
 
 const NOW = Date.parse('2026-10-21T12:00:00Z');
-const AGENT_PUBLIC_KEY = 'agent-public-key-b64';
+const AGENT_PUBLIC_KEY = btoa(String.fromCharCode(...new Uint8Array(1952).fill(7)));
 const AGENT_PN = deriveCanonicalPnIdentifier(AGENT_PUBLIC_KEY);
 const OWNER_ID = 'did:key:owner0000000000';
 

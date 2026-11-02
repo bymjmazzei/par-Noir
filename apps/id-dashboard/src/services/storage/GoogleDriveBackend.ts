@@ -18,6 +18,7 @@ import {
   refreshDriveAccessToken,
   type GoogleAccountRow
 } from '@par-noir/device-cloud-credentials';
+import { isPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../config/googleDriveClientId';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { getStoredToken } from '../parNoirOAuthInline';
@@ -80,7 +81,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         const cacheData = JSON.parse(cached);
         let validEntries = 0;
         Object.entries(cacheData).forEach(([key, value]) => {
-          if (key.match(/^pn-[a-f0-9]{12}$/)) {
+          if (isPnIdentifier(key)) {
             this.pnFolderCache.set(key, value as string);
             validEntries++;
           }

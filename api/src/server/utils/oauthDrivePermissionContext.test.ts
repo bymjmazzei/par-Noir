@@ -285,11 +285,16 @@ describe('buildOAuthIdentityCandidates', () => {
   });
 
   it('includes normalized pn and did', () => {
+    const hex = 'a1'.repeat(32);
     const candidates = buildOAuthIdentityCandidates({
-      pnIdentifier: '59e4692524b7',
-      did: 'did:key:z6MkhaXgBZDv7H7urywpFfP3xwT7L1BDAXv9C5UyqftV19jG',
+      pnIdentifier: hex,
+      did: `did:pn:${hex}`,
     });
-    expect(candidates).toContain('pn-59e4692524b7');
-    expect(candidates).toContain('did:key:z6MkhaXgBZDv7H7urywpFfP3xwT7L1BDAXv9C5UyqftV19jG');
+    expect(candidates).toEqual([`pn-${hex}`, `did:pn:${hex}`]);
+  });
+
+  it('adds the pn id carried by a did:pn when no pn id is given', () => {
+    const hex = 'b2'.repeat(32);
+    expect(buildOAuthIdentityCandidates({ did: `did:pn:${hex}` })).toEqual([`did:pn:${hex}`, `pn-${hex}`]);
   });
 });

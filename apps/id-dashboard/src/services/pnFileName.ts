@@ -14,7 +14,7 @@ export function pnFilePublicKey(file: unknown): string | undefined {
   return found as string | undefined;
 }
 
-/** Every pN download is named by its pN identifier, e.g. "pn-87f49f0fb345.pn". */
+/** Every pN download is named by its pN identifier, e.g. "pn-<64 hex>.pn". */
 export function pnFileName(publicKey: string | undefined, variant?: 'device-bound'): string {
   const base = publicKey ? deriveCanonicalPnIdentifier(publicKey) : 'par-noir-identity';
   return variant ? `${base}.${variant}.pn` : `${base}.pn`;

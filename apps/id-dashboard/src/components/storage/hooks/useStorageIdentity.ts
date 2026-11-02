@@ -5,7 +5,7 @@
  * and the standardized pN identifier derived from it.
  *
  * STANDARDIZED pN Identifier - Single source of truth
- * Formula: SHA256(key1:key2:publicKey) → first 12 hex chars → pn-{hash}
+ * Formula: pn-{SHA-256(ML-DSA-65 public key bytes) as 64 hex chars}
  * This is the ONLY method used across all implementations (web, desktop, mobile)
  */
 import React from 'react';
@@ -54,15 +54,15 @@ export function useStorageIdentity({
       const currentResolvedAuth = resolvedAuthRef.current;
       const currentAuthenticatedUser = authenticatedUserRef.current;
       
-      // STANDARDIZED: Use VolumeIdGenerator - the ONLY method for pN identifier generation
+      // STANDARDIZED: deriveCanonicalPnIdentifier is the ONLY method for pN identifier generation
       try {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
         // SECURITY: Get publicKey from resolvedAuth or authenticatedUser (public data)
       const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
       
         // Canonical pn must match OAuth JWT (public key only).
         if (publicKey) {
-          const identifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+          const identifier = deriveCanonicalPnIdentifier(publicKey);
           // CRITICAL: Store WITH 'pn-' prefix - this is the standardized format
           // API expects pn-{hash} format, not just {hash}
           pnIdentifierRef.current = identifier; // Keep full format: pn-{12-char-hex}
@@ -100,8 +100,8 @@ export function useStorageIdentity({
     
     if (publicKey) {
       try {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const identifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+        const identifier = deriveCanonicalPnIdentifier(publicKey);
         // Cache it for future use
         pnIdentifierRef.current = identifier;
         return identifier;
@@ -181,16 +181,7 @@ export function useStorageIdentity({
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         const key1 = credentials?.key1 || null;
         
-        // Try multiple ways to extract publicKey
-        let publicKey = authenticatedUser.publicKey;
-        if (!publicKey && authenticatedUser.id) {
-          if (typeof authenticatedUser.id === 'string' && authenticatedUser.id.startsWith('did:key:')) {
-            publicKey = authenticatedUser.id;
-          } else if (typeof authenticatedUser.id === 'string') {
-            // Use id as publicKey if it's not a DID
-            publicKey = authenticatedUser.id;
-          }
-        }
+        const publicKey = authenticatedUser.publicKey;
         
         if (import.meta.env.DEV) {
           console.log('🔍 [FileStorageAggregator] Extracted from prop:', { hasKey1: !!key1, hasPublicKey: !!publicKey, hasId: !!authenticatedUser.id });
@@ -213,7 +204,7 @@ export function useStorageIdentity({
         const authToken = authenticatedUser?.authToken;
         const fromUnlock = storageAuthFromUnlockedUser({
           id: authenticatedUser.id,
-          publicKey: publicKey || authenticatedUser.publicKey,
+          publicKey,
           authToken,
         });
 
@@ -252,8 +243,7 @@ export function useStorageIdentity({
         const session = await storage.getCurrentSession();
         
         if (session) {
-          const publicKey = (session as any).publicKey || 
-            (session.id && session.id.startsWith('did:key:') ? session.id : session.id);
+          const publicKey = (session as any).publicKey;
           const sessionAuthToken = (session as any).authToken;
           
           if (import.meta.env.DEV) {
@@ -324,15 +314,15 @@ export function useStorageIdentity({
     void (async () => {
       let pnIdentifier: string | undefined;
 
-      // Canonical pN id: SHA256(publicKey) → first 12 hex chars → pn-{hash}
+      // Canonical pN id: pn- + SHA-256(ML-DSA public key bytes), 64 hex chars
       try {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
         const sessionId = authenticatedUser?.id;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
         // SECURITY: Get Key 1 from credentials (secrets), publicKey from resolvedAuth (public)
         if (credentials?.key1 && credentials?.key2 && resolvedAuth?.publicKey) {
-          pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(resolvedAuth.publicKey);
+          pnIdentifier = deriveCanonicalPnIdentifier(resolvedAuth.publicKey);
           console.log('[DesktopUnlock] Generated pN identifier (standardized):', (pnIdentifier || '').substring(0, 8) + '...');
         } else {
           console.warn('[DesktopUnlock] Cannot generate standardized pN identifier - credentials required');

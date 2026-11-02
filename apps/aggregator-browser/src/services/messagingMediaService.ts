@@ -84,9 +84,6 @@ async function resolveSessionIdentity(): Promise<{ did: string; publicKey: strin
       publicKey = userInfo.public_key;
     }
   }
-  if (!publicKey && session.did.startsWith('did:key:')) {
-    publicKey = session.did.substring(8);
-  }
   if (!publicKey) {
     throw new Error('Missing identity public key');
   }

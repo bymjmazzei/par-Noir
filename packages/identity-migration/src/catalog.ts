@@ -1,4 +1,4 @@
-import { VolumeIdGenerator } from '@par-noir/aggregator-domain';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import type { MigrationPlan, MigrationStep } from './types';
 
 export function createMigrationId(): string {
@@ -30,12 +30,8 @@ export async function buildMigrationPlan(params: {
   migrationId?: string;
 }): Promise<MigrationPlan> {
   const migrationId = params.migrationId ?? createMigrationId();
-  const predecessorPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(
-    params.predecessorPublicKey
-  );
-  const successorPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(
-    params.successorPublicKey
-  );
+  const predecessorPnIdentifier = deriveCanonicalPnIdentifier(params.predecessorPublicKey);
+  const successorPnIdentifier = deriveCanonicalPnIdentifier(params.successorPublicKey);
   return {
     migrationId,
     predecessorPnIdentifier,

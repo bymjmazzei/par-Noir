@@ -5,7 +5,7 @@
  * the share token up front (so making the file public later never has to
  * re-derive it), then uploads into the identity-scoped "par Noir" Drive folder.
  *
- * The pN identifier must come from VolumeIdGenerator only — a fallback identifier
+ * The pN identifier must come from deriveCanonicalPnIdentifier only — a fallback identifier
  * would write into a different folder than every other client.
  */
 import React from 'react';
@@ -89,8 +89,7 @@ export function useDriveUpload({
     if (!key1 || !publicKey) {
       if (authenticatedUser && credentials) {
         key1 = credentials.key1;
-        publicKey = authenticatedUser.publicKey ||
-          (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
+        publicKey = authenticatedUser.publicKey || null;
         key2ToUse = credentials.key2 || null;
         console.log('✅ [Upload] Using authenticatedUser prop and credentials:', { key1: !!key1, publicKey: !!publicKey });
       }
@@ -110,8 +109,7 @@ export function useDriveUpload({
           const sessionId = session.id || (session as any)?.publicKey || null;
           const sessionCredentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
           key1 = sessionCredentials?.key1 || null;
-          publicKey = (session as any).publicKey ||
-            (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
+          publicKey = (session as any).publicKey || null;
           console.log('✅ [Upload] Loaded from storage:', { key1: !!key1, publicKey: !!publicKey });
         }
       } catch (err) {
@@ -255,10 +253,10 @@ export function useDriveUpload({
       // Canonical pn must match OAuth JWT (public key only).
       let pnIdentifier: string;
       try {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
 
         if (publicKey) {
-          pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+          pnIdentifier = deriveCanonicalPnIdentifier(publicKey);
           console.log(`✅ [Upload] Generated pN identifier (canonical): ${(pnIdentifier || '').substring(0, 8)}...`);
           console.log(`📁 [Upload] Will use folder: "par Noir - ${(pnIdentifier || '').substring(0, 8)}..."`);
         } else {

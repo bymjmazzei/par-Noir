@@ -3,6 +3,7 @@
  * Provides military-grade input validation for the Identity Protocol
  */
 
+import { PN_DID_RE } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   KEY_1_LABEL,
   KEY_2_LABEL,
@@ -24,8 +25,7 @@ export interface ValidationRule {
 }
 
 export class InputValidator {
-  // DID format validation
-  private static readonly DID_PATTERN = /^did:key:[a-zA-Z0-9]{32,}$/;
+  private static readonly DID_PATTERN = PN_DID_RE;
   
   // Username validation
   private static readonly USERNAME_PATTERN = /^[a-zA-Z0-9-]{3,20}$/;
@@ -97,7 +97,7 @@ export class InputValidator {
     }
 
     if (!this.DID_PATTERN.test(did)) {
-      errors.push('Invalid DID format. Must be in format: did:key:<base64-encoded-key>');
+      errors.push('Invalid DID format. Must be in format: did:pn:<64 hex chars>');
     }
 
     // Check for suspicious patterns

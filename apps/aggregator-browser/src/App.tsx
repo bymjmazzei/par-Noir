@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { Feed, IndexedFile } from './types/aggregator';
 import { useUserState } from './contexts/UserStateContext';
 import { buildFeedRailItems } from './components/FeedRail';
@@ -615,11 +616,11 @@ function App() {
     };
   }, [viewMode, activeFeedId, firstScreenPosterKey]);
 
-  // Load bulk engagement stats when files are loaded (stable pn id only — skip did:key transition).
+  // Load bulk engagement stats when files are loaded (stable pn id only — skip did:pn transition).
   const stablePnIdentifier =
     userState.isUnlocked &&
     userState.pnIdentifier &&
-    !userState.pnIdentifier.startsWith('did:key:')
+    !userState.pnIdentifier.startsWith(PN_DID_PREFIX)
       ? userState.pnIdentifier
       : null;
 

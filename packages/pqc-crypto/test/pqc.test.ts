@@ -19,6 +19,12 @@ import {
   verifyOauthUnlockProof,
   verifyRecoverySetupProof,
   bytesToBase64,
+  isPnDid,
+  isPnIdentifier,
+  pnDidFromIdentifier,
+  pnIdentifierFromDid,
+  PN_DID_RE,
+  PN_IDENTIFIER_RE,
 } from '../src/index';
 
 describe('@par-noir/pqc-crypto', () => {
@@ -84,8 +90,28 @@ describe('@par-noir/pqc-crypto', () => {
     expect(
       verifyOauthUnlockProof(signature, params, bytesToBase64(other.publicKey))
     ).toBe(false);
-    expect(deriveCanonicalPnIdentifier(publicKey)).toMatch(/^pn-[0-9a-f]{12}$/);
-    expect(deriveDidFromPublicKey(publicKey)).toMatch(/^did:key:[0-9a-f]{16}$/);
+  });
+
+  it('pN id and did:pn are the full SHA-256 of the raw public key bytes', () => {
+    const dsa = mlDsa65Keygen();
+    const publicKey = bytesToBase64(dsa.publicKey);
+    const pn = deriveCanonicalPnIdentifier(publicKey);
+    const did = deriveDidFromPublicKey(publicKey);
+    expect(pn).toMatch(PN_IDENTIFIER_RE);
+    expect(did).toMatch(PN_DID_RE);
+    expect(pn.slice('pn-'.length)).toBe(did.slice('did:pn:'.length));
+    expect(pn).toBe(deriveCanonicalPnIdentifier(publicKey));
+    expect(deriveCanonicalPnIdentifier(bytesToBase64(mlDsa65Keygen().publicKey))).not.toBe(pn);
+    expect(isPnIdentifier(pn)).toBe(true);
+    expect(isPnIdentifier('pn-87f49f0fb345')).toBe(false);
+    expect(isPnDid(did)).toBe(true);
+    expect(isPnDid(pn)).toBe(false);
+    expect(pnIdentifierFromDid(did)).toBe(pn);
+    expect(pnDidFromIdentifier(pn)).toBe(did);
+    expect(pnIdentifierFromDid('did:pn:short')).toBeNull();
+    expect(pnDidFromIdentifier('pn-87f49f0fb345')).toBeNull();
+    expect(() => deriveCanonicalPnIdentifier('pk-b64')).toThrow();
+    expect(() => deriveCanonicalPnIdentifier(bytesToBase64(new Uint8Array(32)))).toThrow();
   });
 
   it('recovery setup proof binds the challenge, pN and key, and is not an unlock proof', () => {
@@ -95,7 +121,7 @@ describe('@par-noir/pqc-crypto', () => {
     const signature = signRecoverySetupProof(params, dsa.secretKey);
     expect(verifyRecoverySetupProof(signature, params)).toBe(true);
     expect(verifyRecoverySetupProof(signature, { ...params, challenge: 'other' })).toBe(false);
-    expect(verifyRecoverySetupProof(signature, { ...params, pnIdentifier: 'pn-000000000000' })).toBe(false);
+    expect(verifyRecoverySetupProof(signature, { ...params, pnIdentifier: `pn-${'0'.repeat(64)}` })).toBe(false);
     expect(verifyRecoverySetupProof(signature, { ...params, publicKey: bytesToBase64(mlDsa65Keygen().publicKey) })).toBe(false);
     expect(verifyRecoverySetupProof('not base64 !!', params)).toBe(false);
     const unlockSig = signOauthUnlockProof(

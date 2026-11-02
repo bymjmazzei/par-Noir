@@ -15,6 +15,8 @@ import { buildMigrationPlan, allRequiredStepsComplete } from '../src/catalog';
 import { markStepComplete, createInitialProgress } from '../src/runner';
 import { rekeyConnectionAsRequester } from '../src/dmRekey';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
+import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
+import { PN_IDENTIFIER_RE } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
 function bytesToB64(bytes: Uint8Array): string {
   let s = '';
@@ -38,20 +40,21 @@ describe('driveFiles', () => {
 describe('catalog + runner', () => {
   it('builds plan with canonical pn ids', async () => {
     const plan = await buildMigrationPlan({
-      predecessorPublicKey: 'pred-pk',
-      successorPublicKey: 'succ-pk',
-      predecessorDid: 'did:key:pred',
-      successorDid: 'did:key:succ',
+      predecessorPublicKey: bytesToB64(ml_dsa65.keygen().publicKey),
+      successorPublicKey: bytesToB64(ml_dsa65.keygen().publicKey),
+      predecessorDid: 'did:pn:pred',
+      successorDid: 'did:pn:succ',
     });
-    expect(plan.predecessorPnIdentifier).toMatch(/^pn-[a-f0-9]{12}$/);
-    expect(plan.successorPnIdentifier).toMatch(/^pn-[a-f0-9]{12}$/);
+    expect(plan.predecessorPnIdentifier).toMatch(PN_IDENTIFIER_RE);
+    expect(plan.successorPnIdentifier).toMatch(PN_IDENTIFIER_RE);
+    expect(plan.predecessorPnIdentifier).not.toBe(plan.successorPnIdentifier);
     expect(plan.steps.length).toBeGreaterThan(0);
   });
 
   it('tracks step completion', async () => {
     const plan = await buildMigrationPlan({
-      predecessorPublicKey: 'a',
-      successorPublicKey: 'b',
+      predecessorPublicKey: bytesToB64(ml_dsa65.keygen().publicKey),
+      successorPublicKey: bytesToB64(ml_dsa65.keygen().publicKey),
       predecessorDid: 'did:a',
       successorDid: 'did:b',
     });

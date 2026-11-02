@@ -1,5 +1,6 @@
 import type { Application, Request, Response } from 'express';
 import type { StorageCredentialsEnvelope, StorageProviderId } from '@par-noir/user-owned-storage';
+import { isPnDid } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   buildAccountId,
   ensureSocialCloudOnCredentials,
@@ -56,7 +57,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       }
 
       let pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
-      if (identityId.startsWith('did:key:')) {
+      if (isPnDid(identityId)) {
         const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload?.pnIdentifier) {
           return res.json({ success: true, accounts: [], primaryProvider: null });

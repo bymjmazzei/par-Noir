@@ -26,7 +26,7 @@ export class IdentityValidator {
     }
 
     if (!ValidationPatterns.DID_PATTERN.test(did)) {
-      errors.push('Invalid DID format. Must be in format: did:key:<base64-encoded-key>');
+      errors.push('Invalid DID format. Must be in format: did:pn:<64 hex chars>');
     }
 
     if (SecurityValidator.containsXSS(did)) {

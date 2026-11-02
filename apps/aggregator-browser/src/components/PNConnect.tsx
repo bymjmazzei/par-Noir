@@ -5,6 +5,7 @@
  */
 
 import { Lock, Heart, MessageCircle, Share2 } from 'lucide-react';
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { Capacitor } from '@capacitor/core';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
@@ -63,7 +64,7 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
         const identifier = userInfo.pn_identifier || userInfo.did;
         if (!identifier) throw new Error('No identifier available from user info');
         setUnlocked(identifier);
-        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith(PN_DID_PREFIX)) {
           void runUnlockPostPrefetch(userInfo.pn_identifier);
         }
         markOAuthHandoffComplete();

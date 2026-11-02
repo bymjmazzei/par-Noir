@@ -2,6 +2,7 @@
  * Unlock-scoped post-unlock prefetch: one wave per stable pn identifier per page lifetime.
  */
 
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { PNOAuthService } from './pnOAuthService';
 import { fetchStorageAccounts, canonicalStorageAccountsPnId } from './storageApiClient';
 import { prefetchConnectionsList } from './connectionService';
@@ -40,7 +41,7 @@ export function isEngagementPrefetchAllowed(): boolean {
 }
 
 function isStablePn(pnIdentifier: string | undefined): pnIdentifier is string {
-  return !!pnIdentifier && !pnIdentifier.startsWith('did:key:');
+  return !!pnIdentifier && !pnIdentifier.startsWith(PN_DID_PREFIX);
 }
 
 /**

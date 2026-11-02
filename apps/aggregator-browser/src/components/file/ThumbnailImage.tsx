@@ -125,8 +125,7 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
             setError(true);
             return;
           }
-          let publicKey = session?.publicKey;
-          if (!publicKey && session.did.startsWith('did:key:')) publicKey = session.did.substring(8);
+          const publicKey = session?.publicKey;
           if (!publicKey) {
             setError(true);
             return;
@@ -194,8 +193,7 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
                   if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
                     const session = PNOAuthService.loadSession();
                     if (session?.did) {
-                      let publicKey = session?.publicKey;
-                      if (!publicKey && session.did.startsWith('did:key:')) publicKey = session.did.substring(8);
+                      const publicKey = session?.publicKey;
                       if (publicKey) {
                         const encryptedText = await blob.text();
                         const encPkg = JSON.parse(encryptedText);
@@ -238,7 +236,6 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
               /* silent */
             }
           }
-          if (!publicKey && session.did.startsWith('did:key:')) publicKey = session.did.substring(8);
           if (!publicKey) {
             setError(true);
             return;

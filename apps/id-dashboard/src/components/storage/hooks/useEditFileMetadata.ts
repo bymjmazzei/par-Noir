@@ -171,17 +171,19 @@ export function useEditFileMetadata({
           if (!publicKey) {
             throw new Error('Public identity key is required to update metadata');
           }
-          // Generate stable pN identifier using VolumeIdGenerator for consistency
+          const { deriveCanonicalPnIdentifier, deriveDidFromPublicKey } = await import(
+            '@par-noir/pqc-crypto/oauth-unlock-proof'
+          );
           let pnIdentifier: string | undefined;
+          let ownerDid: string | undefined;
           try {
-            const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-            pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+            pnIdentifier = deriveCanonicalPnIdentifier(publicKey);
+            ownerDid = deriveDidFromPublicKey(publicKey);
           } catch (volumeIdError) {
-            console.warn('⚠️ [UpdateMetadata] Failed to generate volume ID:', volumeIdError);
+            console.warn('⚠️ [UpdateMetadata] Failed to derive pN identifier:', volumeIdError);
           }
 
-          // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
-          if (!pnIdentifier) {
+          if (!pnIdentifier || !ownerDid) {
             console.warn('⚠️ [UpdateMetadata] Cannot generate standardized pN identifier - credentials required');
             console.warn('⚠️ [UpdateMetadata] Metadata update skipped - pN identifier required');
             return;
@@ -205,11 +207,11 @@ export function useEditFileMetadata({
               isPublic: false,
               creator: {
                 '@type': 'Person',
-                '@id': publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`,
+                '@id': ownerDid,
                 identifier: {
                   '@type': 'PropertyValue',
                   name: 'DID',
-                  value: publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`
+                  value: ownerDid
                 }
               }
             } as PublicMetadata;
@@ -252,7 +254,7 @@ export function useEditFileMetadata({
             visibility: currentMetadata.isPublic ? 'public' : 'private',
             uploadedAt: currentMetadata.uploadDate || new Date().toISOString(),
             owner: {
-              did: publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`,
+              did: ownerDid,
               identifier: pnIdentifier
             },
             tags: tags,

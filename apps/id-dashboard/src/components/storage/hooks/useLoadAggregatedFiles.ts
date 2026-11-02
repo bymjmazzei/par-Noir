@@ -211,7 +211,7 @@ export function useLoadAggregatedFiles({
       let currentPnIdentifier: string | undefined = undefined;
       
       try {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
         
         // Get credentials (prioritize resolvedAuth, fallback to authenticatedUser + sessionStorage)
         let key1: string | null = null;
@@ -229,8 +229,7 @@ export function useLoadAggregatedFiles({
           key2 = credentials.key2;
         } else if (authenticatedUser && credentials) {
           key1 = credentials.key1;
-          publicKey = authenticatedUser.publicKey || 
-            (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
+          publicKey = authenticatedUser.publicKey || null;
           key2 = credentials.key2;
           try {
             // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
@@ -249,8 +248,7 @@ export function useLoadAggregatedFiles({
             await storage.init();
             const session = await storage.getCurrentSession();
             if (session) {
-              if (!publicKey) publicKey = (session as any).publicKey || 
-                (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
+              if (!publicKey) publicKey = (session as any).publicKey || null;
               if (!key2) {
                 try {
                   // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
@@ -272,7 +270,7 @@ export function useLoadAggregatedFiles({
 
         // Canonical pn must match OAuth JWT (public key only).
         if (publicKey) {
-          currentPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+          currentPnIdentifier = deriveCanonicalPnIdentifier(publicKey);
           console.log(`✅ [loadFiles] Generated pN identifier (canonical): ${(currentPnIdentifier || '').substring(0, 8)}...`);
           console.log(`📁 [loadFiles] Expected folder name: "par Noir - ${(currentPnIdentifier || '').substring(0, 8)}..."`);
         } else {
@@ -282,7 +280,7 @@ export function useLoadAggregatedFiles({
         console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
       }
       
-      // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
+      // STANDARDIZED: Only use deriveCanonicalPnIdentifier - no fallbacks
       // If we don't have credentials, we cannot generate the identifier
       // This ensures consistency - same credentials always produce same identifier
       if (!currentPnIdentifier) {

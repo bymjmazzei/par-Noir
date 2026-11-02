@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { fetchStorageAccounts } from '../services/storageApiClient';
 import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
@@ -14,7 +15,7 @@ export function useStorageConnected(pnIdentifier?: string): boolean | null {
     let cancelled = false;
 
     const run = async () => {
-      if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) {
+      if (!pnIdentifier || pnIdentifier.startsWith(PN_DID_PREFIX)) {
         if (!cancelled) setConnected(false);
         return;
       }

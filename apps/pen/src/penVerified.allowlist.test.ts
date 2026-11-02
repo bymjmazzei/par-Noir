@@ -3,6 +3,9 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const HASH_A = 'a'.repeat(64);
+const HASH_B = 'b'.repeat(64);
+
 describe('penVerified allowlist', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -13,29 +16,29 @@ describe('penVerified allowlist', () => {
     vi.stubEnv('VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST', '');
     const { canPublishPublicTemplate } = await import('./services/penVerified');
     expect(
-      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: 'did:key:abc' })
+      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: `did:pn:${HASH_A}` })
     ).toBe(false);
   });
 
-  it('allows listed pnIdentifier across pn- / did:key aliases', async () => {
+  it('allows listed pnIdentifier across pn- / did:pn aliases', async () => {
     vi.stubEnv(
       'VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST',
-      'did:key:system-a, did:key:system-b'
+      `did:pn:${HASH_A}, pn-${HASH_B}`
     );
     const { canPublishPublicTemplate, isVerifiedAuthor } = await import(
       './services/penVerified'
     );
     expect(
-      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: 'did:key:system-a' })
+      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: `did:pn:${HASH_A}` })
     ).toBe(true);
     expect(
-      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: 'pn-system-a' })
+      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: `pn-${HASH_A}` })
     ).toBe(true);
-    expect(isVerifiedAuthor({ accessToken: 't', pnIdentifier: 'did:key:system-b' })).toBe(
+    expect(isVerifiedAuthor({ accessToken: 't', pnIdentifier: `did:pn:${HASH_B}` })).toBe(
       true
     );
     expect(
-      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: 'did:key:other' })
+      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: `pn-${HASH_A.slice(0, 63)}f` })
     ).toBe(false);
   });
 });

@@ -850,7 +850,7 @@ export class FeedService {
             updated_at = NOW()
         `, [feedId, ownerPnIdentifier, encryptedKey1, encryptedKey2, publicKey]);
         
-        // Generate sub-pN identifier from feed tokens using VolumeIdGenerator formula
+        // Generate sub-pN identifier from feed tokens
         // Formula: SHA256(key1:key2:publicKey) → first 12 hex chars → feed-{hash}
         const publicKeyHash = crypto.createHash('sha256').update(publicKey, 'utf8').digest('hex').substring(0, 12);
         const combined = `${feedKey1}:${feedKey2}:${publicKeyHash}`;

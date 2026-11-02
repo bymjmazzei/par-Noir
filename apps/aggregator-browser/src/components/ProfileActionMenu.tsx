@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { createPortal } from 'react-dom';
 import { User, MessageCircle, UserPlus, Check, X, Clock, Pencil, UserMinus, BadgeCheck } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
@@ -116,7 +117,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   const isValidPnIdentifier = (id: string): boolean => {
     if (!id) return false;
     // Skip DIDs
-    if (id.startsWith('did:key:')) return false;
+    if (id.startsWith(PN_DID_PREFIX)) return false;
     // Skip public keys (very long base64 strings, typically >200 chars)
     if (id.length > 200) return false;
     // Skip if it looks like a base64-encoded public key

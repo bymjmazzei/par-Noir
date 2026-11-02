@@ -20,6 +20,9 @@
   },
   "license": "UNLICENSED",
   "private": true,
+  "dependencies": {
+    "@par-noir/pqc-crypto": "file:../pqc-crypto"
+  },
   "devDependencies": {
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"

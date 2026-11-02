@@ -1,3 +1,4 @@
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from './pnOAuthService';
 
@@ -10,7 +11,7 @@ export interface BulkEngagementStatsResult {
 
 export function bulkStatsRequestKey(pnIdentifier: string | undefined, fileIds: string[]): string {
   const pn =
-    pnIdentifier && !pnIdentifier.startsWith('did:key:')
+    pnIdentifier && !pnIdentifier.startsWith(PN_DID_PREFIX)
       ? pnIdentifier.startsWith('pn-')
         ? pnIdentifier.slice(3)
         : pnIdentifier

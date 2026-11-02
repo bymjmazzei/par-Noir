@@ -1,5 +1,6 @@
 import React from 'react';
 import { FolderOpen } from 'lucide-react';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
 import type {
   SecureVolumeIdentity,
@@ -95,14 +96,22 @@ export const DesktopSecureFolderPanel: React.FC = () => {
         return;
       }
 
+      let pnIdentifier: string;
+      try {
+        pnIdentifier = payload.pnIdentifier?.trim() || deriveCanonicalPnIdentifier(payload.publicKey);
+      } catch {
+        setError('Secure folder unlock failed: missing pN public key.');
+        return;
+      }
+
       const context: SecureVolumeUnlockPayload = {
         publicKey: payload.publicKey,
-        pnIdentifier: payload.pnIdentifier,
+        pnIdentifier,
         authToken: payload.authToken.trim(),
       };
 
       contextRef.current = context;
-      setIdentity({ publicKey: payload.publicKey, pnIdentifier: payload.pnIdentifier });
+      setIdentity({ publicKey: payload.publicKey, pnIdentifier });
 
       await unlockWithContext(context);
     },

@@ -9,6 +9,7 @@ import type { Application, Request, Response } from 'express';
 import { safeClientErrorMessage } from '../../utils/safeError';
 import { hashIdentifier, safeLogger } from '../../../utils/logger';
 import { getDeviceAccessMode } from '@par-noir/device-auth';
+import { isPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   gateOwnerRoute,
   gateStorageCredentialsPut,
@@ -31,7 +32,7 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         const { credentials, cid } = req.body;
 
         // Only canonical pN ids (public-key hashes) are logged; anything else could be Key 1.
-        const sanitizedIdentityId = /^pn-[0-9a-f]{12}$/.test(identityId || '') ? identityId : '[REDACTED]';
+        const sanitizedIdentityId = isPnIdentifier(identityId) ? identityId : '[REDACTED]';
 
         console.log(`[StorageCredentials PUT] Received request for identityId: ${sanitizedIdentityId}`);
         console.log(`[StorageCredentials PUT] Credentials structure:`, {

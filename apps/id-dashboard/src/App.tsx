@@ -176,9 +176,9 @@ function App() {
       return;
     }
     void (async () => {
-      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+      const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
       // Must match OAuth JWT pnIdentifier (canonical from public key only).
-      const canonical = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey);
+      const canonical = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
       if (!cancelled) setRecoveryVaultPnId(canonical);
     })();
     return () => {
@@ -422,8 +422,8 @@ function App() {
     (async () => {
       try {
         if (!authenticatedUser?.publicKey) return;
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const pn = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey);
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+        const pn = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
         const res = await fetch(
           `${API_ENDPOINT}/api/v1/identity/successor?pn_identifier=${encodeURIComponent(pn)}`
         );

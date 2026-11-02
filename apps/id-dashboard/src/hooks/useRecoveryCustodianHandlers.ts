@@ -469,9 +469,9 @@ This invitation expires in 24 hours.`;
         throw new Error('Unlock your pN and sign in to accept custodianship.');
       }
 
-      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+      const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
       const { loadIdentityRecoveryKeys } = await import('../services/recoveryRelayFlows');
-      const ownerPn = await VolumeIdGenerator.generateCanonicalVolumeId(invitation.identityPublicKey);
+      const ownerPn = deriveCanonicalPnIdentifier(invitation.identityPublicKey);
       const keys = await loadIdentityRecoveryKeys(authenticatedUser.id, authenticatedUser.publicKey);
       await acceptRecoveryCustodianship(
         ownerPn,
@@ -538,7 +538,7 @@ This invitation expires in 24 hours.`;
       const encPartial = await getEncryptedIdentityForApiToken(custodianPublicKey);
       if (!encPartial) throw new Error('Could not load your pN to sign the approval.');
       const custodianPn = recoveryVaultPnId
-        || (await (await import('@par-noir/identity-crypto')).VolumeIdGenerator.generateCanonicalVolumeId(custodianPublicKey));
+        || (await import('@par-noir/pqc-crypto/oauth-unlock-proof')).deriveCanonicalPnIdentifier(custodianPublicKey);
 
       const { approveRelayRecoveryRequest } = await import('../services/recoveryRelayFlows');
       const result = await approveRelayRecoveryRequest({

@@ -48,10 +48,7 @@ export async function createCollection(
       throw new Error('No DID in session for encryption');
     }
 
-    let publicKey = session?.publicKey;
-    if (!publicKey && session.did.startsWith('did:key:')) {
-      publicKey = session.did.substring(8);
-    }
+    const publicKey = session?.publicKey;
 
     if (!publicKey) {
       throw new Error('No publicKey available for encryption');

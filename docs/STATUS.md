@@ -32,7 +32,6 @@
 - **`/api/v1/data-points/*`** — API-key integrator request, poll, and fetch
 - **Integrator webhooks** — `integrator_webhook_subscriptions`, developer portal CRUD, HMAC `X-PN-Signature` delivery on `data_point_request.approved` / `declined`
 - **Recovery** Drive sheets: custodian roster + recovery requests (`/api/recovery/*`); encrypted share + proof payloads on share submit
-- **`POST /api/storage/migrate-volume-id`** — legacy passcode-based id → canonical id (+ `driveFolderId` patch)
 - Prism, DMCA, monetization (Stripe when configured), **music registry phases A–D** (catalog, CRUD, post-attach for creator-fund 75/25)
 - **Creator fund:** period close, bounty allocation, Stripe Connect payouts (when configured)
 - Developer portal APIs (OAuth clients, API keys, proposals, webhooks)
@@ -67,7 +66,7 @@
 
 1. **Create:** `IdentityCrypto.createIdentity` builds a recovery envelope (PQC secrets) and Shamir shares for custodians (encrypted at assign).
 2. **Recover:** Upload `.pn` → custodians submit encrypted shares + proofs → combine → new passcode → same `publicKey` / ML-KEM keys.
-3. **Platform:** Canonical `pn-{hash(publicKey)}`; legacy ids migrate via `/api/storage/migrate-volume-id`.
+3. **Platform:** Canonical `pn-<SHA-256(publicKey bytes), 64 hex>` and `did:pn:<same hash>`.
 4. **Messaging:** Same keys → existing DM threads decrypt after unlock in the browser.
 
 Full detail: `apps/id-dashboard/docs/PN_IDENTIFIER_CONSISTENCY.md`, `docs/MESSAGING_ARCHITECTURE.md`.

@@ -140,7 +140,7 @@ export function useFilePreview({
           }
 
           const sessionId = authenticatedUser?.id;
-          let sessionPublicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey || (authenticatedUser?.id?.startsWith('did:key:') ? authenticatedUser.id : undefined);
+          let sessionPublicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
 
           if (!sessionId || !sessionPublicKey) {
             // Try secure storage as last resort
@@ -151,7 +151,7 @@ export function useFilePreview({
               const session = await storage.getCurrentSession();
               if (session) {
                 if (!sessionPublicKey) {
-                  sessionPublicKey = (session as any).publicKey || (session.id && session.id.startsWith('did:key:') ? session.id : undefined);
+                  sessionPublicKey = (session as any).publicKey;
                 }
               }
             } catch (storageError) {

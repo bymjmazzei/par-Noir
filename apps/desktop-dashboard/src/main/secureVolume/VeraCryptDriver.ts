@@ -239,34 +239,13 @@ export abstract class VeraCryptDriver implements VolumeDriver {
     return `par Noir - ${identifier}`;
   }
 
+  /** The renderer derives the canonical pN id (`@par-noir/pqc-crypto`); it must match the Drive folder name. */
   protected resolveIdentifier(payload: SecureVolumeUnlockPayload): string {
-    // If pnIdentifier is provided, use it directly (must match Google Drive folder name)
-    const byIdentifier = payload.pnIdentifier?.trim();
-    if (byIdentifier) {
-      // Ensure it has the pn- prefix, but don't normalize further to preserve exact match
-      const trimmed = byIdentifier.trim();
-      if (trimmed.startsWith('pn-')) {
-        return trimmed; // Use as-is to match Google Drive exactly
-      }
-      return `pn-${trimmed}`;
+    const identifier = payload.pnIdentifier?.trim();
+    if (!identifier || !/^pn-[0-9a-f]{64}$/.test(identifier)) {
+      throw new Error('Secure volume unlock requires the canonical pN identifier');
     }
-
-    // Fallback: derive identifier using same method as Google Drive
-    const token = payload.authToken?.trim();
-    if (token) {
-      return `pn-${token.substring(0, 12).toLowerCase()}`;
-    }
-
-    if (payload.publicKey?.trim()) {
-      return `pn-${this.shortHash(payload.publicKey.trim())}`;
-    }
-
-    return 'pn-default';
-  }
-
-  protected shortHash(value: string): string {
-    const { createHash } = require('crypto');
-    return createHash('sha256').update(value).digest('hex').substring(0, 12);
+    return identifier;
   }
 
   protected async spawnVeraCrypt(args: string[], input?: string): Promise<ExecResult> {

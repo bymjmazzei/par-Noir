@@ -48,7 +48,7 @@ describe('create → unlock → oauth unlock proof', () => {
       key2,
       key1
     );
-    expect(session.id).toMatch(/^did:key:/);
+    expect(session.id).toMatch(/^did:pn:[0-9a-f]{64}$/);
     expect(session.publicKey).toBe(encryptedIdentity.publicKey);
     expect(session.accessToken.startsWith('pn-session.')).toBe(true);
     expect(SecureCredentialManager.hasCredentials(session.id)).toBe(true);

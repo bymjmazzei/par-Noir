@@ -3,6 +3,7 @@
  */
 
 import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   PNOAuthService,
   type AuthSession,
@@ -99,7 +100,7 @@ export async function completeOAuthUnlock(payload: OAuthUnlockPayload): Promise<
 
       const pnForBootstrap = userInfo.pn_identifier;
       let bootstrap: UnlockBootstrapResult;
-      if (pnForBootstrap && !pnForBootstrap.startsWith('did:key:')) {
+      if (pnForBootstrap && !pnForBootstrap.startsWith(PN_DID_PREFIX)) {
         bootstrap = await runUnlockBootstrap(tokenResponse.access_token, pnForBootstrap, userInfo);
       } else {
         bootstrap = {

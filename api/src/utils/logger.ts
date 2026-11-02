@@ -4,6 +4,7 @@
 
 import winston from 'winston';
 import crypto from 'crypto';
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
 // Create logger instance
 export const logger = winston.createLogger({
@@ -37,7 +38,7 @@ const PN_IDENTIFIER_KEY_PATTERN =
 const ROUTE_KEY_PATTERN = /routekey|mailboxroutekey|peermailboxroutekey/i;
 
 function looksLikePnIdentifier(value: string): boolean {
-  return /^pn-[a-f0-9]{8,}$/i.test(value) || value.startsWith('did:key:');
+  return /^pn-[a-f0-9]{8,}$/i.test(value) || value.startsWith(PN_DID_PREFIX);
 }
 
 function looksLikeRouteMaterial(value: string): boolean {

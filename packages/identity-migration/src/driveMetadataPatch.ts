@@ -1,3 +1,4 @@
+import { deriveDidFromPublicKey } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import type { IdentityKeyMaterial } from './types';
 import { reencryptDriveFilePackage } from './driveFiles';
 
@@ -46,7 +47,7 @@ export function patchCompanionMetadata<T extends CompanionMetadataLike>(
     ...companion,
     owner: {
       ...companion.owner,
-      did: successor.did.startsWith('did:') ? successor.did : `did:key:${successor.publicKey}`,
+      did: successor.did.startsWith('did:') ? successor.did : deriveDidFromPublicKey(successor.publicKey),
       identifier: successor.pnIdentifier,
     },
   } as T;

@@ -159,10 +159,7 @@ export function HorizontalThumbnailFeed({
             }
 
             const pnId = session.did;
-            let publicKey = session?.publicKey;
-            if (!publicKey && session.did.startsWith('did:key:')) {
-              publicKey = session.did.substring(8);
-            }
+            const publicKey = session?.publicKey;
             if (!publicKey) {
               console.warn(`[HorizontalThumbnailFeed] Cannot decrypt - no public key`);
               failedThumbnailsRef.current.add(index);

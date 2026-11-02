@@ -6,7 +6,6 @@ export { MemorySecurity } from './memorySecurity';
 export { cryptoWorkerManager } from './cryptoWorkerManager';
 export { SecureCredentialManager } from './secureCredentialManager';
 export { EncryptionManager } from './encryptionManager';
-export { VolumeIdGenerator } from './volumeIdGenerator';
 export { safePnDisplayName } from './displayName';
 export type {
   EncryptedData,

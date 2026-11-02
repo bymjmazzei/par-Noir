@@ -112,21 +112,54 @@ export function verifyRecoverySetupProof(signatureB64: string, params: RecoveryS
   }
 }
 
-function sha256HexUtf8(text: string): string {
-  const digest = sha256(new TextEncoder().encode(text));
-  return Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('');
+export const PN_IDENTIFIER_PREFIX = 'pn-' as const;
+export const PN_DID_PREFIX = 'did:pn:' as const;
+export const PN_IDENTIFIER_RE = /^pn-[0-9a-f]{64}$/;
+export const PN_DID_RE = /^did:pn:[0-9a-f]{64}$/;
+
+/** SHA-256 over the raw ML-DSA-65 public key bytes, lowercase hex. */
+function pnKeyHash(publicKeyB64: string): string {
+  let publicKey: Uint8Array;
+  try {
+    publicKey = base64ToBytes(publicKeyB64);
+  } catch {
+    throw new Error('Invalid ML-DSA-65 public key');
+  }
+  if (publicKey.length !== ML_DSA_65_PUBLIC_KEY_LENGTH) {
+    throw new Error('Invalid ML-DSA-65 public key');
+  }
+  return Array.from(sha256(publicKey), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Canonical platform id from ML-DSA public key (independent of Key 1 and Key 2). */
+/** Canonical pN id: `pn-` + SHA-256(ML-DSA-65 public key bytes). Independent of Key 1 and Key 2. */
 export function deriveCanonicalPnIdentifier(publicKeyB64: string): string {
-  const hex = sha256HexUtf8(publicKeyB64);
-  return `pn-${hex.substring(0, 12)}`;
+  return `${PN_IDENTIFIER_PREFIX}${pnKeyHash(publicKeyB64)}`;
 }
 
-/** Deterministic DID matching IdentityCrypto.generateDID / generateDIDIdentifier. */
+/** pN DID: `did:pn:` + the same hash as the pN id. */
 export function deriveDidFromPublicKey(publicKeyB64: string): string {
-  const hex = sha256HexUtf8(publicKeyB64);
-  return `did:key:${hex.substring(0, 16)}`;
+  return `${PN_DID_PREFIX}${pnKeyHash(publicKeyB64)}`;
+}
+
+export function isPnIdentifier(value: unknown): value is string {
+  return typeof value === 'string' && PN_IDENTIFIER_RE.test(value);
+}
+
+/** True for any `did:pn:` string (format-checked ids use PN_DID_RE). */
+export function isPnDid(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith(PN_DID_PREFIX);
+}
+
+/** `did:pn:<hash>` -> `pn-<hash>`; null when the DID is not a well-formed pN DID. */
+export function pnIdentifierFromDid(did: string): string | null {
+  return PN_DID_RE.test(did) ? `${PN_IDENTIFIER_PREFIX}${did.slice(PN_DID_PREFIX.length)}` : null;
+}
+
+/** `pn-<hash>` -> `did:pn:<hash>`; null when the id is not a well-formed pN id. */
+export function pnDidFromIdentifier(pnIdentifier: string): string | null {
+  return isPnIdentifier(pnIdentifier)
+    ? `${PN_DID_PREFIX}${pnIdentifier.slice(PN_IDENTIFIER_PREFIX.length)}`
+    : null;
 }
 
 export function assertMlDsa65PublicKeyB64(publicKeyB64: string): boolean {

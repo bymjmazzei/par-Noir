@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   pushPnOAuthDebug,
   startPnOAuthPopup,
@@ -318,7 +319,7 @@ export function useAuthAndSession({
 
         PNOAuthService.saveSession(sessionWithIdentifier);
 
-        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith(PN_DID_PREFIX)) {
           setUnlocked(userInfo.pn_identifier);
           markOAuthHandoffComplete();
           clearStaleOAuthCallbackStorage();
@@ -576,7 +577,7 @@ export function useAuthAndSession({
 
   const loadUserDisplayName = useCallback(
     async (pnIdentifier: string) => {
-      if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) return;
+      if (!pnIdentifier || pnIdentifier.startsWith(PN_DID_PREFIX)) return;
       if (loadingDisplayNameRef.current.has(pnIdentifier)) return;
       loadingDisplayNameRef.current.add(pnIdentifier);
       try {
@@ -601,7 +602,7 @@ export function useAuthAndSession({
       const session = PNOAuthService.loadSession();
       let pnIdentifier = session?.pnIdentifier || userState.pnIdentifier;
 
-      if (pnIdentifier && pnIdentifier.startsWith('did:key:')) {
+      if (pnIdentifier && pnIdentifier.startsWith(PN_DID_PREFIX)) {
         try {
           if (session?.accessToken) {
             const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
@@ -631,7 +632,7 @@ export function useAuthAndSession({
         }
       }
 
-      if (pnIdentifier && !pnIdentifier.startsWith('did:key:')) {
+      if (pnIdentifier && !pnIdentifier.startsWith(PN_DID_PREFIX)) {
         setViewingCreatorId(pnIdentifier);
         setActiveBottomTab('index');
       } else {
@@ -640,7 +641,7 @@ export function useAuthAndSession({
           const sess = PNOAuthService.loadSession();
           if (sess?.accessToken) {
             const userInfo = await PNOAuthService.getUserInfo(sess.accessToken);
-            if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+            if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith(PN_DID_PREFIX)) {
               PNOAuthService.saveSession({ ...sess, pnIdentifier: userInfo.pn_identifier });
               setUnlocked(userInfo.pn_identifier);
               setViewingCreatorId(userInfo.pn_identifier);
@@ -710,7 +711,7 @@ export function useAuthAndSession({
       } else if (session.did && session.did !== userState.pnIdentifier) {
         const pnId = session.pnIdentifier || session.did;
         setUnlocked(pnId);
-        if (pnId && !pnId.startsWith('did:key:')) {
+        if (pnId && !pnId.startsWith(PN_DID_PREFIX)) {
           setTimeout(() => loadUserDisplayName(pnId), 500);
         }
       } else if (userState.pnIdentifier && !userState.preferences.displayName) {
@@ -725,7 +726,7 @@ export function useAuthAndSession({
       }
       const pnId = session.pnIdentifier || session.did;
       setUnlocked(pnId);
-      if (pnId && !pnId.startsWith('did:key:')) {
+      if (pnId && !pnId.startsWith(PN_DID_PREFIX)) {
         setTimeout(() => loadUserDisplayName(pnId), 500);
       }
     }
@@ -963,7 +964,7 @@ export function useAuthAndSession({
             }
             const pnId = session.pnIdentifier || session.did;
             setUnlocked(pnId);
-            if (pnId && !pnId.startsWith('did:key:')) {
+            if (pnId && !pnId.startsWith(PN_DID_PREFIX)) {
               setTimeout(() => loadUserDisplayName(pnId), 500);
             }
             return;

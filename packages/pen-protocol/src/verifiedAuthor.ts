@@ -3,44 +3,29 @@
  * Used by Pen client (VITE) and API (PEN_VERIFIED_AUTHOR_PN_IDS).
  */
 
+import { PN_DID_PREFIX, PN_IDENTIFIER_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+
+/** The bare key hash shared by `pn-<hash>` and `did:pn:<hash>`. */
+function pnHash(value: string): string {
+  const t = String(value || '').trim().toLowerCase();
+  if (t.startsWith(PN_DID_PREFIX)) return t.slice(PN_DID_PREFIX.length);
+  if (t.startsWith(PN_IDENTIFIER_PREFIX)) return t.slice(PN_IDENTIFIER_PREFIX.length);
+  return t;
+}
+
 export function pnIdAliases(pnIdentifier: string): string[] {
-  const t = String(pnIdentifier || '').trim();
-  if (!t) return [];
-  const out = new Set<string>([t]);
-  let rest = t;
-  if (t.startsWith('did:key:')) rest = t.slice('did:key:'.length);
-  else if (t.startsWith('pn-')) rest = t.slice(3);
-  out.add(rest);
-  out.add(`pn-${rest}`);
-  out.add(`did:key:${rest}`);
-  if (rest.length >= 12) {
-    const short = rest.slice(0, 12);
-    out.add(short);
-    out.add(`pn-${short}`);
-    out.add(`did:key:${short}`);
-  }
-  return [...out];
+  const hash = pnHash(pnIdentifier);
+  if (!hash) return [];
+  return [hash, `${PN_IDENTIFIER_PREFIX}${hash}`, `${PN_DID_PREFIX}${hash}`];
 }
 
 export function pnMatchesVerifiedAllowlist(
   pnIdentifier: string | null | undefined,
   allowlistEntries: readonly string[]
 ): boolean {
-  if (!allowlistEntries.length) return false;
-  const aliases = pnIdAliases(pnIdentifier || '');
-  if (!aliases.length) return false;
-  for (const entry of allowlistEntries) {
-    const entryAliases = pnIdAliases(entry);
-    for (const a of aliases) {
-      for (const e of entryAliases) {
-        if (a === e) return true;
-        if (a.length >= 12 && e.length >= 12 && (a.startsWith(e) || e.startsWith(a))) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+  const hash = pnHash(pnIdentifier || '');
+  if (!hash) return false;
+  return allowlistEntries.some((entry) => pnHash(entry) === hash);
 }
 
 export function parseVerifiedAllowlistEnv(raw: string | undefined | null): string[] {

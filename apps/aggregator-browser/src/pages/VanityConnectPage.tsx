@@ -32,7 +32,7 @@ export function VanityConnectPage({
   });
   const [loading, setLoading] = useState(false);
 
-  const norm = (id: string) => id.replace(/^pn-/, '').replace(/^did:key:/, '');
+  const norm = (id: string) => id.replace(/^pn-/, '').replace(/^did:pn:/, '');
   const isOwnProfile =
     userState.isUnlocked &&
     userState.pnIdentifier &&

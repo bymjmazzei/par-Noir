@@ -7,7 +7,6 @@ export * from './publicContentRef';
 export * from './safePublicFetchUrl';
 export * from './publicShare';
 export * from './publicContentClient';
-export * from './volumeIdGenerator';
 export * from './contentNotices';
 export * from './contentExpiry';
 export * from './types';

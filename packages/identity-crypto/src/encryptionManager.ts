@@ -18,7 +18,6 @@ export class EncryptionManager {
         try {
             // Derive encryption key from stable pN identity (id + publicKey)
             // The id (DID) is stable and doesn't change between sessions, ensuring consistent encryption
-            // This is the same approach as volumeIdGenerator - use stable identifiers
             const combined = `${pnId}:${publicKey}`;
             const encoder = new TextEncoder();
             const combinedData = encoder.encode(combined);
@@ -305,7 +304,7 @@ export class EncryptionManager {
     private static async deriveKey(key1: string, key2: string, salt: string): Promise<CryptoKey> {
         try {
             // SECURITY: Combine both secrets for key derivation
-            // Format: "key1:key2" (same as VolumeIdGenerator pattern)
+            // Format: "key1:key2"
             const keyMaterial = `${key1}:${key2}`;
             
             const encoder = new TextEncoder();

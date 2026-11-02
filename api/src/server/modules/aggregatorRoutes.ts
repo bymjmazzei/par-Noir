@@ -4,6 +4,7 @@
  */
 
 import express, { Request, Response, NextFunction } from 'express';
+import { isPnDid, pnIdentifierFromDid } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from '../utils/fileTypeUtils';
@@ -1103,8 +1104,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       if (tokenPayload.pnIdentifier) identifierCandidates.push(tokenPayload.pnIdentifier);
       if (tokenPayload.did) {
         identifierCandidates.push(tokenPayload.did);
-        if (tokenPayload.did.startsWith('did:key:')) {
-          const keyPart = tokenPayload.did.substring(8);
+        if (isPnDid(tokenPayload.did)) {
+          const keyPart = pnIdentifierFromDid(tokenPayload.did);
           if (keyPart) identifierCandidates.push(keyPart);
         }
       }
@@ -1567,8 +1568,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         }
         if (tokenPayload.did) {
           identifierCandidates.push(tokenPayload.did);
-          if (tokenPayload.did.startsWith('did:key:')) {
-            const keyPart = tokenPayload.did.substring(8);
+          if (isPnDid(tokenPayload.did)) {
+            const keyPart = pnIdentifierFromDid(tokenPayload.did);
             if (keyPart) {
               identifierCandidates.push(keyPart);
             }
@@ -2019,8 +2020,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           if (tokenPayload.pnIdentifier) identifierCandidates.push(tokenPayload.pnIdentifier);
           if (tokenPayload.did) {
             identifierCandidates.push(tokenPayload.did);
-            if (tokenPayload.did.startsWith('did:key:')) {
-              const keyPart = tokenPayload.did.substring(8);
+            if (isPnDid(tokenPayload.did)) {
+              const keyPart = pnIdentifierFromDid(tokenPayload.did);
               if (keyPart) identifierCandidates.push(keyPart);
             }
           }
@@ -2165,8 +2166,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               }
               if (tokenPayload.did) {
                 identifierCandidates.push(tokenPayload.did);
-                if (tokenPayload.did.startsWith('did:key:')) {
-                  const keyPart = tokenPayload.did.substring(8);
+                if (isPnDid(tokenPayload.did)) {
+                  const keyPart = pnIdentifierFromDid(tokenPayload.did);
                   if (keyPart) {
                     identifierCandidates.push(keyPart);
                   }
@@ -3364,8 +3365,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       if (tokenPayload.pnIdentifier) identifierCandidates.push(tokenPayload.pnIdentifier);
       if (tokenPayload.did) {
         identifierCandidates.push(tokenPayload.did);
-        if (tokenPayload.did.startsWith('did:key:')) {
-          const keyPart = tokenPayload.did.substring(8);
+        if (isPnDid(tokenPayload.did)) {
+          const keyPart = pnIdentifierFromDid(tokenPayload.did);
           if (keyPart) identifierCandidates.push(keyPart);
         }
       }

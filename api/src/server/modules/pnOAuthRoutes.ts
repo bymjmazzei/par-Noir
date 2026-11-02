@@ -1082,10 +1082,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           console.log(`✅ [Userinfo] Using pN identifier from token: ${redactPnIdentifier(pnIdentifier)}`);
         }
 
-        // Get publicKey from authorization code (stored during /oauth/auth)
-        // We need to look it up from the authorization code that was used to generate this token
-        // Since authorization codes are short-lived, we'll need to get it from the refresh token or derive it
-        // For now, extract from DID if it's in did:key format (fallback)
+        // publicKey is stored on the refresh token at /oauth/token; the DID is a hash and cannot yield it.
         let publicKey: string | undefined = undefined;
         
         // Try to get publicKey from refresh token database
@@ -1117,12 +1114,6 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           console.warn('⚠️ [Userinfo] Failed to look up publicKey from refresh token:', dbError);
         }
         
-        // Fallback: extract from DID if it's in did:key format
-        if (!publicKey && tokenPayload.did.startsWith('did:key:')) {
-          publicKey = tokenPayload.did.substring(8); // Remove "did:key:" prefix
-          console.log(`✅ [Userinfo] Using publicKey extracted from DID`);
-        }
-
         // NEVER return pN File, Key 1, or Key 2 to third parties
         // These are sensitive credentials that should never be exposed via OAuth
         

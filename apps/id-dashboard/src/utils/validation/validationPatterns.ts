@@ -1,8 +1,8 @@
 import { cryptoWorkerManager } from '@par-noir/identity-crypto';
+import { PN_DID_RE } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 // Validation Patterns - Regex patterns and constants for validation
 export class ValidationPatterns {
-  // DID format validation
-  static readonly DID_PATTERN = /^did:key:[a-zA-Z0-9]{32,}$/;
+  static readonly DID_PATTERN = PN_DID_RE;
   
   // Username validation
   static readonly USERNAME_PATTERN = /^[a-zA-Z0-9-]{3,20}$/;

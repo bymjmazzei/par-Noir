@@ -207,7 +207,7 @@ export const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                     deviceName: 'Mobile Device',
                     deviceType: 'mobile',
                     syncKey: `sync-${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`,
-                    identityId: `did:key:${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`,
+                    identityId: `did:pn:${Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('')}`,
                     deviceFingerprint: `fp-${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`
                   },
                   timestamp: Date.now(),

@@ -156,10 +156,7 @@ export function CollectionFeed({
                 const session = PNOAuthService.loadSession();
                 if (session?.did) {
                   const pnId = session.did;
-                  let publicKey = session.publicKey;
-                  if (!publicKey && session.did.startsWith('did:key:')) {
-                    publicKey = session.did.substring(8);
-                  }
+                  const publicKey = session.publicKey;
                   if (publicKey) {
                     const encryptionManager = new EncryptionManager();
                     const decryptedData = await encryptionManager.decrypt(
@@ -240,10 +237,7 @@ export function CollectionFeed({
             const session = PNOAuthService.loadSession();
             if (session?.did) {
               const pnId = session.did;
-              let publicKey = session.publicKey;
-              if (!publicKey && session.did.startsWith('did:key:')) {
-                publicKey = session.did.substring(8);
-              }
+              const publicKey = session.publicKey;
               if (publicKey) {
                 const encryptionManager = new EncryptionManager();
                 const decryptedData = await encryptionManager.decrypt(
@@ -297,10 +291,7 @@ export function CollectionFeed({
             const session = PNOAuthService.loadSession();
             if (session?.did) {
               const pnId = session.did;
-              let publicKey = session.publicKey;
-              if (!publicKey && session.did.startsWith('did:key:')) {
-                publicKey = session.did.substring(8);
-              }
+              const publicKey = session.publicKey;
               if (publicKey) {
                 const encryptionManager = new EncryptionManager();
                 const decryptedData = await encryptionManager.decrypt(

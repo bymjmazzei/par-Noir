@@ -1,3 +1,4 @@
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { API_ENDPOINT } from '../config/api';
 import { accountsCacheService } from './accountsCacheService';
 import { apiGet, ownerFetch, ownerGet } from './ownerApiFetch';
@@ -10,14 +11,14 @@ import { sessionDriveFor } from './sessionDrive';
 
 /** Canonical cache/API key for viewer storage accounts (bare id, no pn- prefix). */
 export function canonicalStorageAccountsPnId(pnIdentifier: string): string {
-  if (pnIdentifier.startsWith('did:key:')) return pnIdentifier;
+  if (pnIdentifier.startsWith(PN_DID_PREFIX)) return pnIdentifier;
   return pnIdentifier.startsWith('pn-') ? pnIdentifier.slice(3) : pnIdentifier;
 }
 
 function resolveStorageAccountsPnId(pnIdentifier: string): string | null {
-  if (pnIdentifier.startsWith('did:key:')) {
+  if (pnIdentifier.startsWith(PN_DID_PREFIX)) {
     const sessionPn = PNOAuthService.loadSession()?.pnIdentifier;
-    if (sessionPn && !sessionPn.startsWith('did:key:')) {
+    if (sessionPn && !sessionPn.startsWith(PN_DID_PREFIX)) {
       return canonicalStorageAccountsPnId(sessionPn);
     }
     return null;

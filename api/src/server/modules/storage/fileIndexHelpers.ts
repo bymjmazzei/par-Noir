@@ -5,6 +5,7 @@
  * (Sheets for Google Drive, portable tables for social-cloud providers).
  */
 
+import { pnDidFromIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { determineContentClass, getFileTypeFromMime } from '../../utils/fileTypeUtils';
 import { hashIdentifier, safeLogger } from '../../../utils/logger';
 
@@ -320,7 +321,8 @@ export function companionToPublicMetadata(companion: any, creatorDid?: string): 
     'CreativeWork';
 
   const resourceUri = `https://parnoir.com/resource/${companion.fileId}`;
-  const didUri = creatorDid || companion.owner.did || `did:key:${companion.owner.identifier}`;
+  const didUri =
+    creatorDid || companion.owner.did || pnDidFromIdentifier(String(companion.owner.identifier || '')) || undefined;
 
   const SEMANTIC_CONTEXTS = [
     'https://schema.org/',

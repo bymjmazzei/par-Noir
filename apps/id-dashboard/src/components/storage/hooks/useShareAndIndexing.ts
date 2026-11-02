@@ -7,6 +7,7 @@
  * `saveShareSettings` (commit the modal).
  */
 import React, { useState } from 'react';
+import { deriveDidFromPublicKey, isPnDid } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import type { EncryptionService } from '../../../services/aggregator/EncryptionService';
 import type { MetadataIndexService } from '../../../services/metadata/MetadataIndexService';
@@ -265,10 +266,8 @@ export function useShareAndIndexing({
           if (shouldSync) {
             const preferredDid =
               resolvedAuth?.publicKey
-                ? resolvedAuth.publicKey.startsWith('did:')
-                  ? resolvedAuth.publicKey
-                  : `did:key:${resolvedAuth.publicKey}`
-                : authenticatedUser?.id && authenticatedUser.id.startsWith('did:')
+                ? deriveDidFromPublicKey(resolvedAuth.publicKey)
+                : authenticatedUser?.id && isPnDid(authenticatedUser.id)
                   ? authenticatedUser.id
                   : undefined;
 

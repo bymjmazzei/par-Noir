@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
 import { SectionInfo } from '../common/SectionInfo';
-import { IdentityCrypto, VolumeIdGenerator, type EncryptedIdentity } from '@par-noir/identity-crypto';
+import { IdentityCrypto, type EncryptedIdentity } from '@par-noir/identity-crypto';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   HostedShellLaunch,
   PN_CLOUD_CREDENTIALS_READY_EVENT,
@@ -276,7 +277,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       const nickname = label.trim() || `Sub ${createKind}`;
       const creation = await IdentityCrypto.createIdentity(subKey1, nickname, subPass);
       const encrypted = creation.identity;
-      const subject = await VolumeIdGenerator.generateCanonicalVolumeId(encrypted.publicKey);
+      const subject = deriveCanonicalPnIdentifier(encrypted.publicKey);
       if (!pnIdentifier) throw new Error('Missing pn identifier');
       const asset = await createOwnedAsset(accessToken, pnIdentifier, {
         kind: createKind,
@@ -499,7 +500,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         `Rotated ${selected.kind}`;
       const creation = await IdentityCrypto.createIdentity(subKey1, nickname, subPass);
       const encrypted = creation.identity;
-      const subject = await VolumeIdGenerator.generateCanonicalVolumeId(encrypted.publicKey);
+      const subject = deriveCanonicalPnIdentifier(encrypted.publicKey);
 
       if (!pnIdentifier) throw new Error('Missing pn identifier');
       const newAsset = await rekeyOwnedAsset(accessToken, pnIdentifier, selected.id, {

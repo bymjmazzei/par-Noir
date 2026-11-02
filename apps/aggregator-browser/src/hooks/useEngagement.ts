@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { useUserState } from '../contexts/UserStateContext';
 
 import { API_ENDPOINT } from '../config/api';
@@ -121,7 +122,7 @@ export function useEngagement() {
     const viewerPn =
       userState.isUnlocked &&
       userState.pnIdentifier &&
-      !userState.pnIdentifier.startsWith('did:key:')
+      !userState.pnIdentifier.startsWith(PN_DID_PREFIX)
         ? userState.pnIdentifier
         : undefined;
     // Unlocked with unusable pn: still fetch public stats as anon (skip likedFiles only)

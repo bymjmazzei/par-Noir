@@ -11,7 +11,7 @@ const sessionDriveIndexByIdentity = new Map<string, DeviceDriveLayout>();
 /** One key form for vault lookups — bare ids and `pn-` ids must hit the same slot. */
 export function normalizeCloudIdentityId(identityId: string): string {
   const t = (identityId || '').trim();
-  if (!t || t.startsWith('did:key:')) return t;
+  if (!t || t.startsWith('did:')) return t;
   return t.startsWith('pn-') ? t : `pn-${t}`;
 }
 

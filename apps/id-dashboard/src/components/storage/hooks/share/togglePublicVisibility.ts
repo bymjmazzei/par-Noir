@@ -14,6 +14,7 @@
  */
 import React from 'react';
 import { SecureCredentialManager, decryptPrivateFileBlob } from '@par-noir/identity-crypto';
+import { deriveDidFromPublicKey } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import type { FileAggregatorService } from '../../../../services/aggregator/FileAggregatorService';
 import type { EncryptionService } from '../../../../services/aggregator/EncryptionService';
 import type { MetadataIndexService } from '../../../../services/metadata/MetadataIndexService';
@@ -164,9 +165,7 @@ export async function togglePublicVisibility(
 
       // Generate resource URI (consistent with metadata service)
       const resourceUri = `https://parnoir.com/resource/${file.id}`;
-      const didUri = resolvedAuth.publicKey.startsWith('did:')
-        ? resolvedAuth.publicKey
-        : `did:key:${resolvedAuth.publicKey}`;
+      const didUri = deriveDidFromPublicKey(resolvedAuth.publicKey);
 
       // If this is a note file and we don't have content, load it from Drive
       const noteFileName = fileTitle.toLowerCase();
@@ -333,10 +332,10 @@ export async function togglePublicVisibility(
       }
 
       // Index the file - pass pN identifier so metadata folder is created inside pN folder
-      // Get pN identifier for metadata folder location (use VolumeIdGenerator for consistency)
+      // Get pN identifier for metadata folder location
       let metadataPnIdentifier: string | undefined = undefined;
       try {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
         const sessionId = authenticatedUser?.id;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
 
@@ -344,11 +343,9 @@ export async function togglePublicVisibility(
         const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
 
         if (credentials?.key1 && credentials?.key2 && publicKey) {
-          // Use VolumeIdGenerator for consistent identifier (same as folder naming)
-          metadataPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+          metadataPnIdentifier = deriveCanonicalPnIdentifier(publicKey);
           console.log('📁 [Phase 3] Generated pN identifier (standardized):', (metadataPnIdentifier || '').substring(0, 8) + '...');
         } else {
-          // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
           console.warn('⚠️ [Phase 3] Cannot generate standardized pN identifier - credentials required:', {
             hasKey1: !!credentials?.key1,
             hasKey2: !!credentials?.key2,
@@ -610,7 +607,7 @@ export async function togglePublicVisibility(
               visibility: 'public',
               uploadedAt: file.aggregatedAt || new Date().toISOString(),
               owner: {
-                did: resolvedAuth?.publicKey ? (resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`) : undefined,
+                did: resolvedAuth?.publicKey ? deriveDidFromPublicKey(resolvedAuth.publicKey) : undefined,
                 identifier: metadataPnIdentifier
               },
               tags: publicMetadata.keywords || [],
