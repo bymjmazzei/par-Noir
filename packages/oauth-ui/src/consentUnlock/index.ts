@@ -13,7 +13,13 @@ export {
   callerCapAppResumeUrl,
 } from './constants';
 export type { MessagingHandoffClientId } from './constants';
-export { parseConsentUnlockParams, resolveUnlockOrigin, isUnlockBrokerHost } from './parseConsentParams';
+export {
+  parseConsentUnlockParams,
+  resolveUnlockOrigin,
+  isUnlockBrokerHost,
+  consentUsesSavedPn,
+  consentSearchUsesSavedPn,
+} from './parseConsentParams';
 export type { ConsentUnlockParams } from './parseConsentParams';
 export { searchFromUnlockUrl } from './searchFromUnlockUrl';
 export {

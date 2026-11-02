@@ -5,6 +5,7 @@ import {
   SessionVaultUnlockOverlay,
   SessionVaultIdentityPicker,
   searchFromUnlockUrl,
+  consentSearchUsesSavedPn,
   postOAuthBrokerComplete,
   postBrokerLaunched,
   vaultEntriesForClient,
@@ -80,11 +81,21 @@ export default function App(): React.ReactElement {
     for (const w of waiters) w();
   }, []);
 
+  const dismissVaultOffer = useCallback(() => {
+    vaultOfferGen.current += 1;
+    setVaultFactors(null);
+    setShowVaultUnlock(false);
+    setShowPicker(false);
+    setPendingEntries([]);
+    setPickerOptions([]);
+    setVaultError(null);
+  }, []);
+
   const offerVaultUnlockIfNeeded = useCallback(async () => {
+    const offer = ++vaultOfferGen.current;
     const available = await isUnlockSessionVaultAvailable();
     const has = available && (await hasUnlockSessionVault());
-    if (!has) return false;
-    vaultOfferGen.current += 1;
+    if (!has || offer !== vaultOfferGen.current) return false;
     setVaultFactors(null);
     setShowPicker(false);
     setPendingEntries([]);
@@ -117,9 +128,10 @@ export default function App(): React.ReactElement {
         /* claim is best-effort; auth still runs */
       }
       // Prefer-app reuses a running Unlock window — re-offer Touch ID vault each OAuth.
-      void offerVaultUnlockIfNeeded();
+      if (consentSearchUsesSavedPn(q)) void offerVaultUnlockIfNeeded();
+      else dismissVaultOffer();
     },
-    [offerVaultUnlockIfNeeded]
+    [offerVaultUnlockIfNeeded, dismissVaultOffer]
   );
 
   const openShellReturn = useCallback(async (url: string) => {

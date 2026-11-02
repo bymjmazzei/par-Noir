@@ -213,6 +213,8 @@ export {
   parseConsentUnlockParams,
   resolveUnlockOrigin,
   isUnlockBrokerHost,
+  consentUsesSavedPn,
+  consentSearchUsesSavedPn,
   searchFromUnlockUrl,
   mintConsentAuthorizationCode,
   authenticateWithUnlockProofDetailed,

@@ -7,6 +7,7 @@ import {
   SessionVaultUnlockOverlay,
   SessionVaultIdentityPicker,
   callerCapAppResumeUrl,
+  consentSearchUsesSavedPn,
   postOAuthBrokerComplete,
   type ConsentVaultEnrollMaterial,
   type ConsentVaultFactors,
@@ -100,12 +101,27 @@ export default function App(): React.ReactElement {
     for (const w of waiters) w();
   }, []);
 
-  const offerVaultUnlockIfNeeded = useCallback(async () => {
+  const dismissVaultOffer = useCallback(() => {
+    vaultOfferGen.current += 1;
+    setVaultFactors(null);
+    setShowVaultUnlock(false);
+    setShowPicker(false);
+    setPendingEntries([]);
+    setPickerOptions([]);
+    setVaultError(null);
+  }, []);
+
+  /** Saved-pN biometric offer for the request in `search`; create requests never get one. */
+  const offerVaultUnlockIfNeeded = useCallback(async (search: string) => {
     if (!Capacitor.isNativePlatform()) return false;
+    if (!consentSearchUsesSavedPn(search)) {
+      dismissVaultOffer();
+      return false;
+    }
+    const offer = ++vaultOfferGen.current;
     const available = await isUnlockSessionVaultAvailable();
     const has = available && (await hasUnlockSessionVault());
-    if (!has) return false;
-    vaultOfferGen.current += 1;
+    if (!has || offer !== vaultOfferGen.current) return false;
     setVaultFactors(null);
     setShowPicker(false);
     setPendingEntries([]);
@@ -113,10 +129,11 @@ export default function App(): React.ReactElement {
     setVaultError(null);
     setShowVaultUnlock(true);
     return true;
-  }, []);
+  }, [dismissVaultOffer]);
 
-  const applySearch = useCallback((raw: string | null) => {
-    if (raw == null) return;
+  /** Returns the applied search, or the current location search when `raw` is null. */
+  const applySearch = useCallback((raw: string | null): string => {
+    if (raw == null) return window.location.search;
     const q = raw.startsWith('?') ? raw : `?${raw.replace(/^\?/, '')}`;
     setSearch(q);
     try {
@@ -124,12 +141,12 @@ export default function App(): React.ReactElement {
     } catch {
       /* ignore */
     }
+    return q;
   }, []);
 
   useEffect(() => {
     return subscribeUnlockDeepLinks((url) => {
-      applySearch(searchFromUnlockUrl(url));
-      void offerVaultUnlockIfNeeded();
+      void offerVaultUnlockIfNeeded(applySearch(searchFromUnlockUrl(url)));
     });
   }, [applySearch, offerVaultUnlockIfNeeded]);
 
@@ -140,9 +157,9 @@ export default function App(): React.ReactElement {
         setVaultChecked(true);
         return;
       }
-      applySearch(await readUnlockLaunchSearch());
+      const launchSearch = applySearch(await readUnlockLaunchSearch());
       if (cancelled) return;
-      await offerVaultUnlockIfNeeded();
+      await offerVaultUnlockIfNeeded(launchSearch);
       if (!cancelled) setVaultChecked(true);
     })();
     return () => {

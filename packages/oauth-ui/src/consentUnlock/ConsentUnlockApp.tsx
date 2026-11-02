@@ -19,7 +19,7 @@ import {
   requestsCloudAccess,
   scopeNeedsConsentScreen,
 } from './mintConsentCode';
-import { parseConsentUnlockParams, type ConsentUnlockParams } from './parseConsentParams';
+import { consentUsesSavedPn, parseConsentUnlockParams, type ConsentUnlockParams } from './parseConsentParams';
 import { validateCreateKeys } from './createKeys';
 
 function isDesktopUnlockApp(): boolean {
@@ -350,7 +350,7 @@ function ConsentUnlockInner(props: {
     logoUrl,
     backgroundUrl,
     layout,
-    vaultFactors,
+    vaultFactors: offeredVaultFactors,
     onUnlockedForVault,
     onVaultFactorsConsumed,
     saveAgentIdentity,
@@ -364,7 +364,8 @@ function ConsentUnlockInner(props: {
   const shellFactorRef = useRef({ key1: '', key2: '' });
   /** op=create: the pN built from the form. finishWithCode returns it instead of building a second one. */
   const createdShellResultRef = useRef<Record<string, string> | null>(null);
-  const isCreate = params.flow === 'shell' && params.shellOp === 'create';
+  const isCreate = !consentUsesSavedPn(params);
+  const vaultFactors = isCreate ? null : offeredVaultFactors;
   const [fileName, setFileName] = useState('');
   const [identityJson, setIdentityJson] = useState<unknown>(null);
   const [usbKeyName, setUsbKeyName] = useState('');

@@ -66,6 +66,15 @@ export function parseConsentUnlockParams(
   };
 }
 
+/** False when the request builds a new pN, so a saved pN must not be offered or applied. */
+export function consentUsesSavedPn(params: Pick<ConsentUnlockParams, 'flow' | 'shellOp'>): boolean {
+  return !(params.flow === 'shell' && params.shellOp === 'create');
+}
+
+export function consentSearchUsesSavedPn(search: string): boolean {
+  return consentUsesSavedPn(parseConsentUnlockParams(search.replace(/^\?/, ''), { apiEndpoint: '' }));
+}
+
 export function resolveUnlockOrigin(explicit?: string | null): string {
   if (explicit && explicit.trim()) return explicit.replace(/\/$/, '');
   try {

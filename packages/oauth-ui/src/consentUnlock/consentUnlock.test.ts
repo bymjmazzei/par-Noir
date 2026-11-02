@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { authenticateWithUnlockProofDetailed } from './mintConsentCode';
-import { parseConsentUnlockParams, resolveUnlockOrigin } from './parseConsentParams';
+import { consentSearchUsesSavedPn, parseConsentUnlockParams, resolveUnlockOrigin } from './parseConsentParams';
 import { DEFAULT_UNLOCK_ORIGIN, shouldUseCrossProcessBrokerHandoff } from './constants';
 import { extractMlDsaSecretKeyB64 } from './extractMlDsa';
 import { toUnlockVaultEnrollMaterial, assertNoVaultSecretsOnWire } from './vaultEnroll';
@@ -136,6 +136,20 @@ describe('parseConsentUnlockParams', () => {
     expect(p.redirectUri).toBe('https://a.test/cb');
     expect(p.apiEndpoint).toBe('https://api.test');
     expect(p.popup).toBe(true);
+  });
+});
+
+describe('consentSearchUsesSavedPn', () => {
+  it('create never offers a saved pN', () => {
+    expect(consentSearchUsesSavedPn('?flow=shell&op=create&state=s')).toBe(false);
+    expect(consentSearchUsesSavedPn('flow=shell&op=create')).toBe(false);
+  });
+
+  it('unlock requests still offer a saved pN', () => {
+    expect(consentSearchUsesSavedPn('?flow=shell&op=session')).toBe(true);
+    expect(consentSearchUsesSavedPn('?flow=shell')).toBe(true);
+    expect(consentSearchUsesSavedPn('?client_id=x&op=create')).toBe(true);
+    expect(consentSearchUsesSavedPn('')).toBe(true);
   });
 });
 
