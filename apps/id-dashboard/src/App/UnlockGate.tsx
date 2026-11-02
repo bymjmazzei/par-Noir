@@ -54,7 +54,7 @@ export function UnlockGate(props: UnlockGateProps) {
                   void handleShellSession(session);
                 }}
               />
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="mt-4 grid grid-cols-2 items-start gap-2">
                 <HostedShellLaunch buttonOnly op="create" label="Create New pN" onSession={handleCreateSession} />
                 <button
                   type="button"
