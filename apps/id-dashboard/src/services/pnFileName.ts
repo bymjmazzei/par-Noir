@@ -14,8 +14,14 @@ export function pnFilePublicKey(file: unknown): string | undefined {
   return found as string | undefined;
 }
 
-/** Every pN download is named by its pN identifier, e.g. "pn-<64 hex>.pn". */
+/**
+ * Download basename for a pN file. The full id lives inside the file (via the public key);
+ * the name is just the first 8 hex of that id, matching the Drive root fingerprint.
+ * e.g. "pn-3f9a1c2e.pn" or "pn-3f9a1c2e.device-bound.pn".
+ */
 export function pnFileName(publicKey: string | undefined, variant?: 'device-bound'): string {
-  const base = publicKey ? deriveCanonicalPnIdentifier(publicKey) : 'par-noir-identity';
+  const base = publicKey
+    ? `pn-${deriveCanonicalPnIdentifier(publicKey).slice(3, 11)}`
+    : 'par-noir-identity';
   return variant ? `${base}.${variant}.pn` : `${base}.pn`;
 }
