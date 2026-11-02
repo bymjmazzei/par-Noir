@@ -1,6 +1,6 @@
 import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { shellIdentityFilename } from '../services/shellResultFile';
-import { pnFileName, pnFilePublicKey } from '../services/pnFileName';
+import { pnFileName, pnFilePublicKey, pnShortName } from '../services/pnFileName';
 
 const mlDsaKey = (fill: number) => Buffer.alloc(1952, fill).toString('base64');
 const PK = mlDsaKey(1);
@@ -16,6 +16,11 @@ describe('pN file names', () => {
     expect(pnFileName(PK)).toMatch(/^pn-[0-9a-f]{8}\.pn$/);
     expect(pnFileName(PK, 'device-bound')).toBe(`${short(PK)}.device-bound.pn`);
     expect(pnFileName(undefined)).toBe('par-noir-identity.pn');
+  });
+
+  it('a pN with no nickname shows the same short name as its file', () => {
+    expect(pnShortName(PK)).toBe(short(PK));
+    expect(pnShortName(undefined)).toBeUndefined();
   });
 
   it('reads the public key from each pN file shape', () => {

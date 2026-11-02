@@ -14,14 +14,16 @@ export function pnFilePublicKey(file: unknown): string | undefined {
   return found as string | undefined;
 }
 
+/** First 8 hex of the pN id, matching the Drive root fingerprint, e.g. "pn-3f9a1c2e". */
+export function pnShortName(publicKey: string | undefined): string | undefined {
+  return publicKey ? `pn-${deriveCanonicalPnIdentifier(publicKey).slice(3, 11)}` : undefined;
+}
+
 /**
- * Download basename for a pN file. The full id lives inside the file (via the public key);
- * the name is just the first 8 hex of that id, matching the Drive root fingerprint.
+ * Download basename for a pN file. The full id lives inside the file (via the public key).
  * e.g. "pn-3f9a1c2e.pn" or "pn-3f9a1c2e.device-bound.pn".
  */
 export function pnFileName(publicKey: string | undefined, variant?: 'device-bound'): string {
-  const base = publicKey
-    ? `pn-${deriveCanonicalPnIdentifier(publicKey).slice(3, 11)}`
-    : 'par-noir-identity';
+  const base = pnShortName(publicKey) ?? 'par-noir-identity';
   return variant ? `${base}.${variant}.pn` : `${base}.pn`;
 }

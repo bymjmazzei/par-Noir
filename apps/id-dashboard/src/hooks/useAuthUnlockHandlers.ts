@@ -7,6 +7,7 @@ import React from 'react';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import type { HostedShellSession } from '@par-noir/oauth-ui';
 import { exchangeCodeForToken, setStoredToken } from '../services/parNoirOAuthInline';
+import { pnShortName } from '../services/pnFileName';
 import { IntegrationCredentialManager } from '../utils/integrationCredentialManager';
 import { notificationsService } from '../utils/notificationsService';
 import SimpleStorage, { SimpleIdentity } from '../utils/simpleStorage';
@@ -473,9 +474,10 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
         );
       }
       const authenticatedAt = new Date().toISOString();
+      const nickname = session.nickname || pnShortName(session.publicKey) || 'pN';
       await storage.storeSession({
         id: session.did,
-        nickname: session.nickname || 'pN',
+        nickname,
         accessToken,
         expiresIn: 3600,
         authenticatedAt,
@@ -491,7 +493,7 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
       }
       setAuthenticatedUser({
         id: session.did,
-        nickname: session.nickname || 'pN',
+        nickname,
         accessToken,
         expiresIn: 3600,
         authenticatedAt,
