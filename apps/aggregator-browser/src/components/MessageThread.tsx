@@ -38,6 +38,7 @@ import { GroupSettingsModal } from './GroupSettingsModal';
 import { MessageMediaPickerModal } from './MessageMediaPickerModal';
 import { MessageMediaAttachment } from './MessageMediaAttachment';
 import type { MediaPickItem } from '@par-noir/messaging-ui';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { useRegisterSoftRefresh, useSoftRefresh } from '../contexts/SoftRefreshContext';
 import { useOverscrollRefresh } from '../hooks/useOverscrollRefresh';
 import {
@@ -707,7 +708,7 @@ export function MessageThread({
 
   const displayName = isGroup
     ? (groupTitle || 'Group')
-    : participantName || (participantPnIdentifier?.substring(0, 16) || 'Unknown') + '...';
+    : participantName || (participantPnIdentifier ? pnShortLabel(participantPnIdentifier) : 'Unknown');
   const isOwner = isGroup && userState.pnIdentifier === ownerPnIdentifier;
   const canSend = !isGroup || accessRole !== 'readOnly';
 
@@ -751,8 +752,10 @@ export function MessageThread({
           )}
           <div>
             <h2 className="text-white font-semibold">{displayName}</h2>
-            {!isGroup && (
-              <p className="text-neutral-400 text-xs">{participantPnIdentifier}</p>
+            {!isGroup && participantPnIdentifier && (
+              <p className="text-neutral-400 text-xs" title={participantPnIdentifier}>
+                {pnShortLabel(participantPnIdentifier)}
+              </p>
             )}
             {isGroup && accessRole === 'readOnly' && (
               <p className="text-neutral-500 text-xs">Read only</p>

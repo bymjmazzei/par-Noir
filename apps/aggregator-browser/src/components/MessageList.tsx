@@ -335,12 +335,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
                 : `${thread.participantPnIdentifier}|${channelId}`;
               const label = isGroup
                 ? (thread.groupTitle || 'Group')
-                : (() => {
-                    const displayName = getDisplayName(thread.participantPnIdentifier);
-                    return displayName !== thread.participantPnIdentifier
-                      ? displayName
-                      : (thread.participantPnIdentifier || 'Unknown').substring(0, 16) + '...';
-                  })();
+                : getDisplayName(thread.participantPnIdentifier);
               const channelBadge =
                 (MESSAGING_ONLY || !!channelClientId) && !isGroup
                   ? thread.channelLabel || (channelId === PLATFORM_CHANNEL_CLIENT_ID ? 'Platform' : channelId)

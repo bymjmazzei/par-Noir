@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { secretKeyInputProps, SECRET_KEY_FORM_ATTRS } from '../secretKeyInputAttrs';
 import { isMessagingHandoffClient } from './constants';
 import {
@@ -1169,7 +1170,9 @@ function ConsentUnlockInner(props: {
                   <div className="permission-title">
                     pN Identifier <span className="required-badge">(Required)</span>
                   </div>
-                  <div className="permission-desc">{pnIdentifier || '…'}</div>
+                  <div className="permission-desc" title={pnIdentifier || undefined}>
+                    {pnIdentifier ? pnShortLabel(pnIdentifier) : '…'}
+                  </div>
                 </div>
               </div>
 

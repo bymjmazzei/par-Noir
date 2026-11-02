@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { getConnections, type Connection } from '../services/connectionService';
 import {
   listGroups,
@@ -156,8 +157,8 @@ export function GroupSettingsModal({
                     key={pn}
                     className="flex items-center justify-between gap-2 rounded-lg bg-neutral-800 px-3 py-2 text-sm"
                   >
-                    <span className="text-white truncate">
-                      {pn === ownerPnIdentifier ? `${pn.slice(0, 16)}… (owner)` : `${pn.slice(0, 20)}…`}
+                    <span className="text-white truncate" title={pn}>
+                      {pn === ownerPnIdentifier ? `${pnShortLabel(pn)} (owner)` : pnShortLabel(pn)}
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
                       {pn !== ownerPnIdentifier && (

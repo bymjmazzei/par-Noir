@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { ApplyModal } from './components/ApplyModal';
 import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -324,7 +325,7 @@ function UnlockedView({ mlKemSecretKey }: { mlKemSecretKey?: string | null }) {
         )}
         <div className="mb-6 text-center">
           <h2 className="text-lg font-medium text-neutral-400">
-            Ray View · {session?.pnIdentifier || session?.did || 'Ray'}
+            Ray View · {pnShortLabel(session?.pnIdentifier || session?.did || 'Ray')}
           </h2>
         </div>
         <RayView />

@@ -16,6 +16,7 @@ import {
 import { useToast } from '../hooks/useToast';
 import { PNConnect } from '../components/PNConnect';
 import { normalizeConnectPnIdentifier } from '@par-noir/social-connections';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
 export function VanityConnectPage({
   targetPnIdentifier,
@@ -131,8 +132,9 @@ export function VanityConnectPage({
     }
   }, [userState.isUnlocked, userState.pnIdentifier, connectionStatus.connectionId, success, showError]);
 
-  const pnLabel = normalizeConnectPnIdentifier(targetPnIdentifier);
-  const title = displayName || publicName || pnLabel || 'pN';
+  const fullPnId = normalizeConnectPnIdentifier(targetPnIdentifier) || targetPnIdentifier;
+  const pnLabel = pnShortLabel(fullPnId);
+  const title = displayName || (publicName ? `@${publicName}` : pnLabel);
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-neutral-950 text-white">
@@ -143,8 +145,8 @@ export function VanityConnectPage({
         <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 p-8 shadow-xl">
           <p className="text-center text-xs uppercase tracking-widest text-neutral-500">Connect on par Noir</p>
           <h1 className="mt-2 text-center text-2xl font-semibold">{title}</h1>
-          <p className="mt-1 text-center text-sm text-neutral-400">
-            {publicName ? `@${publicName}` : pnLabel}
+          <p className="mt-1 text-center font-mono text-sm text-neutral-400" title={fullPnId}>
+            {pnLabel}
           </p>
 
           {isOwnProfile ? (

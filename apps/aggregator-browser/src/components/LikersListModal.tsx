@@ -6,6 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { User, X } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { API_ENDPOINT } from '../config/api';
 
 export interface LikerEntry {
@@ -29,11 +30,6 @@ function formatRelativeTime(iso: string): string {
   if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
   if (sec < 86400 * 30) return `${Math.floor(sec / 86400)}d`;
   return new Date(iso).toLocaleDateString();
-}
-
-function shortPn(pn: string): string {
-  const s = pn.startsWith('pn-') ? pn.slice(3) : pn;
-  return s.length > 12 ? `${s.slice(0, 8)}…` : s;
 }
 
 export function LikersListModal({ fileId, onClose, onCreatorClick }: LikersListModalProps) {
@@ -134,7 +130,7 @@ export function LikersListModal({ fileId, onClose, onCreatorClick }: LikersListM
           ) : (
             <ul className="divide-y divide-neutral-800">
               {likes.map((liker) => {
-                const label = liker.displayName?.trim() || shortPn(liker.pnIdentifier);
+                const label = liker.displayName?.trim() || pnShortLabel(liker.pnIdentifier);
                 const initial = label.charAt(0).toUpperCase();
                 return (
                   <li key={liker.pnIdentifier}>

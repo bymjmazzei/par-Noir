@@ -155,6 +155,16 @@ export function pnIdentifierFromDid(did: string): string | null {
   return PN_DID_RE.test(did) ? `${PN_IDENTIFIER_PREFIX}${did.slice(PN_DID_PREFIX.length)}` : null;
 }
 
+/**
+ * What people see for a pN with no chosen name: `pn-` + first 8 hex, for a pN id or DID.
+ * Any other string comes back unchanged. Display only, never an address (docs/standards/PN_NAME_DISPLAY.md).
+ */
+export function pnShortLabel(id: string): string {
+  if (PN_IDENTIFIER_RE.test(id)) return id.slice(0, PN_IDENTIFIER_PREFIX.length + 8);
+  if (PN_DID_RE.test(id)) return `${PN_IDENTIFIER_PREFIX}${id.slice(PN_DID_PREFIX.length, PN_DID_PREFIX.length + 8)}`;
+  return id;
+}
+
 /** `pn-<hash>` -> `did:pn:<hash>`; null when the id is not a well-formed pN id. */
 export function pnDidFromIdentifier(pnIdentifier: string): string | null {
   return isPnIdentifier(pnIdentifier)

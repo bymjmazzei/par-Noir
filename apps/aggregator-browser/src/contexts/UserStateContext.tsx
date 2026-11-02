@@ -4,6 +4,7 @@
  */
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { accountsCacheService } from '../services/accountsCacheService';
 import { inboxCacheService } from '../services/inboxCacheService';
 import { TagNormalizationService } from '../services/tagNormalizationService';
@@ -896,9 +897,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   };
 
   const getDisplayName = (creatorId: string, nickname?: string): string => {
-    // If it's the current user, return their display name or nickname or full pN identifier
     if (creatorId === userState.pnIdentifier) {
-      return userState.preferences.displayName || nickname || creatorId;
+      return userState.preferences.displayName || nickname || pnShortLabel(creatorId);
     }
 
     // Check cache for other users
@@ -907,8 +907,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       return cached;
     }
 
-    // Fallback to nickname or full creatorId (pN identifier)
-    return nickname || creatorId;
+    return nickname || pnShortLabel(creatorId);
   };
 
   const updateCuratedFeedPreferences = async (preferences: CuratedFeedPreferences) => {

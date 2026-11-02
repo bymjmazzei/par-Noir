@@ -1,3 +1,5 @@
+import { deriveCanonicalPnIdentifier, pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+
 /** Capacitor / Keychain app ids for session vault namespacing. */
 export type SessionVaultAppId = 'dashboard' | 'browse' | 'messaging' | 'prism' | 'unlock';
 
@@ -98,12 +100,14 @@ export type SealedVaultRecord = {
   failureCount: number;
 };
 
-/** Safe picker label — never Key 1 / Key 2. */
+/** Safe picker label — never Key 1 / Key 2. Nickname, else the pN short label (docs/standards/PN_NAME_DISPLAY.md). */
 export function unlockIdentityLabel(id: UnlockIdentityListing): string {
   const nick = id.nickname?.trim();
   if (nick) return nick;
-  const pk = (id.publicKey || id.identityId || '').trim();
-  if (!pk) return 'Saved pN';
-  if (pk.length <= 12) return pk;
-  return `${pk.slice(0, 8)}…${pk.slice(-4)}`;
+  try {
+    return pnShortLabel(deriveCanonicalPnIdentifier(id.publicKey.trim()));
+  } catch {
+    const fromId = pnShortLabel(id.identityId?.trim() || '');
+    return /^pn-[0-9a-f]{8}$/.test(fromId) ? fromId : 'Saved pN';
+  }
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Users, Shield, AlertCircle } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   createAssetDelegation,
   ensureHumanOwnedAsset,
@@ -134,8 +135,8 @@ export const DelegationModal: React.FC<DelegationModalProps> = ({
                 required
               >
                 {assets.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.kind} {a.subjectPnIdentifier ? `· ${a.subjectPnIdentifier}` : ''}
+                  <option key={a.id} value={a.id} title={a.subjectPnIdentifier || undefined}>
+                    {a.kind} {a.subjectPnIdentifier ? `· ${pnShortLabel(a.subjectPnIdentifier)}` : ''}
                   </option>
                 ))}
               </select>

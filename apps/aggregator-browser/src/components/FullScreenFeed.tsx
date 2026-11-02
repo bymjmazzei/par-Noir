@@ -10,6 +10,7 @@ import { EngagementOverlay } from './EngagementOverlay';
 import { CompanionAudioMix, companionAudioFileIdsOf } from './CompanionAudioMix';
 import { ContentRatingBadge } from './ContentRatingBadge';
 import { File } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useLikeDislikeSwipe } from '../hooks/useLikeDislikeSwipe';
@@ -1910,7 +1911,7 @@ export function FullScreenFeed({
                 <div className="text-6xl mb-6">👤</div>
                 <h2 className="text-2xl font-semibold mb-2">Connected</h2>
                 <p className="text-neutral-400 text-center mb-6">
-                  {creatorId ? `${creatorId.substring(0, 8)}...` : 'This connection'} hasn't posted anything yet
+                  {creatorId ? pnShortLabel(creatorId) : 'This connection'} hasn't posted anything yet
                 </p>
                 {onCreatorClick && creatorId && (
                   <button

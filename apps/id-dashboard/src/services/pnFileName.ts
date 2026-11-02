@@ -1,4 +1,4 @@
-import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import { deriveCanonicalPnIdentifier, pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
 /** Public key inside a pN file: a bare identity row, `{ identity }`, or `{ identities: [row] }`. */
 export function pnFilePublicKey(file: unknown): string | undefined {
@@ -14,9 +14,9 @@ export function pnFilePublicKey(file: unknown): string | undefined {
   return found as string | undefined;
 }
 
-/** First 8 hex of the pN id, matching the Drive root fingerprint, e.g. "pn-3f9a1c2e". */
+/** Short label for the pN behind a public key, e.g. "pn-3f9a1c2e" (docs/standards/PN_NAME_DISPLAY.md). */
 export function pnShortName(publicKey: string | undefined): string | undefined {
-  return publicKey ? `pn-${deriveCanonicalPnIdentifier(publicKey).slice(3, 11)}` : undefined;
+  return publicKey ? pnShortLabel(deriveCanonicalPnIdentifier(publicKey)) : undefined;
 }
 
 /**

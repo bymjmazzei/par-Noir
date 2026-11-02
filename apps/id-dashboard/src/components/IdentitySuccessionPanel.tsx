@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { API_ENDPOINT } from '../config/api';
 import { SectionInfo } from './common/SectionInfo';
 
@@ -42,8 +43,8 @@ export const IdentitySuccessionPanel: React.FC<IdentitySuccessionPanelProps> = (
       </div>
       <p className="text-sm text-text-primary">
         Successor:{' '}
-        <span className="font-mono text-xs">
-          {publicInfo?.successorPnIdentifier || 'none registered'}
+        <span className="font-mono text-xs" title={publicInfo?.successorPnIdentifier || undefined}>
+          {publicInfo?.successorPnIdentifier ? pnShortLabel(publicInfo.successorPnIdentifier) : 'none registered'}
         </span>
       </p>
       {publicInfo?.revoked ? (

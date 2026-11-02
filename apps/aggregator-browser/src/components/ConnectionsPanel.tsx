@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { Users, UserPlus, UserMinus } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
 import {
@@ -112,9 +113,9 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
       const namePromises = toLoad.map(async (pnId) => {
         try {
           const profile = await getUserProfile(pnId);
-          return { pnId, name: profile.displayName || pnId };
+          return { pnId, name: profile.displayName || pnShortLabel(pnId) };
         } catch (error) {
-          return { pnId, name: pnId };
+          return { pnId, name: pnShortLabel(pnId) };
         }
       });
 
@@ -136,7 +137,7 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
   };
 
   const getDisplayName = (userPnIdentifier: string): string => {
-    return displayNames.get(userPnIdentifier) || userPnIdentifier;
+    return displayNames.get(userPnIdentifier) || pnShortLabel(userPnIdentifier);
   };
 
 
@@ -466,7 +467,7 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
                     className="p-3 bg-neutral-800 rounded-lg flex items-center justify-between"
                   >
                     <div className="flex-1">
-                      <p className="text-white text-sm">{follower.followerPnIdentifier?.substring(0, 16) || 'Unknown'}...</p>
+                      <p className="text-white text-sm">{follower.followerPnIdentifier ? getDisplayName(follower.followerPnIdentifier) : 'Unknown'}</p>
                       <p className="text-neutral-400 text-xs">
                         Followed {new Date(follower.followedAt).toLocaleDateString()}
                       </p>
@@ -492,7 +493,7 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
                   >
                     <div className="flex-1">
                       <p className="text-white text-sm">
-                        {item.targetType === 'user' ? '👤' : '📰'} {item.targetPnIdentifier?.substring(0, 16) || 'Unknown'}...
+                        {item.targetType === 'user' ? '👤' : '📰'} {item.targetPnIdentifier ? getDisplayName(item.targetPnIdentifier) : 'Unknown'}
                       </p>
                       <p className="text-neutral-400 text-xs">
                         {item.targetType === 'user' ? 'User' : 'Feed'} • {new Date(item.followedAt).toLocaleDateString()}

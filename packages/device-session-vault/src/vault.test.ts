@@ -1,6 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDeviceSessionVault, memoryKv } from './adapters.js';
-import type { DashboardKeysPayload, UnlockKeysPayload } from './types.js';
+import { unlockIdentityLabel, type DashboardKeysPayload, type UnlockKeysPayload } from './types.js';
+import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
+import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+
+describe('unlockIdentityLabel', () => {
+  it('uses the nickname, else the pN short label, never a public-key slice', () => {
+    const publicKey = bytesToBase64(mlDsa65Keygen().publicKey);
+    const pnId = deriveCanonicalPnIdentifier(publicKey);
+    expect(unlockIdentityLabel({ identityId: 'x', publicKey, nickname: ' Work ' })).toBe('Work');
+    expect(unlockIdentityLabel({ identityId: 'x', publicKey })).toBe(pnId.slice(0, 11));
+    expect(unlockIdentityLabel({ identityId: pnId, publicKey: 'not-a-key' })).toBe(pnId.slice(0, 11));
+    expect(unlockIdentityLabel({ identityId: 'legacy-id', publicKey: 'not-a-key' })).toBe('Saved pN');
+  });
+});
 
 describe('DeviceSessionVault', () => {
   const payload: DashboardKeysPayload = {

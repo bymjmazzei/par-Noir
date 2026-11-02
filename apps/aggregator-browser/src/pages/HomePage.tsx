@@ -6,6 +6,7 @@
 import React, { useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { calculateMediaScaling } from '../utils/mediaScaling';
 import { saveToFeed } from '../services/savedFeedService';
 import { resolvePublicMediaObjectUrl, hasFeedPreviewPlayback } from '../services/feedPreviewPlayback';
@@ -553,7 +554,7 @@ export function HomePage() {
                     className="flex items-center space-x-2 text-xs text-text-secondary mb-3 hover:text-blue-400 transition-colors w-full text-left"
                   >
                     <User className="h-3 w-3" />
-                    <span className="truncate">{file.creator?.identifier?.value || file.creator?.['@id'] || file.author?.did || 'Unknown'}</span>
+                    <span className="truncate">{pnShortLabel(file.creator?.identifier?.value || file.creator?.['@id'] || file.author?.did || 'Unknown')}</span>
                   </button>
                   {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-3">

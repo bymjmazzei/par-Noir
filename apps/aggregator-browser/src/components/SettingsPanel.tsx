@@ -4,6 +4,7 @@
  */
 
 import { X, User, Globe } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { useUserState } from '../contexts/UserStateContext';
 // RatingPreferences removed - will be replaced with NSFW toggle in Phase 7
 import { PNConnect } from './PNConnect';
@@ -45,8 +46,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   <div>
                     <p className="text-text-secondary text-sm mb-1">pN Status</p>
                     <p className="text-white font-medium">Connected</p>
-                    <p className="text-text-secondary text-xs mt-1">
-                      {userState.pnIdentifier}
+                    <p className="text-text-secondary text-xs mt-1" title={userState.pnIdentifier || undefined}>
+                      {userState.pnIdentifier ? pnShortLabel(userState.pnIdentifier) : null}
                     </p>
                   </div>
                   <button

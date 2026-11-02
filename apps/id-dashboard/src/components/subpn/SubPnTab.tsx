@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
 import { SectionInfo } from '../common/SectionInfo';
 import { IdentityCrypto, type EncryptedIdentity } from '@par-noir/identity-crypto';
-import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import { deriveCanonicalPnIdentifier, pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   HostedShellLaunch,
   PN_CLOUD_CREDENTIALS_READY_EVENT,
@@ -857,7 +857,9 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                   }`}
                 >
                   <div className="font-medium">{(a.metadata?.label as string) || a.kind}</div>
-                  <div className="text-xs text-text-secondary truncate">{a.subjectPnIdentifier || a.id}</div>
+                  <div className="text-xs text-text-secondary truncate" title={a.subjectPnIdentifier || a.id}>
+                    {pnShortLabel(a.subjectPnIdentifier || a.id)}
+                  </div>
                 </button>
               </li>
             ))}
@@ -900,7 +902,9 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 </SectionInfo>
               </h4>
               <p className="text-xs text-text-secondary mt-1">Kind: {selected.kind}</p>
-              <p className="text-xs text-text-secondary font-mono break-all">Subject: {selected.subjectPnIdentifier}</p>
+              <p className="text-xs text-text-secondary font-mono" title={selected.subjectPnIdentifier}>
+                Subject: {pnShortLabel(selected.subjectPnIdentifier)}
+              </p>
             </div>
             <button
               type="button"

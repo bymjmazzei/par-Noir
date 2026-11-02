@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import QRCode from 'qrcode';
-import { Send, QrCode } from 'lucide-react';
+import { Send, QrCode, Link2 } from 'lucide-react';
 import { buildMessagingConnectUrl } from '@par-noir/social-connections';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { messagingAppOrigin } from '../services/publicNamesApi';
 
 const iconButtonClass =
@@ -28,22 +29,27 @@ export function SharePnCard({
     window.setTimeout(() => setStatus(null), 2000);
   }
 
+  async function copyLink() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      flash('Link copied');
+    } catch {
+      flash('Could not copy link');
+    }
+  }
+
   async function shareLink() {
     if (!shareUrl) return;
     if (typeof navigator.share === 'function') {
       try {
-        await navigator.share({ title: nickname || 'My pN', url: shareUrl });
+        await navigator.share({ title: nickname || (pnIdentifier ? pnShortLabel(pnIdentifier) : 'My pN'), url: shareUrl });
         return;
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') return;
       }
     }
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      flash('Link copied');
-    } catch {
-      flash('Could not share link');
-    }
+    await copyLink();
   }
 
   async function downloadQr() {
@@ -52,7 +58,7 @@ export function SharePnCard({
       const dataUrl = await QRCode.toDataURL(shareUrl, { margin: 2, width: 512 });
       const a = document.createElement('a');
       a.href = dataUrl;
-      a.download = `${pnIdentifier}-qr.png`;
+      a.download = `${pnShortLabel(pnIdentifier)}-qr.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -65,6 +71,15 @@ export function SharePnCard({
 
   return (
     <div className="flex items-center justify-center gap-2">
+      <button
+        type="button"
+        onClick={() => void copyLink()}
+        className={iconButtonClass}
+        title="Copy pN link"
+        aria-label="Copy pN link"
+      >
+        <Link2 className="h-4 w-4" />
+      </button>
       <button
         type="button"
         onClick={() => void shareLink()}

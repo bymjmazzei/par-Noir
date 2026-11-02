@@ -4,6 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { getConnections, invalidateConnectionsCache, type Connection } from '../services/connectionService';
 import { createGroup } from '../services/groupService';
 import { isDmIdentityReady } from '../services/dmIdentitySession';
@@ -90,7 +91,7 @@ export function CreateGroupModal({ ownerPnIdentifier, onClose, onCreated }: Crea
                   checked={!!selected[c.userPnIdentifier]}
                   onChange={() => toggle(c.userPnIdentifier)}
                 />
-                <span>{c.userPnIdentifier.slice(0, 20)}…</span>
+                <span title={c.userPnIdentifier}>{pnShortLabel(c.userPnIdentifier)}</span>
               </label>
             ))}
             {connections.length === 0 && (

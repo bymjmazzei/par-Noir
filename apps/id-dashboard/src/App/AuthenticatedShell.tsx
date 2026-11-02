@@ -15,6 +15,7 @@ import { AdvancedPrivacySettingsBody } from '../components/privacy/AdvancedPriva
 import { PublicNamesSection } from '../components/privacy/PublicNamesSection';
 import { SharePnCard } from '../components/SharePnCard';
 import { STANDARD_DATA_POINTS, getDataPointMinLevel } from '@par-noir/standard-data-points';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { setOwnerApiPnIdentifier } from '../services/ownerApiService';
 export interface AuthenticatedShellProps {
   authenticatedUser: any;
@@ -835,8 +836,13 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                   <div key={delegation.id} className="p-3 bg-secondary rounded-lg">
                                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                       <div className="min-w-0 flex-1">
-                                        <h5 className="font-medium text-text-primary truncate font-mono text-sm">
-                                          {delegation.delegateePnIdentifier || delegation.delegateeClientId || 'Unknown delegatee'}
+                                        <h5
+                                          className="font-medium text-text-primary truncate font-mono text-sm"
+                                          title={delegation.delegateePnIdentifier || undefined}
+                                        >
+                                          {delegation.delegateePnIdentifier
+                                            ? pnShortLabel(delegation.delegateePnIdentifier)
+                                            : delegation.delegateeClientId || 'Unknown delegatee'}
                                         </h5>
                                         <p className="text-xs text-text-secondary">
                                           Scope: {delegation.scope} · Asset: {delegation.ownedAssetId.slice(0, 8)}…

@@ -23,6 +23,7 @@ import {
   isPnIdentifier,
   pnDidFromIdentifier,
   pnIdentifierFromDid,
+  pnShortLabel,
   PN_DID_RE,
   PN_IDENTIFIER_RE,
 } from '../src/index';
@@ -110,6 +111,11 @@ describe('@par-noir/pqc-crypto', () => {
     expect(pnDidFromIdentifier(pn)).toBe(did);
     expect(pnIdentifierFromDid('did:pn:short')).toBeNull();
     expect(pnDidFromIdentifier('pn-87f49f0fb345')).toBeNull();
+    expect(pnShortLabel(pn)).toBe(pn.slice(0, 11));
+    expect(pnShortLabel(pn)).toMatch(/^pn-[0-9a-f]{8}$/);
+    expect(pnShortLabel(did)).toBe(pnShortLabel(pn));
+    expect(pnShortLabel('browser-app')).toBe('browser-app');
+    expect(pnShortLabel('pn-87f49f0fb345')).toBe('pn-87f49f0fb345');
     expect(() => deriveCanonicalPnIdentifier('pk-b64')).toThrow();
     expect(() => deriveCanonicalPnIdentifier(bytesToBase64(new Uint8Array(32)))).toThrow();
   });

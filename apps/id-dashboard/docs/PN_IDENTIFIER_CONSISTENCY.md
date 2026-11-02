@@ -40,4 +40,5 @@ Validate with `isPnIdentifier` / `isPnDid` (`PN_IDENTIFIER_RE`, `PN_DID_RE`). Co
 
 ## Related
 
+- Display: how a pN is named on screen (short label `pn-<first 8 hex>`, name precedence) is in [docs/standards/PN_NAME_DISPLAY.md](../../../docs/standards/PN_NAME_DISPLAY.md)
 - Recovery: same `publicKey` after Shamir recovery → same canonical id → messaging keys unchanged

@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Send, Heart, User, Reply, ChevronDown, ChevronUp } from 'lucide-react';
+import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { useEngagement } from '../hooks/useEngagement';
@@ -149,12 +150,16 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     };
   }, [onClose]);
 
+  const commentAuthorName = () =>
+    userState.preferences.displayName ||
+    (userState.pnIdentifier ? pnShortLabel(userState.pnIdentifier) : 'Anonymous');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim() || !userState.isUnlocked) return;
 
     const authorId = userState.pnIdentifier || 'anonymous';
-    const authorName = userState.pnIdentifier?.substring(0, 8) || 'Anonymous';
+    const authorName = commentAuthorName();
     
     await addComment(file.metadata.fileId, newComment.trim(), authorId, authorName);
     setNewComment('');
@@ -171,7 +176,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     if (!replyContent.trim() || !userState.isUnlocked) return;
 
     const authorId = userState.pnIdentifier || 'anonymous';
-    const authorName = userState.pnIdentifier?.substring(0, 8) || 'Anonymous';
+    const authorName = commentAuthorName();
     
     await addComment(file.metadata.fileId, replyContent.trim(), authorId, authorName, parentCommentId);
     setReplyContent('');
