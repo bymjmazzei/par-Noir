@@ -97,6 +97,11 @@ export async function unlockSessionVaultEntries(): Promise<UnlockKeysPayload[]> 
   return [];
 }
 
+export async function removeUnlockVaultIdentity(identityId: string): Promise<void> {
+  const v = await getVault();
+  await v.removeUnlockIdentity(identityId);
+}
+
 export async function clearUnlockSessionVault(): Promise<void> {
   const v = await getVault();
   await v.clearVault(APP_ID);

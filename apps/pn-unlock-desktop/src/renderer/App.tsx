@@ -25,6 +25,7 @@ import {
   isUnlockSessionVaultAvailable,
   unlockIdentityLabel,
   unlockSessionVaultEntries,
+  removeUnlockVaultIdentity,
 } from './sessionVaultDesktop';
 import { startAgentBridge } from './agentBridge';
 
@@ -66,6 +67,7 @@ export default function App(): React.ReactElement {
   const [pickerOptions, setPickerOptions] = useState<SessionVaultPickerOption[]>([]);
   const [pendingEntries, setPendingEntries] = useState<UnlockKeysPayload[]>([]);
   const [showEnroll, setShowEnroll] = useState(false);
+  const [managingVault, setManagingVault] = useState(false);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [vaultFactors, setVaultFactors] = useState<ConsentVaultFactors | null>(null);
@@ -83,6 +85,7 @@ export default function App(): React.ReactElement {
 
   const dismissVaultOffer = useCallback(() => {
     vaultOfferGen.current += 1;
+    setManagingVault(false);
     setVaultFactors(null);
     setShowVaultUnlock(false);
     setShowPicker(false);
@@ -214,6 +217,13 @@ export default function App(): React.ReactElement {
     setVaultError(null);
   }, []);
 
+  const showSavedPns = useCallback((entries: UnlockKeysPayload[]) => {
+    setPendingEntries(entries);
+    setPickerOptions(entries.map((e) => ({ identityId: e.identityId, label: unlockIdentityLabel(e) })));
+    setShowVaultUnlock(false);
+    setShowPicker(true);
+  }, []);
+
   const onVaultUnlock = useCallback(async () => {
     setVaultError(null);
     setVaultBusy(true);
@@ -232,21 +242,14 @@ export default function App(): React.ReactElement {
         applyEntry(entries[0]);
         return;
       }
-      setPendingEntries(entries);
-      setPickerOptions(
-        entries.map((e) => ({
-          identityId: e.identityId,
-          label: unlockIdentityLabel(e),
-        }))
-      );
-      setShowVaultUnlock(false);
-      setShowPicker(true);
+      setManagingVault(false);
+      showSavedPns(entries);
     } catch (e) {
       setVaultError(e instanceof Error ? e.message : 'Device unlock failed');
     } finally {
       setVaultBusy(false);
     }
-  }, [applyEntry, search]);
+  }, [applyEntry, search, showSavedPns]);
 
   const saveAgentIdentity = useCallback(async (entry: AgentVaultEntry) => {
     if (!(await isUnlockSessionVaultAvailable())) {
@@ -263,6 +266,45 @@ export default function App(): React.ReactElement {
     autoTouchIdForOffer.current = offer;
     void onVaultUnlock();
   }, [showVaultUnlock, vaultFactors, showPicker, vaultBusy, onVaultUnlock]);
+
+  const onManageVault = useCallback(async () => {
+    setVaultError(null);
+    setVaultBusy(true);
+    try {
+      const entries = await unlockSessionVaultEntries('Show saved pNs');
+      if (entries.length === 0) {
+        setVaultError('No saved pNs on this Mac');
+        return;
+      }
+      setManagingVault(true);
+      showSavedPns(entries);
+    } catch (e) {
+      setVaultError(e instanceof Error ? e.message : 'Device unlock failed');
+    } finally {
+      setVaultBusy(false);
+    }
+  }, [showSavedPns]);
+
+  const onRemoveIdentity = useCallback(
+    async (identityId: string) => {
+      setVaultError(null);
+      setVaultBusy(true);
+      try {
+        await removeUnlockVaultIdentity(identityId);
+        const remaining = pendingEntries.filter((e) => e.identityId !== identityId);
+        if (remaining.length === 0) {
+          dismissVaultOffer();
+          return;
+        }
+        showSavedPns(remaining);
+      } catch (e) {
+        setVaultError(e instanceof Error ? e.message : 'Could not remove this pN');
+      } finally {
+        setVaultBusy(false);
+      }
+    },
+    [pendingEntries, dismissVaultOffer, showSavedPns]
+  );
 
   const onPickIdentity = (identityId: string) => {
     const entry = pendingEntries.find((e) => e.identityId === identityId);
@@ -357,18 +399,27 @@ export default function App(): React.ReactElement {
           setShowVaultUnlock(false);
           setVaultError(null);
         }}
+        onManage={() => void onManageVault()}
       />
       <SessionVaultIdentityPicker
         open={showPicker && !vaultFactors}
+        title={managingVault ? 'Saved pNs' : undefined}
+        body={managingVault ? 'Remove pNs you no longer use on this Mac. Their files and keys elsewhere are not touched.' : undefined}
         options={pickerOptions}
         busy={vaultBusy}
         error={vaultError}
-        onSelect={onPickIdentity}
+        onSelect={managingVault ? () => undefined : onPickIdentity}
+        onRemove={onRemoveIdentity}
+        cancelLabel={managingVault ? 'Done' : undefined}
         onCancel={() => {
           setShowPicker(false);
           setPendingEntries([]);
           setPickerOptions([]);
           setVaultError(null);
+          if (managingVault) {
+            setManagingVault(false);
+            setShowVaultUnlock(true);
+          }
         }}
       />
       <SessionVaultEnrollPrompt

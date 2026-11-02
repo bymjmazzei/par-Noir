@@ -243,6 +243,40 @@ export class DeviceSessionVault {
     }
   }
 
+  /**
+   * Drop one saved pN from the unlock vault; the last one clears it.
+   * Biometric unless this process already unlocked or enrolled the vault.
+   */
+  async removeUnlockIdentity(
+    identityId: string,
+    reason = 'Confirm to remove this saved pN'
+  ): Promise<void> {
+    if (!identityId) return;
+    if (!this.unlockedThisProcess.has('unlock')) {
+      const ok = await this.deps.verifyBiometric(reason);
+      if (!ok) throw new Error('Biometric verification required to remove a saved pN');
+      this.unlockedThisProcess.add('unlock');
+    }
+    const raw = await this.deps.kv.get(vaultStorageKey('unlock'));
+    if (!raw) {
+      await this.deps.kv.remove(unlockVaultIndexKey());
+      return;
+    }
+    const record = JSON.parse(raw) as SealedVaultRecord;
+    const sealed = await unsealPayload<SessionVaultPayload>({
+      ciphertext: record.ciphertext,
+      iv: record.iv,
+      key: record.key,
+    });
+    const remaining = (normalizeUnlockEntries(sealed) ?? []).filter((e) => e.identityId !== identityId);
+    if (remaining.length === 0) {
+      await this.clearVault('unlock');
+      return;
+    }
+    await this.writeSealed('unlock', { kind: 'unlock_multi', entries: remaining });
+    await this.writeUnlockIndex(syncIndexFromEntries(remaining));
+  }
+
   async clearVault(appId: SessionVaultAppId): Promise<void> {
     this.unlockedThisProcess.delete(appId);
     await this.deps.kv.remove(vaultStorageKey(appId));
@@ -332,6 +366,9 @@ export class UnsupportedSessionVault {
     return null;
   }
   async clearVault(_appId: SessionVaultAppId): Promise<void> {
+    /* no-op */
+  }
+  async removeUnlockIdentity(_identityId: string): Promise<void> {
     /* no-op */
   }
   async updateWhileUnlocked(

@@ -181,6 +181,58 @@ describe('DeviceSessionVault', () => {
     }
   });
 
+  describe('removeUnlockIdentity', () => {
+    const entry = (id: string): UnlockKeysPayload => ({
+      kind: 'unlock_keys',
+      identityId: id,
+      publicKey: `pk-${id}`,
+      key1: `K1-${id}`,
+      key2: `K2-${id}`,
+      encryptedIdentityJson: `{"encryptedData":"${id}"}`,
+    });
+
+    it('removes one pN and keeps the others sealed', async () => {
+      const verify = vi.fn().mockResolvedValue(true);
+      const vault = createDeviceSessionVault({
+        kv: memoryKv(),
+        verifyBiometric: verify,
+        isBiometricAvailable: async () => true,
+      });
+      await vault.enrollAfterUnlock('unlock', entry('did:a'));
+      await vault.enrollAfterUnlock('unlock', entry('did:b'));
+      verify.mockClear();
+      await vault.removeUnlockIdentity('did:a');
+      expect(verify).not.toHaveBeenCalled();
+      expect((await vault.listUnlockIndex()).map((i) => i.identityId)).toEqual(['did:b']);
+      const unlocked = await vault.unlockWithBiometric('unlock');
+      expect(unlocked?.kind === 'unlock_multi' && unlocked.entries.map((e) => e.identityId)).toEqual(['did:b']);
+    });
+
+    it('removing the last pN clears the vault', async () => {
+      const vault = createDeviceSessionVault({
+        kv: memoryKv(),
+        verifyBiometric: async () => true,
+        isBiometricAvailable: async () => true,
+      });
+      await vault.enrollAfterUnlock('unlock', entry('did:a'));
+      await vault.removeUnlockIdentity('did:a');
+      expect(await vault.hasVault('unlock')).toBe(false);
+      expect(await vault.listUnlockIndex()).toEqual([]);
+    });
+
+    it('a fresh process needs biometric before removing', async () => {
+      const kv = memoryKv();
+      const deps = { kv, verifyBiometric: async () => true, isBiometricAvailable: async () => true };
+      await createDeviceSessionVault(deps).enrollAfterUnlock('unlock', entry('did:a'));
+      await createDeviceSessionVault(deps).enrollAfterUnlock('unlock', entry('did:b'));
+      const denied = vi.fn().mockResolvedValue(false);
+      const fresh = createDeviceSessionVault({ ...deps, verifyBiometric: denied });
+      await expect(fresh.removeUnlockIdentity('did:a')).rejects.toThrow(/Biometric verification required/);
+      expect(denied).toHaveBeenCalled();
+      expect(await fresh.listUnlockIndex()).toHaveLength(2);
+    });
+  });
+
   it('unlock migrates legacy single unlock_keys to unlock_multi', async () => {
     const kv = memoryKv();
     const vault = createDeviceSessionVault({

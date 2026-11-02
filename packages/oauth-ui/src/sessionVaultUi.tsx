@@ -2,7 +2,7 @@
  * Shared Cap session-vault enroll / unlock chrome.
  */
 
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 
 export interface SessionVaultEnrollPromptProps {
   open: boolean;
@@ -111,6 +111,9 @@ export interface SessionVaultUnlockOverlayProps {
   error?: string | null;
   onUnlock: () => void | Promise<void>;
   onUseFullUnlock: () => void;
+  /** Shows a button that opens the saved-pN list for removal. */
+  onManage?: () => void | Promise<void>;
+  manageLabel?: string;
   children?: ReactNode;
 }
 
@@ -127,6 +130,8 @@ export function SessionVaultUnlockOverlay({
   error = null,
   onUnlock,
   onUseFullUnlock,
+  onManage,
+  manageLabel = 'Manage saved pNs',
 }: SessionVaultUnlockOverlayProps) {
   if (!open) return null;
   return (
@@ -174,6 +179,26 @@ export function SessionVaultUnlockOverlay({
         >
           {useFullUnlockLabel}
         </button>
+        {onManage ? (
+          <button
+            type="button"
+            onClick={() => void onManage()}
+            disabled={busy}
+            style={{
+              width: '100%',
+              marginTop: 8,
+              padding: '6px 14px',
+              border: 'none',
+              background: 'none',
+              color: '#a3a3a3',
+              fontSize: 13,
+              textDecoration: 'underline',
+              cursor: 'pointer',
+            }}
+          >
+            {manageLabel}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -195,6 +220,8 @@ export interface SessionVaultIdentityPickerProps {
   onSelect: (identityId: string) => void | Promise<void>;
   onCancel: () => void;
   cancelLabel?: string;
+  /** Adds a Remove button per pN, confirmed inline before it fires. */
+  onRemove?: (identityId: string) => void | Promise<void>;
 }
 
 /**
@@ -210,7 +237,9 @@ export function SessionVaultIdentityPicker({
   onSelect,
   onCancel,
   cancelLabel = 'Cancel',
+  onRemove,
 }: SessionVaultIdentityPickerProps) {
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   if (!open) return null;
   return (
     <div style={overlayStyle} role="dialog" aria-modal="true" aria-labelledby="pn-vault-pick-title">
@@ -233,13 +262,14 @@ export function SessionVaultIdentityPicker({
           }}
         >
           {options.map((opt) => (
-            <li key={opt.identityId}>
+            <li key={opt.identityId} style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => void onSelect(opt.identityId)}
                 style={{
-                  width: '100%',
+                  flex: 1,
+                  minWidth: 0,
                   textAlign: 'left',
                   padding: '10px 14px',
                   borderRadius: 8,
@@ -253,6 +283,33 @@ export function SessionVaultIdentityPicker({
               >
                 {opt.label}
               </button>
+              {onRemove ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={confirmRemove === opt.identityId ? `Confirm remove ${opt.label}` : `Remove ${opt.label}`}
+                  onClick={() => {
+                    if (confirmRemove !== opt.identityId) {
+                      setConfirmRemove(opt.identityId);
+                      return;
+                    }
+                    setConfirmRemove(null);
+                    void onRemove(opt.identityId);
+                  }}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #7f1d1d',
+                    background: confirmRemove === opt.identityId ? '#7f1d1d' : 'transparent',
+                    color: '#fca5a5',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    opacity: busy ? 0.6 : 1,
+                  }}
+                >
+                  {confirmRemove === opt.identityId ? 'Confirm' : 'Remove'}
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
