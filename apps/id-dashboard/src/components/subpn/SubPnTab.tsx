@@ -902,9 +902,11 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 </SectionInfo>
               </h4>
               <p className="text-xs text-text-secondary mt-1">Kind: {selected.kind}</p>
-              <p className="text-xs text-text-secondary font-mono" title={selected.subjectPnIdentifier}>
-                Subject: {pnShortLabel(selected.subjectPnIdentifier)}
-              </p>
+              {selected.subjectPnIdentifier && (
+                <p className="text-xs text-text-secondary font-mono" title={selected.subjectPnIdentifier}>
+                  Subject: {pnShortLabel(selected.subjectPnIdentifier)}
+                </p>
+              )}
             </div>
             <button
               type="button"
