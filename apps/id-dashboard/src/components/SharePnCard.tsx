@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import QRCode from 'qrcode';
-import { Send, QrCode, Link2 } from 'lucide-react';
+import { Send, QrCode, Copy, Check } from 'lucide-react';
 import { buildMessagingConnectUrl } from '@par-noir/social-connections';
 import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { messagingAppOrigin } from '../services/publicNamesApi';
+import { copyToClipboard } from '../utils/helpers';
 
 const iconButtonClass =
   'flex h-9 w-9 items-center justify-center rounded-md border border-border text-text-primary hover:bg-bg-primary transition-colors';
@@ -18,6 +19,7 @@ export function SharePnCard({
   nickname?: string;
 }) {
   const [status, setStatus] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const shareUrl = useMemo(() => {
     if (!pnIdentifier) return null;
@@ -31,10 +33,11 @@ export function SharePnCard({
 
   async function copyLink() {
     if (!shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
+    if (await copyToClipboard(shareUrl)) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
       flash('Link copied');
-    } catch {
+    } else {
       flash('Could not copy link');
     }
   }
@@ -78,7 +81,7 @@ export function SharePnCard({
         title="Copy pN link"
         aria-label="Copy pN link"
       >
-        <Link2 className="h-4 w-4" />
+        {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
       </button>
       <button
         type="button"

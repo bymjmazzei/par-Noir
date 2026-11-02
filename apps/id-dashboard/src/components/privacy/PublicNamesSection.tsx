@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BadgeCheck, Link2, Loader2, Plus } from 'lucide-react';
+import { BadgeCheck, Check, Copy, Link2, Loader2, Plus } from 'lucide-react';
 import { ClaimPublicNameModal } from './ClaimPublicNameModal';
+import { copyToClipboard } from '../../utils/helpers';
 import {
   browseAppOrigin,
   messagingAppOrigin,
@@ -26,6 +27,7 @@ export const PublicNamesSection: React.FC<PublicNamesSectionProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [busyName, setBusyName] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   const reload = useCallback(async () => {
     if (!accessToken || !pnIdentifier) {
@@ -90,6 +92,15 @@ export const PublicNamesSection: React.FC<PublicNamesSectionProps> = ({
       setError(e instanceof Error ? e.message : 'Failed to set profile URL');
     } finally {
       setBusyName(null);
+    }
+  };
+
+  const onCopyProfileUrl = async (url: string) => {
+    if (await copyToClipboard(url)) {
+      setCopiedUrl(true);
+      window.setTimeout(() => setCopiedUrl(false), 2000);
+    } else {
+      setError('Could not copy profile URL');
     }
   };
 
@@ -165,9 +176,20 @@ export const PublicNamesSection: React.FC<PublicNamesSectionProps> = ({
                   )}
                 </div>
                 {n.isVanity && (
-                  <p className="text-xs text-text-secondary mt-1 break-all">
-                    {messagingOrigin}/{n.publicName}
-                  </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    <p className="text-xs text-text-secondary break-all">
+                      {messagingOrigin}/{n.publicName}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void onCopyProfileUrl(`${messagingOrigin}/${n.publicName}`)}
+                      className="p-1 rounded text-text-secondary hover:text-text-primary shrink-0"
+                      title="Copy profile URL"
+                      aria-label="Copy profile URL"
+                    >
+                      {copiedUrl ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="flex flex-wrap gap-2 shrink-0">

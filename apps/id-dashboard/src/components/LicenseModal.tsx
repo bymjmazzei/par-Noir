@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { Key, Shield, CheckCircle, X, Copy, ExternalLink, AlertCircle } from 'lucide-react';
 import { SectionInfo } from './common/SectionInfo';
+import { copyToClipboard } from '../utils/helpers';
 import { apiKeyService, ApiKey } from '../services/api/ApiKeyService';
 import { IdentityVerificationModal } from './IdentityVerificationModal';
 import type { VerifiedIdentityData } from '../types/verifiedIdentity';
@@ -92,7 +93,6 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
     if (!apiKey?.key) return;
 
     try {
-      const { copyToClipboard } = await import('../utils/helpers');
       const ok = await copyToClipboard(apiKey.key);
       if (ok) {
         setCopied(true);

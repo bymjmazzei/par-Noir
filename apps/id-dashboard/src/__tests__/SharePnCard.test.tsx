@@ -44,6 +44,31 @@ describe('SharePnCard', () => {
     expect(await screen.findByText(/link copied/i)).toBeInTheDocument();
   });
 
+  it('copy button copies the connect link and shows a check', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<SharePnCard accessToken="token" pnIdentifier="pn-abc123def456" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /copy pn link/i }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith('https://messaging.parnoir.com/connect/pn-abc123def456')
+    );
+    expect(await screen.findByText(/link copied/i)).toBeInTheDocument();
+  });
+
+  it('falls back to execCommand when the clipboard API is blocked', async () => {
+    Object.assign(navigator, { clipboard: { writeText: jest.fn().mockRejectedValue(new Error('NotAllowedError')) } });
+    const execCommand = jest.fn().mockReturnValue(true);
+    Object.assign(document, { execCommand });
+    render(<SharePnCard accessToken="token" pnIdentifier="pn-abc123def456" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /copy pn link/i }));
+
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'));
+    expect(await screen.findByText(/link copied/i)).toBeInTheDocument();
+  });
+
   it('downloads the QR code as a png named by pn identifier', async () => {
     const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       expect(this.download).toBe('pn-abc123def456-qr.png');

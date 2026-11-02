@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from 'react';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { copyToClipboard } from '../utils/helpers';
 import { DataPointProposalModal } from '../components/DataPointProposalModal';
 import { DataPointInputModal } from '../components/DataPointInputModal';
 import { IdentityVerificationModal } from '../components/IdentityVerificationModal';
@@ -679,7 +680,6 @@ export function AppModals(props: AppModalsProps) {
           transferUrl={transferUrl}
           onTransferSetup={handleTransferSetup}
           onCopyUrl={async () => {
-                        const { copyToClipboard } = await import('../utils/helpers');
                         const ok = await copyToClipboard(transferUrl);
                         if (ok) {
                           setSuccessWithTimeout('URL copied to clipboard!');

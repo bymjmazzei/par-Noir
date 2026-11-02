@@ -1,4 +1,5 @@
 // Helper utility functions
+import { Capacitor } from '@capacitor/core';
 
 /**
  * Format a date as a relative time string (e.g., "2 hours ago")
@@ -238,23 +239,42 @@ export function downloadFile(data: string, filename: string, mimeType: string = 
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+function copyWithExecCommand(text: string): boolean {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    ta.remove();
+  }
+}
+
 /**
- * Copy text to clipboard. Uses Capacitor Clipboard on native for reliability.
+ * Copy text to clipboard. Call straight from the click handler: Safari rejects
+ * clipboard writes that start after an await, so nothing may be awaited first.
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    const { Capacitor } = await import('@capacitor/core');
-    if (Capacitor.isNativePlatform()) {
+  if (Capacitor.isNativePlatform()) {
+    try {
       const { Clipboard } = await import('@capacitor/clipboard');
       await Clipboard.write({ string: text });
       return true;
+    } catch {
+      return false;
     }
+  }
+  try {
     await navigator.clipboard.writeText(text);
     return true;
-  } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-    }
-    return false;
+  } catch {
+    return copyWithExecCommand(text);
   }
 }
 
