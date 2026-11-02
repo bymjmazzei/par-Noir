@@ -5,7 +5,7 @@ vi.mock('@par-noir/identity-crypto', () => ({
 }));
 
 import { encodeShellReturn, parseShellReturn } from './session';
-import { buildShellResult } from './shellResult';
+import { buildShellResult, shellMlKemResult } from './shellResult';
 import { parseIdentityFileJson } from '../consentUnlock/decryptIdentityLocal';
 
 describe('buildShellResult export round-trip', () => {
@@ -53,6 +53,30 @@ describe('buildShellResult export round-trip', () => {
       result,
     });
     expect(parseShellReturn(fragment)?.result?.mlKemSecretKey).toBe('sek');
+  });
+
+  it('a create return carries the new pN messaging key, so a cloud connected right after create gets a vault', () => {
+    const created = {
+      identityFile: '{"encryptedData":"ct"}',
+      did: 'did:pn:1',
+      publicKey: 'pk',
+      ...shellMlKemResult({
+        publicKey: 'pk',
+        decryptedIdentity: { pqcSecrets: { mlKemSecretKey: 'sek', mlKemPublicKey: 'pubk' } },
+        encryptedIdentity: {},
+      }),
+    };
+    const fragment = encodeShellReturn({
+      v: 1,
+      op: 'create',
+      did: 'did:pn:1',
+      publicKey: 'pk',
+      accessToken: '',
+      result: created,
+    });
+    const parsed = parseShellReturn(fragment);
+    expect(parsed?.result?.mlKemSecretKey).toBe('sek');
+    expect(parsed?.result?.identityFile).toContain('ct');
   });
 
   it('keeps the recovery envelope when Unlock exports a .pn it parsed', async () => {
