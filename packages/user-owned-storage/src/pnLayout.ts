@@ -13,16 +13,19 @@ export const ATTACHMENTS_DIR = 'attachments';
 export const CONTENT_CLASSES = ['media', 'notes', 'collections'] as const;
 export type ContentClass = (typeof CONTENT_CLASSES)[number];
 
-/** Root folder name: `par-noir-{pnIdentifier}` */
+/** Root key prefix for portable providers (S3, Azure, FTP): `par-noir-{pnIdentifier}` */
 export function pnRootFolderName(pnIdentifier: string): string {
   const id = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
   return `par-noir-${id}`;
 }
 
-/** Legacy Google Drive display name (for backward compatibility during migration) */
-export function pnDriveDisplayName(pnIdentifier: string): string {
-  const id = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-  return `par Noir - ${id}`;
+/** Drive app property holding the full pN id on the root folder; lookup uses it, never the name. */
+export const PN_DRIVE_ROOT_PROPERTY = 'pnId';
+
+/** Google Drive root folder display name: `par Noir {first 8 hex}`. */
+export function pnDriveRootFolderName(pnIdentifier: string): string {
+  const hex = pnIdentifier.startsWith('pn-') ? pnIdentifier.slice(3) : pnIdentifier;
+  return `par Noir ${hex.slice(0, 8)}`;
 }
 
 export function metadataPath(...segments: string[]): string {

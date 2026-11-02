@@ -164,6 +164,7 @@ export type {
   DriveUploadedFile
 } from './deviceDriveUploadStream.js';
 export {
+  DEVICE_DRIVE_LAYOUT_TOTAL_STEPS,
   clearDeviceDriveLayoutInflight,
   ensureDeviceDriveLayout,
   isDeviceDriveLayoutComplete,
@@ -183,7 +184,11 @@ export type {
   EnsureServerCloudRegistrationResult,
   RepairServerCloudRegistrationOpts,
 } from './serverCloudRegistration.js';
-export type { DeviceDriveLayout } from './deviceDriveLayout.js';
+export type {
+  DeviceDriveLayout,
+  DeviceDriveLayoutProgress,
+  DeviceDriveLayoutProgressListener,
+} from './deviceDriveLayout.js';
 export {
   ensureDeviceInboxChannelColumn,
   MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,

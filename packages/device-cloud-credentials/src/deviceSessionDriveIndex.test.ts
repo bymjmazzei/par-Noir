@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { pnRootFolderName } from '@par-noir/user-owned-storage';
 import { ensureSessionDriveIndex } from './deviceSocial.js';
 import { clearAllSessionCloudCredentials } from './sessionMemory.js';
 
 const PN = 'pn-testindex0001';
 
 describe('ensureSessionDriveIndex', () => {
-  it('passes pn id into layout init so reconnect searches canonical root', async () => {
+  it('passes pn id into layout init so reconnect searches the root by its pnId tag', async () => {
     clearAllSessionCloudCredentials();
     const fetchImpl = vi.fn(async (url: string) => {
       const urlStr = String(url);
@@ -32,6 +31,7 @@ describe('ensureSessionDriveIndex', () => {
 
     expect(layout.pnFolderId).toBeTruthy();
     const searchCall = fetchImpl.mock.calls.find((c) => String(c[0]).includes('drive/v3/files?'));
-    expect(String(searchCall?.[0])).toContain(encodeURIComponent(pnRootFolderName(PN)));
+    const q = new URL(String(searchCall?.[0])).searchParams.get('q');
+    expect(q).toContain(`appProperties has { key='pnId' and value='${PN}' }`);
   });
 });

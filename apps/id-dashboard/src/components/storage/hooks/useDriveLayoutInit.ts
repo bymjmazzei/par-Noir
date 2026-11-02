@@ -213,7 +213,17 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
           try {
             if (googleAccessToken) {
               const { ensureDeviceDriveLayout, setSessionDriveIndex } = await import('@par-noir/device-cloud-credentials');
-              const pnDriveIndex = await ensureDeviceDriveLayout(googleAccessToken, normalized);
+              const pnDriveIndex = await ensureDeviceDriveLayout(
+                googleAccessToken,
+                normalized,
+                undefined,
+                ({ done, total, label }) =>
+                  applyProgress({
+                    phase: 'folders',
+                    stepLabel: label,
+                    percent: 5 + Math.round((done / total) * 85),
+                  })
+              );
               setSessionDriveIndex(normalized, pnDriveIndex);
               layoutBody = { pnDriveIndex };
             }

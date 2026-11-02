@@ -4,6 +4,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT } from '@par-noir/device-cloud-credentials';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import {
   fetchCloudLayoutStatus,
   upgradeCloudLayout,
@@ -84,6 +86,21 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
   useEffect(() => {
     void refresh();
   }, [refresh, refreshKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !pnIdentifier) return;
+    const onCloudChanged = (event: Event) => {
+      const eventPn = (event as CustomEvent<{ pnIdentifier?: string }>).detail?.pnIdentifier;
+      if (eventPn && eventPn !== pnIdentifier) return;
+      void refresh();
+    };
+    window.addEventListener(SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT, onCloudChanged);
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudChanged);
+    return () => {
+      window.removeEventListener(SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT, onCloudChanged);
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudChanged);
+    };
+  }, [pnIdentifier, refresh]);
 
   const onUpgrade = async () => {
     if (!apiToken || !pnIdentifier) return;

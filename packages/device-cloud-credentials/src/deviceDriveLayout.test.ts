@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { pnRootFolderName } from '@par-noir/user-owned-storage';
-import { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
+import { pnDriveRootFolderName } from '@par-noir/user-owned-storage';
+import { DEVICE_DRIVE_LAYOUT_TOTAL_STEPS, ensureDeviceDriveLayout } from './deviceDriveLayout.js';
 
-const PN = 'pn-abcdef123456';
+const PN = `pn-${'ab'.repeat(32)}`;
 
 describe('ensureDeviceDriveLayout', () => {
-  it('searches for the canonical root, creates par-noir-pn-* layout, and never calls the API', async () => {
-    const createdRoots: string[] = [];
+  it('creates a short-named root tagged with the pN id, reports every step, and never calls the API', async () => {
+    const rootCreates: Array<{ name?: string; appProperties?: Record<string, string> }> = [];
     let n = 0;
     const sheetCreateBodies: unknown[] = [];
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
@@ -31,19 +31,33 @@ describe('ensureDeviceDriveLayout', () => {
         return new Response(JSON.stringify({ id }), { status: 200 });
       }
       if (init?.method === 'POST' && urlStr.includes('drive/v3/files')) {
-        const body = JSON.parse(String(init.body)) as { name?: string };
-        if (!body.name?.includes('/')) {
-          createdRoots.push(body.name || '');
-        }
+        const body = JSON.parse(String(init.body)) as {
+          name?: string;
+          parents?: string[];
+          appProperties?: Record<string, string>;
+        };
+        if (!body.parents?.length) rootCreates.push(body);
         return new Response(JSON.stringify({ id, name: body.name }), { status: 200 });
       }
       return new Response(JSON.stringify({ id, files: [] }), { status: 200 });
     });
 
-    const layout = await ensureDeviceDriveLayout('google-token', PN, fetchImpl as unknown as typeof fetch);
+    const progress: Array<{ done: number; total: number }> = [];
+    const layout = await ensureDeviceDriveLayout(
+      'google-token',
+      PN,
+      fetchImpl as unknown as typeof fetch,
+      (p) => progress.push(p)
+    );
     expect(layout.pnFolderId).toBeTruthy();
-    expect(createdRoots[0]).toBe(pnRootFolderName(PN));
-    expect(createdRoots).not.toContain('par Noir');
+    expect(rootCreates).toEqual([
+      { name: 'par Noir abababab', mimeType: 'application/vnd.google-apps.folder', appProperties: { pnId: PN } },
+    ]);
+    expect(pnDriveRootFolderName(PN)).toBe('par Noir abababab');
+    expect(progress.map((p) => p.done)).toEqual(
+      Array.from({ length: DEVICE_DRIVE_LAYOUT_TOTAL_STEPS }, (_, i) => i + 1)
+    );
+    expect(progress.every((p) => p.total === DEVICE_DRIVE_LAYOUT_TOTAL_STEPS)).toBe(true);
     expect(layout.metadataFolderId).toBeTruthy();
     expect(layout.messagesFolderId).toBeTruthy();
     expect(layout.sheetIds.connections).toBeTruthy();
@@ -62,14 +76,14 @@ describe('ensureDeviceDriveLayout', () => {
     );
   });
 
-  it('reuses an existing canonical root without creating par Noir', async () => {
+  it('reuses the root found by its pnId tag, whatever its name', async () => {
     const existingRoot = 'existing-root-id';
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       const urlStr = String(url);
       if (urlStr.includes('drive/v3/files?') && (!init || !init.method)) {
-        const q = decodeURIComponent(urlStr.split('q=')[1]?.split('&')[0] || '');
-        if (q.includes(pnRootFolderName(PN))) {
-          return new Response(JSON.stringify({ files: [{ id: existingRoot, name: pnRootFolderName(PN) }] }), {
+        const q = new URL(urlStr).searchParams.get('q') || '';
+        if (q.includes(`appProperties has { key='pnId' and value='${PN}' }`)) {
+          return new Response(JSON.stringify({ files: [{ id: existingRoot, name: 'renamed by owner' }] }), {
             status: 200,
           });
         }
@@ -90,8 +104,8 @@ describe('ensureDeviceDriveLayout', () => {
     expect(layout.pnFolderId).toBe(existingRoot);
     const rootCreates = fetchImpl.mock.calls.filter((c) => {
       if ((c[1] as RequestInit)?.method !== 'POST' || !String(c[0]).includes('drive/v3/files')) return false;
-      const body = JSON.parse(String((c[1] as RequestInit).body)) as { name?: string };
-      return body.name === pnRootFolderName(PN) || body.name === 'par Noir';
+      const body = JSON.parse(String((c[1] as RequestInit).body)) as { parents?: string[] };
+      return !body.parents?.length;
     });
     expect(rootCreates.length).toBe(0);
   });

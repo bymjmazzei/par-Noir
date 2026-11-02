@@ -6,8 +6,8 @@ import {
   INTEGRATORS_DIR,
   METADATA_DIR,
   MESSAGES_DIR,
-  pnDriveDisplayName,
-  pnRootFolderName,
+  PN_DRIVE_ROOT_PROPERTY,
+  pnDriveRootFolderName,
 } from '@par-noir/user-owned-storage';
 import { deviceDriveCall } from './deviceDriveCall.js';
 
@@ -75,15 +75,36 @@ export async function findPnRootFolderId(
   fetchImpl?: typeof fetch
 ): Promise<string | null> {
   const normalized = normalizePnIdentifier(pnIdentifier);
-  const candidates = [pnRootFolderName(normalized), pnDriveDisplayName(normalized)];
-  for (const name of candidates) {
-    const escaped = escapeDriveQueryName(name);
-    const q = `name='${escaped}' and mimeType='${FOLDER_MIME}' and trashed=false`;
-    const files = await listDriveFiles(accessToken, q, fetchImpl);
-    const hit = files.find((f) => f.id && f.name === name);
-    if (hit?.id) return hit.id;
+  const q =
+    `appProperties has { key='${PN_DRIVE_ROOT_PROPERTY}' and value='${escapeDriveQueryName(normalized)}' }` +
+    ` and mimeType='${FOLDER_MIME}' and trashed=false`;
+  const files = await listDriveFiles(accessToken, q, fetchImpl);
+  return files.find((f) => f.id)?.id ?? null;
+}
+
+/** Create the pN root with its short display name, tagged with the full pN id for lookup. */
+export async function createPnRootFolder(
+  accessToken: string,
+  pnIdentifier: string,
+  fetchImpl?: typeof fetch
+): Promise<string> {
+  const normalized = normalizePnIdentifier(pnIdentifier);
+  const res = await deviceDriveCall(
+    'POST',
+    '/api/drive/folders',
+    {
+      folderName: pnDriveRootFolderName(normalized),
+      appProperties: { [PN_DRIVE_ROOT_PROPERTY]: normalized },
+    },
+    { accessToken, fetchImpl }
+  );
+  if (!res.ok) {
+    throw new Error(`Drive folder create failed (${res.status})`);
   }
-  return null;
+  const body = (await res.json()) as { folder?: { id?: string } };
+  const id = body.folder?.id;
+  if (!id) throw new Error('Drive folder create returned no id');
+  return id;
 }
 
 export async function findOrCreateFolder(

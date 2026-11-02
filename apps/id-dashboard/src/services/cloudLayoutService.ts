@@ -23,7 +23,10 @@ export type CloudLayoutStatus = {
   appliedMigrations: string[];
 };
 
-/** Status is credentials-only — do not require X-PN-Cloud-Access-Token. */
+/**
+ * Status is credentials-only — do not require X-PN-Cloud-Access-Token.
+ * Null when there is nothing to update: no storage connected (404) or the read failed.
+ */
 export async function fetchCloudLayoutStatus(
   authToken: string,
   pnIdentifier: string
@@ -38,15 +41,6 @@ export async function fetchCloudLayoutStatus(
       ...proof,
     },
   });
-  if (res.status === 404) {
-    return {
-      current: 0,
-      required: 1,
-      pending: [],
-      complete: false,
-      appliedMigrations: [],
-    };
-  }
   if (!res.ok) return null;
   return (await res.json()) as CloudLayoutStatus;
 }

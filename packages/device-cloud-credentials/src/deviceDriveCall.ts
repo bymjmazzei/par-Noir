@@ -157,12 +157,17 @@ export async function deviceDriveCall(
   }
 
   if (verb === 'POST' && url.pathname === '/api/drive/folders') {
-    const payload = (body || {}) as { folderName?: string; parentFolderId?: string };
+    const payload = (body || {}) as {
+      folderName?: string;
+      parentFolderId?: string;
+      appProperties?: Record<string, string>;
+    };
     const metadata: Record<string, unknown> = {
       name: payload.folderName,
       mimeType: FOLDER,
     };
     if (payload.parentFolderId) metadata.parents = [payload.parentFolderId];
+    if (payload.appProperties) metadata.appProperties = payload.appProperties;
     const res = await google(fetchImpl, token, `${DRIVE}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

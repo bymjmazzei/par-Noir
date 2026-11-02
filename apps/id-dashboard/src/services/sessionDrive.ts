@@ -25,13 +25,16 @@ export async function sessionDriveFor(
       return body.credentials?.pnDriveIndex || null;
     },
     persistIndex: async (built) => {
-      await ownerFetch(
+      const res = await ownerFetch(
         authToken,
         'POST',
         `/api/storage/initialize/${encodeURIComponent(identityId)}`,
         { pnDriveIndex: built },
         { pnIdentifier: identityId }
       );
+      if (!res.ok) {
+        throw new Error(`Saving the Drive index failed (${res.status})`);
+      }
     },
   });
   return { accessToken, index };

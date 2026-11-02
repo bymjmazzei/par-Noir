@@ -15,6 +15,8 @@ vi.mock('./deviceDriveLayout.js', () => ({
   clearDeviceDriveLayoutInflight: vi.fn(),
 }));
 
+import { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
+import { clearAllSessionCloudCredentials, getSessionDriveIndex } from './sessionMemory.js';
 import {
   buildLayoutCredentialsForPut,
   CloudRegistrationIncomplete,
@@ -90,6 +92,8 @@ describe('ensureServerCloudRegistration', () => {
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', fetchMock);
+    clearAllSessionCloudCredentials();
+    const onProgress = vi.fn();
 
     const result = await ensureServerCloudRegistration({
       apiEndpoint: API,
@@ -97,9 +101,12 @@ describe('ensureServerCloudRegistration', () => {
       pnIdentifier: PN,
       envelope: minimalEnvelope(),
       googleAccessToken: GOOGLE,
+      onProgress,
     });
 
     expect(result.accounts.length).toBe(1);
+    expect(vi.mocked(ensureDeviceDriveLayout)).toHaveBeenCalledWith(GOOGLE, PN, fetchMock, onProgress);
+    expect(getSessionDriveIndex(PN)?.pnFolderId).toBe('pn-folder');
     expect(calls.some((c) => c.startsWith('PUT ') && c.includes('/storage/credentials/'))).toBe(
       true
     );

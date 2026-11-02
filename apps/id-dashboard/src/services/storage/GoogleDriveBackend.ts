@@ -610,7 +610,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     return folderId;
   }
 
-  /** Resolve canonical pN root (session index, search, or create par-noir-pn-*). */
+  /** Resolve the pN root (session index, folder cache, or pnId app-property search). */
   private async resolvePnRootFolderId(pnIdentifier: string): Promise<string> {
     if (!this.token && !(await this.ensureAccessToken())) {
       return 'NOT_CONNECTED';

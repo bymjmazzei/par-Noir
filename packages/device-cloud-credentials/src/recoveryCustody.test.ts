@@ -12,7 +12,14 @@ import {
   type RecoveryCustodyEntry,
 } from './recoveryCustody.js';
 
-type FakeFile = { id: string; name: string; mimeType: string; parents: string[]; content: string };
+type FakeFile = {
+  id: string;
+  name: string;
+  mimeType: string;
+  parents: string[];
+  content: string;
+  appProperties?: Record<string, string>;
+};
 
 /** Minimal Google Drive v3 double: list by q, read media, create folder/multipart, update media. */
 function fakeDrive(seed: FakeFile[], sheetRows: Record<string, string[][]> = {}) {
@@ -31,9 +38,13 @@ function fakeDrive(seed: FakeFile[], sheetRows: Record<string, string[][]> = {})
       const name = q.match(/name='([^']+)'/)?.[1];
       const parent = q.match(/'([^']+)' in parents/)?.[1];
       const mime = q.match(/mimeType='([^']+)'/)?.[1];
+      const prop = q.match(/appProperties has \{ key='([^']+)' and value='([^']+)' \}/);
       const hits = [...files.values()].filter(
         (f) =>
-          (!name || f.name === name) && (!parent || f.parents.includes(parent)) && (!mime || f.mimeType === mime)
+          (!name || f.name === name) &&
+          (!parent || f.parents.includes(parent)) &&
+          (!mime || f.mimeType === mime) &&
+          (!prop || f.appProperties?.[prop[1]] === prop[2])
       );
       return json({ files: hits.map(({ id, name: n }) => ({ id, name: n })) });
     }
@@ -92,7 +103,7 @@ function entry(epoch: number, custodianId = 'c1'): RecoveryCustodyEntry {
 describe('recovery custody on the custodian Drive', () => {
   it('round-trips sealed shares and creates _metadata when missing', async () => {
     const drive = fakeDrive([
-      { id: 'root', name: 'par-noir-pn-cust', mimeType: FOLDER, parents: [], content: '' },
+      { id: 'root', name: 'par Noir cust', mimeType: FOLDER, parents: [], content: '', appProperties: { pnId: 'pn-cust' } },
     ]);
     const opts = { accessToken: 'at', pnIdentifier: 'pn-cust', fetchImpl: drive.fetchImpl };
     expect(await readRecoveryCustody(opts)).toEqual([]);
@@ -109,7 +120,7 @@ describe('recovery custody on the custodian Drive', () => {
 
   it('a new epoch replaces the slot and an older epoch is ignored', async () => {
     const drive = fakeDrive([
-      { id: 'root', name: 'par-noir-pn-cust', mimeType: FOLDER, parents: [], content: '' },
+      { id: 'root', name: 'par Noir cust', mimeType: FOLDER, parents: [], content: '', appProperties: { pnId: 'pn-cust' } },
     ]);
     const opts = { accessToken: 'at', pnIdentifier: 'pn-cust', fetchImpl: drive.fetchImpl };
     await writeRecoveryCustody({ ...opts, entries: [entry(1)] });
@@ -125,7 +136,7 @@ describe('recovery custody on the custodian Drive', () => {
 
   it('owner release proof is written once and read back, and hashes deterministically', async () => {
     const drive = fakeDrive([
-      { id: 'root', name: 'par-noir-pn-owner', mimeType: FOLDER, parents: [], content: '' },
+      { id: 'root', name: 'par Noir owner', mimeType: FOLDER, parents: [], content: '', appProperties: { pnId: 'pn-owner' } },
     ]);
     const opts = { accessToken: 'at', pnIdentifier: 'pn-owner', fetchImpl: drive.fetchImpl };
     expect(await readRecoveryDriveProof(opts)).toBeNull();
@@ -142,7 +153,7 @@ describe('recovery custody on the custodian Drive', () => {
     const SHEET = 'application/vnd.google-apps.spreadsheet';
     const drive = fakeDrive(
       [
-        { id: 'root', name: 'par-noir-pn-owner', mimeType: FOLDER, parents: [], content: '' },
+        { id: 'root', name: 'par Noir owner', mimeType: FOLDER, parents: [], content: '', appProperties: { pnId: 'pn-owner' } },
         { id: 'meta', name: '_metadata', mimeType: FOLDER, parents: ['root'], content: '' },
         { id: 'wb', name: 'recovery.xlsx', mimeType: SHEET, parents: ['meta'], content: '' },
       ],

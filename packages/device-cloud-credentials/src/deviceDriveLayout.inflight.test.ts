@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { pnRootFolderName } from '@par-noir/user-owned-storage';
+import { pnDriveRootFolderName } from '@par-noir/user-owned-storage';
 import {
   clearDeviceDriveLayoutInflight,
   ensureDeviceDriveLayout,
@@ -30,7 +30,7 @@ describe('ensureDeviceDriveLayout in-flight dedup', () => {
       }
       if (init?.method === 'POST' && urlStr.includes('drive/v3/files')) {
         const body = JSON.parse(String(init.body)) as { name?: string; parents?: string[] };
-        if (!body.parents?.length && body.name === pnRootFolderName(PN)) {
+        if (!body.parents?.length && body.name === pnDriveRootFolderName(PN)) {
           rootCreates += 1;
           await new Promise((r) => setTimeout(r, 30));
         }
@@ -39,12 +39,20 @@ describe('ensureDeviceDriveLayout in-flight dedup', () => {
       return new Response(JSON.stringify({ id, folder: { id }, file: { id } }), { status: 200 });
     });
 
+    const first: number[] = [];
+    const joined: number[] = [];
     const [a, b] = await Promise.all([
-      ensureDeviceDriveLayout('google-token', PN, fetchImpl as unknown as typeof fetch),
-      ensureDeviceDriveLayout('google-token', PN, fetchImpl as unknown as typeof fetch),
+      ensureDeviceDriveLayout('google-token', PN, fetchImpl as unknown as typeof fetch, (p) =>
+        first.push(p.done)
+      ),
+      ensureDeviceDriveLayout('google-token', PN, fetchImpl as unknown as typeof fetch, (p) =>
+        joined.push(p.done)
+      ),
     ]);
     expect(a.pnFolderId).toBe(b.pnFolderId);
     expect(rootCreates).toBe(1);
+    expect(joined.length).toBeGreaterThan(0);
+    expect(joined.at(-1)).toBe(first.at(-1));
     clearDeviceDriveLayoutInflight(PN);
   });
 });

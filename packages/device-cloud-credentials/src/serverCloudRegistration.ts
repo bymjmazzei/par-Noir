@@ -8,8 +8,13 @@ import {
   envelopeHasUsableSecrets,
   type StorageCredentialsEnvelope,
 } from '@par-noir/user-owned-storage';
-import { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
+import {
+  ensureDeviceDriveLayout,
+  type DeviceDriveLayout,
+  type DeviceDriveLayoutProgressListener,
+} from './deviceDriveLayout.js';
 import { normalizePnIdentifier } from './deviceDriveFind.js';
+import { setSessionDriveIndex } from './sessionMemory.js';
 export const SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT = 'pn-server-cloud-registered';
 
 export type CloudRegistrationPhase =
@@ -44,6 +49,7 @@ export interface EnsureServerCloudRegistrationOpts {
   /** Ephemeral Google access token to build Drive layout and authorize POST initialize. */
   googleAccessToken: string;
   fetchImpl?: typeof fetch;
+  onProgress?: DeviceDriveLayoutProgressListener;
 }
 
 export interface EnsureServerCloudRegistrationResult extends StorageAccountsLayout {
@@ -200,12 +206,14 @@ export async function ensureServerCloudRegistration(
     throw new CloudRegistrationIncomplete('put_failed', msg, putRes.status);
   }
 
-  let pnDriveIndex: Record<string, unknown>;
+  let pnDriveIndex: DeviceDriveLayout;
   try {
-    pnDriveIndex = await ensureDeviceDriveLayout(googleTok, pnNormalized, fetchImpl) as Record<
-      string,
-      unknown
-    >;
+    pnDriveIndex = await ensureDeviceDriveLayout(
+      googleTok,
+      pnNormalized,
+      fetchImpl,
+      opts.onProgress
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Drive layout build failed';
     throw new CloudRegistrationIncomplete('init_failed', msg);
@@ -233,6 +241,7 @@ export async function ensureServerCloudRegistration(
       `Storage initialize failed (${initRes.status})`;
     throw new CloudRegistrationIncomplete('init_failed', msg, initRes.status);
   }
+  setSessionDriveIndex(pnNormalized, pnDriveIndex);
 
   const verified = await fetchStorageAccountsLayout(base, opts.authToken, pnNormalized, fetchImpl);
   if (!storageAccountsHasLayout(verified)) {

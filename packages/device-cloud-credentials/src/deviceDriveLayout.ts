@@ -1,12 +1,12 @@
 /**
  * Build the par Noir Drive folder and sheet index on the device.
- * Layout matches api pnDriveInit / GOOGLE_DRIVE_STRUCTURE (canonical pN root name).
+ * The pN root is found by its pnId app property, not its display name.
  */
 
-import { pnRootFolderName } from '@par-noir/user-owned-storage';
 import { ensureDeviceOwnedAssetsSheet } from './deviceIndexes.js';
 import {
   DEVICE_PN_LAYOUT,
+  createPnRootFolder,
   findOrCreateFolder,
   findPnRootFolderId,
   normalizePnIdentifier,
@@ -42,7 +42,18 @@ const SHEET_KEYS: DeviceMetadataSheetKey[] = [
 /** Pace metadata sheet creates to reduce Sheets/Drive 429s during full init. */
 const METADATA_SHEET_PACE_MS = 120;
 
-const layoutInflight = new Map<string, Promise<DeviceDriveLayout>>();
+export type DeviceDriveLayoutProgress = { done: number; total: number; label: string };
+export type DeviceDriveLayoutProgressListener = (progress: DeviceDriveLayoutProgress) => void;
+
+const CONTENT_CLASS_STEPS = DEVICE_PN_LAYOUT.contentClassDirs.length * 3;
+/** Root, _metadata, integrators, messages, metadata sheets, inbox, owned-assets, class index sheets, files + content folders. */
+export const DEVICE_DRIVE_LAYOUT_TOTAL_STEPS =
+  4 + SHEET_KEYS.length + 2 + CONTENT_CLASS_STEPS + 5;
+
+const layoutInflight = new Map<
+  string,
+  { promise: Promise<DeviceDriveLayout>; listeners: Set<DeviceDriveLayoutProgressListener> }
+>();
 
 export type DeviceDriveLayout = {
   schemaVersion: 1;
@@ -76,18 +87,20 @@ function pace(ms = METADATA_SHEET_PACE_MS): Promise<void> {
 async function buildDeviceDriveLayout(
   accessToken: string,
   pnIdentifier: string,
-  fetchImpl?: typeof fetch
+  fetchImpl: typeof fetch | undefined,
+  report: DeviceDriveLayoutProgressListener
 ): Promise<DeviceDriveLayout> {
   const normalized = normalizePnIdentifier(pnIdentifier);
-  let pnFolderId = await findPnRootFolderId(accessToken, normalized, fetchImpl);
-  if (!pnFolderId) {
-    pnFolderId = await findOrCreateFolder(
-      accessToken,
-      pnRootFolderName(normalized),
-      undefined,
-      fetchImpl
-    );
-  }
+  let done = 0;
+  const tick = (label: string) => {
+    done += 1;
+    report({ done, total: DEVICE_DRIVE_LAYOUT_TOTAL_STEPS, label });
+  };
+
+  const pnFolderId =
+    (await findPnRootFolderId(accessToken, normalized, fetchImpl)) ||
+    (await createPnRootFolder(accessToken, normalized, fetchImpl));
+  tick('Storage folder ready');
 
   const metadataFolderId = await findOrCreateFolder(
     accessToken,
@@ -95,18 +108,21 @@ async function buildDeviceDriveLayout(
     pnFolderId,
     fetchImpl
   );
+  tick('Metadata folder ready');
   const integratorsRootId = await findOrCreateFolder(
     accessToken,
     DEVICE_PN_LAYOUT.integratorsDir,
     pnFolderId,
     fetchImpl
   );
+  tick('Integrations folder ready');
   const messagesFolderId = await findOrCreateFolder(
     accessToken,
     DEVICE_PN_LAYOUT.messagesDir,
     pnFolderId,
     fetchImpl
   );
+  tick('Messages folder ready');
 
   const sheetIds: Record<string, string> = {};
   for (let i = 0; i < SHEET_KEYS.length; i++) {
@@ -117,18 +133,21 @@ async function buildDeviceDriveLayout(
       metadataFolderId,
       fetchImpl
     );
+    tick(`Sheet ${i + 1} of ${SHEET_KEYS.length} ready`);
     if (i < SHEET_KEYS.length - 1) {
       await pace();
     }
   }
 
   const inboxSheetId = await ensureDeviceInboxSheet(accessToken, messagesFolderId, fetchImpl);
+  tick('Inbox ready');
 
   sheetIds['owned-assets'] = await ensureDeviceOwnedAssetsSheet(
     accessToken,
     metadataFolderId,
     fetchImpl
   );
+  tick('Owned assets ready');
 
   for (const className of DEVICE_PN_LAYOUT.contentClassDirs) {
     const classFolderId = await findOrCreateFolder(
@@ -137,9 +156,12 @@ async function buildDeviceDriveLayout(
       metadataFolderId,
       fetchImpl
     );
+    tick(`${className} index folder ready`);
     await ensureDeviceIndexSheet(accessToken, classFolderId, 'owner', className as ContentClassName, fetchImpl);
+    tick(`${className} private index ready`);
     await pace();
     await ensureDeviceIndexSheet(accessToken, classFolderId, 'public', className as ContentClassName, fetchImpl);
+    tick(`${className} public index ready`);
     await pace();
   }
 
@@ -149,30 +171,35 @@ async function buildDeviceDriveLayout(
     pnFolderId,
     fetchImpl
   );
+  tick('Files folder ready');
   const contentFolderId = await findOrCreateFolder(
     accessToken,
     DEVICE_PN_LAYOUT.contentDir,
     pnFolderId,
     fetchImpl
   );
+  tick('Content folder ready');
   const contentNotesFolderId = await findOrCreateFolder(
     accessToken,
     DEVICE_PN_LAYOUT.contentNotes,
     contentFolderId,
     fetchImpl
   );
+  tick('Notes folder ready');
   const contentMediaFolderId = await findOrCreateFolder(
     accessToken,
     DEVICE_PN_LAYOUT.contentMedia,
     contentFolderId,
     fetchImpl
   );
+  tick('Media folder ready');
   const contentCollectionsFolderId = await findOrCreateFolder(
     accessToken,
     DEVICE_PN_LAYOUT.contentCollections,
     contentFolderId,
     fetchImpl
   );
+  tick('Collections folder ready');
 
   return {
     schemaVersion: 1,
@@ -197,16 +224,30 @@ async function buildDeviceDriveLayout(
 export function ensureDeviceDriveLayout(
   accessToken: string,
   pnIdentifier: string,
-  fetchImpl?: typeof fetch
+  fetchImpl?: typeof fetch,
+  onProgress?: DeviceDriveLayoutProgressListener
 ): Promise<DeviceDriveLayout> {
   const key = normalizePnIdentifier(pnIdentifier);
   const existing = layoutInflight.get(key);
-  if (existing) return existing;
+  if (existing) {
+    if (onProgress) existing.listeners.add(onProgress);
+    return existing.promise;
+  }
 
-  const promise = buildDeviceDriveLayout(accessToken, key, fetchImpl).finally(() => {
+  const listeners = new Set<DeviceDriveLayoutProgressListener>(onProgress ? [onProgress] : []);
+  const report: DeviceDriveLayoutProgressListener = (progress) => {
+    for (const listener of listeners) {
+      try {
+        listener(progress);
+      } catch {
+        /* a UI listener must not break the build */
+      }
+    }
+  };
+  const promise = buildDeviceDriveLayout(accessToken, key, fetchImpl, report).finally(() => {
     layoutInflight.delete(key);
   });
-  layoutInflight.set(key, promise);
+  layoutInflight.set(key, { promise, listeners });
   return promise;
 }
 

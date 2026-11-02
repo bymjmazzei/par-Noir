@@ -319,18 +319,40 @@ export function useGoogleDriveOAuthConnect({
             }
           ]
         };
+        const authTok = resolveOwnerApiToken(pnIdentifier);
+        if (!authTok) {
+          throw new Error(
+            'Drive connected locally, but no owner API session — unlock the dashboard, then reconnect Drive.'
+          );
+        }
+
+        // Register the server row and build the Drive layout once; later steps reuse the session index.
+        setDriveSetupProgress({
+          phase: 'folders',
+          stepLabel: 'Setting up your storage',
+          percent: 5,
+        });
+        const { ensureServerCloudRegistration } = await import('@par-noir/device-cloud-credentials');
+        await ensureServerCloudRegistration({
+          apiEndpoint: API_ENDPOINT,
+          authToken: authTok,
+          pnIdentifier,
+          envelope: cloudEnvelope,
+          googleAccessToken: token,
+          onProgress: ({ done, total, label }) =>
+            setDriveSetupProgress({
+              phase: 'folders',
+              stepLabel: label,
+              percent: 5 + Math.round((done / total) * 90),
+            }),
+        });
+        setDriveSetupProgress({
+          phase: 'finishing',
+          stepLabel: 'Finishing storage setup',
+          percent: 95,
+        });
+
         if (!sessionCreds || !sessionId) {
-          const authTok = resolveOwnerApiToken(pnIdentifier);
-          if (!authTok) {
-            throw new Error(
-              'Drive connected locally, but no owner API session — unlock the dashboard, then reconnect Drive.'
-            );
-          }
-          setDriveSetupProgress({
-            phase: 'starting',
-            stepLabel: 'Setting up your storage',
-            percent: 0,
-          });
           const { connectDriveInThisSession } = await import('../../../services/sessionDriveConnect');
           await connectDriveInThisSession({
             identityId: pnIdentifier,
@@ -364,12 +386,6 @@ export function useGoogleDriveOAuthConnect({
         const { publishCloudVaultForIdentity } = await import(
           '../../../services/deviceCloudCredentials'
         );
-        const authTok = resolveOwnerApiToken(pnIdentifier);
-        if (!authTok) {
-          throw new Error(
-            'Drive connected locally, but no owner API session — cannot publish cloud vault for other apps. Unlock the dashboard session, then reconnect Drive.'
-          );
-        }
         const vault = await publishCloudVaultForIdentity({
           identityId: pnIdentifier,
           authToken: authTok,
@@ -397,21 +413,6 @@ export function useGoogleDriveOAuthConnect({
           );
         }
         }
-
-        const authTokReg = resolveOwnerApiToken(pnIdentifier);
-        if (!authTokReg) {
-          throw new Error(
-            'Drive connected locally, but no owner API session — unlock the dashboard, then reconnect Drive.'
-          );
-        }
-        const { ensureServerCloudRegistration } = await import('@par-noir/device-cloud-credentials');
-        await ensureServerCloudRegistration({
-          apiEndpoint: API_ENDPOINT,
-          authToken: authTokReg,
-          pnIdentifier,
-          envelope: cloudEnvelope,
-          googleAccessToken: token,
-        });
       }
 
       // Signal Drive-ready only after access token is in session (OAuth just minted it).
