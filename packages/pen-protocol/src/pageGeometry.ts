@@ -651,39 +651,56 @@ function snapToTargets(
   size: number,
   targets: number[],
   threshold: number
-): { value: number; snapped: boolean } {
+): { value: number; line: number | null } {
   let best = threshold + 1;
   let value = origin;
+  let line: number | null = null;
   for (const edge of [0, size / 2, size]) {
     for (const target of targets) {
       const delta = Math.abs(origin + edge - target);
       if (delta <= threshold && delta < best) {
         best = delta;
         value = target - edge;
+        line = target;
       }
     }
   }
-  return { value, snapped: best <= threshold };
+  return { value, line };
 }
 
-/** Snap a layer to page midlines and any guide lines (px). */
-export function snapLayoutToContentCenter(
+/** A page in the snap surface's coordinate space (px). */
+export type SnapPageFrame = { x: number; y: number; w: number; h: number };
+
+function pageSnapLines(start: number, size: number, margin: number): number[] {
+  const lines = [start, start + size / 2, start + size];
+  if (margin > 0 && margin * 2 < size) lines.push(start + margin, start + size - margin);
+  return lines;
+}
+
+/**
+ * Snap a layer's edges and center to each page's edges, margin edges, and center,
+ * plus any guide lines (px). `lineX` / `lineY` are the lines hit, null when none.
+ */
+export function snapLayoutToPage(
   item: LayerRect,
-  contentW: number,
-  contentH: number,
-  opts?: {
+  opts: {
+    pages: SnapPageFrame[];
+    marginPx?: number;
+    guides?: { x?: number[]; y?: number[] };
     thresholdPx?: number;
     enabled?: boolean;
-    guides?: { x?: number[]; y?: number[] };
   }
-): { x: number; y: number; snappedX: boolean; snappedY: boolean } {
-  if (opts?.enabled === false) {
-    return { x: item.x, y: item.y, snappedX: false, snappedY: false };
+): { x: number; y: number; lineX: number | null; lineY: number | null } {
+  if (opts.enabled === false) {
+    return { x: item.x, y: item.y, lineX: null, lineY: null };
   }
-  const thr = opts?.thresholdPx ?? 12;
-  const xSnap = snapToTargets(item.x, item.w, [contentW / 2, ...(opts?.guides?.x || [])], thr);
-  const ySnap = snapToTargets(item.y, item.h, [contentH / 2, ...(opts?.guides?.y || [])], thr);
-  return { x: xSnap.value, y: ySnap.value, snappedX: xSnap.snapped, snappedY: ySnap.snapped };
+  const thr = opts.thresholdPx ?? 12;
+  const margin = Math.max(0, opts.marginPx ?? 0);
+  const xs = opts.pages.flatMap((page) => pageSnapLines(page.x, page.w, margin));
+  const ys = opts.pages.flatMap((page) => pageSnapLines(page.y, page.h, margin));
+  const xSnap = snapToTargets(item.x, item.w, [...xs, ...(opts.guides?.x || [])], thr);
+  const ySnap = snapToTargets(item.y, item.h, [...ys, ...(opts.guides?.y || [])], thr);
+  return { x: xSnap.value, y: ySnap.value, lineX: xSnap.line, lineY: ySnap.line };
 }
 
 /**

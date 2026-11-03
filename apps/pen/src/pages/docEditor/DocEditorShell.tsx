@@ -105,6 +105,7 @@ import { FormatRibbon, PageCanvas } from '../../components/PageCanvas';
 import { EditablePagePreview } from '../../components/EditablePagePreview';
 import { ScreenLayerStage } from '../../components/ScreenLayerStage';
 import { PageGuides } from '../../components/PageGuides';
+import { PageGrid } from '../../components/PageGrid';
 import {
   PreviewPageBar,
   PreviewPageStrip,
@@ -1628,6 +1629,16 @@ export function DocEditorShell(state: DocEditorReadyState) {
                                 }
                               });
                             }}
+                            onGridChange={(enabled) => {
+                              persist({
+                                ...bundle,
+                                manifest: {
+                                  ...bundle.manifest,
+                                  showPageGrid: enabled,
+                                  updatedAt: new Date().toISOString()
+                                }
+                              });
+                            }}
                             onPresentationChange={(partial) => {
                               const next = mergePagePresentation(
                                 defaultEditorPagePresentation(),
@@ -1674,6 +1685,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
                             }}
                           />
                         </div>
+                        {bundle.manifest.showPageGrid ? <PageGrid /> : null}
                       </div>
                     );
                   })}
@@ -1706,7 +1718,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
                         manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
                       })
                     }
-                    snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
+                    snap={Boolean(bundle.manifest.snapToPageGuides)}
                     freePlacement={artboard}
                     drawGuides={false}
                     guideSpan={guideSpanFor(

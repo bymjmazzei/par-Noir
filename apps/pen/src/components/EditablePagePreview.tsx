@@ -112,6 +112,7 @@ export function EditablePagePreview({
   onPageSizeChange,
   onPresentationChange,
   onSnapChange,
+  onGridChange,
   session,
   inputValues,
   onInputValue,
@@ -176,6 +177,7 @@ export function EditablePagePreview({
   onPageSizeChange?: (next: PageSizeChoice) => void;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSnapChange?: (enabled: boolean) => void;
+  onGridChange?: (enabled: boolean) => void;
   session?: PenSession | null;
   widgetPreviewGroupId?: string | null;
   widgetPreviewFrame?: number;
@@ -293,6 +295,7 @@ export function EditablePagePreview({
     })()
   );
   const snapEnabled = Boolean(manifest.snapToPageGuides);
+  const gridEnabled = Boolean(manifest.showPageGrid);
   const flowOpen = isFlowWorkspaceOpen(manifest.flowWorkspaceWidthPx);
   const flowWidth = flowOpen
     ? null
@@ -695,10 +698,27 @@ export function EditablePagePreview({
             </div>
           )}
         </div>
+        {onGridChange && (
+          <button
+            type="button"
+            title={gridEnabled ? 'Grid overlay on' : 'Grid overlay off'}
+            aria-pressed={gridEnabled}
+            className={`shrink-0 rounded px-1.5 text-[10px] font-bold uppercase tracking-wide ${
+              gridEnabled ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-black'
+            }`}
+            onClick={() => onGridChange(!gridEnabled)}
+          >
+            Grid
+          </button>
+        )}
         {onSnapChange && (
           <button
             type="button"
-            title={snapEnabled ? 'Snap to center and guides on' : 'Snap to center and guides off'}
+            title={
+              snapEnabled
+                ? 'Snap to page edges, center and guides on'
+                : 'Snap to page edges, center and guides off'
+            }
             aria-pressed={snapEnabled}
             className={`shrink-0 rounded px-1.5 text-[10px] font-bold uppercase tracking-wide ${
               snapEnabled ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-black'
@@ -942,7 +962,8 @@ export function EditablePagePreview({
                 return layer ? layerChromeStyle(layer) : {};
               }}
               selectedId={pageActive ? null : activeLayerId}
-              snapToPageCenter={snapEnabled}
+              snap={snapEnabled}
+              snapMargin={pad}
               snapGuides={snapGuides}
               guideSpan={guideSpan}
               getLinkedIds={getLinkedIds}

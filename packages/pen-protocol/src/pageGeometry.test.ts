@@ -14,7 +14,7 @@ import {
   orientPageSize,
   measureToPx,
   pxToMeasure,
-  snapLayoutToContentCenter,
+  snapLayoutToPage,
   pageLayerToSheet,
   sheetLayerToPage,
   openFlowDragHeightPx,
@@ -175,14 +175,35 @@ describe('pageGeometry', () => {
     expect(measureToPx(1, 'in')).toBe(96);
     expect(pxToMeasure(96, 'in')).toBe(1);
     expect(measureToPx(2.54, 'cm')).toBe(96);
-    const snapped = snapLayoutToContentCenter(
-      { x: 48, y: 10, w: 40, h: 20 },
-      400,
-      300,
-      { guides: { x: [50], y: [] } }
+    const page = { x: 0, y: 0, w: 400, h: 300 };
+    const snapped = snapLayoutToPage(
+      { x: 148, y: 100, w: 40, h: 20 },
+      { pages: [page], guides: { x: [150], y: [] } }
     );
-    expect(snapped.snappedX).toBe(true);
-    expect(snapped.x).toBe(50);
+    expect(snapped.x).toBe(150);
+    expect(snapped.lineX).toBe(150);
+    expect(snapped.lineY).toBeNull();
+  });
+
+  it('snaps to page edges, margin edges, and each page center', () => {
+    const pages = [
+      { x: 0, y: 0, w: 400, h: 300 },
+      { x: 400, y: 0, w: 400, h: 300 }
+    ];
+    const edge = snapLayoutToPage({ x: 5, y: 150, w: 40, h: 20 }, { pages, marginPx: 40 });
+    expect(edge.x).toBe(0);
+    expect(edge.lineX).toBe(0);
+    const right = snapLayoutToPage({ x: 100, y: 275, w: 40, h: 20 }, { pages, marginPx: 40 });
+    expect(right.y).toBe(280);
+    expect(right.lineY).toBe(300);
+    const margin = snapLayoutToPage({ x: 43, y: 100, w: 40, h: 20 }, { pages, marginPx: 40 });
+    expect(margin.x).toBe(40);
+    expect(margin.lineX).toBe(40);
+    const center = snapLayoutToPage({ x: 575, y: 100, w: 40, h: 20 }, { pages, marginPx: 40 });
+    expect(center.x).toBe(580);
+    expect(center.lineX).toBe(600);
+    const off = snapLayoutToPage({ x: 5, y: 150, w: 40, h: 20 }, { pages, enabled: false });
+    expect(off).toEqual({ x: 5, y: 150, lineX: null, lineY: null });
   });
 
   it('open flow drag height fills the visible panel', () => {

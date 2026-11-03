@@ -546,8 +546,10 @@ export interface PenDocManifest {
   penFeedMediaBySlug?: Record<string, { ref: string; kind: 'video' | 'image' }>;
   /** Head hash / commit id the gallery preview was built from. */
   galleryPreviewCommitHash?: string;
-  /** When true, overlay objects snap to page center/middle while dragging. */
+  /** When true, overlay objects snap to page edges, margins, center/middle, and guides while dragging. */
   snapToPageGuides?: boolean;
+  /** Editor-only positioning grid over the page. Never published. */
+  showPageGrid?: boolean;
   /** Owner pn hash — unrevokable. */
   ownerPnHash?: string;
   /** Access control list (includes owner). */

@@ -4,9 +4,7 @@ import { docToPlainText, emptyTipTapDoc } from './richDoc.js';
 import {
   DEFAULT_IMAGE_ASPECT,
   DEFAULT_VIDEO_ASPECT,
-  sizeMediaLayerForAttach,
-  snapLayoutToContentCenter,
-  type LayerRect
+  sizeMediaLayerForAttach
 } from './pageGeometry.js';
 import { SEED_TABLE_DOC_PLACEHOLDER } from './seedRefs.js';
 import {
@@ -459,31 +457,6 @@ export function distributeLayers(
     )
   };
 }
-
-/**
- * Snap layer center to content-box midlines (CSS px).
- * Pass contentW/contentH; falls back to Letter content box when omitted.
- */
-export function snapLayoutToPageCenter(
-  item: LayerRect,
-  opts?: {
-    threshold?: number;
-    thresholdPx?: number;
-    enabled?: boolean;
-    contentW?: number;
-    contentH?: number;
-    guides?: { x?: number[]; y?: number[] };
-  }
-): { x: number; y: number; snappedX: boolean; snappedY: boolean } {
-  const contentW = opts?.contentW ?? 736;
-  const contentH = opts?.contentH ?? 976;
-  return snapLayoutToContentCenter(item, contentW, contentH, {
-    enabled: opts?.enabled,
-    thresholdPx: opts?.thresholdPx ?? opts?.threshold ?? 12,
-    guides: opts?.guides
-  });
-}
-
 
 /** Editor-only line. Vertical guides store the x; horizontal guides store the y. */
 export function createGuideLayer(

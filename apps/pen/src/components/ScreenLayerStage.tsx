@@ -34,7 +34,7 @@ export function ScreenLayerStage({
   onInputValue,
   onSelectLayer,
   onSectionsChange,
-  snapToPageCenter = false,
+  snap = false,
   playheadSec: playheadProp,
   freePlacement = false,
   guideSpan,
@@ -52,7 +52,7 @@ export function ScreenLayerStage({
   onInputValue?: (layerId: string, value: string) => void;
   onSelectLayer: (id: string | null) => void;
   onSectionsChange: (next: PenSectionContent[]) => void;
-  snapToPageCenter?: boolean;
+  snap?: boolean;
   /** Section clock. Sampled for display; drags write keys when the layer has them. */
   playheadSec?: number;
   /** Non-flow artboard. Layers may sit past the page; render still clips. */
@@ -141,7 +141,14 @@ export function ScreenLayerStage({
       }}
       items={items}
       selectedId={activeLayerId}
-      snapToPageCenter={snapToPageCenter}
+      snap={snap}
+      snapPages={sections.map((_, index) => ({
+        x: index * pageWidth,
+        y: 0,
+        w: pageWidth,
+        h: pageHeight
+      }))}
+      snapMargin={pad}
       guideSpan={guideSpan}
       snapGuides={{
         x: guides.filter((guide) => guide.axis === 'vertical').map((guide) => guide.position),

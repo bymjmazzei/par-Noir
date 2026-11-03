@@ -6,10 +6,18 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react';
-import { snapLayoutToPageCenter, resizeSeKeepAspect, fitAspectInBox, cornerRadiusFromPull } from '@par-noir/pen-protocol';
+import {
+  snapLayoutToPage,
+  resizeSeKeepAspect,
+  fitAspectInBox,
+  cornerRadiusFromPull,
+  type SnapPageFrame
+} from '@par-noir/pen-protocol';
 import { clampLayoutItem, scaleGroupItems, sortByZ, type LayoutBounds, type LayoutItem } from './types';
 
 type DragMode = 'move' | 'resize' | 'round';
+
+const NO_LINES = { x: null, y: null };
 
 interface DragState {
   id: string;
@@ -30,7 +38,9 @@ export function LayoutSurface({
   style,
   renderItem,
   disabled,
-  snapToPageCenter,
+  snap,
+  snapPages,
+  snapMargin,
   snapGuides,
   getLinkedIds,
   resizeDisabledIds,
@@ -48,7 +58,11 @@ export function LayoutSurface({
   style?: CSSProperties;
   renderItem: (item: LayoutItem, selected: boolean) => ReactNode;
   disabled?: boolean;
-  snapToPageCenter?: boolean;
+  snap?: boolean;
+  /** Pages to snap to, in item space. Defaults to one page filling `bounds`. */
+  snapPages?: SnapPageFrame[];
+  /** Page margin (px) inside each snap page; its edges are snap lines too. */
+  snapMargin?: number;
   /** Guide lines in the same coordinate space as items. */
   snapGuides?: { x: number[]; y: number[] };
   /** When moving `id`, also move these ids by the same delta. Resizing `id` scales them with it. */
@@ -74,7 +88,7 @@ export function LayoutSurface({
   const [drag, setDrag] = useState<DragState | null>(null);
   /** Live geometry while dragging — commit to parent only on pointer up. */
   const [preview, setPreview] = useState<Record<string, LayoutItem> | null>(null);
-  const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>(NO_LINES);
   /** Pending move — only becomes a drag after a small pointer travel (tap vs drag). */
   const pendingMove = useRef<{
     id: string;
@@ -188,15 +202,15 @@ export function LayoutSurface({
     const dy = (e.clientY - drag.startY) / scale;
     if (drag.mode === 'move') {
       const next = { x: drag.orig.x + dx, y: drag.orig.y + dy, w: drag.orig.w, h: drag.orig.h };
-      const snapped = snapLayoutToPageCenter(next, {
-        enabled: snapToPageCenter,
-        contentW: b.width,
-        contentH: b.height,
+      const snapped = snapLayoutToPage(next, {
+        enabled: Boolean(snap),
+        pages: snapPages || [{ x: 0, y: 0, w: b.width, h: b.height }],
+        marginPx: snapMargin,
         guides: snapGuides
       });
       const appliedDx = snapped.x - drag.orig.x;
       const appliedDy = snapped.y - drag.orig.y;
-      setGuides({ v: snapped.snappedX, h: snapped.snappedY });
+      setGuides({ x: snapped.lineX, y: snapped.lineY });
       const nextPreview: Record<string, LayoutItem> = {
         [drag.id]: clampLayoutItem({ ...drag.orig, x: snapped.x, y: snapped.y }, b, freePlacement)
       };
@@ -214,7 +228,7 @@ export function LayoutSurface({
       }
       setPreview(nextPreview);
     } else if (drag.mode === 'round') {
-      setGuides({ v: false, h: false });
+      setGuides(NO_LINES);
       const cornerRadius = cornerRadiusFromPull(
         drag.orig.cornerRadius || 0,
         dx,
@@ -224,7 +238,7 @@ export function LayoutSurface({
       );
       setPreview({ [drag.id]: { ...drag.orig, cornerRadius } });
     } else {
-      setGuides({ v: false, h: false });
+      setGuides(NO_LINES);
       const linkedIds = Object.keys(drag.linkedOrig);
       let next: LayoutItem;
       if (linkedIds.length) {
@@ -267,16 +281,12 @@ export function LayoutSurface({
     }
     setDrag(null);
     setPreview(null);
-    setGuides({ v: false, h: false });
+    setGuides(NO_LINES);
   };
 
   const displayItems = preview
     ? items.map((i) => (preview[i.id] ? { ...i, ...preview[i.id] } : i))
     : items;
-
-  const b = activeBounds();
-  const guideX = b.width / 2;
-  const guideY = b.height / 2;
 
   return (
     <div
@@ -290,21 +300,21 @@ export function LayoutSurface({
       onPointerLeave={onPointerUp}
       onPointerDown={() => onSelect?.(null)}
     >
-      {guides.v && (
+      {guides.x != null && (
         <div
           className="pointer-events-none absolute top-0 z-30 w-px -translate-x-1/2 bg-sky-400/80"
           style={{
-            left: guideX,
+            left: guides.x,
             top: -(guideSpan?.top || 0),
             height: `calc(100% + ${(guideSpan?.top || 0) + (guideSpan?.bottom || 0)}px)`
           }}
         />
       )}
-      {guides.h && (
+      {guides.y != null && (
         <div
           className="pointer-events-none absolute left-0 z-30 h-px -translate-y-1/2 bg-sky-400/80"
           style={{
-            top: guideY,
+            top: guides.y,
             left: -(guideSpan?.left || 0),
             width: `calc(100% + ${(guideSpan?.left || 0) + (guideSpan?.right || 0)}px)`
           }}
