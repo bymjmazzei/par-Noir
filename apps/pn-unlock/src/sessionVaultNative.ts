@@ -12,6 +12,7 @@ import {
   type UnlockKeysPayload,
   type UnlockIdentityListing,
 } from '@par-noir/device-session-vault';
+import type { UnlockVaultAdapter } from '@par-noir/oauth-ui';
 
 const APP_ID = 'unlock' as const;
 
@@ -55,27 +56,27 @@ async function getVault(): Promise<DeviceSessionVault | UnsupportedSessionVault>
   }
 }
 
-export async function isUnlockSessionVaultAvailable(): Promise<boolean> {
+async function isUnlockSessionVaultAvailable(): Promise<boolean> {
   const v = await getVault();
   return v.isAvailable();
 }
 
-export async function hasUnlockSessionVault(): Promise<boolean> {
+async function hasUnlockSessionVault(): Promise<boolean> {
   const v = await getVault();
   return v.hasVault(APP_ID);
 }
 
-export async function listUnlockVaultIdentities(): Promise<UnlockIdentityListing[]> {
+async function listUnlockVaultIdentities(): Promise<UnlockIdentityListing[]> {
   const v = await getVault();
   return v.listUnlockIndex();
 }
 
-export async function hasUnlockVaultIdentity(identityId: string): Promise<boolean> {
+async function hasUnlockVaultIdentity(identityId: string): Promise<boolean> {
   const v = await getVault();
   return v.hasUnlockIdentity(identityId);
 }
 
-export async function enrollUnlockSessionVault(payload: UnlockKeysPayload): Promise<void> {
+async function enrollUnlockSessionVault(payload: UnlockKeysPayload): Promise<void> {
   if (
     !payload.key1?.trim() ||
     !payload.key2?.trim() ||
@@ -88,24 +89,29 @@ export async function enrollUnlockSessionVault(payload: UnlockKeysPayload): Prom
 }
 
 /** Biometric once → all enrolled unlock_keys entries (empty array if none). */
-export async function unlockSessionVaultEntries(): Promise<UnlockKeysPayload[]> {
+async function unlockSessionVaultEntries(reason?: string): Promise<UnlockKeysPayload[]> {
   const v = await getVault();
-  const payload = await v.unlockWithBiometric(APP_ID);
+  const payload = await v.unlockWithBiometric(APP_ID, reason);
   if (!payload) return [];
   if (payload.kind === 'unlock_multi') return payload.entries;
   if (payload.kind === 'unlock_keys') return [payload];
   return [];
 }
 
-export async function removeUnlockVaultIdentity(identityId: string): Promise<void> {
+async function removeUnlockVaultIdentity(identityId: string): Promise<void> {
   const v = await getVault();
   await v.removeUnlockIdentity(identityId);
 }
 
-export async function clearUnlockSessionVault(): Promise<void> {
-  const v = await getVault();
-  await v.clearVault(APP_ID);
-}
-
-export { unlockIdentityLabel };
-export type { UnlockIdentityListing, UnlockKeysPayload };
+export const unlockVaultAdapter: UnlockVaultAdapter = {
+  isAvailable: isUnlockSessionVaultAvailable,
+  hasVault: hasUnlockSessionVault,
+  listIndex: listUnlockVaultIdentities,
+  hasIdentity: hasUnlockVaultIdentity,
+  enroll: enrollUnlockSessionVault,
+  unlockEntries: unlockSessionVaultEntries,
+  remove: removeUnlockVaultIdentity,
+  label: unlockIdentityLabel,
+  deviceNoun: 'device',
+  biometricNoun: 'biometrics',
+};

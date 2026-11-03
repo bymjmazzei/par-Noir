@@ -111,9 +111,6 @@ export interface SessionVaultUnlockOverlayProps {
   error?: string | null;
   onUnlock: () => void | Promise<void>;
   onUseFullUnlock: () => void;
-  /** Shows a button that opens the saved-pN list for removal. */
-  onManage?: () => void | Promise<void>;
-  manageLabel?: string;
   children?: ReactNode;
 }
 
@@ -130,8 +127,6 @@ export function SessionVaultUnlockOverlay({
   error = null,
   onUnlock,
   onUseFullUnlock,
-  onManage,
-  manageLabel = 'Manage saved pNs',
 }: SessionVaultUnlockOverlayProps) {
   if (!open) return null;
   return (
@@ -179,26 +174,6 @@ export function SessionVaultUnlockOverlay({
         >
           {useFullUnlockLabel}
         </button>
-        {onManage ? (
-          <button
-            type="button"
-            onClick={() => void onManage()}
-            disabled={busy}
-            style={{
-              width: '100%',
-              marginTop: 8,
-              padding: '6px 14px',
-              border: 'none',
-              background: 'none',
-              color: '#a3a3a3',
-              fontSize: 13,
-              textDecoration: 'underline',
-              cursor: 'pointer',
-            }}
-          >
-            {manageLabel}
-          </button>
-        ) : null}
       </div>
     </div>
   );
@@ -218,10 +193,16 @@ export interface SessionVaultIdentityPickerProps {
   busy?: boolean;
   error?: string | null;
   onSelect: (identityId: string) => void | Promise<void>;
-  onCancel: () => void;
+  /** Omit to hide the footer cancel button (e.g. when onUseDifferent is the exit). */
+  onCancel?: () => void;
   cancelLabel?: string;
   /** Adds a Remove button per pN, confirmed inline before it fires. */
   onRemove?: (identityId: string) => void | Promise<void>;
+  /** When false, rows are labels only (manage mode); Remove still works. */
+  selectable?: boolean;
+  /** Footer action to skip saved pNs and unlock another one with its keys. */
+  onUseDifferent?: () => void;
+  useDifferentLabel?: string;
 }
 
 /**
@@ -238,9 +219,26 @@ export function SessionVaultIdentityPicker({
   onCancel,
   cancelLabel = 'Cancel',
   onRemove,
+  selectable = true,
+  onUseDifferent,
+  useDifferentLabel = 'Use a different pN',
 }: SessionVaultIdentityPickerProps) {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   if (!open) return null;
+  const rowStyle: CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'left',
+    padding: '10px 14px',
+    borderRadius: 8,
+    border: '1px solid #444',
+    background: '#222',
+    color: '#f5f5f5',
+    fontWeight: 500,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  };
   return (
     <div style={overlayStyle} role="dialog" aria-modal="true" aria-labelledby="pn-vault-pick-title">
       <div style={cardStyle}>
@@ -263,26 +261,18 @@ export function SessionVaultIdentityPicker({
         >
           {options.map((opt) => (
             <li key={opt.identityId} style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void onSelect(opt.identityId)}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  textAlign: 'left',
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #444',
-                  background: '#222',
-                  color: '#f5f5f5',
-                  cursor: 'pointer',
-                  fontWeight: 500,
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
-                {opt.label}
-              </button>
+              {selectable ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onSelect(opt.identityId)}
+                  style={{ ...rowStyle, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
+                >
+                  {opt.label}
+                </button>
+              ) : (
+                <span style={rowStyle}>{opt.label}</span>
+              )}
               {onRemove ? (
                 <button
                   type="button"
@@ -313,22 +303,45 @@ export function SessionVaultIdentityPicker({
             </li>
           ))}
         </ul>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          style={{
-            width: '100%',
-            padding: '8px 14px',
-            borderRadius: 8,
-            border: '1px solid #444',
-            background: 'transparent',
-            color: '#ddd',
-            cursor: 'pointer',
-          }}
-        >
-          {cancelLabel}
-        </button>
+        {onUseDifferent ? (
+          <button
+            type="button"
+            onClick={onUseDifferent}
+            disabled={busy}
+            style={{
+              width: '100%',
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: 'none',
+              background: '#f5f5f5',
+              color: '#111',
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginBottom: 8,
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            {useDifferentLabel}
+          </button>
+        ) : null}
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            style={{
+              width: '100%',
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: '1px solid #444',
+              background: 'transparent',
+              color: '#ddd',
+              cursor: 'pointer',
+            }}
+          >
+            {cancelLabel}
+          </button>
+        ) : null}
       </div>
     </div>
   );

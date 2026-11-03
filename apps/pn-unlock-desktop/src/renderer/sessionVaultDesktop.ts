@@ -11,6 +11,7 @@ import {
   type UnlockIdentityListing,
   type NativeKv,
 } from '@par-noir/device-session-vault';
+import type { UnlockVaultAdapter } from '@par-noir/oauth-ui';
 import type { UnlockDesktopApi } from '../../preload/preload';
 
 const APP_ID = 'unlock' as const;
@@ -53,7 +54,7 @@ export async function isUnlockSessionVaultAvailable(): Promise<boolean> {
   return v.isAvailable();
 }
 
-export async function hasUnlockSessionVault(): Promise<boolean> {
+async function hasUnlockSessionVault(): Promise<boolean> {
   const v = await getVault();
   return v.hasVault(APP_ID);
 }
@@ -63,7 +64,7 @@ export async function listUnlockVaultIdentities(): Promise<UnlockIdentityListing
   return v.listUnlockIndex();
 }
 
-export async function hasUnlockVaultIdentity(identityId: string): Promise<boolean> {
+async function hasUnlockVaultIdentity(identityId: string): Promise<boolean> {
   const v = await getVault();
   return v.hasUnlockIdentity(identityId);
 }
@@ -91,15 +92,22 @@ export async function unlockSessionVaultEntries(reason?: string): Promise<Unlock
   return [];
 }
 
-export async function removeUnlockVaultIdentity(identityId: string): Promise<void> {
+async function removeUnlockVaultIdentity(identityId: string): Promise<void> {
   const v = await getVault();
   await v.removeUnlockIdentity(identityId);
 }
 
-export async function clearUnlockSessionVault(): Promise<void> {
-  const v = await getVault();
-  await v.clearVault(APP_ID);
-}
+export const unlockVaultAdapter: UnlockVaultAdapter = {
+  isAvailable: isUnlockSessionVaultAvailable,
+  hasVault: hasUnlockSessionVault,
+  listIndex: listUnlockVaultIdentities,
+  hasIdentity: hasUnlockVaultIdentity,
+  enroll: enrollUnlockSessionVault,
+  unlockEntries: unlockSessionVaultEntries,
+  remove: removeUnlockVaultIdentity,
+  label: unlockIdentityLabel,
+  deviceNoun: 'Mac',
+  biometricNoun: 'Touch ID',
+};
 
-export { unlockIdentityLabel };
 export type { UnlockIdentityListing, UnlockKeysPayload };

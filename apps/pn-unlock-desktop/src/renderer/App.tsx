@@ -1,31 +1,19 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ConsentUnlockApp,
-  SessionVaultEnrollPrompt,
-  SessionVaultUnlockOverlay,
-  SessionVaultIdentityPicker,
+  UnlockSessionVaultLayer,
+  useUnlockSessionVault,
   searchFromUnlockUrl,
-  consentSearchUsesSavedPn,
   postOAuthBrokerComplete,
   postBrokerLaunched,
-  vaultEntriesForClient,
-  isAgentSignInClient,
   AGENT_VAULT_REQUIRED_MESSAGE,
   type AgentVaultEntry,
-  type ConsentVaultEnrollMaterial,
-  type ConsentVaultFactors,
-  type SessionVaultPickerOption,
 } from '@par-noir/oauth-ui';
-import type { UnlockKeysPayload } from '@par-noir/device-session-vault';
 import type { UnlockDesktopApi } from '../preload/preload';
 import {
   enrollUnlockSessionVault,
-  hasUnlockSessionVault,
-  hasUnlockVaultIdentity,
   isUnlockSessionVaultAvailable,
-  unlockIdentityLabel,
-  unlockSessionVaultEntries,
-  removeUnlockVaultIdentity,
+  unlockVaultAdapter,
 } from './sessionVaultDesktop';
 import { startAgentBridge } from './agentBridge';
 
@@ -38,23 +26,8 @@ const API_DEFAULT =
     (import.meta as ImportMeta & { env?: { VITE_API_ENDPOINT?: string } }).env?.VITE_API_ENDPOINT) ||
   'https://api.parnoir.com';
 
-function declinedKey(identityId: string): string {
-  return `pn_vault_enroll_declined_unlock:${identityId}`;
-}
-
 function desktopApi(): UnlockDesktopApi | null {
   return (window as Window & { pnUnlockDesktop?: UnlockDesktopApi }).pnUnlockDesktop ?? null;
-}
-
-function factorsFromEntry(entry: UnlockKeysPayload): ConsentVaultFactors | null {
-  if (!entry.encryptedIdentityJson?.trim() || !entry.key1?.trim() || !entry.key2?.trim()) {
-    return null;
-  }
-  return {
-    key1: entry.key1,
-    key2: entry.key2,
-    encryptedIdentityJson: entry.encryptedIdentityJson,
-  };
 }
 
 export default function App(): React.ReactElement {
@@ -62,51 +35,8 @@ export default function App(): React.ReactElement {
     typeof window !== 'undefined' ? window.location.search : ''
   );
   const [vaultChecked, setVaultChecked] = useState(false);
-  const [showVaultUnlock, setShowVaultUnlock] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
-  const [pickerOptions, setPickerOptions] = useState<SessionVaultPickerOption[]>([]);
-  const [pendingEntries, setPendingEntries] = useState<UnlockKeysPayload[]>([]);
-  const [showEnroll, setShowEnroll] = useState(false);
-  const [managingVault, setManagingVault] = useState(false);
-  const [vaultBusy, setVaultBusy] = useState(false);
-  const [vaultError, setVaultError] = useState<string | null>(null);
-  const [vaultFactors, setVaultFactors] = useState<ConsentVaultFactors | null>(null);
-  const [pendingEnroll, setPendingEnroll] = useState<ConsentVaultEnrollMaterial | null>(null);
-  const enrollWaiters = useRef<Array<() => void>>([]);
-  /** Prevent double Touch ID prompts for the same overlay offer. */
-  const autoTouchIdForOffer = useRef(0);
-  const vaultOfferGen = useRef(0);
-
-  const resolveEnrollWaiters = useCallback(() => {
-    const waiters = enrollWaiters.current;
-    enrollWaiters.current = [];
-    for (const w of waiters) w();
-  }, []);
-
-  const dismissVaultOffer = useCallback(() => {
-    vaultOfferGen.current += 1;
-    setManagingVault(false);
-    setVaultFactors(null);
-    setShowVaultUnlock(false);
-    setShowPicker(false);
-    setPendingEntries([]);
-    setPickerOptions([]);
-    setVaultError(null);
-  }, []);
-
-  const offerVaultUnlockIfNeeded = useCallback(async () => {
-    const offer = ++vaultOfferGen.current;
-    const available = await isUnlockSessionVaultAvailable();
-    const has = available && (await hasUnlockSessionVault());
-    if (!has || offer !== vaultOfferGen.current) return false;
-    setVaultFactors(null);
-    setShowPicker(false);
-    setPendingEntries([]);
-    setPickerOptions([]);
-    setVaultError(null);
-    setShowVaultUnlock(true);
-    return true;
-  }, []);
+  const vault = useUnlockSessionVault(unlockVaultAdapter);
+  const { offerForSearch, refresh: refreshVault } = vault;
 
   const applyUrl = useCallback(
     (url: string) => {
@@ -131,10 +61,9 @@ export default function App(): React.ReactElement {
         /* claim is best-effort; auth still runs */
       }
       // Prefer-app reuses a running Unlock window — re-offer Touch ID vault each OAuth.
-      if (consentSearchUsesSavedPn(q)) void offerVaultUnlockIfNeeded();
-      else dismissVaultOffer();
+      void offerForSearch(q);
     },
-    [offerVaultUnlockIfNeeded, dismissVaultOffer]
+    [offerForSearch]
   );
 
   const openShellReturn = useCallback(async (url: string) => {
@@ -172,14 +101,14 @@ export default function App(): React.ReactElement {
         }
       }
       if (cancelled) return;
-      if (!appliedLaunch) await offerVaultUnlockIfNeeded();
+      if (!appliedLaunch) await offerForSearch(window.location.search);
       if (!cancelled) setVaultChecked(true);
     })();
     return () => {
       cancelled = true;
       unsub();
     };
-  }, [applyUrl, offerVaultUnlockIfNeeded]);
+  }, [applyUrl, offerForSearch]);
 
   const deliverLocalBroker = async (payload: Record<string, unknown>) => {
     let apiBase = API_DEFAULT.replace(/\/$/, '');
@@ -201,181 +130,16 @@ export default function App(): React.ReactElement {
     }, 350);
   }, []);
 
-  const applyEntry = useCallback((entry: UnlockKeysPayload) => {
-    const factors = factorsFromEntry(entry);
-    if (!factors) {
-      setVaultError('Saved unlock is incomplete — use full unlock once');
-      setShowPicker(false);
-      setShowVaultUnlock(false);
-      setPendingEntries([]);
-      return;
-    }
-    setVaultFactors(factors);
-    setShowPicker(false);
-    setShowVaultUnlock(false);
-    setPendingEntries([]);
-    setVaultError(null);
-  }, []);
-
-  const showSavedPns = useCallback((entries: UnlockKeysPayload[]) => {
-    setPendingEntries(entries);
-    setPickerOptions(entries.map((e) => ({ identityId: e.identityId, label: unlockIdentityLabel(e) })));
-    setShowVaultUnlock(false);
-    setShowPicker(true);
-  }, []);
-
-  const onVaultUnlock = useCallback(async () => {
-    setVaultError(null);
-    setVaultBusy(true);
-    try {
-      const clientId = new URLSearchParams(search.replace(/^\?/, '')).get('client_id') || '';
-      const entries = vaultEntriesForClient(await unlockSessionVaultEntries(), clientId);
-      if (entries.length === 0) {
-        setVaultError(
-          isAgentSignInClient(clientId)
-            ? 'No AI agent is saved on this Mac. Add one in Dashboard, Sub-pNs.'
-            : 'No sealed unlock session'
-        );
-        return;
+  const saveAgentIdentity = useCallback(
+    async (entry: AgentVaultEntry) => {
+      if (!(await isUnlockSessionVaultAvailable())) {
+        throw new Error(AGENT_VAULT_REQUIRED_MESSAGE);
       }
-      if (entries.length === 1) {
-        applyEntry(entries[0]);
-        return;
-      }
-      setManagingVault(false);
-      showSavedPns(entries);
-    } catch (e) {
-      setVaultError(e instanceof Error ? e.message : 'Device unlock failed');
-    } finally {
-      setVaultBusy(false);
-    }
-  }, [applyEntry, search, showSavedPns]);
-
-  const saveAgentIdentity = useCallback(async (entry: AgentVaultEntry) => {
-    if (!(await isUnlockSessionVaultAvailable())) {
-      throw new Error(AGENT_VAULT_REQUIRED_MESSAGE);
-    }
-    await enrollUnlockSessionVault({ kind: 'unlock_keys', ...entry });
-  }, []);
-
-  // Auto-prompt Touch ID when the vault overlay is offered (cold start or prefer-app).
-  useEffect(() => {
-    if (!showVaultUnlock || vaultFactors || showPicker || vaultBusy) return;
-    const offer = vaultOfferGen.current;
-    if (autoTouchIdForOffer.current === offer) return;
-    autoTouchIdForOffer.current = offer;
-    void onVaultUnlock();
-  }, [showVaultUnlock, vaultFactors, showPicker, vaultBusy, onVaultUnlock]);
-
-  const onManageVault = useCallback(async () => {
-    setVaultError(null);
-    setVaultBusy(true);
-    try {
-      const entries = await unlockSessionVaultEntries('Show saved pNs');
-      if (entries.length === 0) {
-        setVaultError('No saved pNs on this Mac');
-        return;
-      }
-      setManagingVault(true);
-      showSavedPns(entries);
-    } catch (e) {
-      setVaultError(e instanceof Error ? e.message : 'Device unlock failed');
-    } finally {
-      setVaultBusy(false);
-    }
-  }, [showSavedPns]);
-
-  const onRemoveIdentity = useCallback(
-    async (identityId: string) => {
-      setVaultError(null);
-      setVaultBusy(true);
-      try {
-        await removeUnlockVaultIdentity(identityId);
-        const remaining = pendingEntries.filter((e) => e.identityId !== identityId);
-        if (remaining.length === 0) {
-          dismissVaultOffer();
-          return;
-        }
-        showSavedPns(remaining);
-      } catch (e) {
-        setVaultError(e instanceof Error ? e.message : 'Could not remove this pN');
-      } finally {
-        setVaultBusy(false);
-      }
+      await enrollUnlockSessionVault({ kind: 'unlock_keys', ...entry });
+      await refreshVault();
     },
-    [pendingEntries, dismissVaultOffer, showSavedPns]
+    [refreshVault]
   );
-
-  const onPickIdentity = (identityId: string) => {
-    const entry = pendingEntries.find((e) => e.identityId === identityId);
-    if (!entry) {
-      setVaultError('Selected identity not found');
-      return;
-    }
-    applyEntry(entry);
-  };
-
-  const onUnlockedForVault = useCallback(async (material: ConsentVaultEnrollMaterial) => {
-    if (!(await isUnlockSessionVaultAvailable())) return;
-    if (await hasUnlockVaultIdentity(material.identityId)) return;
-    if (
-      typeof localStorage !== 'undefined' &&
-      localStorage.getItem(declinedKey(material.identityId)) === '1'
-    ) {
-      return;
-    }
-    setPendingEnroll(material);
-    setShowEnroll(true);
-    await new Promise<void>((resolve) => {
-      enrollWaiters.current.push(resolve);
-    });
-  }, []);
-
-  const handleEnrollConfirm = async () => {
-    if (!pendingEnroll) {
-      setShowEnroll(false);
-      resolveEnrollWaiters();
-      return;
-    }
-    setVaultBusy(true);
-    setVaultError(null);
-    try {
-      const key1 = pendingEnroll.key1?.trim() ?? '';
-      const key2 = pendingEnroll.key2?.trim() ?? '';
-      const encryptedIdentityJson = pendingEnroll.encryptedIdentityJson?.trim() ?? '';
-      if (!key1 || !key2 || !encryptedIdentityJson) {
-        setVaultError('Vault enroll requires identity file, Key 1, and Key 2');
-        return;
-      }
-      const payload: UnlockKeysPayload = {
-        kind: 'unlock_keys',
-        identityId: pendingEnroll.identityId,
-        publicKey: pendingEnroll.publicKey,
-        key1,
-        key2,
-        encryptedIdentityJson,
-      };
-      await enrollUnlockSessionVault(payload);
-      localStorage.removeItem(declinedKey(pendingEnroll.identityId));
-      setPendingEnroll(null);
-      setShowEnroll(false);
-      resolveEnrollWaiters();
-    } catch (e) {
-      setVaultError(e instanceof Error ? e.message : 'Could not enable device unlock');
-    } finally {
-      setVaultBusy(false);
-    }
-  };
-
-  const handleEnrollDecline = () => {
-    if (pendingEnroll) {
-      localStorage.setItem(declinedKey(pendingEnroll.identityId), '1');
-    }
-    setPendingEnroll(null);
-    setShowEnroll(false);
-    setVaultError(null);
-    resolveEnrollWaiters();
-  };
 
   if (!vaultChecked) {
     return (
@@ -387,51 +151,7 @@ export default function App(): React.ReactElement {
 
   return (
     <>
-      <SessionVaultUnlockOverlay
-        open={showVaultUnlock && !vaultFactors && !showPicker}
-        title="Unlock pN"
-        body="Confirm with Touch ID to continue with a saved pN."
-        unlockLabel="Unlock with Touch ID"
-        error={vaultError}
-        busy={vaultBusy}
-        onUnlock={() => void onVaultUnlock()}
-        onUseFullUnlock={() => {
-          setShowVaultUnlock(false);
-          setVaultError(null);
-        }}
-        onManage={() => void onManageVault()}
-      />
-      <SessionVaultIdentityPicker
-        open={showPicker && !vaultFactors}
-        title={managingVault ? 'Saved pNs' : undefined}
-        body={managingVault ? 'Remove pNs you no longer use on this Mac. Their files and keys elsewhere are not touched.' : undefined}
-        options={pickerOptions}
-        busy={vaultBusy}
-        error={vaultError}
-        onSelect={managingVault ? () => undefined : onPickIdentity}
-        onRemove={onRemoveIdentity}
-        cancelLabel={managingVault ? 'Done' : undefined}
-        onCancel={() => {
-          setShowPicker(false);
-          setPendingEntries([]);
-          setPickerOptions([]);
-          setVaultError(null);
-          if (managingVault) {
-            setManagingVault(false);
-            setShowVaultUnlock(true);
-          }
-        }}
-      />
-      <SessionVaultEnrollPrompt
-        open={showEnroll}
-        title="Save unlock on this computer?"
-        body="Next time use Touch ID, then pick this pN — without re-entering Key 1, Key 2, and your identity file. Only on this personal Mac."
-        confirmLabel="Enable with Touch ID"
-        busy={vaultBusy}
-        error={vaultError}
-        onConfirm={() => void handleEnrollConfirm()}
-        onDecline={handleEnrollDecline}
-      />
+      <UnlockSessionVaultLayer vault={vault} />
       <ConsentUnlockApp
         search={search}
         apiEndpointDefault={API_DEFAULT.replace(/\/$/, '')}
@@ -441,9 +161,9 @@ export default function App(): React.ReactElement {
         logoUrl={logoUrl}
         backgroundUrl={backgroundUrl}
         layout="broker"
-        vaultFactors={vaultFactors}
-        onVaultFactorsConsumed={() => setVaultFactors(null)}
-        onUnlockedForVault={onUnlockedForVault}
+        vaultFactors={vault.vaultFactors}
+        onVaultFactorsConsumed={vault.onVaultFactorsConsumed}
+        onUnlockedForVault={vault.onUnlockedForVault}
         saveAgentIdentity={saveAgentIdentity}
       />
     </>

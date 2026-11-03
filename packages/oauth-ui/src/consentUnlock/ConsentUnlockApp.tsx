@@ -661,11 +661,12 @@ function ConsentUnlockInner(props: {
           false,
           unlocked
         );
+        // Session is already delivered; ask to save before Unlock hides itself.
+        await notifyVault(unlocked, key1, key2);
         if (active.state && deliverLocalBroker && isDesktopUnlockApp()) {
           resetFormAfterBrokerHandoff();
           onBrokerHandoffComplete?.();
         }
-        void notifyVault(unlocked, key1, key2);
         return;
       }
 
@@ -686,11 +687,12 @@ function ConsentUnlockInner(props: {
           false,
           unlocked
         );
-        // Yield before vault enroll — Cap Messages is suspended while Unlock is
-        // foreground; awaiting enroll blocked broker-pending forever.
+        // Enroll only after finishWithCode delivered to the broker (awaiting it
+        // earlier left the caller broker-pending), but before yielding — a
+        // hidden Unlock window swallows the save prompt.
+        await notifyVault(unlocked, key1, key2);
         resetFormAfterBrokerHandoff();
         onBrokerHandoffComplete?.();
-        void notifyVault(unlocked, key1, key2);
         return;
       }
 

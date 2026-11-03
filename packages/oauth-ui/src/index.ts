@@ -197,6 +197,18 @@ export type {
   SessionVaultPickerOption,
 } from './sessionVaultUi';
 export {
+  useUnlockSessionVault,
+  UnlockSessionVaultLayer,
+  savedPnSignInClientId,
+} from './sessionVault/useUnlockSessionVault';
+export type {
+  UnlockVaultAdapter,
+  UnlockSessionVault,
+  UnlockSessionVaultLayerState,
+  SavedPnEntry,
+  SavedPnListing,
+} from './sessionVault/useUnlockSessionVault';
+export {
   ConsentUnlockApp,
   MESSAGING_HANDOFF_CLIENT_IDS,
   isMessagingHandoffClient,
