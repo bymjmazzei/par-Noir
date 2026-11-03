@@ -80,6 +80,14 @@ async function bytesOf(b: Blob): Promise<number[]> {
   return [...new Uint8Array(await b.arrayBuffer())];
 }
 
+/** Next put aborts its transaction with no error event, like a quota failure at commit. */
+function abortNextPut() {
+  return vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementationOnce(function (this: IDBObjectStore) {
+    this.transaction.abort();
+    return {} as IDBRequest<IDBValidKey>;
+  });
+}
+
 beforeEach(async () => {
   for (let i = 1; i <= 3; i++) await deleteLocalMedia(`drive_f${i}`);
   drive.files.clear();
@@ -109,6 +117,13 @@ describe('pen-media store', () => {
     expect(await bytesOf(hit!.blob)).toEqual(await bytesOf(blob));
     expect(await resolvePenMediaSrc(put.ref)).toBe(put.blobUrl);
   });
+
+  it('rejects instead of hanging when the write transaction aborts', async () => {
+    const spy = abortNextPut();
+    await expect(putLocalMedia({ docId: 'd2', blob: videoBlob() })).rejects.toThrow('idb_put_aborted');
+    spy.mockRestore();
+    expect(penMediaActivity()).toEqual({});
+  });
 });
 
 describe('pen-media attach (upload first)', () => {
@@ -130,6 +145,20 @@ describe('pen-media attach (upload first)', () => {
     const cached = await getLocalMedia('drive_f1');
     expect(cached?.driveFileId).toBe('f1');
     expect(await bytesOf(cached!.blob)).toEqual(await bytesOf(file));
+    expect(await resolvePenMediaSrc(out.ref)).toBe(out.blobUrl);
+    expect(penMediaActivity()).toEqual({});
+  });
+
+  it('finishes the attach from the Drive copy when the device cache write aborts', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const spy = abortNextPut();
+    const out = await attachMediaFile({ pnIdentifier: 'pn', docId: 'a6', file: videoBlob() });
+    spy.mockRestore();
+    warn.mockRestore();
+    expect(out.ref).toBe('penmedia:f1');
+    expect(out.blobUrl).toMatch(/^blob:/);
+    expect(drive.uploads).toBe(1);
+    expect(await getLocalMedia('drive_f1')).toBeNull();
     expect(await resolvePenMediaSrc(out.ref)).toBe(out.blobUrl);
     expect(penMediaActivity()).toEqual({});
   });

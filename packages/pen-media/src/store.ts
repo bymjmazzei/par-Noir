@@ -93,6 +93,7 @@ async function writeRecord(record: PenMediaRecord): Promise<void> {
         tx.objectStore(STORE).put(record);
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error || new Error('idb_put_failed'));
+        tx.onabort = () => reject(tx.error || new Error('idb_put_aborted'));
       })
   );
 }
@@ -138,19 +139,34 @@ export async function putLocalMedia(params: {
   return { mediaId, ref: penLocalRef(mediaId), blobUrl, mime };
 }
 
-/** Cache media that already lives on Drive (picked or downloaded) under its file id. */
+/**
+ * Cache media that already lives on Drive (picked or downloaded) under its file id.
+ * Drive holds the bytes, so a failed device write (quota, aborted commit) still returns
+ * a playable URL for this session; the next session downloads from Drive.
+ */
 export async function putLocalMediaForDriveFile(params: {
   docId: string;
   fileId: string;
   blob: Blob;
 }): Promise<{ mediaId: string; ref: string; blobUrl: string }> {
-  const put = await putLocalMedia({
-    docId: params.docId,
-    blob: params.blob,
-    mediaId: driveMediaId(params.fileId),
-    driveFileId: params.fileId
-  });
-  return { mediaId: put.mediaId, ref: penMediaRef(params.fileId), blobUrl: put.blobUrl };
+  const mediaId = driveMediaId(params.fileId);
+  const ref = penMediaRef(params.fileId);
+  try {
+    const put = await putLocalMedia({
+      docId: params.docId,
+      blob: params.blob,
+      mediaId,
+      driveFileId: params.fileId
+    });
+    return { mediaId, ref, blobUrl: put.blobUrl };
+  } catch (e) {
+    console.warn('[pen-media] device cache write failed; using the Drive copy', {
+      reason: e instanceof DOMException ? e.name : e instanceof Error ? e.message : String(e)
+    });
+    const blobUrl = cacheBlobUrl(mediaId, params.blob);
+    linkFileUrl(params.fileId, blobUrl);
+    return { mediaId, ref, blobUrl };
+  }
 }
 
 export async function getLocalMedia(
@@ -219,6 +235,7 @@ export async function deleteLocalMedia(mediaId: string): Promise<void> {
       tx.objectStore(STORE).delete(mediaId);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error || new Error('idb_delete_failed'));
+      tx.onabort = () => reject(tx.error || new Error('idb_delete_aborted'));
     });
   } catch {
     /* ignore */
