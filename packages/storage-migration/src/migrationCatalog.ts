@@ -24,7 +24,6 @@ export interface MigrationArtifact {
 const BRIDGE_TABLES: MigrationArtifact[] = [
   { id: 'third-party-permissions', kind: 'bridge_table', path: TABLE_PATHS.thirdPartyPermissions, critical: false, schema: { id: 'third-party-permissions', keyColumn: 'toolId', path: TABLE_PATHS.thirdPartyPermissions } },
   { id: 'notifications', kind: 'bridge_table', path: TABLE_PATHS.notifications, critical: false, schema: { id: 'notifications', keyColumn: 'notification_id', path: TABLE_PATHS.notifications } },
-  { id: 'zkp-data-points', kind: 'bridge_table', path: TABLE_PATHS.zkpDataPoints, critical: false, schema: { id: 'zkp-data-points', keyColumn: 'dataPointId', path: TABLE_PATHS.zkpDataPoints } },
   { id: 'devices', kind: 'bridge_table', path: TABLE_PATHS.devices, critical: true, schema: { id: 'devices', keyColumn: 'deviceId', path: TABLE_PATHS.devices } },
   { id: 'groups', kind: 'bridge_table', path: TABLE_PATHS.groups, critical: false, schema: { id: 'groups', keyColumn: 'memberKey', path: TABLE_PATHS.groups } },
   { id: 'followers', kind: 'bridge_table', path: TABLE_PATHS.followers, critical: false, schema: { id: 'followers', keyColumn: 'followerPnIdentifier', path: TABLE_PATHS.followers } },

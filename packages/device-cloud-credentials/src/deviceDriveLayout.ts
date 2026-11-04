@@ -29,7 +29,6 @@ const SHEET_KEYS: DeviceMetadataSheetKey[] = [
   'messaging_ledger',
   'message_requests',
   'data-point-requests',
-  'zkp-data-points',
   'preferences',
   'engagement',
   'prism_ledger',

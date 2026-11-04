@@ -466,7 +466,7 @@ export function useGoogleDriveOAuthConnect({
     const sessionId =
       authenticatedUser?.id || (authenticatedUser as { publicKey?: string })?.publicKey || null;
     const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-    const { readShellMlKem } = await import('../../../services/shellMlKem');
+    const { readShellMlKem } = await import('../../../services/shellKeys');
     const { canSealCloudDisconnect } = await import('../../../services/disconnectCloud');
     const mlKemSecretKey =
       readShellMlKem(pnId) ||

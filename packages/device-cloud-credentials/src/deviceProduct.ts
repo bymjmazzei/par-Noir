@@ -238,42 +238,6 @@ export async function writeDevicePreferences(
   );
 }
 
-export type DeviceZkpPoint = {
-  dataPointId: string;
-  proofType: string;
-  zkpProof: string;
-  signature: string;
-  verifiedAt: string;
-  expiresAt?: string;
-  verificationLevel: string;
-  metadata: { provider: string; fraudPreventionScore?: number };
-  encryptedUserData?: string;
-};
-
-export async function listDeviceZkpPoints(
-  accessToken: string,
-  spreadsheetId: string,
-  fetchImpl?: typeof fetch
-): Promise<DeviceZkpPoint[]> {
-  const rows = await readSheetValues(accessToken, spreadsheetId, 'Data Points!A2:L', fetchImpl);
-  return rows
-    .filter((row) => row[0])
-    .map((row) => ({
-      dataPointId: row[0],
-      proofType: row[1] || '',
-      zkpProof: row[2] || '',
-      signature: row[3] || '',
-      verifiedAt: row[4] || '',
-      expiresAt: row[5] || undefined,
-      verificationLevel: row[6] || 'basic',
-      metadata: {
-        provider: row[7] || '',
-        fraudPreventionScore: row[8] ? Number(row[8]) : undefined,
-      },
-      encryptedUserData: row[9] || undefined,
-    }));
-}
-
 export type DeviceMessageRequest = {
   requestId: string;
   fromPnIdentifier: string;

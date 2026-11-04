@@ -18,12 +18,6 @@ export const CONNECTIONS_SCHEMA: TableSchema = {
   path: TABLE_PATHS.connections
 };
 
-export const ZKP_DATA_POINTS_SCHEMA: TableSchema = {
-  id: 'zkp-data-points',
-  keyColumn: 'dataPointId',
-  path: TABLE_PATHS.zkpDataPoints
-};
-
 export const DEVICES_SCHEMA: TableSchema = {
   id: 'devices',
   keyColumn: 'deviceId',

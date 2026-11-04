@@ -2,18 +2,38 @@ import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import type { EncryptedIdentity } from '../types/crypto';
 import { IdentityCrypto } from '@par-noir/identity-crypto';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { readShellSigningKeys } from '../services/shellKeys';
+
+export type MlDsaKeypair = { mlDsaSecretKey: Uint8Array; mlDsaPublicKey: Uint8Array };
+
+/** ML-DSA pair the unlock app handed over at sign-in (same keys Pen signs with). */
+export function shellMlDsaKeypair(ids: Array<string | null | undefined>): MlDsaKeypair | null {
+  for (const id of ids) {
+    const keys = readShellSigningKeys(id);
+    if (keys) {
+      return {
+        mlDsaSecretKey: base64ToBytes(keys.mlDsaSecretKey),
+        mlDsaPublicKey: base64ToBytes(keys.mlDsaPublicKey),
+      };
+    }
+  }
+  return null;
+}
 
 /**
- * Load ML-DSA-65 key material from an encrypted identity using in-memory Key 1/Key 2.
- * Used only for ZKP v1 envelope signing (dashboard).
+ * ML-DSA-65 key material for ZK envelope signing. Prefers the unlock-app pair; rotation and
+ * recovery hold the key file with Key 1/Key 2 in memory and decrypt it here.
  */
 export async function loadMlDsaKeypairForZk(
   identityId: string,
-  encryptedIdentity: EncryptedIdentity
-): Promise<{ mlDsaSecretKey: Uint8Array; mlDsaPublicKey: Uint8Array }> {
+  encryptedIdentity?: EncryptedIdentity | null,
+  aliases: Array<string | null | undefined> = []
+): Promise<MlDsaKeypair> {
+  const shell = shellMlDsaKeypair([identityId, encryptedIdentity?.publicKey, ...aliases]);
+  if (shell) return shell;
   const creds = SecureCredentialManager.getCredentials(identityId);
-  if (!creds?.key1 || !creds.key2) {
-    throw new Error('Session credentials unavailable for ZKP signing.');
+  if (!encryptedIdentity || !creds?.key1 || !creds.key2) {
+    throw new Error('Signing key unavailable — unlock again with the unlock app.');
   }
   const raw = await IdentityCrypto.decryptData(
     {

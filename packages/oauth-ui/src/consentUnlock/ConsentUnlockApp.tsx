@@ -51,7 +51,7 @@ import { shouldUseCrossProcessBrokerHandoff } from './constants';
 import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
 import { applyShellFragment, assertFactorFree, encodeShellReturn } from '../hostedShell/session';
 import { assertBrokerBodyHasNoPrivateKeys, sealHandoffPayload } from '../handoffSeal';
-import { buildShellResult, shellMlKemResult } from '../hostedShell/shellResult';
+import { buildShellResult, shellKeysResult } from '../hostedShell/shellResult';
 import type { SaveAgentIdentity } from '../hostedShell/agentIdentity';
 import { consentUnlockCss, consentUnlockBrokerCssExtras, resolveConsentAssetBase } from './consentUnlockStyles';
 import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
@@ -787,7 +787,7 @@ function ConsentUnlockInner(props: {
           // Without the ML-KEM key a cloud connected in the create session never gets a vault.
           createdShellResultRef.current = {
             ...built,
-            ...shellMlKemResult({
+            ...shellKeysResult({
               publicKey: unlocked.publicKey,
               decryptedIdentity: unlocked.decryptedIdentity as unknown as Record<string, unknown>,
               encryptedIdentity: unlocked.encryptedIdentity as unknown as Record<string, unknown>,

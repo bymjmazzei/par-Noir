@@ -710,8 +710,8 @@ function App() {
   }, [authenticatedUser?.id]);
   
   // Load attested + verified data points once cloud token is warm and Drive layout exists.
-  // Unlock READY (secrets warm) is not the same as layout ready — 409 is memoized for the
-  // session so migrate/ensureCloudSession READY bursts do not storm GET /zkp-data-points.
+  // Unlock READY (secrets warm) is not the same as layout ready — a missing pN folder is memoized
+  // for the session so migrate/ensureCloudSession READY bursts do not storm Knowledge doc reads.
   const attestedLoadedKeyRef = useRef<string | null>(null);
   const attestedInFlightRef = useRef(false);
   useEffect(() => {
@@ -744,15 +744,6 @@ function App() {
 
         setAttestedHydrationStatus('loading');
 
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
-          console.warn('[App] Credentials not available');
-          setAttestedDataPoints(new Set());
-          setVerifiedDataPoints(new Set());
-          setAttestedHydrationStatus('ready');
-          return;
-        }
-
         const cloudTok = await resolveLocalGoogleAccessTokenAsync(recoveryVaultPnId);
         if (!cloudTok) {
           // Stay loading until PN_CLOUD_CREDENTIALS_READY — do not show Add yet.
@@ -771,13 +762,8 @@ function App() {
 
         attestedInFlightRef.current = true;
         try {
-          const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
-          const rows = await ZKPDataPointsService.getAllDataPoints(
-            authenticatedUser.id,
-            credentials,
-            authToken,
-            authenticatedUser.publicKey
-          );
+          const { listHeldKnowledgeClaims } = await import('./services/knowledgeAttestation');
+          const rows = await listHeldKnowledgeClaims(recoveryVaultPnId, authToken);
 
           if (rows === null) {
             // 409/401: layout or cloud token not ready. Memoize and stop — unlock READY
@@ -794,7 +780,7 @@ function App() {
           const verifiedIds = rows
             .filter((r) => r.verificationLevel === 'verified')
             .map((r) => r.dataPointId);
-          console.log('[App] Loaded ZKP data points from API:', {
+          console.log('[App] Loaded Knowledge claims from Drive:', {
             count: allIds.length,
             verifiedCount: verifiedIds.length,
           });

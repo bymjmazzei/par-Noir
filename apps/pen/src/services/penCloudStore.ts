@@ -8,6 +8,7 @@ import {
   PEN_DOC_DELETE_KIND,
   PEN_DRAFT_UPSERT_KIND,
   PEN_PUBLISH_KIND,
+  isKnowledgeClassId,
   pastVersionId,
   type PenDocManifest,
   type PenDraftManifest,
@@ -210,6 +211,7 @@ export async function listLibraryCloud(userPnIdentifier: string): Promise<LocalD
   const rows = await readLibraryIndex(drive.accessToken, drive.index.pnFolderId);
   return rows
     .filter((row) => typeof row.docId === 'string' && row.docId)
+    .filter((row) => !isKnowledgeClassId(typeof row.classId === 'string' ? row.classId : null))
     .map((row) => ({
       docId: String(row.docId),
       title: String(row.title || 'Untitled'),

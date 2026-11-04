@@ -1,5 +1,5 @@
 /**
- * Session memo for metadata-sheet probes (zkp-data-points, third-party-permissions)
+ * Session memo for metadata probes (Knowledge claim docs, third-party-permissions)
  * that return 409/401 while Drive layout/index is incomplete.
  *
  * Unlock fires PN_CLOUD_CREDENTIALS_READY when local secrets warm — before Storage

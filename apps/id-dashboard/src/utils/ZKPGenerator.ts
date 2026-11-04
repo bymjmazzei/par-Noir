@@ -2,7 +2,6 @@ import { generateZkProofEnvelopeV1 } from '@par-noir/zk-protocol-v1';
 import type { DataPointProposal, StandardDataPoint, ZKPGenerationRequest, ZKPProof } from '../types/DataPointTypes';
 import { STANDARD_DATA_POINTS } from '../types/StandardDataPointsRegistry';
 import { DataPointProposalManager } from './DataPointProposal';
-import { loadMlDsaKeypairForZk } from './zkPqcSigning';
 
 // ZKP Generation — browser-safe v1 envelope with ML-DSA binding.
 export class ZKPGenerator {
@@ -10,12 +9,6 @@ export class ZKPGenerator {
    * Generate ZKP for a standard data point (ML-DSA–bound STARK envelope).
    */
   static async generateZKP(request: ZKPGenerationRequest): Promise<ZKPProof> {
-    if (!request.identityId || !request.encryptedIdentity) {
-      throw new Error(
-        'ZKP generation requires identityId and encryptedIdentity (unlock and use a stored identity with ML-DSA keys).'
-      );
-    }
-
     const dataPoint = STANDARD_DATA_POINTS[request.dataPointId];
     if (!dataPoint) {
       throw new Error(`Unknown data point: ${request.dataPointId}`);
@@ -23,10 +16,7 @@ export class ZKPGenerator {
 
     this.validateUserData(dataPoint, request.userData);
 
-    const { mlDsaSecretKey, mlDsaPublicKey } = await loadMlDsaKeypairForZk(
-      request.identityId,
-      request.encryptedIdentity
-    );
+    const { mlDsaSecretKey, mlDsaPublicKey } = request.signingKeys;
 
     const public_inputs = this.buildPublicInputs(
       dataPoint.zkpType,

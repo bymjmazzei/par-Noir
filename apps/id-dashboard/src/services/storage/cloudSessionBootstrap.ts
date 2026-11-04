@@ -18,7 +18,7 @@ import {
 } from '@par-noir/user-owned-storage';
 import { ensureCloudCredentialsReady } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../../config/api';
-import { readShellMlKem } from '../shellMlKem';
+import { readShellMlKem } from '../shellKeys';
 import { getFileAggregatorService } from '../aggregator/FileAggregatorService';
 import { GoogleDriveBackend } from './GoogleDriveBackend';
 import { ownerGet } from '../ownerApiService';

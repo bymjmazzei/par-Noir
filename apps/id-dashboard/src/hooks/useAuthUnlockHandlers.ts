@@ -284,8 +284,8 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
       // SECURITY: Clear all credentials from memory
       SecureCredentialManager.clearAll();
       try {
-        const { clearShellMlKem } = await import('../services/shellMlKem');
-        clearShellMlKem();
+        const { clearShellKeys } = await import('../services/shellKeys');
+        clearShellKeys();
       } catch {
         /* ignore */
       }
@@ -463,15 +463,20 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
         await publishSealedVault(session, accessToken);
       }
       const mlKemSecretKey = session.result?.mlKemSecretKey;
-      if (mlKemSecretKey && session.publicKey) {
-        const { rememberShellMlKem } = await import('../services/shellMlKem');
+      const mlDsaSecretKey = session.result?.mlDsaSecretKey;
+      if ((mlKemSecretKey || mlDsaSecretKey) && session.publicKey) {
+        const { rememberShellMlKem, rememberShellSigningKeys } = await import('../services/shellKeys');
         const { deriveCanonicalPnIdentifier } = await import(
           '@par-noir/pqc-crypto/oauth-unlock-proof'
         );
-        rememberShellMlKem(
-          [session.publicKey, session.did, deriveCanonicalPnIdentifier(session.publicKey)],
-          mlKemSecretKey
-        );
+        const ids = [session.publicKey, session.did, deriveCanonicalPnIdentifier(session.publicKey)];
+        if (mlKemSecretKey) rememberShellMlKem(ids, mlKemSecretKey);
+        if (mlDsaSecretKey) {
+          rememberShellSigningKeys(ids, {
+            mlDsaSecretKey,
+            mlDsaPublicKey: session.result?.mlDsaPublicKey || session.publicKey,
+          });
+        }
       }
       const authenticatedAt = new Date().toISOString();
       const nickname = session.nickname || pnShortName(session.publicKey) || 'pN';

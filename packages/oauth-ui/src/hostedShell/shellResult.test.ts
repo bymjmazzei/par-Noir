@@ -5,7 +5,7 @@ vi.mock('@par-noir/identity-crypto', () => ({
 }));
 
 import { encodeShellReturn, parseShellReturn } from './session';
-import { buildShellResult, shellMlKemResult } from './shellResult';
+import { buildShellResult, shellKeysResult } from './shellResult';
 import { parseIdentityFileJson } from '../consentUnlock/decryptIdentityLocal';
 
 describe('buildShellResult export round-trip', () => {
@@ -55,12 +55,29 @@ describe('buildShellResult export round-trip', () => {
     expect(parseShellReturn(fragment)?.result?.mlKemSecretKey).toBe('sek');
   });
 
+  it('returns the ML-DSA pair on a session unlock so the dashboard can sign attestations like Pen', async () => {
+    const result = await buildShellResult({
+      op: 'session',
+      key1: 'unused',
+      key2: 'unused',
+      unlocked: {
+        publicKey: 'dsa-pk',
+        decryptedIdentity: { pqcSecrets: { mlKemSecretKey: 'sek', mlDsaSecretKey: 'dsa-sk' } },
+        encryptedIdentity: {},
+      },
+    });
+    expect(result?.mlDsaSecretKey).toBe('dsa-sk');
+    expect(result?.mlDsaPublicKey).toBe('dsa-pk');
+    expect(result?.key1).toBeUndefined();
+    expect(result?.key2).toBeUndefined();
+  });
+
   it('a create return carries the new pN messaging key, so a cloud connected right after create gets a vault', () => {
     const created = {
       identityFile: '{"encryptedData":"ct"}',
       did: 'did:pn:1',
       publicKey: 'pk',
-      ...shellMlKemResult({
+      ...shellKeysResult({
         publicKey: 'pk',
         decryptedIdentity: { pqcSecrets: { mlKemSecretKey: 'sek', mlKemPublicKey: 'pubk' } },
         encryptedIdentity: {},

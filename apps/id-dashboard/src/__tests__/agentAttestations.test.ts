@@ -5,11 +5,11 @@
  * level and expiry are produced; the proof, its public inputs and encrypted user data
  * (birthdate, names) never reach the draft Unlock signs or the API.
  */
-const listDeviceZkpPoints = jest.fn();
+const listDeviceKnowledgeClaims = jest.fn();
 const verifyZkProofEnvelopeV1 = jest.fn();
 
 jest.mock('@par-noir/device-cloud-credentials', () => ({
-  listDeviceZkpPoints: (...a: unknown[]) => listDeviceZkpPoints(...a),
+  listDeviceKnowledgeClaims: (...a: unknown[]) => listDeviceKnowledgeClaims(...a),
 }));
 
 jest.mock('@par-noir/zk-protocol-v1', () => ({
@@ -25,7 +25,7 @@ jest.mock('@par-noir/zk-protocol-v1', () => ({
 
 const sessionDriveFor = jest.fn(async (..._a: unknown[]) => ({
   accessToken: 'google-token',
-  index: { sheetIds: { 'zkp-data-points': 'sheet-zkp' } },
+  index: { pnFolderId: 'pn-folder', sheetIds: {} },
 }));
 jest.mock('../services/sessionDrive', () => ({
   sessionDriveFor: (...a: unknown[]) => sessionDriveFor(...a),
@@ -73,7 +73,7 @@ const ROWS = [
 beforeEach(() => {
   jest.clearAllMocks();
   verifyZkProofEnvelopeV1.mockReturnValue({ ok: true });
-  listDeviceZkpPoints.mockResolvedValue(ROWS);
+  listDeviceKnowledgeClaims.mockResolvedValue(ROWS);
 });
 
 describe('attestationFromProof', () => {
@@ -108,18 +108,18 @@ describe('attestationFromProof', () => {
 });
 
 describe('loadAgentAttestations', () => {
-  it('reads the same zkp sheet the Privacy panel uses and returns only four fields per proof', async () => {
+  it('reads the same Knowledge claim docs the Privacy panel uses and returns only four fields per proof', async () => {
     const list = await loadAgentAttestations('root', 'api-token', NOW);
     expect(sessionDriveFor).toHaveBeenCalledWith('pn-root', 'api-token');
-    expect(listDeviceZkpPoints).toHaveBeenCalledWith('google-token', 'sheet-zkp');
+    expect(listDeviceKnowledgeClaims).toHaveBeenCalledWith({ accessToken: 'google-token', pnFolderId: 'pn-folder' });
     expect(list.map((a) => a.dataPointId).sort()).toEqual(['email_verification', 'name_attestation', 'over_18', 'over_21']);
     for (const a of list) {
       expect(Object.keys(a).sort()).toEqual(['dataPointId', 'expiresAt', 'level', 'satisfied']);
     }
   });
 
-  it('returns nothing when the zkp sheet is not set up', async () => {
-    sessionDriveFor.mockResolvedValueOnce({ accessToken: 'g', index: { sheetIds: {} } } as never);
+  it('returns nothing when the Drive layout has no pN folder yet', async () => {
+    sessionDriveFor.mockResolvedValueOnce({ accessToken: 'g', index: { pnFolderId: '', sheetIds: {} } } as never);
     expect(await loadAgentAttestations('pn-root', 'api-token', NOW)).toEqual([]);
   });
 });

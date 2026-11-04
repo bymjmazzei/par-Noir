@@ -258,7 +258,6 @@ export {
   setDeviceFileDisliked,
   readDevicePreferences,
   writeDevicePreferences,
-  listDeviceZkpPoints,
   listDeviceMessageRequests,
   markDeviceMessageRead,
   deleteDeviceMessageRow,
@@ -272,11 +271,16 @@ export type {
   DeviceNotification,
   DeviceFollower,
   DeviceFollowing,
-  DeviceZkpPoint,
   DeviceMessageRequest,
   DeviceRecoveryRequest,
   DeviceCustodian,
 } from './deviceProduct.js';
+export {
+  writeKnowledgeClaimDoc,
+  listDeviceKnowledgeClaims,
+  readKnowledgeClaimSource,
+} from './knowledgeClaimDoc.js';
+export type { DeviceKnowledgeClaim, KnowledgeDriveTarget } from './knowledgeClaimDoc.js';
 export {
   downloadDriveText,
   penRootFolderId,

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StandardDataPoint, ZKPGenerationRequest } from '../types/standardDataPoints';
-import type { EncryptedIdentity } from '../types/crypto';
+import { StandardDataPoint } from '../types/standardDataPoints';
 import { VerificationModal } from './VerificationModal';
 
 interface DataPointInputModalProps {
@@ -8,15 +7,11 @@ interface DataPointInputModalProps {
   onClose: () => void;
   dataPoint: StandardDataPoint;
   existingData?: any;
-  onComplete: (proofs: any[], userData: any) => void;
+  /** Parent mints the template's claims and writes the Knowledge doc; it closes the modal on success. */
+  onComplete: (userData: Record<string, any>) => Promise<void>;
   identityId?: string;
   /** ML-DSA public key for the unlocked session (often differs from identityId / volume id). */
   identityPublicKey?: string;
-  encryptedIdentity?: EncryptedIdentity;
-  /** Same SimpleStorage/SecureStorage loader used for owner API tokens after unlock. */
-  loadEncryptedIdentity?: (
-    identityPublicKeyOrId: string
-  ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
 }
 
 export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
@@ -26,9 +21,7 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
   existingData,
   onComplete,
   identityId,
-  identityPublicKey,
-  encryptedIdentity,
-  loadEncryptedIdentity
+  identityPublicKey
 }) => {
   const [userData, setUserData] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
@@ -137,95 +130,13 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
       return;
     }
 
-    console.log('🔄 [DataPointInputModal] No verification required, generating ZKP');
-    // Name / age bundles: parent mints all derived ZKPs from form userData
-    if (dataPoint.id === 'name_attestation' || dataPoint.id === 'age_attestation') {
-      setLoading(true);
-      try {
-        onComplete([{ dataPointId: dataPoint.id, proof: 'derived-batch', signature: 'derived-batch' }], userData);
-        onClose();
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-    await generateZKPAndComplete();
+    await completeWith(userData);
   };
 
-  const generateZKPAndComplete = async () => {
-    console.log('🔄 [DataPointInputModal] generateZKPAndComplete called', {
-      dataPointId: dataPoint.id,
-      userData
-    });
-    
+  const completeWith = async (data: Record<string, any>) => {
     setLoading(true);
-
     try {
-      let resolved: EncryptedIdentity | undefined = encryptedIdentity;
-      if (
-        !resolved?.encryptedData ||
-        !resolved?.iv ||
-        !resolved?.salt ||
-        !resolved?.publicKey
-      ) {
-        const keys = [identityPublicKey, identityId].filter(
-          (k): k is string => typeof k === 'string' && k.trim().length > 0
-        );
-        let partial: { encryptedData: string; iv: string; salt: string } | null = null;
-        if (loadEncryptedIdentity) {
-          for (const key of keys) {
-            partial = await loadEncryptedIdentity(key);
-            if (partial?.encryptedData && partial.iv && partial.salt) break;
-          }
-        }
-        if (partial?.encryptedData && partial.iv && partial.salt) {
-          const publicKey =
-            identityPublicKey ||
-            (typeof encryptedIdentity?.publicKey === 'string' ? encryptedIdentity.publicKey : '') ||
-            keys[0] ||
-            '';
-          if (publicKey) {
-            resolved = {
-              publicKey,
-              mlKemPublicKey: encryptedIdentity?.mlKemPublicKey,
-              encryptedData: partial.encryptedData,
-              iv: partial.iv,
-              salt: partial.salt,
-            };
-          }
-        }
-      }
-
-      if (!identityId || !resolved?.encryptedData || !resolved.iv || !resolved.salt || !resolved.publicKey) {
-        alert('Unlock your identity to generate ZK proofs. Session credentials or the stored pN file are unavailable.');
-        return;
-      }
-
-      const zkpRequest: ZKPGenerationRequest = {
-        dataPointId: dataPoint.id,
-        userData: userData,
-        verificationLevel: 'basic',
-        expirationDays: 365,
-        identityId,
-        encryptedIdentity: resolved
-      };
-
-      console.log('🔄 [DataPointInputModal] Generating ZKP with request:', {
-        dataPointId: zkpRequest.dataPointId,
-        identityId: zkpRequest.identityId,
-        hasEncryptedIdentity: !!zkpRequest.encryptedIdentity,
-      });
-      const { ZKPGenerator } = await import('../utils/ZKPGenerator');
-      const proof = await ZKPGenerator.generateZKP(zkpRequest);
-      console.log('✅ [DataPointInputModal] ZKP generated successfully', { proof });
-      
-      console.log('🔄 [DataPointInputModal] Calling onComplete callback');
-      onComplete([proof], userData);
-      console.log('✅ [DataPointInputModal] onComplete called, closing modal');
-      onClose();
-    } catch (error) {
-      console.error('❌ [DataPointInputModal] Error generating ZKP:', error);
-      alert('Error generating proof. Please try again.');
+      await onComplete(data);
     } finally {
       setLoading(false);
     }
@@ -243,8 +154,7 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
       
       setUserData(updatedUserData);
       
-      // Generate ZKP with verified data
-      await generateZKPAndComplete();
+      await completeWith(updatedUserData);
     }
     // If verification failed, user can try again
   };

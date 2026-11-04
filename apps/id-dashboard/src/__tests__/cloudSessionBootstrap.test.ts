@@ -56,7 +56,7 @@ jest.mock('../services/ownerApiToken', () => ({
   requireOwnerApiToken: () => 'api-token',
 }));
 
-jest.mock('../services/shellMlKem', () => ({
+jest.mock('../services/shellKeys', () => ({
   readShellMlKem: (id: string) => (id === 'pn-abc' ? 'mlkem-secret' : null),
 }));
 

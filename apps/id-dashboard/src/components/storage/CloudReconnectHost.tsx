@@ -81,7 +81,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     void (async () => {
       const seenDisconnect = cloudDisconnectGeneration(pnIdentifier);
       const { awaitMigrateFlushForIdentity } = await import('../../services/deviceCloudCredentials');
-      const { readShellMlKem } = await import('../../services/shellMlKem');
+      const { readShellMlKem } = await import('../../services/shellKeys');
       let warmed: StorageCredentialsEnvelope | null = null;
       const shellMlKem = readShellMlKem(pnIdentifier) || readShellMlKem(sessionId);
       if (!shellMlKem) {

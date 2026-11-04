@@ -29,8 +29,6 @@ import { CustodianApprovalModal } from '../components/modals/CustodianApprovalMo
 import { CustodianInvitationAcceptanceModal } from '../components/modals/CustodianInvitationAcceptanceModal';
 import { RecoveryKeysModal } from '../components/recovery/RecoveryKeysModal';
 import { ownerFetch } from '../services/ownerApiService';
-import { SecureCredentialManager } from '@par-noir/identity-crypto';
-
 const EnhancedPrivacyPanel = lazy(() => import('../components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
 const ToolSettingsModal = lazy(() => import('../components/ToolSettingsModal').then(module => ({ default: module.ToolSettingsModal })));
 const IntegrationDebugger = lazy(() => import('../components/IntegrationDebugger').then(module => ({ default: module.default })));
@@ -727,27 +725,6 @@ export function AppModals(props: AppModalsProps) {
                   identityPublicKey={
                     authenticatedUser?.publicKey || selectedStoredIdentity?.publicKey
                   }
-                  loadEncryptedIdentity={getEncryptedIdentityForApiToken}
-                  encryptedIdentity={(() => {
-                    // Optional fast path when unlock-list selection still holds nested EncryptedIdentity
-                    const nested = selectedStoredIdentity?.encryptedData;
-                    if (
-                      nested &&
-                      typeof nested === 'object' &&
-                      typeof nested.encryptedData === 'string' &&
-                      nested.iv &&
-                      nested.salt
-                    ) {
-                      return {
-                        publicKey: nested.publicKey || selectedStoredIdentity.publicKey,
-                        mlKemPublicKey: nested.mlKemPublicKey || selectedStoredIdentity.mlKemPublicKey,
-                        encryptedData: nested.encryptedData,
-                        iv: nested.iv,
-                        salt: nested.salt,
-                      };
-                    }
-                    return undefined;
-                  })()}
                 />
               )}
 
@@ -795,130 +772,102 @@ export function AppModals(props: AppModalsProps) {
           });
 
           try {
-            const credentials = SecureCredentialManager.getCredentials(authenticatedUser?.id);
             const authToken = apiToken;
-            if (credentials && authToken && authenticatedUser?.id) {
+            if (authToken && authenticatedUser?.id) {
               const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
-              let encryptedIdentity = await getEncryptedIdentityForApiToken?.(identityKey);
+              let stored = await getEncryptedIdentityForApiToken?.(identityKey);
               if (
-                !encryptedIdentity &&
+                !stored &&
                 authenticatedUser.publicKey &&
                 authenticatedUser.publicKey !== authenticatedUser.id
               ) {
-                encryptedIdentity = await getEncryptedIdentityForApiToken?.(authenticatedUser.id);
+                stored = await getEncryptedIdentityForApiToken?.(authenticatedUser.id);
               }
-              if (encryptedIdentity) {
-                const { mintDerivedNameZkps, mintDerivedAgeZkps } = await import(
-                  '../utils/mintDerivedZkps'
-                );
-                const { IdentityCrypto } = await import('@par-noir/identity-crypto');
-                const extracted = (verifiedData as { extracted?: Record<string, string> }).extracted || {};
-                const firstName =
-                  extracted.firstName ||
-                  (verifiedData.dataPoints?.first_name as { value?: { firstName?: string } })?.value
-                    ?.firstName ||
-                  '';
-                const lastName =
-                  extracted.lastName ||
-                  (verifiedData.dataPoints?.last_name as { value?: { lastName?: string } })?.value
-                    ?.lastName ||
-                  '';
-                const middleName = extracted.middleName || '';
-                const dateOfBirth =
-                  extracted.dateOfBirth ||
-                  (verifiedData.dataPoints?.age_attestation as { value?: { dateOfBirth?: string } })
-                    ?.value?.dateOfBirth ||
-                  '';
-
-                const fullIdentity = {
-                  publicKey:
-                    (encryptedIdentity as { publicKey?: string }).publicKey ||
-                    authenticatedUser.publicKey ||
-                    identityKey,
-                  encryptedData: encryptedIdentity.encryptedData,
-                  iv: encryptedIdentity.iv,
-                  salt: encryptedIdentity.salt,
-                  mlKemPublicKey: (encryptedIdentity as { mlKemPublicKey?: string }).mlKemPublicKey
-                };
-
-                const mintParams = {
-                  identityId: authenticatedUser.id,
-                  credentials,
-                  authToken,
-                  publicKey: authenticatedUser.publicKey,
-                  encryptedIdentity: fullIdentity,
-                  verificationLevel: 'verified' as const,
-                  encryptedUserData: undefined as string | undefined
-                };
-
-                if (firstName && lastName) {
-                  const nameFields = {
-                    firstName,
-                    lastName,
-                    middleName,
-                    prefix: extracted.prefix,
-                    suffix: extracted.suffix
-                  };
-                  const enc = await IdentityCrypto.encryptData(
-                    JSON.stringify(nameFields),
-                    credentials.key1,
-                    credentials.key2
-                  );
-                  mintParams.encryptedUserData = JSON.stringify(enc);
-                  const ids = await mintDerivedNameZkps(nameFields, mintParams);
-                  ids.forEach((id) => {
-                    updatedVerifiedDataPoints.add(id);
-                    updatedAttestedDataPoints.add(id);
-                  });
-                }
-                if (dateOfBirth) {
-                  const enc = await IdentityCrypto.encryptData(
-                    JSON.stringify({ dateOfBirth }),
-                    credentials.key1,
-                    credentials.key2
-                  );
-                  mintParams.encryptedUserData = JSON.stringify(enc);
-                  const ids = await mintDerivedAgeZkps(dateOfBirth, mintParams);
-                  ids.forEach((id) => {
-                    updatedVerifiedDataPoints.add(id);
-                    updatedAttestedDataPoints.add(id);
-                  });
-                }
-
-                // Document metadata rows (verified)
-                const { ZKPDataPointsService } = await import('../utils/zkpDataPointsService');
-                for (const [dataPointId, dataPoint] of Object.entries(verifiedData.dataPoints || {})) {
-                  if (
-                    dataPointId === 'document_type' ||
-                    dataPointId === 'document_number' ||
-                    dataPointId === 'document_verification'
-                  ) {
-                    const zkpDataPoint = {
-                      dataPointId,
-                      proofType: mapDataPointIdToProofType(dataPointId),
-                      zkpProof: (dataPoint as { zkpProof?: string }).zkpProof || '',
-                      signature: (dataPoint as { zkpProof?: string }).zkpProof || '',
-                      verifiedAt:
-                        (dataPoint as { verifiedAt?: string }).verifiedAt || verifiedData.verifiedAt,
-                      expiresAt: (dataPoint as { expiresAt?: string }).expiresAt,
-                      verificationLevel: 'verified' as const,
-                      metadata: {
-                        provider: verifiedData.provider || 'veriff',
-                        fraudPreventionScore: verifiedData.fraudPrevention?.riskScore
-                      }
-                    };
-                    if (zkpDataPoint.zkpProof) {
-                      await ZKPDataPointsService.saveDataPoint(
-                        authenticatedUser.id,
-                        credentials,
-                        authToken,
-                        zkpDataPoint,
-                        authenticatedUser.publicKey
-                      );
-                      updatedVerifiedDataPoints.add(dataPointId);
+              const { attestFromTemplate, attestIssuedProof, resolveAttestationKeys } = await import(
+                '../services/knowledgeAttestation'
+              );
+              const keys = await resolveAttestationKeys({
+                identityId: authenticatedUser.id,
+                publicKey: authenticatedUser.publicKey,
+                encryptedIdentity: stored
+                  ? {
+                      publicKey:
+                        (stored as { publicKey?: string }).publicKey ||
+                        authenticatedUser.publicKey ||
+                        identityKey,
+                      encryptedData: stored.encryptedData,
+                      iv: stored.iv,
+                      salt: stored.salt,
+                      mlKemPublicKey: (stored as { mlKemPublicKey?: string }).mlKemPublicKey
                     }
-                  }
+                  : null
+              });
+              const extracted = (verifiedData as { extracted?: Record<string, string> }).extracted || {};
+              const firstName =
+                extracted.firstName ||
+                (verifiedData.dataPoints?.first_name as { value?: { firstName?: string } })?.value
+                  ?.firstName ||
+                '';
+              const lastName =
+                extracted.lastName ||
+                (verifiedData.dataPoints?.last_name as { value?: { lastName?: string } })?.value
+                  ?.lastName ||
+                '';
+              const dateOfBirth =
+                extracted.dateOfBirth ||
+                (verifiedData.dataPoints?.age_attestation as { value?: { dateOfBirth?: string } })
+                  ?.value?.dateOfBirth ||
+                '';
+              const markVerified = (ids: string[]) =>
+                ids.forEach((id) => {
+                  updatedVerifiedDataPoints.add(id);
+                  updatedAttestedDataPoints.add(id);
+                });
+              const verified = { keys, authToken, verificationLevel: 'verified' as const, provider: 'veriff' };
+
+              if (firstName && lastName) {
+                markVerified(
+                  await attestFromTemplate({
+                    ...verified,
+                    dataPointId: 'name_attestation',
+                    userData: {
+                      firstName,
+                      lastName,
+                      middleName: extracted.middleName || '',
+                      prefix: extracted.prefix || '',
+                      suffix: extracted.suffix || ''
+                    }
+                  })
+                );
+              }
+              if (dateOfBirth) {
+                markVerified(
+                  await attestFromTemplate({ ...verified, dataPointId: 'age_attestation', userData: { dateOfBirth } })
+                );
+              }
+
+              for (const [dataPointId, dataPoint] of Object.entries(verifiedData.dataPoints || {})) {
+                if (
+                  dataPointId !== 'document_type' &&
+                  dataPointId !== 'document_number' &&
+                  dataPointId !== 'document_verification'
+                ) {
+                  continue;
                 }
+                const row = dataPoint as { zkpProof?: string; verifiedAt?: string; expiresAt?: string };
+                if (!row.zkpProof) continue;
+                await attestIssuedProof({
+                  keys,
+                  authToken,
+                  dataPointId,
+                  proofType: mapDataPointIdToProofType(dataPointId),
+                  zkpProof: row.zkpProof,
+                  verificationLevel: 'verified',
+                  provider: verifiedData.provider || 'veriff',
+                  verifiedAt: row.verifiedAt || verifiedData.verifiedAt,
+                  expiresAt: row.expiresAt
+                });
+                updatedVerifiedDataPoints.add(dataPointId);
               }
             }
           } catch (error) {

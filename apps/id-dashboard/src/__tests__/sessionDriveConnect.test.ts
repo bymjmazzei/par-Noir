@@ -9,7 +9,7 @@ import {
   getCloudAccessTokenFromSession,
 } from '@par-noir/device-cloud-credentials';
 import { connectDriveInThisSession } from '../services/sessionDriveConnect';
-import { clearShellMlKem, rememberShellMlKem } from '../services/shellMlKem';
+import { clearShellKeys, rememberShellMlKem } from '../services/shellKeys';
 
 const ownerGet = jest.fn();
 const ownerFetch = jest.fn();
@@ -62,7 +62,7 @@ beforeEach(() => {
   ownerGet.mockReset();
   ownerFetch.mockReset();
   publishCloudCredentialsVault.mockClear();
-  clearShellMlKem();
+  clearShellKeys();
   clearAllSessionCloudCredentials();
   ownerGet.mockResolvedValue({
     ok: true,

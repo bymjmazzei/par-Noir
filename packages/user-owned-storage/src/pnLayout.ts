@@ -73,7 +73,6 @@ export const TABLE_PATHS = {
   messagingLedger: metadataPath('messaging_ledger'),
   prismLedger: metadataPath('prism_ledger'),
   preferences: metadataPath('preferences'),
-  zkpDataPoints: metadataPath('zkp-data-points'),
   thirdPartyPermissions: metadataPath('third-party-permissions'),
   publicFileIndex: metadataPath('public-file-index'),
   ownerFileIndex: metadataPath('owner-file-index'),

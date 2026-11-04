@@ -77,6 +77,17 @@ export interface PenTemplate {
   previewFileId?: string;
   /** Work license + open creator contracts (optional on platform starters). */
   licensing?: PenLicensingRoot;
+  /** Knowledge claim forms: which standard data point is attested and which proofs it mints. */
+  knowledgeForm?: PenKnowledgeForm;
+}
+
+export interface PenKnowledgeForm {
+  /** Data point the form attests. Empty on the single-claim template (set per doc). */
+  sourceDataPointId: string;
+  /** Raw answer fields kept in the encrypted `source` section (empty = the data point's own fields). */
+  inputFields: string[];
+  /** Proofs minted from the source answers, besides the source itself. */
+  derivedDataPointIds: string[];
 }
 
 /** Default author label for first-party / starter templates. */
@@ -230,6 +241,80 @@ function widgetStarters(): PenTemplate[] {
   ];
 }
 
+function knowledgeStarter(input: {
+  id: string;
+  title: string;
+  description: string;
+  form: PenKnowledgeForm;
+}): PenTemplate {
+  return {
+    id: input.id,
+    classId: 'knowledge.claim',
+    docType: 'knowledge',
+    version: '1',
+    title: input.title,
+    description: input.description,
+    sections: [
+      { slug: 'source', title: 'Source', required: true },
+      { slug: 'claims', title: 'Claims', required: true }
+    ],
+    seedSections: [emptySection('source'), emptySection('claims')],
+    knowledgeForm: input.form,
+    agentStarter: proseStarter({
+      title: input.title,
+      focus:
+        'Claims are standard data point ids with signed ZK proofs. Never write raw PII into claims.'
+    })
+  };
+}
+
+function knowledgeStarters(): PenTemplate[] {
+  return [
+    knowledgeStarter({
+      id: 'knowledge.claim.name.v1',
+      title: 'Name attestation',
+      description: 'Legal name; mints full name, initials and part-of-name proofs',
+      form: {
+        sourceDataPointId: 'name_attestation',
+        inputFields: ['prefix', 'firstName', 'middleName', 'lastName', 'suffix', 'nickname'],
+        derivedDataPointIds: [
+          'full_name',
+          'first_last',
+          'first_last_initial',
+          'first_name',
+          'middle_name',
+          'last_name',
+          'suffix',
+          'nickname',
+          'identity_attestation'
+        ]
+      }
+    }),
+    knowledgeStarter({
+      id: 'knowledge.claim.age.v1',
+      title: 'Age attestation',
+      description: 'Date of birth; mints age, over 18 and over 21 proofs',
+      form: {
+        sourceDataPointId: 'age_attestation',
+        inputFields: ['dateOfBirth'],
+        derivedDataPointIds: ['over_18', 'over_21']
+      }
+    }),
+    knowledgeStarter({
+      id: 'knowledge.claim.single.v1',
+      title: 'Claim',
+      description: 'One standard data point with its proof',
+      form: { sourceDataPointId: '', inputFields: [], derivedDataPointIds: [] }
+    })
+  ];
+}
+
+export const KNOWLEDGE_CLAIM_TEMPLATE_IDS = {
+  name: 'knowledge.claim.name.v1',
+  age: 'knowledge.claim.age.v1',
+  single: 'knowledge.claim.single.v1'
+} as const;
+
 const PLATFORM_POSTS = platformPostTemplates();
 
 /** The social post templates; each ships a screenshot poster in the Pen app. */
@@ -339,7 +424,8 @@ const STARTER: PenTemplate[] = [
       })
     },
     seedAssetKey()
-  )
+  ),
+  ...knowledgeStarters()
 ];
 
 const byId = new Map(STARTER.map((t) => [t.id, t]));

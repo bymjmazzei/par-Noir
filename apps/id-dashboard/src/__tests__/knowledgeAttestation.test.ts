@@ -1,0 +1,178 @@
+/**
+ * @jest-environment jsdom
+ *
+ * Attestations are Pen Knowledge claim docs: an unlock-app session (no Key 1 / Key 2) signs
+ * with the handed-over ML-DSA pair and seals with its ML-KEM key, and re-key rewrites every doc
+ * under the successor.
+ */
+const writeKnowledgeClaimDoc = jest.fn(async (..._a: unknown[]) => ({}));
+const listDeviceKnowledgeClaims = jest.fn();
+const readKnowledgeClaimSource = jest.fn();
+
+jest.mock('@par-noir/device-cloud-credentials', () => ({
+  writeKnowledgeClaimDoc: (...a: unknown[]) => writeKnowledgeClaimDoc(...a),
+  listDeviceKnowledgeClaims: (...a: unknown[]) => listDeviceKnowledgeClaims(...a),
+  readKnowledgeClaimSource: (...a: unknown[]) => readKnowledgeClaimSource(...a),
+}));
+
+jest.mock('../services/sessionDrive', () => ({
+  sessionDriveFor: jest.fn(async () => ({
+    accessToken: 'google-token',
+    index: { pnFolderId: 'pn-folder', sheetIds: { groups: 'groups-sheet' } },
+  })),
+}));
+
+const getCredentials = jest.fn((..._a: unknown[]) => null);
+jest.mock('@par-noir/identity-crypto', () => ({
+  IdentityCrypto: {},
+  SecureCredentialManager: { getCredentials: (...a: unknown[]) => getCredentials(...a) },
+}));
+
+jest.mock('../services/resolveIdentityMlKem', () => ({
+  resolveIdentityMlKemSecret: jest.fn(async () => null),
+}));
+
+const reissueZkProofsFromEnvelopes = jest.fn();
+jest.mock('@par-noir/identity-migration', () => ({
+  reissueZkProofsFromEnvelopes: (...a: unknown[]) => reissueZkProofsFromEnvelopes(...a),
+}));
+
+import { KNOWLEDGE_CLAIM_TEMPLATE_IDS, requireTemplate } from '@par-noir/pen-protocol';
+import { STANDARD_DATA_POINTS } from '@par-noir/standard-data-points';
+import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
+import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import {
+  attestFromTemplate,
+  reissueKnowledgeClaims,
+  resolveAttestationKeys,
+} from '../services/knowledgeAttestation';
+import { clearShellKeys, rememberShellMlKem, rememberShellSigningKeys } from '../services/shellKeys';
+
+Object.defineProperty(globalThis, 'crypto', {
+  value: (require('node:crypto') as typeof import('node:crypto')).webcrypto,
+  configurable: true,
+});
+
+const signing = mlDsa65Keygen();
+const publicKey = bytesToBase64(signing.publicKey);
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  clearShellKeys();
+});
+
+describe('knowledge claim templates', () => {
+  it('only name data points the standard catalog defines', () => {
+    for (const id of Object.values(KNOWLEDGE_CLAIM_TEMPLATE_IDS)) {
+      const form = requireTemplate(id).knowledgeForm!;
+      for (const dp of [form.sourceDataPointId, ...form.derivedDataPointIds].filter(Boolean)) {
+        expect(STANDARD_DATA_POINTS[dp]).toBeDefined();
+      }
+    }
+  });
+});
+
+describe('attestFromTemplate', () => {
+  it('attests age from an unlock-app session with no Key 1 or Key 2', async () => {
+    rememberShellSigningKeys(['did:pn:session'], {
+      mlDsaSecretKey: bytesToBase64(signing.secretKey),
+      mlDsaPublicKey: publicKey,
+    });
+    rememberShellMlKem(['did:pn:session'], 'ml-kem-secret');
+
+    const keys = await resolveAttestationKeys({ identityId: 'did:pn:session', publicKey });
+    expect(getCredentials).not.toHaveBeenCalled();
+    expect(keys.pnIdentifier).toBe(deriveCanonicalPnIdentifier(publicKey));
+    const ids = await attestFromTemplate({
+      keys,
+      authToken: 'api-token',
+      dataPointId: 'age_attestation',
+      userData: { dateOfBirth: '1990-01-02' },
+    });
+
+    expect(ids).toEqual(['age_attestation', 'over_18', 'over_21']);
+    const call = writeKnowledgeClaimDoc.mock.calls[0]![0] as Record<string, any>;
+    expect(call).toMatchObject({
+      accessToken: 'google-token',
+      pnFolderId: 'pn-folder',
+      groupsSheetId: 'groups-sheet',
+      ownerPnIdentifier: keys.pnIdentifier,
+      sourceDataPointId: 'age_attestation',
+      source: { dateOfBirth: '1990-01-02' },
+      mlKemSecretKey: 'ml-kem-secret',
+    });
+    expect(call.template.id).toBe(KNOWLEDGE_CLAIM_TEMPLATE_IDS.age);
+    expect(call.claims.every((c: { proofRef: string }) => c.proofRef.length > 0)).toBe(true);
+    expect(JSON.stringify(call.claims)).not.toContain('1990-01-02');
+  });
+
+  it('asks for the unlock app when no signing key is held', async () => {
+    await expect(resolveAttestationKeys({ identityId: 'did:pn:none', publicKey })).rejects.toThrow(
+      /unlock again with the unlock app/
+    );
+  });
+});
+
+describe('reissueKnowledgeClaims', () => {
+  it('rewrites each doc under the successor, reading answers with the predecessor key', async () => {
+    listDeviceKnowledgeClaims.mockResolvedValue([
+      {
+        docId: 'd1',
+        templateId: KNOWLEDGE_CLAIM_TEMPLATE_IDS.age,
+        sourceDataPointId: 'age_attestation',
+        dataPointId: 'age_attestation',
+        proofType: 'age_verification',
+        zkpProof: 'old-0',
+        verificationLevel: 'basic',
+        provider: 'user_attested',
+        verifiedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        docId: 'd1',
+        templateId: KNOWLEDGE_CLAIM_TEMPLATE_IDS.age,
+        sourceDataPointId: 'age_attestation',
+        dataPointId: 'over_18',
+        proofType: 'threshold_age',
+        zkpProof: 'old-1',
+        verificationLevel: 'basic',
+        provider: 'user_attested',
+        verifiedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    readKnowledgeClaimSource.mockResolvedValue({ dateOfBirth: '1990-01-02' });
+    reissueZkProofsFromEnvelopes.mockResolvedValue([
+      { dataPointId: 'age_attestation', proof: 'new-0' },
+      { dataPointId: 'over_18', proof: 'new-1' },
+    ]);
+    const successor = {
+      pnIdentifier: 'pn-successor',
+      publicKey,
+      signing: { mlDsaSecretKey: signing.secretKey, mlDsaPublicKey: signing.publicKey },
+      mlKemSecretKey: 'successor-kem',
+    };
+
+    const written = await reissueKnowledgeClaims({
+      authToken: 'api-token',
+      drivePnIdentifier: 'pn-predecessor',
+      predecessorMlKemSecretKey: 'predecessor-kem',
+      successor,
+    });
+
+    expect(written).toBe(2);
+    expect(readKnowledgeClaimSource).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceDataPointId: 'age_attestation', mlKemSecretKey: 'predecessor-kem' })
+    );
+    expect(writeKnowledgeClaimDoc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerPnIdentifier: 'pn-successor',
+        mlKemSecretKey: 'successor-kem',
+        source: { dateOfBirth: '1990-01-02' },
+        claims: [
+          expect.objectContaining({ dataPointId: 'age_attestation', proofRef: 'new-0' }),
+          expect.objectContaining({ dataPointId: 'over_18', proofRef: 'new-1' }),
+        ],
+      })
+    );
+  });
+});

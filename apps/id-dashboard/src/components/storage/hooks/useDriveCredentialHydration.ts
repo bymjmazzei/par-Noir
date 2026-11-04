@@ -126,7 +126,7 @@ export function useDriveCredentialHydration({
           const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
           let sessionEnv = getSessionCloudCredentials(pnId);
           if (!envelopeHasUsableSecrets(sessionEnv) && apiToken) {
-            const { readShellMlKem } = await import('../../../services/shellMlKem');
+            const { readShellMlKem } = await import('../../../services/shellKeys');
             const mlKemSecretKey =
               readShellMlKem(pnId) ||
               readShellMlKem(sessionId) ||

@@ -729,7 +729,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               (cloudPnIdentifier ? resolveOwnerApiToken(cloudPnIdentifier) : null) ||
               apiToken ||
               resolveOwnerApiToken();
-            const { readShellMlKem } = await import('../../services/shellMlKem');
+            const { readShellMlKem } = await import('../../services/shellKeys');
             const { commitDashboardGoogleDriveDisconnect } = await import(
               '../../services/disconnectCloud'
             );

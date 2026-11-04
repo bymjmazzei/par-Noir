@@ -246,32 +246,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
       },
     ],
   },
-  'zkp-data-points': {
-    driveFileName: 'zkp-data-points.xlsx',
-    propertiesTitle: 'zkp-data-points.xlsx',
-    sheets: [{ title: 'Data Points', rowCount: 10_000, columnCount: 12 }],
-    headers: [
-      {
-        range: 'Data Points!A1:L1',
-        values: [
-          [
-            'Data Point ID',
-            'Proof Type',
-            'ZKP Proof',
-            'Signature',
-            'Verified At',
-            'Expires At',
-            'Verification Level',
-            'Provider',
-            'Fraud Prevention Score',
-            'Encrypted User Data',
-            'Created At',
-            'Updated At',
-          ],
-        ],
-      },
-    ],
-  },
   preferences: {
     driveFileName: 'preferences',
     propertiesTitle: 'preferences',

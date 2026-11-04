@@ -1,8 +1,7 @@
 /**
  * ZKP Data Points Service
- * Manages verified ZKP data points for users
- * Returns ZKP proofs without revealing actual identity data
- * Google path: Sheets by spreadsheetId from pnDriveIndex (no name search)
+ * Returns a pN's held ZK proofs (never the underlying identity data).
+ * Proofs live on the pN's Pen Knowledge claim docs in their Drive.
  */
 
 import {
@@ -12,30 +11,10 @@ import {
   verifyZkProofEnvelopeV1,
 } from '@par-noir/zk-protocol-v1';
 import { isZkProofEnvelopeV2, verifyZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
-import { GoogleDriveToken } from './googleOAuth2Helper';
-import { isPortableStorageProvider } from './storage/storageProviderUtils';
-import {
-  portableTableAppend,
-  portableTableGetByKey,
-  portableTableScan
-} from './storage/portableTableService';
-import { ZKP_DATA_POINTS_SCHEMA } from './storage/tableSchemas';
+import { listKnowledgeProofs, type HeldKnowledgeProof } from './knowledgeProofsDrive';
+import type { ZkpStorageBundle } from './storage/zkpStorageService';
 
-export interface ZKPDataPoint {
-  dataPointId: string;
-  proofType: 'age_verification' | 'identity_verification' | 'location_verification' | 'document_verification';
-  zkpProof: string; // Encrypted ZKP proof
-  signature: string;
-  verifiedAt: string;
-  expiresAt?: string;
-  verificationLevel: 'basic' | 'enhanced' | 'verified';
-  metadata: {
-    provider: string;
-    fraudPreventionScore?: number;
-  };
-  // Encrypted userData for editing purposes (client-side encryption)
-  encryptedUserData?: string;
-}
+export type ZKPDataPoint = HeldKnowledgeProof;
 
 export interface ZKPVerificationResult {
   isValid: boolean;
@@ -48,155 +27,46 @@ export interface ZKPVerificationResult {
 }
 
 export class ZKPDataPointsService {
-  /**
-   * Get ZKP data points from portable table or Google Sheets by spreadsheetId
-   */
-  static async getZKPDataPointsFile(
-    accessToken: string,
-    spreadsheetId: string,
-    userPnIdentifier: string,
-    accountId?: string
-  ): Promise<Record<string, ZKPDataPoint> | null> {
-    try {
-      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-
-      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
-        const rows = await portableTableScan<ZKPDataPoint>(
-          normalizedUserPnIdentifier,
-          ZKP_DATA_POINTS_SCHEMA,
-          accountId
-        );
-        if (rows.length === 0) return null;
-        const dataPoints: Record<string, ZKPDataPoint> = {};
-        for (const row of rows) {
-          dataPoints[row.dataPointId] = row;
-        }
-        return dataPoints;
-      }
-
-      if (!spreadsheetId?.trim() || !accessToken) {
-        return null;
-      }
-
-      const token: GoogleDriveToken = { access_token: accessToken };
-      const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-      const dataPoints = await ZKPDataPointsSheetsService.getZKPDataPoints(
-        token,
-        spreadsheetId,
-        normalizedUserPnIdentifier,
-        accountId
-      );
-
-      return Object.keys(dataPoints).length > 0 ? dataPoints : null;
-    } catch (error) {
-      console.error('Error getting ZKP data points from sheets:', error);
-      return null;
+  /** Every held, unexpired proof on the pN's Knowledge docs (one per data point, newest doc wins). */
+  static async getHeldProofs(bundle: ZkpStorageBundle): Promise<ZKPDataPoint[]> {
+    if (!bundle.token?.access_token) return [];
+    const proofs = await listKnowledgeProofs({
+      token: bundle.token,
+      pnFolderId: bundle.pnFolderId,
+      pnIdentifier: bundle.pnIdentifier,
+      accountId: bundle.accountId,
+    });
+    const now = Date.now();
+    const byId = new Map<string, ZKPDataPoint>();
+    for (const proof of proofs) {
+      if (proof.expiresAt && new Date(proof.expiresAt).getTime() < now) continue;
+      if (!byId.has(proof.dataPointId)) byId.set(proof.dataPointId, proof);
     }
+    return [...byId.values()];
   }
 
-  /**
-   * Get all available ZKP data points for a user
-   * Returns only proof metadata, NOT actual data
-   */
-  static async getAvailableDataPoints(
-    accessToken: string,
-    spreadsheetId: string,
-    userPnIdentifier: string,
-    accountId?: string
-  ): Promise<Array<{
+  /** Proof metadata only, never the proof body or the underlying data. */
+  static async getAvailableDataPoints(bundle: ZkpStorageBundle): Promise<Array<{
     dataPointId: string;
     proofType: string;
     verifiedAt: string;
     expiresAt?: string;
     verificationLevel: string;
   }>> {
-    const dataPoints = await this.getZKPDataPointsFile(accessToken, spreadsheetId, userPnIdentifier, accountId);
-    
-    if (!dataPoints) {
-      return [];
-    }
-
-    // Return only metadata, never the actual data or proof
-    return Object.entries(dataPoints).map(([dataPointId, dataPoint]) => ({
-      dataPointId,
-      proofType: dataPoint.proofType,
-      verifiedAt: dataPoint.verifiedAt,
-      expiresAt: dataPoint.expiresAt,
-      verificationLevel: dataPoint.verificationLevel
+    return (await this.getHeldProofs(bundle)).map((dp) => ({
+      dataPointId: dp.dataPointId,
+      proofType: dp.proofType,
+      verifiedAt: dp.verifiedAt,
+      expiresAt: dp.expiresAt,
+      verificationLevel: dp.verificationLevel,
     }));
   }
 
-  /**
-   * Get a specific ZKP data point proof
-   * Returns ONLY the ZKP proof, NOT the actual data
-   */
-  static async getDataPointProof(
-    accessToken: string,
-    spreadsheetId: string,
-    dataPointId: string,
-    userPnIdentifier: string,
-    accountId?: string
-  ): Promise<ZKPDataPoint | null> {
+  static async getDataPointProof(bundle: ZkpStorageBundle, dataPointId: string): Promise<ZKPDataPoint | null> {
     try {
-      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-
-      let dataPoint: ZKPDataPoint | null = null;
-      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
-        dataPoint = await portableTableGetByKey<ZKPDataPoint>(
-          normalizedUserPnIdentifier,
-          ZKP_DATA_POINTS_SCHEMA,
-          dataPointId,
-          accountId
-        );
-      } else {
-        if (!spreadsheetId?.trim() || !accessToken) {
-          return null;
-        }
-        const token: GoogleDriveToken = { access_token: accessToken };
-        const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-        dataPoint = await ZKPDataPointsSheetsService.getZKPDataPoint(
-          token,
-          spreadsheetId,
-          dataPointId,
-          normalizedUserPnIdentifier,
-          accountId
-        );
-      }
-
-      if (!dataPoint) {
-        return null;
-      }
-
-      // Check if expired
-      if (dataPoint.expiresAt && new Date(dataPoint.expiresAt) < new Date()) {
-        return null;
-      }
-
-      // Return the proof and encrypted userData (for editing purposes)
-      // Ensure encryptedUserData is always a string (if it exists)
-      let encryptedUserDataString: string | undefined;
-      if (dataPoint.encryptedUserData) {
-        if (typeof dataPoint.encryptedUserData === 'string') {
-          encryptedUserDataString = dataPoint.encryptedUserData;
-        } else if (typeof dataPoint.encryptedUserData === 'object') {
-          // If it's an object (from JSON parsing), stringify it
-          encryptedUserDataString = JSON.stringify(dataPoint.encryptedUserData);
-        }
-      }
-      
-      return {
-        dataPointId: dataPoint.dataPointId,
-        proofType: dataPoint.proofType,
-        zkpProof: dataPoint.zkpProof,
-        signature: dataPoint.signature,
-        verifiedAt: dataPoint.verifiedAt,
-        expiresAt: dataPoint.expiresAt,
-        verificationLevel: dataPoint.verificationLevel,
-        metadata: dataPoint.metadata,
-        encryptedUserData: encryptedUserDataString // Include encrypted userData for editing (always as string)
-      };
+      return (await this.getHeldProofs(bundle)).find((dp) => dp.dataPointId === dataPointId) || null;
     } catch (error) {
-      console.error('Error getting ZKP data point proof from sheets:', error);
+      console.error('Error reading ZKP proof from Knowledge docs:', error);
       return null;
     }
   }
@@ -286,50 +156,6 @@ export class ZKPDataPointsService {
         condition,
         error: message,
       };
-    }
-  }
-
-  /**
-   * Store or update ZKP data point
-   */
-  static async storeDataPoint(
-    accessToken: string,
-    spreadsheetId: string,
-    identifier: string,
-    dataPoint: ZKPDataPoint,
-    userPnIdentifier: string,
-    accountId?: string
-  ): Promise<void> {
-    try {
-      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-
-      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
-        await portableTableAppend(
-          normalizedUserPnIdentifier,
-          ZKP_DATA_POINTS_SCHEMA,
-          dataPoint as unknown as Record<string, unknown>,
-          accountId
-        );
-        return;
-      }
-
-      if (!spreadsheetId?.trim() || !accessToken) {
-        throw new Error('ZKP spreadsheetId and access token are required');
-      }
-
-      const token: GoogleDriveToken = { access_token: accessToken };
-      const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-
-      await ZKPDataPointsSheetsService.addZKPDataPoint(
-        token,
-        spreadsheetId,
-        dataPoint,
-        normalizedUserPnIdentifier,
-        accountId
-      );
-    } catch (error) {
-      console.error('Error storing ZKP data point in sheets:', error);
-      throw error;
     }
   }
 }

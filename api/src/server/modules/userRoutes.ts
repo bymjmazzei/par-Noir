@@ -214,19 +214,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!bundle) {
           return driveNotInitialized(res);
         }
-        if (!bundle.isPortable && !bundle.token?.access_token) {
+        if (!bundle.token?.access_token) {
           return res.status(401).json({
             error: 'Google Drive authentication failed',
             details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
           });
         }
 
-        const dataPoints = await ZKPDataPointsService.getAvailableDataPoints(
-          bundle.token?.access_token || '',
-          bundle.spreadsheetId || '',
-          bundle.pnIdentifier,
-          bundle.accountId
-        );
+        const dataPoints = await ZKPDataPointsService.getAvailableDataPoints(bundle);
 
         return res.json({ success: true, dataPoints });
       } catch (error: any) {
@@ -261,20 +256,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!bundle) {
           return driveNotInitialized(res);
         }
-        if (!bundle.isPortable && !bundle.token?.access_token) {
+        if (!bundle.token?.access_token) {
           return res.status(401).json({
             error: 'Google Drive authentication failed',
             details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
           });
         }
 
-        const proof = await ZKPDataPointsService.getDataPointProof(
-          bundle.token?.access_token || '',
-          bundle.spreadsheetId || '',
-          dataPointId,
-          bundle.pnIdentifier,
-          bundle.accountId
-        );
+        const proof = await ZKPDataPointsService.getDataPointProof(bundle, dataPointId);
 
         if (!proof) {
           return res.status(404).json({ error: 'ZKP data point not found or expired' });
@@ -550,20 +539,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!bundle) {
           return driveNotInitialized(res);
         }
-        if (!bundle.isPortable && !bundle.token?.access_token) {
+        if (!bundle.token?.access_token) {
           return res.status(401).json({
             error: 'Google Drive authentication failed',
             details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
           });
         }
 
-        const proof = await ZKPDataPointsService.getDataPointProof(
-          bundle.token?.access_token || '',
-          bundle.spreadsheetId || '',
-          dataPointId,
-          bundle.pnIdentifier,
-          bundle.accountId
-        );
+        const proof = await ZKPDataPointsService.getDataPointProof(bundle, dataPointId);
 
         if (!proof) {
           return res.status(404).json({ error: 'ZKP data point not found or expired' });
@@ -577,83 +560,6 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         return res.status(500).json({
           error: 'Failed to verify ZKP proof',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to verify ZKP proof'
-        });
-      }
-    });
-
-    // PUT /api/users/:pnIdentifier/zkp-data-points/:dataPointId - Store/update ZKP data point
-    app.put('/api/users/:pnIdentifier/zkp-data-points/:dataPointId', async (req, res) => {
-      try {
-        const { pnIdentifier, dataPointId } = req.params;
-        const dataPoint = req.body; // ZKPDataPoint object
-
-        if (!pnIdentifier || !dataPointId) {
-          return res.status(400).json({ error: 'pnIdentifier and dataPointId are required' });
-        }
-
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
-
-        if (!dataPoint || dataPoint.dataPointId !== dataPointId) {
-          return res.status(400).json({ error: 'Invalid data point' });
-        }
-
-        const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
-        const { loadZkpBundle } = await import('./storage/zkpStorageService');
-
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        const bundle = await loadZkpBundle(normalizedPnIdentifier, {
-          accessToken: extractCloudAccessToken(req),
-        });
-        if (!bundle) {
-          return driveNotInitialized(res);
-        }
-        if (!bundle.isPortable && !bundle.token?.access_token) {
-          return res.status(401).json({
-            error: 'Google Drive authentication failed',
-            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
-          });
-        }
-
-        // Verified ZKPs are immutable without identity rekey / zkp_reissue
-        const allowReissue = req.headers['x-pn-zkp-reissue'] === '1';
-        if (!allowReissue) {
-          try {
-            const existing = await ZKPDataPointsService.getDataPointProof(
-              bundle.token?.access_token || '',
-              bundle.spreadsheetId || '',
-              dataPointId,
-              bundle.pnIdentifier,
-              bundle.accountId
-            );
-            if (existing?.verificationLevel === 'verified') {
-              return res.status(403).json({
-                error: 'verified_immutable',
-                error_description:
-                  'Veriff-verified data points cannot be changed without identity rekey / rotation.',
-              });
-            }
-          } catch {
-            /* no existing row */
-          }
-        }
-
-        await ZKPDataPointsService.storeDataPoint(
-          bundle.token?.access_token || '',
-          bundle.spreadsheetId || '',
-          normalizedPnIdentifier,
-          dataPoint,
-          bundle.pnIdentifier,
-          bundle.accountId
-        );
-
-        return res.json({ success: true });
-      } catch (error: any) {
-        console.error('Error storing ZKP data point:', error);
-        return res.status(500).json({
-          error: 'Failed to store ZKP data point',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to store ZKP data point'
         });
       }
     });

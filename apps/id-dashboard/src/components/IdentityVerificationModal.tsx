@@ -168,11 +168,12 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
     const { ZKPGenerator } = await import('../utils/ZKPGenerator');
     const zkpProofs: { [key: string]: { value: any; zkpProof: string; verified: boolean; expirationDate?: string } } = {};
 
-    if (!identityId || !encryptedIdentity) {
-      throw new Error('Identity context missing: unlock and select a stored identity to generate ZK proofs.');
+    if (!identityId) {
+      throw new Error('Identity context missing: unlock to generate ZK proofs.');
     }
 
-    const zkBase = { identityId, encryptedIdentity };
+    const { loadMlDsaKeypairForZk } = await import('../utils/zkPqcSigning');
+    const zkBase = { signingKeys: await loadMlDsaKeypairForZk(identityId, encryptedIdentity) };
 
     // Calculate ID expiration days for dynamic data
     const idExpirationDate = extractedData.expirationDate;

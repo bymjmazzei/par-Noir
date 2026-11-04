@@ -33,11 +33,10 @@ import { loadMlDsaKeypairForZk } from '../utils/zkPqcSigning';
 import { LicenseManager } from '../utils/licenseVerification/licenseManager';
 import {
   ackMigrationStep,
-  batchReissueZkps,
   completeIdentityMigration,
-  fetchZkpsFromDrive,
   startIdentityMigration,
 } from './identityMigrationApi';
+import { reissueKnowledgeClaims } from './knowledgeAttestation';
 import { listQueuedVerifiedDataPoints, issueVerifiedZkpsForQueue } from './verifiedDataPointZkService';
 import {
   connectDriveBackendForMigration,
@@ -164,7 +163,7 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
   const report = (label: string, pct: number) => ctx.onProgress?.(label, pct);
 
   report('Re-issuing ZK proofs', 15);
-  const zkpUpdates: Array<{ dataPointId: string; zkpProof: string }> = [];
+  const issued: Array<{ dataPointId: string; zkpProof: string }> = [];
   const queue = listQueuedVerifiedDataPoints();
   for (const entry of queue) {
     const proofs = await issueVerifiedZkpsForQueue({
@@ -173,32 +172,21 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
       verificationId: entry.verificationId,
     });
     entry.dataPoints.forEach((dp, i) => {
-      if (proofs[i]) zkpUpdates.push({ dataPointId: dp.dataPointId, zkpProof: proofs[i]! });
+      if (proofs[i]) issued.push({ dataPointId: dp.dataPointId, zkpProof: proofs[i]! });
     });
   }
-  await loadMlDsaKeypairForZk(succMat.did, ctx.successor.encryptedIdentity);
-  const seenZkpIds = new Set(zkpUpdates.map((u) => u.dataPointId));
-  try {
-    const fromDrive = await fetchZkpsFromDrive(ctx.authToken, plan.migrationId, predMat.pnIdentifier);
-    const proofStrings = fromDrive.map((p) => p.zkpProof).filter(Boolean);
-    if (proofStrings.length) {
-      const reissued = await reissueZkProofsFromEnvelopes(proofStrings, {
-        mlDsaSecretKey: succMat.mlDsaSecretKey,
-        mlDsaPublicKey: succMat.mlDsaPublicKey,
-        publicKey: succMat.publicKey,
-      });
-      for (const entry of reissued) {
-        if (seenZkpIds.has(entry.dataPointId)) continue;
-        seenZkpIds.add(entry.dataPointId);
-        zkpUpdates.push({ dataPointId: entry.dataPointId, zkpProof: entry.proof });
-      }
-    }
-  } catch {
-    /* Drive ZKP reissue is best-effort when sheet missing */
-  }
-  if (zkpUpdates.length) {
-    await batchReissueZkps(ctx.authToken, plan.migrationId, predMat.pnIdentifier, zkpUpdates);
-  }
+  await reissueKnowledgeClaims({
+    authToken: ctx.authToken,
+    drivePnIdentifier: predMat.pnIdentifier,
+    predecessorMlKemSecretKey: predMat.mlKemSecretKey,
+    successor: {
+      pnIdentifier: succMat.pnIdentifier,
+      publicKey: succMat.publicKey,
+      signing: { mlDsaSecretKey: succMat.mlDsaSecretKey, mlDsaPublicKey: succMat.mlDsaPublicKey },
+      mlKemSecretKey: succMat.mlKemSecretKey,
+    },
+    issued,
+  });
   progress = markStepComplete(progress, 'zkp_reissue');
   await ackMigrationStep(ctx.authToken, plan.migrationId, 'zkp_reissue');
 

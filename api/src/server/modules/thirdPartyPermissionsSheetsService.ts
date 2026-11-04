@@ -4,9 +4,9 @@
  * Replaces third-party-permissions.json for better scalability
  * Stored in Google Drive (decentralized) - users own their data
  *
- * Data Points (JSON) column: list of data point IDs that REFERENCE zkp-data-points by ID.
- * For ZKP types, "user has generated" comes from ZKPDataPointsService/zkp-data-points; for OAuth scopes
- * (openid, profile, cloud:read) there is no zkp row.
+ * Data Points (JSON) column: list of data point IDs that reference Knowledge claim docs by dataPointId.
+ * For ZKP types, "user has generated" comes from ZKPDataPointsService (Pen Knowledge manifests); for OAuth
+ * scopes (openid, profile, cloud:read) there is no claim.
  */
 
 import { google } from 'googleapis';

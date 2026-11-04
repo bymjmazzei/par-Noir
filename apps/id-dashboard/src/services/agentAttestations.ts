@@ -4,7 +4,7 @@
  * envelope, no public inputs, no encrypted user data.
  */
 
-import { listDeviceZkpPoints } from '@par-noir/device-cloud-credentials';
+import { listDeviceKnowledgeClaims } from '@par-noir/device-cloud-credentials';
 import {
   AI_SCOPES,
   isAttestableDataPointId,
@@ -59,7 +59,7 @@ export function attestationsFromProofs(rows: HeldProofRow[], now: number = Date.
   return [...out.values()];
 }
 
-/** Same Drive sheet the Privacy panel reads; proofs are checked here and never sent. */
+/** Same Knowledge claim docs the Privacy panel reads; proofs are checked here and never sent. */
 export async function loadAgentAttestations(
   pnIdentifier: string,
   authToken: string,
@@ -67,9 +67,12 @@ export async function loadAgentAttestations(
 ): Promise<AgentAttestation[]> {
   const key = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
   const drive = await sessionDriveFor(key, authToken);
-  const sheetId = drive.index.sheetIds['zkp-data-points'];
-  if (!sheetId) return [];
-  return attestationsFromProofs(await listDeviceZkpPoints(drive.accessToken, sheetId), now);
+  if (!drive.index.pnFolderId) return [];
+  const claims = await listDeviceKnowledgeClaims({
+    accessToken: drive.accessToken,
+    pnFolderId: drive.index.pnFolderId
+  });
+  return attestationsFromProofs(claims, now);
 }
 
 function nonce(random: (n: number) => Uint8Array): string {

@@ -23,7 +23,6 @@ const PORTABLE_TABLES = [
   { id: 'notifications', keyColumn: 'notification_id', path: TABLE_PATHS.notifications },
   { id: 'public-file-index', keyColumn: 'fileId', path: TABLE_PATHS.publicFileIndex },
   { id: 'owner-file-index', keyColumn: 'fileId', path: TABLE_PATHS.ownerFileIndex },
-  { id: 'zkp-data-points', keyColumn: 'dataPointId', path: TABLE_PATHS.zkpDataPoints },
   { id: 'devices', keyColumn: 'deviceId', path: TABLE_PATHS.devices },
   { id: 'groups', keyColumn: 'memberKey', path: TABLE_PATHS.groups },
   { id: 'followers', keyColumn: 'followerPnIdentifier', path: TABLE_PATHS.followers },

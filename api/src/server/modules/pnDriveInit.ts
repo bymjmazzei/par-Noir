@@ -156,7 +156,6 @@ export async function initializeGoogleDriveIndex(
     { MessagingLedgerSheetsService },
     { MessageRequestSheetsService },
     { DataPointRequestSheetsService },
-    { ZKPDataPointsSheetsService },
     { PreferencesSheetsService },
     { EngagementSheetsService },
     { PrismLedgerSheetsService },
@@ -172,7 +171,6 @@ export async function initializeGoogleDriveIndex(
     import('./messagingLedgerSheetsService'),
     import('./messageRequestSheetsService'),
     import('./dataPointRequestSheetsService'),
-    import('./zkpDataPointsSheetsService'),
     import('./preferencesSheetsService'),
     import('./engagementSheetsService'),
     import('./prismLedgerSheetsService'),
@@ -314,17 +312,6 @@ export async function initializeGoogleDriveIndex(
         ),
     },
     {
-      key: PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS,
-      label: 'zkpDataPoints',
-      run: () =>
-        ensureSheet(
-          'zkpDataPoints',
-          () => ZKPDataPointsSheetsService.getZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId),
-          () =>
-            ZKPDataPointsSheetsService.createZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId)
-        ),
-    },
-    {
       key: PN_DRIVE_SHEET_KEYS.PREFERENCES,
       label: 'preferences',
       run: () =>
@@ -455,7 +442,6 @@ export async function initializeGoogleDriveIndex(
       [PN_DRIVE_SHEET_KEYS.MESSAGING_LEDGER]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.MESSAGING_LEDGER],
       [PN_DRIVE_SHEET_KEYS.MESSAGE_REQUESTS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.MESSAGE_REQUESTS],
       [PN_DRIVE_SHEET_KEYS.DATA_POINT_REQUESTS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.DATA_POINT_REQUESTS],
-      [PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS],
       [PN_DRIVE_SHEET_KEYS.PREFERENCES]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.PREFERENCES],
       [PN_DRIVE_SHEET_KEYS.ENGAGEMENT]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.ENGAGEMENT],
       [PN_DRIVE_SHEET_KEYS.PRISM_LEDGER]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.PRISM_LEDGER],

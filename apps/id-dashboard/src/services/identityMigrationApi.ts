@@ -54,37 +54,6 @@ export async function ackMigrationStep(
   if (!res.ok) throw new Error(`Failed to ack step ${stepId}`);
 }
 
-export async function fetchZkpsFromDrive(
-  authToken: string,
-  _migrationId: string,
-  pnIdentifier: string
-): Promise<Array<{ dataPointId: string; zkpProof: string; proofType?: string }>> {
-  const { listDeviceZkpPoints } = await import('@par-noir/device-cloud-credentials');
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const pn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-  const drive = await sessionDriveFor(pn, authToken);
-  const sheetId = drive.index.sheetIds['zkp-data-points'];
-  if (!sheetId) return [];
-  const points = await listDeviceZkpPoints(drive.accessToken, sheetId);
-  return points.map((point) => ({
-    dataPointId: point.dataPointId,
-    zkpProof: point.zkpProof,
-    proofType: point.proofType,
-  }));
-}
-
-export async function batchReissueZkps(
-  authToken: string,
-  migrationId: string,
-  userPnIdentifier: string,
-  updates: Array<{ dataPointId: string; zkpProof: string; proofType?: string }>
-): Promise<void> {
-  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/zkp-data-points/batch`;
-  const body = { userPnIdentifier, updates };
-  const res = await migrationDriveFetch(authToken, userPnIdentifier, 'POST', path, body);
-  if (!res.ok) throw new Error('Failed to batch update ZKPs');
-}
-
 export async function rekeyConnection(
   authToken: string,
   migrationId: string,

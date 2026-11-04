@@ -19,7 +19,6 @@ export const PN_DRIVE_SHEET_KEYS = {
   MESSAGING_LEDGER: 'messaging_ledger',
   MESSAGE_REQUESTS: 'message_requests',
   DATA_POINT_REQUESTS: 'data-point-requests',
-  ZKP_DATA_POINTS: 'zkp-data-points',
   PREFERENCES: 'preferences',
   ENGAGEMENT: 'engagement',
   PRISM_LEDGER: 'prism_ledger',

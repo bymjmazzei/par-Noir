@@ -68,34 +68,23 @@ export async function fetchGrantedZkpProofs(params: {
     );
   }
 
-  const results: IntegratorZkpProofPayload[] = [];
-
-  for (const dataPointId of finalAllowed) {
-    try {
-      const proof = await ZKPDataPointsService.getDataPointProof(
-        zkpBundle.token?.access_token || '',
-        zkpBundle.spreadsheetId || '',
-        dataPointId,
-        zkpBundle.pnIdentifier,
-        zkpBundle.accountId
-      );
-
-      if (proof) {
-        results.push({
-          dataPointId: proof.dataPointId,
-          proofType: proof.proofType,
-          zkpProof: proof.zkpProof,
-          verifiedAt: proof.verifiedAt,
-          expiresAt: proof.expiresAt,
-          verificationLevel: proof.verificationLevel
-        });
-      }
-    } catch {
-      // Continue with other data points
-    }
+  const wanted = new Set(finalAllowed);
+  let held: Awaited<ReturnType<typeof ZKPDataPointsService.getHeldProofs>> = [];
+  try {
+    held = await ZKPDataPointsService.getHeldProofs(zkpBundle);
+  } catch {
+    return [];
   }
-
-  return results;
+  return held
+    .filter((proof) => wanted.has(proof.dataPointId))
+    .map((proof) => ({
+      dataPointId: proof.dataPointId,
+      proofType: proof.proofType,
+      zkpProof: proof.zkpProof,
+      verifiedAt: proof.verifiedAt,
+      expiresAt: proof.expiresAt,
+      verificationLevel: proof.verificationLevel
+    }));
 }
 
 export async function grantDataPointsToClient(params: {

@@ -295,13 +295,13 @@ export class VerifiedIdentityManager {
     ctx: { identityId: string; encryptedIdentity: EncryptedIdentity }
   ): Promise<VerifiedZKPProof> {
     const { ZKPGenerator } = await import('../utils/ZKPGenerator');
+    const { loadMlDsaKeypairForZk } = await import('../utils/zkPqcSigning');
     const standardZKP = await ZKPGenerator.generateZKP({
       dataPointId,
       userData,
       verificationLevel: 'verified',
       expirationDays: 365,
-      identityId: ctx.identityId,
-      encryptedIdentity: ctx.encryptedIdentity,
+      signingKeys: await loadMlDsaKeypairForZk(ctx.identityId, ctx.encryptedIdentity),
     });
 
     // Enhance with verification-specific metadata

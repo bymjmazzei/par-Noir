@@ -110,26 +110,35 @@ export async function buildShellResult(args: {
   }
 
   if (args.op === 'dm' && args.unlocked) {
-    return shellMlKemResult(args.unlocked);
+    return shellKeysResult(args.unlocked);
   }
 
   if (args.op === 'session') {
-    return shellMlKemResult(args.unlocked);
+    return shellKeysResult(args.unlocked);
   }
 
   return undefined;
 }
 
-/** The pN's ML-KEM pair, so the hosted tab can seal and open the cloud vault. */
-export function shellMlKemResult(unlocked?: ShellUnlocked): Record<string, string> | undefined {
+/**
+ * The pN's ML-KEM pair (seal and open the cloud vault, Pen docKeys) and ML-DSA pair
+ * (authorship signatures and ZK proofs), the same keys Pen gets in its handoff.
+ */
+export function shellKeysResult(unlocked?: ShellUnlocked): Record<string, string> | undefined {
   if (!unlocked) return undefined;
   const record = unlocked.decryptedIdentity;
   const pqc = record.pqcSecrets as { mlKemSecretKey?: string; mlKemPublicKey?: string } | undefined;
   const mlKemSecretKey =
     pqc?.mlKemSecretKey || (typeof record.mlKemSecretKey === 'string' ? record.mlKemSecretKey : '');
-  if (!mlKemSecretKey) return undefined;
-  return {
-    mlKemSecretKey,
-    mlKemPublicKey: pqc?.mlKemPublicKey || '',
-  };
+  const mlDsaSecretKey = extractMlDsaSecretKeyB64(record as DecryptedIdentityRecord) || '';
+  const out: Record<string, string> = {};
+  if (mlKemSecretKey) {
+    out.mlKemSecretKey = mlKemSecretKey;
+    out.mlKemPublicKey = pqc?.mlKemPublicKey || '';
+  }
+  if (mlDsaSecretKey && unlocked.publicKey) {
+    out.mlDsaSecretKey = mlDsaSecretKey;
+    out.mlDsaPublicKey = unlocked.publicKey;
+  }
+  return Object.keys(out).length ? out : undefined;
 }

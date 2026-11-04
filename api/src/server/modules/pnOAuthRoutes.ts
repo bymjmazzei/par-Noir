@@ -54,12 +54,7 @@ async function loadOfferableDataPoints(
     if (!bundle) return null;
 
     const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-    const heldProofs = await ZKPDataPointsService.getAvailableDataPoints(
-      bundle.token?.access_token || '',
-      bundle.spreadsheetId || '',
-      bundle.pnIdentifier,
-      bundle.accountId
-    );
+    const heldProofs = await ZKPDataPointsService.getAvailableDataPoints(bundle);
 
     const { resolveOfferableDataPoints } = await import('@par-noir/standard-data-points');
     return resolveOfferableDataPoints({
@@ -971,19 +966,14 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         } = await import('@par-noir/standard-data-points');
         const ZKPDataPointsService = (await import('./zkpDataPointsService')).ZKPDataPointsService;
         const zkpDataPoints: any[] = [];
+        const heldProofs = await ZKPDataPointsService.getHeldProofs(zkpBundle);
 
         for (const dataPointId of finalAllowedDataPoints) {
           try {
             if (isDevVerbose()) {
               console.log(`[OAuth ZKP] Attempting to get proof for ${dataPointId}`);
             }
-            const proof = await ZKPDataPointsService.getDataPointProof(
-              zkpBundle.token?.access_token || '',
-              zkpBundle.spreadsheetId || '',
-              dataPointId,
-              zkpBundle.pnIdentifier,
-              zkpBundle.accountId
-            );
+            const proof = heldProofs.find((p) => p.dataPointId === dataPointId);
             
             if (proof) {
               const minLevel = getDataPointMinLevel(toolPermission?.dataPointLevels, dataPointId);

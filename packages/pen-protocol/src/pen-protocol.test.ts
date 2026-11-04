@@ -41,6 +41,7 @@ import {
   listTemplatesGroupedByCategory,
   requireClass,
   getClass,
+  isKnowledgeClassId,
   searchPenCatalog,
   assertTemplateClassInvariants,
   listBrowseFeaturedTemplates,
@@ -214,7 +215,8 @@ describe('classes + templates', () => {
           t.classId.startsWith('social.') ||
           t.classId.startsWith('records.') ||
           t.classId.startsWith('primitives.') ||
-          t.classId.startsWith('widgets.')
+          t.classId.startsWith('widgets.') ||
+          t.classId.startsWith('knowledge.')
       )
     ).toBe(true);
   });
@@ -742,7 +744,10 @@ describe('template seeds + Mini featured + layer locks', () => {
 
   it('consumer starters ship format-first seeds with presentation', () => {
     const consumer = listStarterTemplates().filter(
-      (t) => !t.classId.startsWith('records.') && !t.classId.startsWith('primitives.')
+      (t) =>
+        !t.classId.startsWith('records.') &&
+        !t.classId.startsWith('primitives.') &&
+        !isKnowledgeClassId(t.classId)
     );
     expect(consumer.length).toBeGreaterThan(10);
     for (const t of consumer) {

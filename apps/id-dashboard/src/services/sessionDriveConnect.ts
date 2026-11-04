@@ -1,7 +1,7 @@
 import { setSessionCloudCredentials } from '@par-noir/device-cloud-credentials';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { sessionDriveFor } from './sessionDrive';
-import { readShellMlKem } from './shellMlKem';
+import { readShellMlKem } from './shellKeys';
 
 /**
  * Google already returned a token to this tab. Keep it in session memory and

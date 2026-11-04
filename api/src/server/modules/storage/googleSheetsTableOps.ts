@@ -43,18 +43,6 @@ export async function scanGoogleTableRows(
     return notifications as unknown as TableRow[];
   }
 
-  if (schema.path === TABLE_PATHS.zkpDataPoints) {
-    const { ZKPDataPointsSheetsService } = await import('../zkpDataPointsSheetsService');
-    const { loadPnDriveIndex, getSheetIdFromIndex, PN_DRIVE_SHEET_KEYS } = await import('../pnDriveIndex');
-    const index = await loadPnDriveIndex(pnIdentifier);
-    if (!index) {
-      throw new Error('pnDriveIndex missing; re-initialize storage');
-    }
-    const sheetId = getSheetIdFromIndex(index, PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS);
-    const all = await ZKPDataPointsSheetsService.getZKPDataPoints(token, sheetId, pnIdentifier, accountId);
-    return Object.values(all) as unknown as TableRow[];
-  }
-
   if (schema.path === TABLE_PATHS.devices) {
     const { DeviceSheetsService } = await import('../deviceSheetsService');
     const sheetId = await DeviceSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId);
@@ -181,18 +169,6 @@ export async function replaceAllGoogleTableRows(
     const { NotificationsSheetsService } = await import('../notificationsSheetsService');
     const sheetId = await NotificationsSheetsService.getNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId);
     await NotificationsSheetsService.setAllNotifications(token, sheetId, rows as never[], pnIdentifier, accountId);
-    return;
-  }
-
-  if (schema.path === TABLE_PATHS.zkpDataPoints) {
-    const { ZKPDataPointsSheetsService } = await import('../zkpDataPointsSheetsService');
-    const { loadPnDriveIndex, getSheetIdFromIndex, PN_DRIVE_SHEET_KEYS } = await import('../pnDriveIndex');
-    const index = await loadPnDriveIndex(pnIdentifier);
-    if (!index) {
-      throw new Error('pnDriveIndex missing; re-initialize storage');
-    }
-    const sheetId = getSheetIdFromIndex(index, PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS);
-    await ZKPDataPointsSheetsService.setAllZKPDataPoints(token, sheetId, rows as never[], pnIdentifier, accountId);
     return;
   }
 

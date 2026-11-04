@@ -17,10 +17,8 @@ export interface ZKPGenerationRequest {
   userData: any;
   verificationLevel: 'basic' | 'enhanced' | 'verified';
   expirationDays?: number;
-  /** Session DID — must match SecureCredentialManager credentials */
-  identityId: string;
-  /** Encrypted identity blob (public key + ciphertext) for ML-DSA signing */
-  encryptedIdentity: EncryptedIdentity;
+  /** pN ML-DSA-65 pair that binds the envelope (unlock-app pair, or decrypted for rotation). */
+  signingKeys: { mlDsaSecretKey: Uint8Array; mlDsaPublicKey: Uint8Array };
 }
 
 export interface ZKPProof {
