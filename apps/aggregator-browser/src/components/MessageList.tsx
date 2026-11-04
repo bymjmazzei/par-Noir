@@ -18,10 +18,16 @@ import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
 import { requestHotDrain } from '../services/socialMailboxConsumer';
 import {
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
+  waitForCloudCredentialsReady,
+} from '@par-noir/device-cloud-credentials';
+import {
   MESSAGING_INBOUND_WAKE_EVENT,
 } from '../services/inboundMailboxPreview';
 import { useSoftRefresh } from '../contexts/SoftRefreshContext';
 import { useOverscrollRefresh } from '../hooks/useOverscrollRefresh';
+
+const CLOUD_READY_WAIT_MS = 15_000;
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
@@ -109,6 +115,8 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
     if (!isInitial && isMessagingRateLimited()) return;
     const pn = userState.pnIdentifier;
     try {
+      // Inbox lives in the pN's Drive; the ready event reloads once the token lands.
+      if (!(await waitForCloudCredentialsReady(pn, CLOUD_READY_WAIT_MS))) return;
       // Inbound DMs may still be mailbox jobs — drain in background; do not gate first paint.
       void requestHotDrain().catch(() => undefined);
       if (clearCacheFirst || refreshKey > 0) {
@@ -221,12 +229,14 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
       }
     };
     window.addEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onInboxRefresh);
 
     return () => {
       if (rateLimitRetryRef.current) {
         clearTimeout(rateLimitRetryRef.current);
       }
       window.removeEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onInboxRefresh);
     };
   }, [userState.isUnlocked, userState.pnIdentifier, refreshKey]);
 

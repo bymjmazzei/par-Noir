@@ -19,6 +19,7 @@ import {
   createApiSocialApplier,
   getCloudAccessTokenFromSession,
   PN_CLOUD_CREDENTIALS_READY_EVENT,
+  waitForCloudCredentialsReady,
   type MailboxJob
 } from '@par-noir/device-cloud-credentials';
 import { openSocialEnvelope } from '@par-noir/dm-crypto';
@@ -39,6 +40,7 @@ const EMPTY: MailboxDrainResult = { pulled: 0, applied: 0, acked: 0, errors: [] 
 
 /** Visible + unlocked backstop only — not a heartbeat. */
 const DRAIN_INTERVAL_MS = 5 * 60_000;
+const CLOUD_READY_WAIT_MS = 15_000;
 
 let running = false;
 let started = false;
@@ -85,8 +87,9 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
     return EMPTY;
   }
 
-  if (!getCloudAccessTokenFromSession(identityId)) {
-    console.warn('[socialMailbox] drain proceeding without cloud AT — Drive apply will fail until credentials are ready');
+  // Applying before Drive is ready fails every job; the ready event re-drains.
+  if (!(await waitForCloudCredentialsReady(identityId, CLOUD_READY_WAIT_MS))) {
+    return EMPTY;
   }
 
   const api = {
@@ -124,8 +127,10 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   try {
     const { sessionDriveFor } = await import('./sessionDrive');
     await sessionDriveFor(identityId);
-  } catch {
-    /* apply still posts; sheet writes wait until a token is in session */
+  } catch (e) {
+    errors.push(`drive: ${e instanceof Error ? e.message : 'layout unavailable'}`);
+    console.warn('[socialMailbox] drain deferred until Drive is ready', errors);
+    return { ...EMPTY, errors };
   }
   const applySocialJob = createApiSocialApplier({
     apiBaseUrl: API_ENDPOINT,
@@ -236,8 +241,13 @@ let hotDrainWaiters: Array<{
   reject: (e: unknown) => void;
 }> = [];
 
+let rerunRequested = false;
+
 async function drainOnce(): Promise<MailboxDrainResult> {
-  if (running) return EMPTY;
+  if (running) {
+    rerunRequested = true;
+    return EMPTY;
+  }
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return EMPTY;
   running = true;
   try {
@@ -251,6 +261,10 @@ async function drainOnce(): Promise<MailboxDrainResult> {
     return { ...EMPTY, errors: [e instanceof Error ? e.message : String(e)] };
   } finally {
     running = false;
+    if (rerunRequested) {
+      rerunRequested = false;
+      void requestHotDrain();
+    }
   }
 }
 
@@ -305,7 +319,6 @@ export function startSocialMailboxConsumer(): void {
   void (async () => {
     const session = PNOAuthService.loadSession();
     if (session?.pnIdentifier) {
-      const { waitForCloudCredentialsReady } = await import('@par-noir/device-cloud-credentials');
       await waitForCloudCredentialsReady(session.pnIdentifier, 60_000);
     }
     await requestHotDrain();
@@ -324,6 +337,7 @@ export function stopSocialMailboxConsumer(): void {
     hotDrainTimer = null;
   }
   hotDrainWaiters = [];
+  rerunRequested = false;
   if (typeof window !== 'undefined') {
     window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudCredentialsReady);
     document.removeEventListener('visibilitychange', onVisibilityChange);
