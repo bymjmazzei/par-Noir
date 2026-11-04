@@ -512,19 +512,27 @@ export async function getConversationMessages(
   if (inflight) return inflight;
 
     const work = (async (): Promise<{ messages: Message[]; total: number }> => {
-    let sheet = typeof spreadsheetId === 'string' ? spreadsheetId : '';
-    if (!sheet) {
-      const threads = await getMessageThreads(userPnIdentifier);
-      const match = threads.find(
+    let raw: Message[] = [];
+    const hasThread =
+      !!(spreadsheetId || connectionId) ||
+      (await getMessageThreads(userPnIdentifier)).some(
         (thread) => thread.participantPnIdentifier === participantPnIdentifier
       );
-      sheet = match?.spreadsheetId || '';
-    }
-    let raw: Message[] = [];
-    if (sheet) {
-      const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
+    if (hasThread) {
+      const { listDeviceMessages, resolveOwnConversationSheet } = await import(
+        '@par-noir/device-cloud-credentials'
+      );
       const { sessionDriveFor } = await import('./sessionDrive');
       const drive = await sessionDriveFor(userPnIdentifier);
+      const sheet = await resolveOwnConversationSheet({
+        accessToken: drive.accessToken,
+        identityId: userPnIdentifier,
+        peerPnIdentifier: participantPnIdentifier,
+        connectionId,
+        kemCiphertext,
+        wrappedMessageRootKey,
+        channelClientId
+      });
       raw = (await listDeviceMessages(drive.accessToken, sheet)) as Message[];
     }
 
@@ -692,9 +700,6 @@ export async function sendMessage(
     peerPnIdentifier: toPnIdentifier,
     peerRouteKey
   });
-  const ownThread = (await getMessageThreads(fromPnIdentifier)).find(
-    (t) => t.participantPnIdentifier === toPnIdentifier
-  );
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   const { rememberOutboundMessageId } = await import('./outboundMessageIds');
   rememberOutboundMessageId(messageId);
@@ -709,7 +714,6 @@ export async function sendMessage(
     read: true,
     connectionId: connId,
     channelClientId,
-    ...(ownThread?.spreadsheetId ? { spreadsheetId: ownThread.spreadsheetId } : {}),
     ...(mediaFileId
       ? {
           mediaFileId,
@@ -927,13 +931,18 @@ export async function markAsRead(
     return;
   }
   try {
-    const { markDeviceMessageRead } = await import('@par-noir/device-cloud-credentials');
+    const { markDeviceMessageRead, resolveOwnConversationSheet } = await import(
+      '@par-noir/device-cloud-credentials'
+    );
     const { sessionDriveFor } = await import('./sessionDrive');
     const drive = await sessionDriveFor(userPnIdentifier);
-    const sheet = spreadsheetId
-      || (await getMessageThreads(userPnIdentifier)).find(
-        (thread) => thread.participantPnIdentifier === participantPnIdentifier
-      )?.spreadsheetId;
+    const sheet = participantPnIdentifier
+      ? await resolveOwnConversationSheet({
+          accessToken: drive.accessToken,
+          identityId: userPnIdentifier,
+          peerPnIdentifier: participantPnIdentifier
+        })
+      : spreadsheetId;
     if (!sheet) return;
     await markDeviceMessageRead(drive.accessToken, sheet, messageId);
   } catch (error) {

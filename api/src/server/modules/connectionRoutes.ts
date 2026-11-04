@@ -193,11 +193,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
             wrappedMessageRootKey,
             channelClientId,
             peerMailboxRouteKey: acceptorRouteKey,
-            acceptorMailboxRouteKey: acceptorRouteKey,
-            conversationSpreadsheetId:
-              typeof req.body?.conversationSpreadsheetId === 'string'
-                ? req.body.conversationSpreadsheetId
-                : undefined
+            acceptorMailboxRouteKey: acceptorRouteKey
           }
         });
         if (!delivered) {

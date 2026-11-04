@@ -8,9 +8,8 @@ export function layoutSheetId(identityId: string, jobType: string): string | nul
 }
 
 export function sheetIdForJob(index: DeviceDriveLayout, jobType: string): string | null {
-  if (jobType === 'message_append' || jobType === 'group_message_append') {
-    return index.inboxSheetId || null;
-  }
+  // Chat rows land only in a per-conversation sheet, never a layout sheet.
+  if (jobType === 'message_append' || jobType === 'group_message_append') return null;
   if (jobType.startsWith('connection') || jobType.startsWith('follower')) {
     return index.sheetIds.connections || null;
   }

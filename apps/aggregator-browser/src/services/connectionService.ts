@@ -255,36 +255,27 @@ export async function acceptConnectionRequest(
         peerMailboxRouteKey: existing?.peerMailboxRouteKey,
       });
     }
-    let conversationSpreadsheetId = '';
-    if (drive.index.messagesFolderId) {
-      const { deviceDriveCall } = await import('@par-noir/device-cloud-credentials');
-      const created = await deviceDriveCall(
-        'POST',
-        '/api/drive/native',
-        {
-          fileName: `dm-${connectionId}`,
-          mimeType: 'application/vnd.google-apps.spreadsheet',
-          parents: [drive.index.messagesFolderId],
-        },
-        { accessToken: drive.accessToken }
-      );
-      if (created.ok) {
-        const createdBody = (await created.json()) as { file?: { id?: string } };
-        conversationSpreadsheetId = createdBody.file?.id || '';
-      }
+    if (!drive.index.inboxSheetId) {
+      throw new Error('Messaging inbox is not ready. Reconnect cloud storage and try Accept again.');
     }
-    if (conversationSpreadsheetId && drive.index.inboxSheetId) {
-      const { upsertDeviceInboxThread } = await import('@par-noir/device-cloud-credentials');
-      await upsertDeviceInboxThread(drive.accessToken, drive.index.inboxSheetId, {
-        threadType: 'dm',
-        participantPnIdentifier: peerPn,
-        spreadsheetId: conversationSpreadsheetId,
-        connectionId,
-        lastMessageAt: new Date().toISOString(),
-        kemCiphertext,
-        wrappedMessageRootKey,
-      });
-    }
+    const { ensureDeviceConversationSheet, upsertDeviceInboxThread } = await import(
+      '@par-noir/device-cloud-credentials'
+    );
+    const conversationSpreadsheetId = await ensureDeviceConversationSheet(
+      drive.accessToken,
+      drive.index.messagesFolderId,
+      connectionId
+    );
+    await upsertDeviceInboxThread(drive.accessToken, drive.index.inboxSheetId, {
+      threadType: 'dm',
+      participantPnIdentifier: peerPn,
+      spreadsheetId: conversationSpreadsheetId,
+      connectionId,
+      lastMessageAt: new Date().toISOString(),
+      kemCiphertext,
+      wrappedMessageRootKey,
+      channelClientId,
+    });
     const response = await ownerFetch(
       'POST',
       `/api/connections/${connectionId}/accept`,
@@ -296,7 +287,6 @@ export async function acceptConnectionRequest(
         acceptorMailboxRouteKey: mailboxRouteKey,
         channelClientId,
         peerPnIdentifier: peerPn,
-        conversationSpreadsheetId,
         deviceCloudResult: {
           spreadsheetId: sheetId,
           provider: 'google',

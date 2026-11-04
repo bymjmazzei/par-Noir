@@ -13,6 +13,8 @@ vi.mock('@par-noir/dm-crypto', () => ({
 }));
 
 import { promoteOutboxRecord } from './promoteOutbox.js';
+import { clearOwnConversationSheetCache } from './deviceSocial.js';
+import { createFakeGoogle } from './fakeGoogleSheets.testkit.js';
 import { setSessionDriveIndex } from './sessionMemory.js';
 import type { OutboxRecord } from './outbox.js';
 import type { SealSession } from './types.js';
@@ -44,23 +46,29 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
   });
 
   it('POSTs /api/messages/apply-inbound with role sender before marking materialized', async () => {
+    clearOwnConversationSheetCache();
     setSessionDriveIndex('pn-sender', {
       schemaVersion: 1,
       pnFolderId: 'pn-folder',
       metadataFolderId: 'meta',
       integratorsRootId: 'int',
       messagesFolderId: 'msg',
-      inboxSheetId: 'sheet-from-device',
+      inboxSheetId: 'inbox-sheet',
       sheetIds: {},
       conversationSheets: {},
     });
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (String(url).includes('sheets.googleapis.com')) {
-        expect(String(url)).not.toContain('api.parnoir.com');
-        expect(String(url)).toContain('sheet-from-device');
-        expect((init?.headers as Record<string, string>)?.Authorization).toBe('Bearer cloud-at');
-        return new Response(JSON.stringify({ updates: { updatedRows: 1 } }), { status: 200 });
-      }
+    const google = createFakeGoogle(
+      {
+        'inbox-sheet': {
+          name: 'Inbox',
+          parents: ['msg'],
+          tabs: { Inbox: [['header'], ['pn-peer', 'own-dm', 'conn-1', '', '', 'kem', 'dm', '', '']] },
+        },
+        'own-dm': { name: 'dm-conn-1', parents: ['msg'], tabs: { Messages: [['User DID']] } },
+      },
+      (url) => apiResponse(url)
+    );
+    const apiResponse = (url: string) => {
       if (String(url).includes('/api/messages/apply-inbound')) {
         return new Response(JSON.stringify({ success: true }), { status: 200 });
       }
@@ -74,7 +82,8 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
         return new Response(JSON.stringify({ created: true }), { status: 200 });
       }
       return new Response('unexpected', { status: 500 });
-    });
+    };
+    const fetchMock = vi.fn(google.fetch);
     vi.stubGlobal('fetch', fetchMock);
 
     const record: OutboxRecord = {
@@ -85,6 +94,7 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
       updatedAt: new Date().toISOString(),
       payload: {
         messageId: 'msg_1',
+        toPnIdentifier: 'pn-peer',
         encryptedContent: 'ct',
         connectionId: 'conn-1',
         timestamp: new Date().toISOString()
@@ -119,7 +129,9 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
     expect(body.jobType).toBe('message_append');
     expect(body.encryptedContent).toBe('ct');
     expect(body.userPnIdentifier).toBe('pn-sender');
-    expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-from-device');
+    expect(body.deviceCloudResult.spreadsheetId).toBe('own-dm');
+    expect(google.files['own-dm']!.tabs.Messages!.at(-1)?.[3]).toBe('msg_1');
+    expect(google.files['inbox-sheet']!.tabs.Inbox).toHaveLength(2);
     const applyHeaders = applyCalls[0]![1] as RequestInit;
     expect((applyHeaders.headers as Record<string, string>)['X-PN-Cloud-Access-Token']).toBeUndefined();
     const enqueueCalls = fetchMock.mock.calls.filter((c) =>

@@ -21,7 +21,13 @@ import { omitCloudAccessHeader } from './cloudVault.js';
 import { appendDeviceCloudRow } from './deviceCloudRow.js';
 import { appendPollVoteOnDevice, writeWidgetActionTabOnDevice } from './penWidgetSheet.js';
 import { isSheetTrigger } from '@par-noir/pen-protocol';
-import { appendDeviceMessage, upsertDeviceConnection, upsertDeviceInboxThread } from './deviceSocial.js';
+import {
+  appendDeviceMessage,
+  ensureDeviceConversationSheet,
+  resolveOwnConversationSheet,
+  upsertDeviceConnection,
+  upsertDeviceInboxThread
+} from './deviceSocial.js';
 import { layoutSheetId } from './layoutSheet.js';
 import { getSessionDriveIndex } from './sessionMemory.js';
 
@@ -130,11 +136,35 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
       body
     }));
     const cloudToken = await opts.getCloudAccessToken?.();
+    if (job.jobType === 'message_append') {
+      // The sender's spreadsheetId points into their Drive; land the row in ours.
+      delete body.spreadsheetId;
+    }
     const spreadsheetId =
       (typeof body.spreadsheetId === 'string' && body.spreadsheetId) ||
       layoutSheetId(opts.identityId, job.jobType) ||
       '';
-    if (cloudToken && spreadsheetId) {
+    if (cloudToken && job.jobType === 'message_append') {
+      const peer = typeof body.fromPnIdentifier === 'string' ? body.fromPnIdentifier : '';
+      const messageSheet = await resolveOwnConversationSheet({
+        accessToken: cloudToken,
+        identityId: opts.identityId,
+        peerPnIdentifier: peer || undefined,
+        connectionId: typeof body.connectionId === 'string' ? body.connectionId : undefined,
+        channelClientId: typeof body.channelClientId === 'string' ? body.channelClientId : undefined
+      });
+      body.spreadsheetId = messageSheet;
+      await appendDeviceMessage(cloudToken, messageSheet, {
+        fromPnIdentifier: peer,
+        content: '',
+        encryptedContent: typeof body.encryptedContent === 'string' ? body.encryptedContent : '',
+        timestamp: typeof body.timestamp === 'string' ? body.timestamp : new Date().toISOString(),
+        messageId: typeof body.messageId === 'string' ? body.messageId : '',
+        read: false,
+        cryptoVersion: 2,
+      });
+      body.deviceCloudResult = { spreadsheetId: messageSheet, provider: 'google' };
+    } else if (cloudToken && spreadsheetId) {
       const incomingSheet = typeof body.spreadsheetId === 'string' ? body.spreadsheetId : '';
       if (job.jobType === 'connection_request' || job.jobType === 'connection_accept') {
         body.spreadsheetId = spreadsheetId;
@@ -161,11 +191,17 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
                   ? body.acceptorMailboxRouteKey
                   : undefined,
           });
-          const inboxId = getSessionDriveIndex(opts.identityId)?.inboxSheetId;
-          const conversationId =
-            typeof body.conversationSpreadsheetId === 'string' ? body.conversationSpreadsheetId : '';
-          if (accepted && inboxId && conversationId) {
-            await upsertDeviceInboxThread(cloudToken, inboxId, {
+          if (accepted) {
+            const index = getSessionDriveIndex(opts.identityId);
+            if (!index?.inboxSheetId || !index.messagesFolderId) {
+              throw new Error('connection_accept: Drive layout not ready for messaging');
+            }
+            const conversationId = await ensureDeviceConversationSheet(
+              cloudToken,
+              index.messagesFolderId,
+              connectionId
+            );
+            await upsertDeviceInboxThread(cloudToken, index.inboxSheetId, {
               threadType: 'dm',
               participantPnIdentifier: peer,
               spreadsheetId: conversationId,
@@ -174,23 +210,11 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
               kemCiphertext: typeof body.kemCiphertext === 'string' ? body.kemCiphertext : undefined,
               wrappedMessageRootKey:
                 typeof body.wrappedMessageRootKey === 'string' ? body.wrappedMessageRootKey : undefined,
+              channelClientId: typeof body.channelClientId === 'string' ? body.channelClientId : undefined,
             });
           }
         }
         body.deviceCloudResult = { spreadsheetId, provider: 'google' };
-      } else if (job.jobType === 'message_append') {
-        const messageSheet = incomingSheet || spreadsheetId;
-        body.spreadsheetId = messageSheet;
-        await appendDeviceMessage(cloudToken, messageSheet, {
-          fromPnIdentifier: String(body.fromPnIdentifier || body.userPnIdentifier || ''),
-          content: '',
-          encryptedContent: typeof body.encryptedContent === 'string' ? body.encryptedContent : '',
-          timestamp: typeof body.timestamp === 'string' ? body.timestamp : new Date().toISOString(),
-          messageId: typeof body.messageId === 'string' ? body.messageId : '',
-          read: false,
-          cryptoVersion: 2,
-        });
-        body.deviceCloudResult = { spreadsheetId: messageSheet, provider: 'google' };
       } else if (job.jobType === 'pen.poll_vote') {
         const sheetId = incomingSheet || spreadsheetId;
         const actor = String(body.actorId || '');

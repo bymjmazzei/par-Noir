@@ -237,6 +237,8 @@ export {
   upsertDeviceInboxThread,
   listDeviceMessages,
   appendDeviceMessage,
+  ensureDeviceConversationSheet,
+  resolveOwnConversationSheet,
   listDeviceGroups,
   appendDeviceGroupRow,
   appendPublicIndexRow,

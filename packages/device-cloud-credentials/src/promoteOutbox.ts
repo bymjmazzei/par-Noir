@@ -17,7 +17,7 @@ import {
 import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
 import { omitCloudAccessHeader } from './cloudVault.js';
 import { appendDeviceCloudRow } from './deviceCloudRow.js';
-import { appendDeviceMessage } from './deviceSocial.js';
+import { appendDeviceMessage, resolveOwnConversationSheet } from './deviceSocial.js';
 import { layoutSheetId } from './layoutSheet.js';
 import { sealSocialEnvelope } from '@par-noir/dm-crypto';
 
@@ -109,24 +109,34 @@ async function postOwnSheetApply(
     body
   }));
   const cloudToken = await opts.getCloudAccessToken?.();
-  const spreadsheetId =
-    (typeof body.spreadsheetId === 'string' && body.spreadsheetId) ||
-    layoutSheetId(opts.identityId, record.kind) ||
-    '';
-  if (cloudToken && spreadsheetId) {
+  if (cloudToken && record.kind === 'message_append') {
+    const peer = typeof record.payload.toPnIdentifier === 'string' ? record.payload.toPnIdentifier : '';
+    if (!peer) throw new Error('message_append outbox record has no recipient');
+    const spreadsheetId = await resolveOwnConversationSheet({
+      accessToken: cloudToken,
+      identityId: opts.identityId,
+      peerPnIdentifier: peer,
+      connectionId: typeof body.connectionId === 'string' ? body.connectionId : undefined,
+      channelClientId: typeof body.channelClientId === 'string' ? body.channelClientId : undefined
+    });
     body.spreadsheetId = spreadsheetId;
-    if (record.kind === 'message_append') {
-      await appendDeviceMessage(cloudToken, spreadsheetId, {
-        fromPnIdentifier: opts.identityId,
-        content: '',
-        encryptedContent: typeof body.encryptedContent === 'string' ? body.encryptedContent : '',
-        timestamp: typeof body.timestamp === 'string' ? body.timestamp : new Date().toISOString(),
-        messageId: typeof body.messageId === 'string' ? body.messageId : record.outboxId,
-        read: true,
-        cryptoVersion: 2,
-      });
-      body.deviceCloudResult = { spreadsheetId, provider: 'google' };
-    } else {
+    await appendDeviceMessage(cloudToken, spreadsheetId, {
+      fromPnIdentifier: opts.identityId,
+      content: '',
+      encryptedContent: typeof body.encryptedContent === 'string' ? body.encryptedContent : '',
+      timestamp: typeof body.timestamp === 'string' ? body.timestamp : new Date().toISOString(),
+      messageId: typeof body.messageId === 'string' ? body.messageId : record.outboxId,
+      read: true,
+      cryptoVersion: 2,
+    });
+    body.deviceCloudResult = { spreadsheetId, provider: 'google' };
+  } else {
+    const spreadsheetId =
+      (typeof body.spreadsheetId === 'string' && body.spreadsheetId) ||
+      layoutSheetId(opts.identityId, record.kind) ||
+      '';
+    if (cloudToken && spreadsheetId) {
+      body.spreadsheetId = spreadsheetId;
       body.deviceCloudResult = await appendDeviceCloudRow(cloudToken, body);
     }
   }

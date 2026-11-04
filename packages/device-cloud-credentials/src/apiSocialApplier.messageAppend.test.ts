@@ -1,28 +1,36 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApiSocialApplier } from './apiSocialApplier.js';
+import { clearOwnConversationSheetCache } from './deviceSocial.js';
+import { createFakeGoogle } from './fakeGoogleSheets.testkit.js';
 import { setSessionDriveIndex } from './sessionMemory.js';
 import type { MailboxJob } from './types.js';
 
 describe('createApiSocialApplier message_append', () => {
-  it('POSTs opaque message_append to /api/messages/apply-inbound', async () => {
+  it('POSTs opaque message_append to /api/messages/apply-inbound after landing it in its own dm sheet', async () => {
+    clearOwnConversationSheetCache();
     setSessionDriveIndex('pn-recipient', {
       schemaVersion: 1,
       pnFolderId: 'pn-folder',
       metadataFolderId: 'meta',
       integratorsRootId: 'int',
       messagesFolderId: 'msg',
-      inboxSheetId: 'sheet-1',
+      inboxSheetId: 'inbox-sheet',
       sheetIds: { connections: 'sheet-connections' },
       conversationSheets: {},
     });
-    const fetchMock = vi.fn(async (url: string) => {
-      if (String(url).includes('sheets.googleapis.com')) {
-        expect(String(url)).toContain('sheet-1');
-        expect(String(url)).not.toContain('api.parnoir.com');
-        return new Response('{}', { status: 200 });
-      }
-      return new Response(JSON.stringify({ success: true }), { status: 200 });
-    });
+    const google = createFakeGoogle(
+      {
+        'inbox-sheet': {
+          name: 'Inbox',
+          parents: ['msg'],
+          tabs: { Inbox: [['header'], ['pn-sender', 'own-dm', 'conn-1', '', '', 'kem', 'dm', 'wrap', '']] },
+        },
+        'own-dm': { name: 'dm-conn-1', parents: ['msg'], tabs: { Messages: [['User DID']] } },
+        'peer-dm': { name: 'dm-conn-1', parents: ['peer-msg'], tabs: { Messages: [['User DID']] } },
+      },
+      () => new Response(JSON.stringify({ success: true }), { status: 200 })
+    );
+    const fetchMock = vi.fn(google.fetch);
     vi.stubGlobal('fetch', fetchMock);
 
     const apply = createApiSocialApplier({
@@ -42,11 +50,15 @@ describe('createApiSocialApplier message_append', () => {
         messageId: 'msg_1',
         encryptedContent: 'ciphertext',
         connectionId: 'conn-1',
+        spreadsheetId: 'peer-dm',
         role: 'recipient',
       },
     };
 
     await expect(apply(job)).resolves.toBe(true);
+    expect(google.files['own-dm']!.tabs.Messages!.at(-1)?.[3]).toBe('msg_1');
+    expect(google.files['peer-dm']!.tabs.Messages).toHaveLength(1);
+    expect(google.files['inbox-sheet']!.tabs.Inbox).toHaveLength(2);
     const apiCall = fetchMock.mock.calls.find((call) =>
       String(call[0]).includes('/api/messages/apply-inbound')
     );
@@ -60,7 +72,7 @@ describe('createApiSocialApplier message_append', () => {
     expect(body.connectionId).toBe('conn-1');
     expect(body.userPnIdentifier).toBe('pn-recipient');
     expect(body.fromPnIdentifier).toBeUndefined();
-    expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-1');
+    expect(body.deviceCloudResult.spreadsheetId).toBe('own-dm');
     expect((init.headers as Record<string, string>)['X-PN-Cloud-Access-Token']).toBeUndefined();
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('sheets.googleapis.com'))).toBe(true);
 
@@ -114,7 +126,8 @@ describe('createApiSocialApplier message_append', () => {
     vi.unstubAllGlobals();
   });
 
-  it('writes an accepted connection and an inbox thread before the receipt', async () => {
+  it('creates its own dm sheet and inbox thread on connection_accept, ignoring the peer sheet id', async () => {
+    clearOwnConversationSheetCache();
     setSessionDriveIndex('pn-recipient', {
       schemaVersion: 1,
       pnFolderId: 'pn-folder',
@@ -125,19 +138,19 @@ describe('createApiSocialApplier message_append', () => {
       sheetIds: { connections: 'sheet-connections' },
       conversationSheets: {},
     });
-    const sheetUrls: string[] = [];
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      const href = String(url);
-      if (href.includes('sheets.googleapis.com')) {
-        sheetUrls.push(href);
-        return new Response(JSON.stringify({ values: [] }), { status: 200 });
+    const google = createFakeGoogle(
+      {
+        'sheet-connections': { name: 'connections', parents: ['meta'], tabs: { Connections: [['h']] } },
+        'inbox-sheet': { name: 'Inbox', parents: ['msg'], tabs: { Inbox: [['header']] } },
+      },
+      (_url, init) => {
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body.jobType).toBe('connection_accept');
+        expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-connections');
+        return new Response(JSON.stringify({ success: true }), { status: 200 });
       }
-      const body = JSON.parse(String(init?.body || '{}'));
-      expect(body.jobType).toBe('connection_accept');
-      expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-connections');
-      return new Response(JSON.stringify({ success: true }), { status: 200 });
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    );
+    vi.stubGlobal('fetch', vi.fn(google.fetch));
     const apply = createApiSocialApplier({
       apiBaseUrl: 'https://api.example.test',
       authToken: 'oauth-at',
@@ -159,8 +172,14 @@ describe('createApiSocialApplier message_append', () => {
       },
     };
     await expect(apply(job)).resolves.toBe(true);
-    expect(sheetUrls.some((href) => href.includes('sheet-connections'))).toBe(true);
-    expect(sheetUrls.some((href) => href.includes('inbox-sheet'))).toBe(true);
+    expect(google.files['sheet-connections']!.tabs.Connections).toHaveLength(2);
+    const thread = google.files['inbox-sheet']!.tabs.Inbox![1]!;
+    expect(thread[0]).toBe('pn-sender');
+    expect(thread[1]).not.toBe('dm-sheet');
+    const own = google.files[thread[1]!]!;
+    expect(own.name).toBe('dm-conn-9');
+    expect(own.parents).toEqual(['msg']);
+    expect(own.tabs.Messages?.[0]?.[0]).toBe('User DID');
     vi.unstubAllGlobals();
   });
 

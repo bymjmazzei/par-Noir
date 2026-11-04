@@ -1,10 +1,12 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const listDeviceMessages = vi.fn();
+const resolveOwnConversationSheet = vi.fn();
 const decryptIncomingMessage = vi.fn();
 
 vi.mock('@par-noir/device-cloud-credentials', () => ({
   listDeviceMessages: (...args: unknown[]) => listDeviceMessages(...args),
+  resolveOwnConversationSheet: (...args: unknown[]) => resolveOwnConversationSheet(...args),
   createOutboxRecord: vi.fn(),
   messageSendFanout: vi.fn(),
   promoteLocalOutbox: vi.fn(),
@@ -31,6 +33,8 @@ import { getConversationMessages } from './messageService';
 
 beforeEach(() => {
   listDeviceMessages.mockReset();
+  resolveOwnConversationSheet.mockReset();
+  resolveOwnConversationSheet.mockResolvedValue('own-sheet');
   decryptIncomingMessage.mockReset();
   listDeviceMessages.mockResolvedValue([
     {
@@ -46,7 +50,7 @@ beforeEach(() => {
   decryptIncomingMessage.mockResolvedValue('hello');
 });
 
-test('a thread opened from its spreadsheet decrypts the sheet rows', async () => {
+test('a thread reads from its own resolved dm sheet, not the inbox-supplied id, and decrypts the rows', async () => {
   const result = await getConversationMessages(
     'pn-self',
     'pn-peer',
@@ -54,9 +58,12 @@ test('a thread opened from its spreadsheet decrypts the sheet rows', async () =>
     0,
     'conn-1',
     'kem',
-    'sheet-1'
+    'peer-sheet'
   );
-  expect(listDeviceMessages).toHaveBeenCalledWith('google-token', 'sheet-1');
+  expect(resolveOwnConversationSheet).toHaveBeenCalledWith(
+    expect.objectContaining({ identityId: 'pn-self', peerPnIdentifier: 'pn-peer', connectionId: 'conn-1' })
+  );
+  expect(listDeviceMessages).toHaveBeenCalledWith('google-token', 'own-sheet');
   expect(decryptIncomingMessage).toHaveBeenCalled();
   expect(result.messages[0]?.content).toBe('hello');
 });

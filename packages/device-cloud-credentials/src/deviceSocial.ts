@@ -7,7 +7,8 @@ import { appendSheetValues, readSheetValues, writeSheetValues } from './deviceSh
 import { upsertDevicePublicIndexFile } from './deviceIndexes.js';
 import type { DeviceDriveLayout } from './deviceDriveLayout.js';
 import { ensureDeviceDriveLayout, isDeviceDriveLayoutComplete } from './deviceDriveLayout.js';
-import { getSessionDriveIndex, setSessionDriveIndex } from './sessionMemory.js';
+import { ensureSpreadsheetInFolder, writeSheetHeaders, type SpreadsheetSpec } from './deviceSpreadsheetInit.js';
+import { getSessionDriveIndex, normalizeCloudIdentityId, setSessionDriveIndex } from './sessionMemory.js';
 
 export type DeviceConnection = {
   connectionId: string;
@@ -206,6 +207,197 @@ export async function appendDeviceMessage(
     ]],
     fetchImpl
   );
+}
+
+const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
+const DRIVE_API = 'https://www.googleapis.com/drive/v3';
+const MESSAGES_TAB = 'Messages';
+
+const MESSAGES_HEADERS = [
+  'User DID',
+  'Message Content',
+  'Timestamp',
+  'Message ID',
+  'Read Status',
+  'Read At',
+  'Crypto Version',
+  'Media File ID',
+  'Media MIME Type',
+  'Media Backend',
+];
+const MESSAGES_HEADER_WRITE = [{ range: `${MESSAGES_TAB}!A1:J1`, values: [MESSAGES_HEADERS] }];
+
+function conversationSpec(connectionId: string): SpreadsheetSpec {
+  const name = `dm-${connectionId}`;
+  return {
+    driveFileName: name,
+    propertiesTitle: name,
+    sheets: [{ title: MESSAGES_TAB, rowCount: 10_000, columnCount: MESSAGES_HEADERS.length }],
+    headers: MESSAGES_HEADER_WRITE,
+  };
+}
+
+function googleJsonHeaders(accessToken: string): Record<string, string> {
+  return { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
+}
+
+/** Adds the Messages tab and header row when a DM sheet was created blank. */
+export async function ensureMessagesTab(
+  accessToken: string,
+  spreadsheetId: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<void> {
+  const metaRes = await fetchImpl(
+    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`,
+    { headers: googleJsonHeaders(accessToken) }
+  );
+  if (!metaRes.ok) throw new Error(`conversation_sheet_meta_failed_${metaRes.status}`);
+  const meta = (await metaRes.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
+  if ((meta.sheets || []).some((sheet) => sheet.properties?.title === MESSAGES_TAB)) return;
+  const added = await fetchImpl(`${SHEETS_API}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    method: 'POST',
+    headers: googleJsonHeaders(accessToken),
+    body: JSON.stringify({
+      requests: [
+        {
+          addSheet: {
+            properties: {
+              title: MESSAGES_TAB,
+              gridProperties: { rowCount: 10_000, columnCount: MESSAGES_HEADERS.length },
+            },
+          },
+        },
+      ],
+    }),
+  });
+  if (!added.ok) throw new Error(`conversation_sheet_tab_failed_${added.status}`);
+  await writeSheetHeaders(accessToken, spreadsheetId, MESSAGES_HEADER_WRITE, fetchImpl);
+}
+
+/** Find or create this pN's own `dm-<connectionId>` sheet with a Messages tab. */
+export async function ensureDeviceConversationSheet(
+  accessToken: string,
+  messagesFolderId: string,
+  connectionId: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<string> {
+  if (!messagesFolderId) throw new Error('messages folder missing from Drive layout');
+  if (!connectionId) throw new Error('connectionId is required for a conversation sheet');
+  const spreadsheetId = await ensureSpreadsheetInFolder(
+    accessToken,
+    messagesFolderId,
+    conversationSpec(connectionId),
+    fetchImpl
+  );
+  await ensureMessagesTab(accessToken, spreadsheetId, fetchImpl);
+  return spreadsheetId;
+}
+
+/**
+ * Sheets created by the old API carry legacy names and may sit outside the
+ * current messages folder; only a `dm-*` sheet in another folder is the peer's.
+ */
+async function isOwnConversationSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  messagesFolderId: string,
+  fetchImpl: typeof fetch
+): Promise<boolean> {
+  const res = await fetchImpl(
+    `${DRIVE_API}/files/${encodeURIComponent(spreadsheetId)}?fields=name,parents`,
+    { headers: googleJsonHeaders(accessToken) }
+  );
+  if (!res.ok) return false;
+  const file = (await res.json()) as { name?: string; parents?: string[] };
+  if ((file.parents || []).includes(messagesFolderId)) return true;
+  return !(file.name || '').startsWith('dm-');
+}
+
+const ownConversationSheetCache = new Map<string, string>();
+
+export function clearOwnConversationSheetCache(): void {
+  ownConversationSheetCache.clear();
+}
+
+/**
+ * The sheet this pN writes a DM thread to — always in its own Drive. Repairs
+ * blank sheets, replaces peer-owned ids, and keeps the Inbox row in sync.
+ */
+export async function resolveOwnConversationSheet(args: {
+  accessToken: string;
+  identityId: string;
+  /** Optional when connectionId identifies the thread. */
+  peerPnIdentifier?: string;
+  connectionId?: string;
+  kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
+  channelClientId?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  const fetchImpl = args.fetchImpl || fetch;
+  const identityKey = normalizeCloudIdentityId(args.identityId);
+  const peerArg = args.peerPnIdentifier ? normalizeCloudIdentityId(args.peerPnIdentifier) : '';
+  if (!peerArg && !args.connectionId) {
+    throw new Error('peerPnIdentifier or connectionId is required for a conversation sheet');
+  }
+  const cached =
+    (peerArg && ownConversationSheetCache.get(`${identityKey}|${peerArg}`)) ||
+    (args.connectionId && ownConversationSheetCache.get(`${identityKey}|conn:${args.connectionId}`));
+  if (cached) return cached;
+
+  const index = getSessionDriveIndex(args.identityId);
+  if (!index?.inboxSheetId || !index.messagesFolderId) {
+    throw new Error('Drive layout not ready for messaging');
+  }
+  const threads = await listDeviceInbox(args.accessToken, index.inboxSheetId, fetchImpl);
+  const thread = threads.find(
+    (row) =>
+      row.threadType === 'dm' &&
+      ((peerArg && normalizeCloudIdentityId(row.participantPnIdentifier) === peerArg) ||
+        (!peerArg && !!args.connectionId && row.connectionId === args.connectionId))
+  );
+  const peer = peerArg || (thread ? normalizeCloudIdentityId(thread.participantPnIdentifier) : '');
+  if (!peer) throw new Error('No conversation found for this connection');
+  const remember = (spreadsheetId: string) => {
+    ownConversationSheetCache.set(`${identityKey}|${peer}`, spreadsheetId);
+    const connectionId = args.connectionId || thread?.connectionId;
+    if (connectionId) ownConversationSheetCache.set(`${identityKey}|conn:${connectionId}`, spreadsheetId);
+  };
+
+  if (
+    thread?.spreadsheetId &&
+    (await isOwnConversationSheet(args.accessToken, thread.spreadsheetId, index.messagesFolderId, fetchImpl))
+  ) {
+    await ensureMessagesTab(args.accessToken, thread.spreadsheetId, fetchImpl);
+    remember(thread.spreadsheetId);
+    return thread.spreadsheetId;
+  }
+
+  const connectionId = args.connectionId || thread?.connectionId || '';
+  const spreadsheetId = await ensureDeviceConversationSheet(
+    args.accessToken,
+    index.messagesFolderId,
+    connectionId,
+    fetchImpl
+  );
+  await upsertDeviceInboxThread(
+    args.accessToken,
+    index.inboxSheetId,
+    {
+      threadType: 'dm',
+      participantPnIdentifier: thread?.participantPnIdentifier || peer,
+      spreadsheetId,
+      connectionId,
+      lastMessageAt: thread?.lastMessageAt || new Date().toISOString(),
+      lastMessagePreview: thread?.lastMessagePreview,
+      kemCiphertext: thread?.kemCiphertext || args.kemCiphertext,
+      wrappedMessageRootKey: thread?.wrappedMessageRootKey || args.wrappedMessageRootKey,
+      channelClientId: thread?.channelClientId || args.channelClientId,
+    },
+    fetchImpl
+  );
+  remember(spreadsheetId);
+  return spreadsheetId;
 }
 
 export type DeviceGroupRow = {
