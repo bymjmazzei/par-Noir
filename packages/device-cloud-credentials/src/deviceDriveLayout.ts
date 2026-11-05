@@ -4,13 +4,14 @@
  */
 
 import { ensureDeviceOwnedAssetsSheet } from './deviceIndexes.js';
+import { deviceDriveCall } from './deviceDriveCall.js';
 import {
   DEVICE_PN_LAYOUT,
   createPnRootFolder,
-  findOrCreateFolder,
   findPnRootFolderId,
   normalizePnIdentifier,
 } from './deviceDriveFind.js';
+import { ensureDriveChildFolder } from './driveChild.js';
 import {
   ensureDeviceInboxSheet,
   ensureDeviceIndexSheet,
@@ -83,6 +84,27 @@ function pace(ms = METADATA_SHEET_PACE_MS): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Another app or tab may create the root at the same moment. After creating, keep
+ * the oldest tagged root and remove the empty one this call made.
+ */
+async function findOrCreatePnRoot(
+  accessToken: string,
+  normalized: string,
+  fetchImpl: typeof fetch | undefined
+): Promise<string> {
+  const existing = await findPnRootFolderId(accessToken, normalized, fetchImpl);
+  if (existing) return existing;
+  const created = await createPnRootFolder(accessToken, normalized, fetchImpl);
+  const oldest = await findPnRootFolderId(accessToken, normalized, fetchImpl);
+  if (!oldest || oldest === created) return created;
+  await deviceDriveCall('DELETE', `/api/drive/files/${encodeURIComponent(created)}`, undefined, {
+    accessToken,
+    fetchImpl,
+  }).catch(() => undefined);
+  return oldest;
+}
+
 async function buildDeviceDriveLayout(
   accessToken: string,
   pnIdentifier: string,
@@ -96,29 +118,27 @@ async function buildDeviceDriveLayout(
     report({ done, total: DEVICE_DRIVE_LAYOUT_TOTAL_STEPS, label });
   };
 
-  const pnFolderId =
-    (await findPnRootFolderId(accessToken, normalized, fetchImpl)) ||
-    (await createPnRootFolder(accessToken, normalized, fetchImpl));
+  const pnFolderId = await findOrCreatePnRoot(accessToken, normalized, fetchImpl);
   tick('Storage folder ready');
 
-  const metadataFolderId = await findOrCreateFolder(
+  const metadataFolderId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.metadataDir,
     pnFolderId,
+    DEVICE_PN_LAYOUT.metadataDir,
     fetchImpl
   );
   tick('Metadata folder ready');
-  const integratorsRootId = await findOrCreateFolder(
+  const integratorsRootId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.integratorsDir,
     pnFolderId,
+    DEVICE_PN_LAYOUT.integratorsDir,
     fetchImpl
   );
   tick('Integrations folder ready');
-  const messagesFolderId = await findOrCreateFolder(
+  const messagesFolderId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.messagesDir,
     pnFolderId,
+    DEVICE_PN_LAYOUT.messagesDir,
     fetchImpl
   );
   tick('Messages folder ready');
@@ -149,10 +169,10 @@ async function buildDeviceDriveLayout(
   tick('Owned assets ready');
 
   for (const className of DEVICE_PN_LAYOUT.contentClassDirs) {
-    const classFolderId = await findOrCreateFolder(
+    const classFolderId = await ensureDriveChildFolder(
       accessToken,
-      className,
       metadataFolderId,
+      className,
       fetchImpl
     );
     tick(`${className} index folder ready`);
@@ -164,38 +184,38 @@ async function buildDeviceDriveLayout(
     await pace();
   }
 
-  const filesFolderId = await findOrCreateFolder(
+  const filesFolderId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.filesDir,
     pnFolderId,
+    DEVICE_PN_LAYOUT.filesDir,
     fetchImpl
   );
   tick('Files folder ready');
-  const contentFolderId = await findOrCreateFolder(
+  const contentFolderId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.contentDir,
     pnFolderId,
+    DEVICE_PN_LAYOUT.contentDir,
     fetchImpl
   );
   tick('Content folder ready');
-  const contentNotesFolderId = await findOrCreateFolder(
+  const contentNotesFolderId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.contentNotes,
     contentFolderId,
+    DEVICE_PN_LAYOUT.contentNotes,
     fetchImpl
   );
   tick('Notes folder ready');
-  const contentMediaFolderId = await findOrCreateFolder(
+  const contentMediaFolderId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.contentMedia,
     contentFolderId,
+    DEVICE_PN_LAYOUT.contentMedia,
     fetchImpl
   );
   tick('Media folder ready');
-  const contentCollectionsFolderId = await findOrCreateFolder(
+  const contentCollectionsFolderId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.contentCollections,
     contentFolderId,
+    DEVICE_PN_LAYOUT.contentCollections,
     fetchImpl
   );
   tick('Collections folder ready');

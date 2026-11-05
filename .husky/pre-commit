@@ -33,6 +33,10 @@ if [ -f scripts/check-dual-drive-helper-boundary.sh ]; then
   bash scripts/check-dual-drive-helper-boundary.sh || { echo "❌ check-dual-drive-helper-boundary: no getOwnerDriveContext dual helpers; use resolveOwnerDriveToken."; exit 1; }
 fi
 
+if [ -f scripts/check-drive-create-boundary.sh ]; then
+  bash scripts/check-drive-create-boundary.sh || { echo "❌ check-drive-create-boundary: create Drive folders/Sheets only via driveChild.ts helpers with a pN parent."; exit 1; }
+fi
+
 if [ -f scripts/check-googleapis-resolver-import.sh ]; then
   bash scripts/check-googleapis-resolver-import.sh || { echo "❌ check-googleapis-resolver-import: files that fetch googleapis.com must import @par-noir/device-cloud-credentials."; exit 1; }
 fi

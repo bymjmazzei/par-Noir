@@ -13,7 +13,9 @@ import {
   type PenSectionContent,
   type PenUsedCustomFont
 } from '@par-noir/pen-protocol';
+import { findDocFontFile } from '@par-noir/device-cloud-credentials';
 import { loadDocKey, mintDocKey } from './penDocCrypto';
+import { penSessionDrive } from './penDriveLibrary';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
 import { queuePenOutbox } from './penCollab';
 import type { PenSession } from './penSession';
@@ -149,23 +151,17 @@ export async function loadDocScopedFontsForEditor(params: {
     if (set?.has(u.fontId)) continue;
 
     try {
-      const q = encodeURIComponent(
-        `name='${u.fontId.replace(/'/g, "\\'")}.penfont' and trashed=false`
+      const drive = await penSessionDrive(params.pnIdentifier);
+      const fileId = await findDocFontFile(
+        drive.accessToken,
+        drive.index.pnFolderId,
+        params.docId,
+        u.fontId
       );
-      const listRes = await ownerGet(`/api/drive/files?q=${q}&pageSize=5`, {
-        pnIdentifier: params.pnIdentifier
-      });
-      if (!listRes.ok) continue;
-      const listData = (await listRes.json()) as {
-        files?: Array<{ id?: string; name?: string }>;
-      };
-      const hit = (listData.files || []).find(
-        (f) => f.id && f.name === `${u.fontId}.penfont`
-      );
-      if (!hit?.id) continue;
+      if (!fileId) continue;
 
       const dl = await ownerGet(
-        `/api/drive/files/${encodeURIComponent(hit.id)}?download=true`,
+        `/api/drive/files/${encodeURIComponent(fileId)}?download=true`,
         { pnIdentifier: params.pnIdentifier }
       );
       if (!dl.ok) continue;

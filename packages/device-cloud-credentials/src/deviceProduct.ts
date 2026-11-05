@@ -5,6 +5,7 @@
 
 import { deviceDriveCall } from './deviceDriveCall.js';
 import { readSheetValues, writeSheetValues } from './deviceSheet.js';
+import { DRIVE_SHEET_MIME, ensureDriveChildFolder, findDriveChild } from './driveChild.js';
 
 export type DeviceNotification = {
   notification_id: string;
@@ -364,34 +365,15 @@ export async function listDeviceCustodians(
     }));
 }
 
-const FOLDER = 'application/vnd.google-apps.folder';
-const SHEET = 'application/vnd.google-apps.spreadsheet';
-
-export async function findDriveChildId(
-  accessToken: string,
-  parentId: string,
-  name: string,
-  mimeType: string,
-  fetchImpl?: typeof fetch
-): Promise<string | null> {
-  const q = encodeURIComponent(
-    `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='${mimeType}' and trashed=false`
-  );
-  const res = await deviceDriveCall('GET', `/api/drive/files?q=${q}&pageSize=1`, undefined, {
-    accessToken,
-    fetchImpl,
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { files?: Array<{ id?: string }> };
-  return data.files?.[0]?.id || null;
-}
-
 export async function findRecoveryWorkbookId(
   accessToken: string,
   metadataFolderId: string,
   fetchImpl?: typeof fetch
 ): Promise<string | null> {
-  return findDriveChildId(accessToken, metadataFolderId, 'recovery.xlsx', SHEET, fetchImpl);
+  return findDriveChild(accessToken, metadataFolderId, 'recovery.xlsx', {
+    mimeType: DRIVE_SHEET_MIME,
+    fetchImpl,
+  });
 }
 
 export async function ensureAttachmentsFolderId(
@@ -399,24 +381,7 @@ export async function ensureAttachmentsFolderId(
   messagesFolderId: string,
   fetchImpl?: typeof fetch
 ): Promise<string> {
-  const existing = await findDriveChildId(
-    accessToken,
-    messagesFolderId,
-    'attachments',
-    FOLDER,
-    fetchImpl
-  );
-  if (existing) return existing;
-  const res = await deviceDriveCall(
-    'POST',
-    '/api/drive/folders',
-    { folderName: 'attachments', parentFolderId: messagesFolderId },
-    { accessToken, fetchImpl }
-  );
-  if (!res.ok) throw new Error('attachments_folder_failed');
-  const body = (await res.json()) as { folder?: { id?: string } };
-  if (!body.folder?.id) throw new Error('attachments_folder_failed');
-  return body.folder.id;
+  return ensureDriveChildFolder(accessToken, messagesFolderId, 'attachments', fetchImpl);
 }
 
 /** Anyone-with-the-link reader. Returns the public download URL. */

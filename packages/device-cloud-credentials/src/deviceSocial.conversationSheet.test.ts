@@ -6,6 +6,7 @@ import {
   listDeviceInbox,
   resolveOwnConversationSheet,
 } from './deviceSocial.js';
+import { clearDriveChildState } from './driveChild.js';
 import { sheetIdForJob } from './layoutSheet.js';
 import { setSessionDriveIndex } from './sessionMemory.js';
 import { createFakeGoogle } from './fakeGoogleSheets.testkit.js';
@@ -27,6 +28,7 @@ function inboxRow(peer: string, sheet: string, connectionId: string): string[] {
 }
 
 beforeEach(() => {
+  clearDriveChildState();
   clearOwnConversationSheetCache();
   setSessionDriveIndex('pn-me', layout);
 });

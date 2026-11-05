@@ -7,7 +7,7 @@ import { appendSheetValues, readSheetValues, writeSheetValues } from './deviceSh
 import { upsertDevicePublicIndexFile } from './deviceIndexes.js';
 import type { DeviceDriveLayout } from './deviceDriveLayout.js';
 import { ensureDeviceDriveLayout, isDeviceDriveLayoutComplete } from './deviceDriveLayout.js';
-import { ensureSpreadsheetInFolder, writeSheetHeaders, type SpreadsheetSpec } from './deviceSpreadsheetInit.js';
+import { ensureDriveChildSpreadsheet, writeSheetHeaders, type SpreadsheetSpec } from './driveChild.js';
 import { getSessionDriveIndex, normalizeCloudIdentityId, setSessionDriveIndex } from './sessionMemory.js';
 
 export type DeviceConnection = {
@@ -231,7 +231,6 @@ function conversationSpec(connectionId: string): SpreadsheetSpec {
   const name = `dm-${connectionId}`;
   return {
     driveFileName: name,
-    propertiesTitle: name,
     sheets: [{ title: MESSAGES_TAB, rowCount: 10_000, columnCount: MESSAGES_HEADERS.length }],
     headers: MESSAGES_HEADER_WRITE,
   };
@@ -283,7 +282,7 @@ export async function ensureDeviceConversationSheet(
 ): Promise<string> {
   if (!messagesFolderId) throw new Error('messages folder missing from Drive layout');
   if (!connectionId) throw new Error('connectionId is required for a conversation sheet');
-  const spreadsheetId = await ensureSpreadsheetInFolder(
+  const spreadsheetId = await ensureDriveChildSpreadsheet(
     accessToken,
     messagesFolderId,
     conversationSpec(connectionId),

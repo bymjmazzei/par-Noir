@@ -12,6 +12,7 @@ import {
 } from '../../types/aggregator';
 import {
   deviceDriveCall,
+  ensureDriveChildFolder,
   findPnRootFolderId,
   getSessionDriveIndex,
   isAccessTokenFresh,
@@ -479,135 +480,24 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   }
 
   /**
-   * Get or create a folder. If pnIdentifier is provided, creates pN-specific folders.
-   * Format: "par Noir" (base) or "par Noir - {pnIdentifier}" (pN-specific).
+   * A folder inside `parentFolderId`. Given only a pN, this is that pN's cabinet
+   * (`files/`). The pN root itself is only ever built by the device Drive layout.
    */
   async getOrCreateFolder(
     name: string,
     pnIdentifier?: string,
     parentFolderId?: string
   ): Promise<string> {
-    if (!this.token && !(await this.ensureAccessToken())) {
+    const accessToken = await this.ensureAccessToken();
+    if (!accessToken) {
       console.warn('⚠️ [getOrCreateFolder] Google Drive not connected - returning placeholder');
       return 'NOT_CONNECTED';
     }
-
-    const folderName = pnIdentifier ? `${name} - ${pnIdentifier}` : name;
-
-    if (pnIdentifier && this.pnFolderCache.has(pnIdentifier) && !parentFolderId) {
-      const cachedFolderId = this.pnFolderCache.get(pnIdentifier)!;
-      try {
-        const validateResponse = await this.driveFetch(
-          'GET',
-          `/api/drive/files/${encodeURIComponent(cachedFolderId)}`,
-          undefined,
-          pnIdentifier
-        );
-        if (validateResponse.ok) {
-          const data = (await validateResponse.json()) as { file?: DriveApiFile } & DriveApiFile;
-          const folderInfo = data.file || data;
-          const expectedFolderName = `par Noir - ${pnIdentifier}`;
-          if (folderInfo.name === expectedFolderName) {
-            return cachedFolderId;
-          }
-        }
-        this.pnFolderCache.delete(pnIdentifier);
-        this.saveFolderCache();
-      } catch {
-        this.pnFolderCache.delete(pnIdentifier);
-        this.saveFolderCache();
-      }
+    if (!parentFolderId) {
+      if (pnIdentifier) return this.ensureFilesFolder(pnIdentifier);
+      throw new Error('drive_parent_required');
     }
-
-    const sanitizedFolderName = folderName.replace(/'/g, "\\'");
-    let searchQuery: string;
-    if (pnIdentifier && folderName !== '_metadata') {
-      searchQuery = `name='${sanitizedFolderName}' and name!='_metadata' and mimeType='${FOLDER_MIME}' and trashed=false`;
-      if (parentFolderId) {
-        searchQuery += ` and '${parentFolderId}' in parents`;
-      }
-    } else if (parentFolderId) {
-      searchQuery = `name='${sanitizedFolderName}' and '${parentFolderId}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`;
-    } else {
-      searchQuery = `name='${sanitizedFolderName}' and mimeType='${FOLDER_MIME}' and trashed=false`;
-    }
-
-    const searchParams = new URLSearchParams({
-      q: searchQuery,
-      pageSize: '10'
-    });
-    const searchResponse = await this.driveFetch(
-      'GET',
-      `/api/drive/files?${searchParams.toString()}`,
-      undefined,
-      pnIdentifier
-    );
-    if (!searchResponse.ok) {
-      throw new Error('Failed to search for folder');
-    }
-
-    const searchData = (await searchResponse.json()) as { files?: DriveApiFile[] };
-    const candidates = (searchData.files || []).filter((f) => {
-      if (folderName === '_metadata') {
-        return f.name === '_metadata' && !!parentFolderId;
-      }
-      if (f.name === '_metadata') return false;
-      if (pnIdentifier) {
-        return f.name === `par Noir - ${pnIdentifier}`;
-      }
-      return f.name === folderName || f.name === 'par Noir';
-    });
-
-    if (candidates.length > 0 && candidates[0]?.id) {
-      const folderId = candidates[0].id;
-      if (pnIdentifier && !parentFolderId) {
-        this.pnFolderCache.set(pnIdentifier, folderId);
-        this.parNoirFolderId = folderId;
-        this.saveFolderCache();
-      } else if (!pnIdentifier && !parentFolderId) {
-        this.parNoirFolderId = folderId;
-        try {
-          localStorage.setItem(`${this.keyPrefix}_last_folder_id`, folderId);
-        } catch {
-          /* ignore */
-        }
-      }
-      return folderId;
-    }
-
-    const createResponse = await this.driveFetch(
-      'POST',
-      '/api/drive/folders',
-      {
-        folderName,
-        ...(parentFolderId ? { parentFolderId } : {})
-      },
-      pnIdentifier
-    );
-    if (!createResponse.ok) {
-      throw new Error('Failed to create folder');
-    }
-
-    const created = (await createResponse.json()) as { folder?: DriveApiFile };
-    const folderId = created.folder?.id;
-    if (!folderId) {
-      throw new Error('Failed to create folder: no id returned');
-    }
-
-    if (pnIdentifier && !parentFolderId) {
-      this.pnFolderCache.set(pnIdentifier, folderId);
-      this.parNoirFolderId = folderId;
-      this.saveFolderCache();
-    } else if (!pnIdentifier && !parentFolderId) {
-      this.parNoirFolderId = folderId;
-      try {
-        localStorage.setItem(`${this.keyPrefix}_last_folder_id`, folderId);
-      } catch {
-        /* ignore */
-      }
-    }
-
-    return folderId;
+    return ensureDriveChildFolder(accessToken, parentFolderId, name);
   }
 
   /** Resolve the pN root (session index, folder cache, or pnId app-property search). */

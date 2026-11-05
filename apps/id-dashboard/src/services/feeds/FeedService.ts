@@ -194,23 +194,14 @@ export class FeedService {
     pnIdentifier?: string | null
   ): Promise<Feed> {
     const token = requireOwnerApiToken(pnIdentifier);
-    const { getCloudAccessTokenFromSession, deviceDriveCall } = await import('@par-noir/device-cloud-credentials');
-    const googleToken = pnIdentifier ? getCloudAccessTokenFromSession(pnIdentifier) : null;
-    if (!googleToken) {
+    if (!pnIdentifier) {
       throw new Error('Connect Google Drive on this device before activating a feed');
     }
-    const folderRes = await deviceDriveCall(
-      'POST',
-      '/api/drive/folders',
-      { folderName: `par Noir - Feed ${checkoutId}` },
-      { accessToken: googleToken }
-    );
-    if (!folderRes.ok) {
-      throw new Error('Failed to create the feed folder on Google Drive');
-    }
-    const folderBody = (await folderRes.json()) as { folder?: { id?: string } };
-    const deviceFolderId = folderBody.folder?.id;
-    if (!deviceFolderId) throw new Error('Drive did not return a feed folder id');
+    const { ensureDriveChildFolder } = await import('@par-noir/device-cloud-credentials');
+    const { sessionDriveFor } = await import('../sessionDrive');
+    const drive = await sessionDriveFor(pnIdentifier, token);
+    const feedsFolderId = await ensureDriveChildFolder(drive.accessToken, drive.index.pnFolderId, 'feeds');
+    const deviceFolderId = await ensureDriveChildFolder(drive.accessToken, feedsFolderId, checkoutId);
     const response = await ownerFetch(
       token,
       'POST',

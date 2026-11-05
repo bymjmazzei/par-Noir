@@ -3,6 +3,7 @@
  * never to the par Noir API.
  */
 
+import { PN_DRIVE_ROOT_PROPERTY } from '@par-noir/user-owned-storage';
 import { getCloudAccessTokenFromSession } from './ownerCloudHeaders.js';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
@@ -39,6 +40,14 @@ async function google(
   });
 }
 
+/** Only the pN root (tagged with its pnId) may be created outside a parent folder. */
+function parentRequiredResponse(): Response {
+  return jsonResponse(400, {
+    error: 'drive_parent_required',
+    error_description: 'Drive items must be created inside a folder in the pN root.',
+  });
+}
+
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -71,6 +80,8 @@ export async function deviceDriveCall(
       q = 'sharedWithMe = true';
     }
     if (q) params.set('q', q);
+    const orderBy = url.searchParams.get('orderBy');
+    if (orderBy) params.set('orderBy', orderBy);
     const pageToken = url.searchParams.get('pageToken');
     if (pageToken) params.set('pageToken', pageToken);
     const res = await google(fetchImpl, token, `${DRIVE}/files?${params.toString()}`);
@@ -142,6 +153,9 @@ export async function deviceDriveCall(
 
   if (verb === 'POST' && url.pathname === '/api/drive/native') {
     const payload = (body || {}) as { fileName?: string; mimeType?: string; parents?: string[] };
+    if (!payload.parents || payload.parents.length === 0) {
+      return parentRequiredResponse();
+    }
     const res = await google(fetchImpl, token, `${DRIVE}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -162,6 +176,10 @@ export async function deviceDriveCall(
       parentFolderId?: string;
       appProperties?: Record<string, string>;
     };
+    const isPnRoot = !!payload.appProperties?.[PN_DRIVE_ROOT_PROPERTY];
+    if (!payload.parentFolderId && !isPnRoot) {
+      return parentRequiredResponse();
+    }
     const metadata: Record<string, unknown> = {
       name: payload.folderName,
       mimeType: FOLDER,
@@ -186,10 +204,7 @@ export async function deviceDriveCall(
       parents?: string[];
     };
     if (!payload.parents || payload.parents.length === 0) {
-      return jsonResponse(400, {
-        error: 'drive_parent_required',
-        error_description: 'A file upload must name a folder inside the pN root.',
-      });
+      return parentRequiredResponse();
     }
     const boundary = 'pn_device_drive';
     const meta = JSON.stringify({

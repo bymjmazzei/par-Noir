@@ -10,36 +10,10 @@ export async function ensureZkpDocsFolderId(
   pnIdentifier: string,
   authToken: string
 ): Promise<string> {
-  const { deviceDriveCall } = await import('@par-noir/device-cloud-credentials');
+  const { ensureDriveChildFolder } = await import('@par-noir/device-cloud-credentials');
   const { sessionDriveFor } = await import('./sessionDrive');
   const drive = await sessionDriveFor(pnIdentifier, authToken);
-  const parentId = drive.index.metadataFolderId;
-  const listed = await deviceDriveCall(
-    'GET',
-    `/api/drive/files?q=${encodeURIComponent(
-      `name='zkp-docs' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
-    )}&pageSize=5`,
-    undefined,
-    { accessToken: drive.accessToken }
-  );
-  if (listed.ok) {
-    const body = (await listed.json()) as { files?: Array<{ id?: string }> };
-    const existing = body.files?.find((file) => file.id)?.id;
-    if (existing) return existing;
-  }
-  const created = await deviceDriveCall(
-    'POST',
-    '/api/drive/folders',
-    { folderName: 'zkp-docs', parentFolderId: parentId },
-    { accessToken: drive.accessToken }
-  );
-  if (!created.ok) {
-    throw new Error(`Failed to ensure zkp-docs folder: ${created.status}`);
-  }
-  const data = (await created.json()) as { folder?: { id?: string }; id?: string };
-  const folderId = data.folder?.id || data.id;
-  if (!folderId) throw new Error('zkp-docs folder id missing');
-  return folderId;
+  return ensureDriveChildFolder(drive.accessToken, drive.index.metadataFolderId, 'zkp-docs');
 }
 
 export async function uploadZkpDocEncrypted(opts: {

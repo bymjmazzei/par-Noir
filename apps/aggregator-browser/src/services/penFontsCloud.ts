@@ -1,6 +1,6 @@
 /**
  * Owner My Fonts for Pen Mini (browse) — same localStorage key as Pen app.
- * Upload uses ownerApiFetch + pen.fonts.v1 encryption.
+ * Upload writes under par-noir-pen/fonts/ in the pN root with pen.fonts.v1 encryption.
  */
 
 import {
@@ -13,13 +13,16 @@ import {
   personalFontsStorageKey,
   sanitizeSegment
 } from '@par-noir/pen-protocol';
-import { ownerFetch, ownerGet } from './ownerApiFetch';
+import {
+  ensurePenFontFolder,
+  ensurePenRoot,
+  upsertDriveChildFileB64
+} from '@par-noir/device-cloud-credentials';
 import { getDmIdentity } from './dmIdentitySession';
+import { sessionDriveFor } from './sessionDrive';
 
 export const PEN_FONTS_CONTEXT = 'pen.fonts.v1';
 export const PEN_FONTS_INDEX_NAME = 'fonts.index.json';
-
-const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 function fontsKeyB64(mlKemSecretKey: string): string {
   return bytesToBase64(deriveMessageKey(mlKemSecretKey, PEN_FONTS_CONTEXT));
@@ -69,120 +72,20 @@ export function savePersonalFonts(pnIdentifier: string, entries: PenFontIndexEnt
   }
 }
 
-async function findChildFolderId(
-  pnIdentifier: string,
-  parentId: string,
-  name: string
-): Promise<string | null> {
-  const q = encodeURIComponent(
-    `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`
-  );
-  const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=5`, { pnIdentifier });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { files?: Array<{ id?: string }> };
-  return data.files?.[0]?.id || null;
-}
-
-async function findChildFileId(
-  pnIdentifier: string,
-  parentId: string,
-  name: string
-): Promise<string | null> {
-  const q = encodeURIComponent(
-    `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and trashed=false`
-  );
-  const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=5`, { pnIdentifier });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { files?: Array<{ id?: string }> };
-  return data.files?.[0]?.id || null;
-}
-
-async function ensureChildFolder(
-  pnIdentifier: string,
-  parentId: string,
-  name: string
-): Promise<string> {
-  const existing = await findChildFolderId(pnIdentifier, parentId, name);
-  if (existing) return existing;
-  const res = await ownerFetch(
-    'POST',
-    '/api/drive/folders',
-    { folderName: name, parentFolderId: parentId },
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error(`fonts_folder_create_failed_${res.status}`);
-  const data = (await res.json()) as { folder?: { id?: string }; id?: string };
-  const id = data.folder?.id || data.id;
-  if (!id) throw new Error('fonts_folder_create_no_id');
-  return id;
-}
-
-async function ensurePenRootFolderId(pnIdentifier: string): Promise<string> {
-  const q = encodeURIComponent(
-    `name='par-noir-pen' and mimeType='${FOLDER_MIME}' and trashed=false`
-  );
-  const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=10`, { pnIdentifier });
-  if (res.ok) {
-    const data = (await res.json()) as { files?: Array<{ id?: string; name?: string }> };
-    const hit = (data.files || []).find((f) => f.id && f.name === 'par-noir-pen');
-    if (hit?.id) return hit.id;
-  }
-  const create = await ownerFetch(
-    'POST',
-    '/api/drive/folders',
-    { folderName: 'par-noir-pen' },
-    { pnIdentifier }
-  );
-  if (!create.ok) throw new Error(`pen_root_create_failed_${create.status}`);
-  const data = (await create.json()) as { folder?: { id?: string }; id?: string };
-  const id = data.folder?.id || data.id;
-  if (!id) throw new Error('pen_root_create_no_id');
-  return id;
-}
-
 async function writeOpaqueFile(params: {
-  pnIdentifier: string;
+  accessToken: string;
   parentId: string;
   fileName: string;
   bytes: Uint8Array;
   mimeType?: string;
 }): Promise<string> {
-  const fileData = bytesToB64(params.bytes);
-  const existingId = await findChildFileId(
-    params.pnIdentifier,
+  return upsertDriveChildFileB64(
+    params.accessToken,
     params.parentId,
-    params.fileName
+    params.fileName,
+    bytesToB64(params.bytes),
+    params.mimeType || 'application/octet-stream'
   );
-  if (existingId) {
-    const res = await ownerFetch(
-      'PUT',
-      `/api/drive/files/${encodeURIComponent(existingId)}/content`,
-      {
-        fileData,
-        mimeType: params.mimeType || 'application/octet-stream'
-      },
-      { pnIdentifier: params.pnIdentifier }
-    );
-    if (!res.ok) throw new Error(`fonts_put_failed_${res.status}`);
-    return existingId;
-  }
-  const res = await ownerFetch(
-    'POST',
-    '/api/drive/files',
-    {
-      fileData,
-      fileName: params.fileName,
-      mimeType: params.mimeType || 'application/octet-stream',
-      encrypt: false,
-      parents: [params.parentId]
-    },
-    { pnIdentifier: params.pnIdentifier }
-  );
-  if (!res.ok) throw new Error(`fonts_upload_failed_${res.status}`);
-  const data = (await res.json()) as { id?: string; file?: { id?: string } };
-  const id = data.id || data.file?.id;
-  if (!id) throw new Error('fonts_upload_no_id');
-  return id;
 }
 
 export async function uploadPersonalFont(params: {
@@ -200,17 +103,13 @@ export async function uploadPersonalFont(params: {
   const envelope = await encryptMediaBytes(plain, keyB64);
   const envelopeBytes = utf8Bytes(envelope);
 
-  const penRootId = await ensurePenRootFolderId(params.pnIdentifier);
-  const fontsRootId = await ensureChildFolder(params.pnIdentifier, penRootId, 'fonts');
-  const fontFolderId = await ensureChildFolder(
-    params.pnIdentifier,
-    fontsRootId,
-    sanitizeSegment(fontId)
-  );
+  const drive = await sessionDriveFor(params.pnIdentifier);
+  const penRootId = await ensurePenRoot(drive.accessToken, drive.index.pnFolderId);
+  const fontFolderId = await ensurePenFontFolder(drive.accessToken, drive.index.pnFolderId, fontId);
 
   const binaryName = `${sanitizeSegment(fontId)}.penfont`;
   await writeOpaqueFile({
-    pnIdentifier: params.pnIdentifier,
+    accessToken: drive.accessToken,
     parentId: fontFolderId,
     fileName: binaryName,
     bytes: envelopeBytes,
@@ -225,7 +124,7 @@ export async function uploadPersonalFont(params: {
     createdAt: new Date().toISOString()
   };
   await writeOpaqueFile({
-    pnIdentifier: params.pnIdentifier,
+    accessToken: drive.accessToken,
     parentId: fontFolderId,
     fileName: 'font.json',
     bytes: utf8Bytes(JSON.stringify(entry)),
@@ -241,7 +140,7 @@ export async function uploadPersonalFont(params: {
   savePersonalFonts(params.pnIdentifier, next);
 
   await writeOpaqueFile({
-    pnIdentifier: params.pnIdentifier,
+    accessToken: drive.accessToken,
     parentId: penRootId,
     fileName: PEN_FONTS_INDEX_NAME,
     bytes: utf8Bytes(JSON.stringify(next)),

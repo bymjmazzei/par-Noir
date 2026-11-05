@@ -3,8 +3,10 @@
  * api/src/server/modules/storage/cloudLayoutMigrations.ts).
  */
 
-import { DEVICE_PN_LAYOUT, findOrCreateFolder } from './deviceDriveFind.js';
+import { PEN_ROOT } from '@par-noir/pen-protocol';
+import { DEVICE_PN_LAYOUT } from './deviceDriveFind.js';
 import { deviceDriveCall } from './deviceDriveCall.js';
+import { DRIVE_FOLDER_MIME, ensureDriveChildFolder } from './driveChild.js';
 import type { DeviceDriveLayout } from './deviceDriveLayout.js';
 import { readSheetValues, writeSheetValues } from './deviceSheet.js';
 
@@ -28,9 +30,6 @@ const INBOX_HEADER_ROW = [
   'wrappedMessageRootKey',
   'channelClientId',
 ];
-
-const PEN_ROOT_FOLDER_NAME = 'par-noir-pen';
-const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 async function listPnRootChildren(
   accessToken: string,
@@ -98,44 +97,44 @@ async function runRootBlobsV2Migration(
     throw new Error('DRIVE_NOT_INITIALIZED');
   }
   const children = await listPnRootChildren(accessToken, index.pnFolderId, fetchImpl);
-  const loose = children.filter((c) => c.mimeType !== FOLDER_MIME);
+  const loose = children.filter((c) => c.mimeType !== DRIVE_FOLDER_MIME);
   if (loose.length > 0) {
     throw new Error(
       'Loose files remain in the pN root; full relocate is not available on device yet. Move them manually or contact support.'
     );
   }
 
-  const filesFolderId = await findOrCreateFolder(
+  const filesFolderId = await ensureDriveChildFolder(
     accessToken,
+    index.pnFolderId,
     DEVICE_PN_LAYOUT.filesDir,
-    index.pnFolderId,
     fetchImpl
   );
-  const contentFolderId = await findOrCreateFolder(
+  const contentFolderId = await ensureDriveChildFolder(
     accessToken,
+    index.pnFolderId,
     DEVICE_PN_LAYOUT.contentDir,
-    index.pnFolderId,
     fetchImpl
   );
-  const contentNotesFolderId = await findOrCreateFolder(
+  const contentNotesFolderId = await ensureDriveChildFolder(
     accessToken,
+    contentFolderId,
     DEVICE_PN_LAYOUT.contentNotes,
-    contentFolderId,
     fetchImpl
   );
-  const contentMediaFolderId = await findOrCreateFolder(
+  const contentMediaFolderId = await ensureDriveChildFolder(
     accessToken,
+    contentFolderId,
     DEVICE_PN_LAYOUT.contentMedia,
-    contentFolderId,
     fetchImpl
   );
-  const contentCollectionsFolderId = await findOrCreateFolder(
+  const contentCollectionsFolderId = await ensureDriveChildFolder(
     accessToken,
-    DEVICE_PN_LAYOUT.contentCollections,
     contentFolderId,
+    DEVICE_PN_LAYOUT.contentCollections,
     fetchImpl
   );
-  await findOrCreateFolder(accessToken, PEN_ROOT_FOLDER_NAME, index.pnFolderId, fetchImpl);
+  await ensureDriveChildFolder(accessToken, index.pnFolderId, PEN_ROOT, fetchImpl);
 
   const next: DeviceDriveLayout = {
     ...index,

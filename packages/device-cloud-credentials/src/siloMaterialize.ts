@@ -12,11 +12,14 @@ import type {
   StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
 import {
+  MESSAGES_DIR,
   outboxRecordPath,
   pnRootFolderName,
   resolveSocialCloudProvider,
   TABLE_PATHS
 } from '@par-noir/user-owned-storage';
+import { deviceDriveCall } from './deviceDriveCall.js';
+import { ensureDriveChildFolder, findDriveChild, upsertDriveChildFile } from './driveChild.js';
 import { accountAccessToken, freshAccessTokenFromEnvelope } from './driveTokenResolver.js';
 import type { MailboxJob } from './types.js';
 import type { OutboxRecord } from './outbox.js';
@@ -203,180 +206,37 @@ function googleDriveWriter(
     credentials.cachedLayout?.nodeIds?.pnFolderId ||
     null;
 
-  async function ensureMessagesFolder(): Promise<string> {
+  /** `par-noir-messages/<sub>/<name>` key → parent folder id and file name. */
+  async function resolveKey(key: string): Promise<{ parent: string; name: string }> {
     if (!folderId) {
       throw new Error('Google Drive folder id missing in layout — reconnect Drive');
     }
-    const q = encodeURIComponent(
-      `name='par-noir-messages' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
-    );
-    const list = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (!list.ok) throw new Error(`Drive list failed: ${list.status}`);
-    const body = (await list.json()) as { files?: Array<{ id: string }> };
-    if (body.files?.[0]?.id) return body.files[0].id;
-    const create = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: 'par-noir-messages',
-        mimeType: 'application/vnd.google-apps.folder',
-        parents: [folderId]
-      })
-    });
-    if (!create.ok) throw new Error(`Drive mkdir failed: ${create.status}`);
-    const created = (await create.json()) as { id: string };
-    return created.id;
-  }
-
-  async function findOrCreateFile(parentId: string, name: string): Promise<string> {
-    const q = encodeURIComponent(
-      `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and trashed=false`
-    );
-    const list = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (!list.ok) throw new Error(`Drive find failed: ${list.status}`);
-    const body = (await list.json()) as { files?: Array<{ id: string }> };
-    if (body.files?.[0]?.id) return body.files[0].id;
-    const meta = new Blob(
-      [
-        JSON.stringify({
-          name,
-          parents: [parentId]
-        })
-      ],
-      { type: 'application/json' }
-    );
-    const form = new FormData();
-    form.append('metadata', meta);
-    form.append('file', new Blob([''], { type: 'text/plain' }));
-    const create = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: form
-      }
-    );
-    if (!create.ok) throw new Error(`Drive create file failed: ${create.status}`);
-    const created = (await create.json()) as { id: string };
-    return created.id;
+    const messagesId = await ensureDriveChildFolder(accessToken, folderId, MESSAGES_DIR);
+    const parts = key.replace(/^par-noir-messages\//, '').split('/');
+    const parent =
+      parts.length > 1 ? await ensureDriveChildFolder(accessToken, messagesId, parts[0]!) : messagesId;
+    return { parent, name: parts[parts.length - 1]! };
   }
 
   void pnIdentifier;
 
   return {
     async getText(key) {
-      const messagesId = await ensureMessagesFolder();
-      // keys are like par-noir-messages/foo — strip dir, use basename under messages folder / _outbox
-      const parts = key.replace(/^par-noir-messages\//, '').split('/');
-      let parent = messagesId;
-      if (parts.length > 1) {
-        // ensure subfolder (e.g. _outbox)
-        const sub = parts[0];
-        const q = encodeURIComponent(
-          `name='${sub}' and '${messagesId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
-        );
-        const list = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        if (!list.ok) throw new Error(`Drive subfolder list failed: ${list.status}`);
-        const body = (await list.json()) as { files?: Array<{ id: string }> };
-        if (body.files?.[0]?.id) {
-          parent = body.files[0].id;
-        } else {
-          const create = await fetch('https://www.googleapis.com/drive/v3/files', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              name: sub,
-              mimeType: 'application/vnd.google-apps.folder',
-              parents: [messagesId]
-            })
-          });
-          if (!create.ok) throw new Error(`Drive subfolder create failed: ${create.status}`);
-          parent = ((await create.json()) as { id: string }).id;
-        }
-      }
-      const name = parts[parts.length - 1];
-      const q = encodeURIComponent(
-        `name='${name.replace(/'/g, "\\'")}' and '${parent}' in parents and trashed=false`
-      );
-      const list = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      if (!list.ok) throw new Error(`Drive get list failed: ${list.status}`);
-      const body = (await list.json()) as { files?: Array<{ id: string }> };
-      const id = body.files?.[0]?.id;
+      const { parent, name } = await resolveKey(key);
+      const id = await findDriveChild(accessToken, parent, name, { strict: true });
       if (!id) return null;
-      const res = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${id}?alt=media`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+      const res = await deviceDriveCall(
+        'GET',
+        `/api/drive/files/${encodeURIComponent(id)}?download=true`,
+        undefined,
+        { accessToken }
       );
       if (!res.ok) throw new Error(`Drive download failed: ${res.status}`);
       return res.text();
     },
-    async putText(key, text, contentType = 'application/json') {
-      void contentType;
-      const messagesId = await ensureMessagesFolder();
-      const parts = key.replace(/^par-noir-messages\//, '').split('/');
-      let parent = messagesId;
-      if (parts.length > 1) {
-        const sub = parts[0];
-        const q = encodeURIComponent(
-          `name='${sub}' and '${messagesId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
-        );
-        const list = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        if (!list.ok) throw new Error(`Drive put list failed: ${list.status}`);
-        const body = (await list.json()) as { files?: Array<{ id: string }> };
-        if (body.files?.[0]?.id) {
-          parent = body.files[0].id;
-        } else {
-          const create = await fetch('https://www.googleapis.com/drive/v3/files', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              name: sub,
-              mimeType: 'application/vnd.google-apps.folder',
-              parents: [messagesId]
-            })
-          });
-          if (!create.ok) throw new Error(`Drive put mkdir failed: ${create.status}`);
-          parent = ((await create.json()) as { id: string }).id;
-        }
-      }
-      const name = parts[parts.length - 1];
-      const fileId = await findOrCreateFile(parent, name);
-      const res = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-        {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'text/plain'
-          },
-          body: text
-        }
-      );
-      if (!res.ok) throw new Error(`Drive upload failed: ${res.status}`);
+    async putText(key, text) {
+      const { parent, name } = await resolveKey(key);
+      await upsertDriveChildFile(accessToken, parent, name, text, 'text/plain');
     }
   };
 }

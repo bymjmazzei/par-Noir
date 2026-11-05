@@ -18,9 +18,9 @@ import {
   type WidgetWriteTrigger
 } from '@par-noir/pen-protocol';
 import { readSheetValues, writeSheetValues } from './deviceSheet.js';
+import { createDriveChildSpreadsheet } from './driveChild.js';
 
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
-const DRIVE = 'https://www.googleapis.com/drive/v3';
 
 function columnName(count: number): string {
   let n = Math.max(1, count);
@@ -37,37 +37,22 @@ function headers(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
 }
 
+/** A new Poll or Taps sheet inside `parentFolderId` (the doc's `par-noir-pen/{docId}/` folder). */
 export async function createPollSpreadsheetOnDevice(
   accessToken: string,
-  input: { title: string; structure: PollStructure; parentFolderId?: string },
+  input: { title: string; structure: PollStructure; parentFolderId: string },
   fetchImpl: typeof fetch = fetch
 ): Promise<string> {
-  const createRes = await fetchImpl(SHEETS, {
-    method: 'POST',
-    headers: headers(accessToken),
-    body: JSON.stringify({
-      properties: { title: input.title },
-      sheets: [
-        { properties: { title: POLL_DATA_SHEET } },
-        { properties: { title: POLL_STRUCTURE_SHEET } }
-      ]
-    })
-  });
-  if (!createRes.ok) throw new Error(`poll_sheet_create_failed_${createRes.status}`);
-  const created = (await createRes.json()) as { spreadsheetId?: string };
-  const spreadsheetId = created.spreadsheetId?.trim();
-  if (!spreadsheetId) throw new Error('poll_sheet_create_failed');
-  if (input.parentFolderId) {
-    const infoRes = await fetchImpl(`${DRIVE}/files/${spreadsheetId}?fields=parents`, {
-      headers: headers(accessToken)
-    });
-    const info = (await infoRes.json()) as { parents?: string[] };
-    const parents = (info.parents || []).join(',');
-    await fetchImpl(
-      `${DRIVE}/files/${spreadsheetId}?addParents=${encodeURIComponent(input.parentFolderId)}&removeParents=${encodeURIComponent(parents)}&fields=id`,
-      { method: 'PATCH', headers: headers(accessToken) }
-    );
-  }
+  const spreadsheetId = await createDriveChildSpreadsheet(
+    accessToken,
+    input.parentFolderId,
+    {
+      driveFileName: input.title,
+      sheets: [{ title: POLL_DATA_SHEET }, { title: POLL_STRUCTURE_SHEET }],
+      headers: []
+    },
+    fetchImpl
+  );
   await writePollStructureOnDevice(accessToken, spreadsheetId, input.structure, fetchImpl);
   return spreadsheetId;
 }

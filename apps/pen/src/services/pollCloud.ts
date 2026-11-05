@@ -2,8 +2,7 @@
  * Widget sheet + respond/view rail. Sheets are created on the owner's device.
  */
 
-import { createPollSpreadsheetOnDevice } from '@par-noir/device-cloud-credentials';
-import { getCloudAccessTokenFromSession } from '@par-noir/device-cloud-credentials';
+import { createPollSpreadsheetOnDevice, ensureDocFolder } from '@par-noir/device-cloud-credentials';
 import {
   backendKindForGroup,
   encodeWidgetId,
@@ -15,6 +14,7 @@ import {
   type PenSectionContent,
   type WidgetViewPayload
 } from '@par-noir/pen-protocol';
+import { penSessionDrive } from './penDriveLibrary';
 import { apiFetch, ownerGet } from './penOwnerFetch';
 import type { PenSession } from './penSession';
 
@@ -33,14 +33,14 @@ export async function ensureWidgetSheet(input: {
   section: PenSectionContent;
   title?: string;
 }): Promise<string> {
-  const cloudToken = getCloudAccessTokenFromSession(input.session.pnIdentifier);
-  if (!cloudToken) throw new Error('cloud_token_required');
+  const drive = await penSessionDrive(input.session.pnIdentifier);
+  const docFolderId = await ensureDocFolder(drive.accessToken, drive.index.pnFolderId, input.docId);
   const structure = structureFromLayers(input.section, input.groupId);
-  const spreadsheetId = await createPollSpreadsheetOnDevice(cloudToken, {
+  return createPollSpreadsheetOnDevice(drive.accessToken, {
     title: input.title || `Poll ${input.docId.slice(0, 8)}`,
-    structure
+    structure,
+    parentFolderId: docFolderId
   });
-  return spreadsheetId;
 }
 
 /** @deprecated use ensureWidgetSheet */

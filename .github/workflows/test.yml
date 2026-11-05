@@ -49,6 +49,9 @@ jobs:
       - name: Dual Drive helper boundary
         run: PN_CHECK_ALL=1 bash scripts/check-dual-drive-helper-boundary.sh
 
+      - name: Drive create boundary
+        run: bash scripts/check-drive-create-boundary.sh
+
       - name: Googleapis resolver import boundary
         run: PN_CHECK_ALL=1 bash scripts/check-googleapis-resolver-import.sh
 

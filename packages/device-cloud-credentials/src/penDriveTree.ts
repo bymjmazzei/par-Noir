@@ -1,12 +1,20 @@
 /**
  * Pen library and doc tree on the owner's Drive (`par-noir-pen/`), read and written on the device.
  * Bodies stay opaque here: section files are docKey envelopes, decrypted by penCloudDoc.
+ * Writes to one doc (and to the library index) run one at a time so autosave, bootstrap,
+ * live snapshot, media and publish never race each other into duplicate files.
  */
 
 import { PEN_ROOT, docRootPath, sanitizeSegment } from '@par-noir/pen-protocol';
 import { deviceDriveCall } from './deviceDriveCall.js';
-
-const FOLDER = 'application/vnd.google-apps.folder';
+import {
+  DRIVE_FOLDER_MIME as FOLDER,
+  ensureDriveChildFolder,
+  findDriveChild,
+  forgetDriveChild,
+  runSerial,
+  upsertDriveChildFile,
+} from './driveChild.js';
 
 export type PenCloudSectionFile = { slug: string; ciphertext: string };
 
@@ -17,25 +25,25 @@ export type PenDocTree = {
   drafts: Array<{ draft: unknown; sections: PenCloudSectionFile[] }>;
 };
 
-async function findChild(
+const LIBRARY_INDEX_FILE = 'library.index.json';
+const LIVE_SNAPSHOT_FILE = 'live.ysnap';
+const FONTS_DIR = 'fonts';
+
+function docQueueKey(pnFolderId: string, docId: string): string {
+  return `pen-doc|${pnFolderId}|${docId}`;
+}
+
+function libraryQueueKey(pnFolderId: string): string {
+  return `pen-library|${pnFolderId}`;
+}
+
+function findChild(
   accessToken: string,
   parentId: string,
   name: string,
   mimeType?: string
 ): Promise<string | null> {
-  const parts = [
-    `name='${name.replace(/'/g, "\\'")}'`,
-    `'${parentId}' in parents`,
-    'trashed=false',
-  ];
-  if (mimeType) parts.push(`mimeType='${mimeType}'`);
-  const q = encodeURIComponent(parts.join(' and '));
-  const res = await deviceDriveCall('GET', `/api/drive/files?q=${q}&pageSize=1`, undefined, {
-    accessToken,
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { files?: Array<{ id?: string }> };
-  return data.files?.[0]?.id || null;
+  return findDriveChild(accessToken, parentId, name, { mimeType });
 }
 
 async function listChildren(
@@ -46,14 +54,22 @@ async function listChildren(
   const parts = [`'${parentId}' in parents`, 'trashed=false'];
   if (mimeType) parts.push(`mimeType='${mimeType}'`);
   const q = encodeURIComponent(parts.join(' and '));
-  const res = await deviceDriveCall('GET', `/api/drive/files?q=${q}&pageSize=100`, undefined, {
-    accessToken,
-  });
+  const res = await deviceDriveCall(
+    'GET',
+    `/api/drive/files?q=${q}&orderBy=createdTime&pageSize=100`,
+    undefined,
+    { accessToken }
+  );
   if (!res.ok) return [];
   const data = (await res.json()) as { files?: Array<{ id?: string; name?: string }> };
-  return (data.files || [])
-    .filter((f) => f.id && f.name)
-    .map((f) => ({ id: f.id as string, name: f.name as string }));
+  const seen = new Set<string>();
+  const out: Array<{ id: string; name: string }> = [];
+  for (const f of data.files || []) {
+    if (!f.id || !f.name || seen.has(f.name)) continue;
+    seen.add(f.name);
+    out.push({ id: f.id, name: f.name });
+  }
+  return out;
 }
 
 export async function downloadDriveText(accessToken: string, fileId: string): Promise<string> {
@@ -75,13 +91,27 @@ export async function penRootFolderId(accessToken: string, pnFolderId: string): 
   return findChild(accessToken, pnFolderId, PEN_ROOT, FOLDER);
 }
 
+export function ensurePenRoot(accessToken: string, pnFolderId: string): Promise<string> {
+  return ensureDriveChildFolder(accessToken, pnFolderId, PEN_ROOT);
+}
+
+/** `par-noir-pen/{docId}/`: doc files, plus its Poll and Taps sheets. */
+export async function ensureDocFolder(
+  accessToken: string,
+  pnFolderId: string,
+  docId: string
+): Promise<string> {
+  const root = await ensurePenRoot(accessToken, pnFolderId);
+  return ensureDriveChildFolder(accessToken, root, docFolderName(docId));
+}
+
 export async function readLibraryIndex(
   accessToken: string,
   pnFolderId: string
 ): Promise<Record<string, unknown>[]> {
   const root = await penRootFolderId(accessToken, pnFolderId);
   if (!root) return [];
-  const indexId = await findChild(accessToken, root, 'library.index.json');
+  const indexId = await findChild(accessToken, root, LIBRARY_INDEX_FILE);
   if (!indexId) return [];
   const text = await downloadDriveText(accessToken, indexId);
   try {
@@ -156,63 +186,6 @@ export async function readDocTree(params: {
   return { manifest, chain, currentSections, drafts };
 }
 
-function textToB64(text: string): string {
-  return btoa(unescape(encodeURIComponent(text)));
-}
-
-async function ensureChildFolder(
-  accessToken: string,
-  parentId: string,
-  name: string
-): Promise<string> {
-  const existing = await findChild(accessToken, parentId, name, FOLDER);
-  if (existing) return existing;
-  const res = await deviceDriveCall(
-    'POST',
-    '/api/drive/folders',
-    { folderName: name, parentFolderId: parentId },
-    { accessToken }
-  );
-  if (!res.ok) throw new Error(`folder_create_failed_${res.status}`);
-  const data = (await res.json()) as { folder?: { id?: string } };
-  if (!data.folder?.id) throw new Error('folder_create_no_id');
-  return data.folder.id;
-}
-
-async function writeNamedText(
-  accessToken: string,
-  parentId: string,
-  name: string,
-  text: string,
-  mimeType = 'application/json'
-): Promise<void> {
-  const fileData = textToB64(text);
-  const existing = await findChild(accessToken, parentId, name);
-  if (existing) {
-    const res = await deviceDriveCall(
-      'PUT',
-      `/api/drive/files/${encodeURIComponent(existing)}/content`,
-      { fileData, mimeType },
-      { accessToken }
-    );
-    if (!res.ok) throw new Error(`file_update_failed_${res.status}`);
-    return;
-  }
-  const res = await deviceDriveCall(
-    'POST',
-    '/api/drive/files',
-    { fileData, fileName: name, mimeType, parents: [parentId] },
-    { accessToken }
-  );
-  if (!res.ok) throw new Error(`file_create_failed_${res.status}`);
-}
-
-export async function ensurePenRoot(accessToken: string, pnFolderId: string): Promise<string> {
-  const existing = await penRootFolderId(accessToken, pnFolderId);
-  if (existing) return existing;
-  return ensureChildFolder(accessToken, pnFolderId, PEN_ROOT);
-}
-
 /** `media` or `public` under par-noir-pen/{docId}/. */
 export async function ensureDocChildFolder(
   accessToken: string,
@@ -220,33 +193,44 @@ export async function ensureDocChildFolder(
   docId: string,
   child: 'media' | 'public'
 ): Promise<string> {
-  const root = await ensurePenRoot(accessToken, pnFolderId);
-  const docFolder = await ensureChildFolder(accessToken, root, docFolderName(docId));
-  return ensureChildFolder(accessToken, docFolder, child);
+  const docFolder = await ensureDocFolder(accessToken, pnFolderId, docId);
+  return ensureDriveChildFolder(accessToken, docFolder, child);
 }
 
-export async function writeLibraryIndex(
+async function writeLibraryIndexUnqueued(
   accessToken: string,
   pnFolderId: string,
   rows: Record<string, unknown>[]
 ): Promise<void> {
   const root = await ensurePenRoot(accessToken, pnFolderId);
-  await writeNamedText(accessToken, root, 'library.index.json', JSON.stringify(rows));
+  await upsertDriveChildFile(accessToken, root, LIBRARY_INDEX_FILE, JSON.stringify(rows));
 }
 
-export async function upsertLibrarySummary(
+export function writeLibraryIndex(
+  accessToken: string,
+  pnFolderId: string,
+  rows: Record<string, unknown>[]
+): Promise<void> {
+  return runSerial(libraryQueueKey(pnFolderId), () =>
+    writeLibraryIndexUnqueued(accessToken, pnFolderId, rows)
+  );
+}
+
+export function upsertLibrarySummary(
   accessToken: string,
   pnFolderId: string,
   summary: Record<string, unknown>
 ): Promise<void> {
-  const rows = await readLibraryIndex(accessToken, pnFolderId);
-  const docId = String(summary.docId || '');
-  const next = rows.filter((row) => String(row.docId || '') !== docId);
-  next.unshift(summary);
-  await writeLibraryIndex(accessToken, pnFolderId, next);
+  return runSerial(libraryQueueKey(pnFolderId), async () => {
+    const rows = await readLibraryIndex(accessToken, pnFolderId);
+    const docId = String(summary.docId || '');
+    const next = rows.filter((row) => String(row.docId || '') !== docId);
+    next.unshift(summary);
+    await writeLibraryIndexUnqueued(accessToken, pnFolderId, next);
+  });
 }
 
-export async function writePenDocFiles(params: {
+export function writePenDocFiles(params: {
   accessToken: string;
   pnFolderId: string;
   docId: string;
@@ -259,62 +243,53 @@ export async function writePenDocFiles(params: {
     sections?: PenCloudSectionFile[];
   };
 }): Promise<void> {
-  const root = await ensurePenRoot(params.accessToken, params.pnFolderId);
-  const docFolder = await ensureChildFolder(params.accessToken, root, docFolderName(params.docId));
-  await writeNamedText(params.accessToken, docFolder, 'doc.json', JSON.stringify(params.manifest));
-  if (params.chain !== undefined) {
-    await writeNamedText(
-      params.accessToken,
-      docFolder,
-      'history.chain',
-      JSON.stringify(params.chain)
-    );
-  }
-  if (params.currentSections) {
-    const current = await ensureChildFolder(params.accessToken, docFolder, 'current');
-    for (const section of params.currentSections) {
-      await writeNamedText(
-        params.accessToken,
-        current,
-        `${sanitizeSegment(section.slug)}.pen`,
-        section.ciphertext,
-        'text/plain'
-      );
+  return runSerial(docQueueKey(params.pnFolderId, params.docId), async () => {
+    const { accessToken } = params;
+    const docFolder = await ensureDocFolder(accessToken, params.pnFolderId, params.docId);
+    await upsertDriveChildFile(accessToken, docFolder, 'doc.json', JSON.stringify(params.manifest));
+    if (params.chain !== undefined) {
+      await upsertDriveChildFile(accessToken, docFolder, 'history.chain', JSON.stringify(params.chain));
     }
-  }
-  if (params.draft) {
-    const drafts = await ensureChildFolder(params.accessToken, docFolder, 'drafts');
-    const draftFolder = await ensureChildFolder(params.accessToken, drafts, params.draft.id);
-    await writeNamedText(
-      params.accessToken,
-      draftFolder,
-      'draft.json',
-      JSON.stringify(params.draft.draft)
-    );
-    for (const section of params.draft.sections || []) {
-      await writeNamedText(
-        params.accessToken,
-        draftFolder,
-        `${sanitizeSegment(section.slug)}.pen`,
-        section.ciphertext,
-        'text/plain'
-      );
+    if (params.currentSections) {
+      const current = await ensureDriveChildFolder(accessToken, docFolder, 'current');
+      for (const section of params.currentSections) {
+        await upsertDriveChildFile(
+          accessToken,
+          current,
+          `${sanitizeSegment(section.slug)}.pen`,
+          section.ciphertext,
+          'text/plain'
+        );
+      }
     }
-  }
+    if (params.draft) {
+      const drafts = await ensureDriveChildFolder(accessToken, docFolder, 'drafts');
+      const draftFolder = await ensureDriveChildFolder(accessToken, drafts, params.draft.id);
+      await upsertDriveChildFile(accessToken, draftFolder, 'draft.json', JSON.stringify(params.draft.draft));
+      for (const section of params.draft.sections || []) {
+        await upsertDriveChildFile(
+          accessToken,
+          draftFolder,
+          `${sanitizeSegment(section.slug)}.pen`,
+          section.ciphertext,
+          'text/plain'
+        );
+      }
+    }
+  });
 }
 
-const LIVE_SNAPSHOT_FILE = 'live.ysnap';
-
 /** Sealed Yjs live state (docKey envelope JSON) beside doc.json. */
-export async function writeLiveSnapshotFile(params: {
+export function writeLiveSnapshotFile(params: {
   accessToken: string;
   pnFolderId: string;
   docId: string;
   sealedJson: string;
 }): Promise<void> {
-  const root = await ensurePenRoot(params.accessToken, params.pnFolderId);
-  const docFolder = await ensureChildFolder(params.accessToken, root, docFolderName(params.docId));
-  await writeNamedText(params.accessToken, docFolder, LIVE_SNAPSHOT_FILE, params.sealedJson);
+  return runSerial(docQueueKey(params.pnFolderId, params.docId), async () => {
+    const docFolder = await ensureDocFolder(params.accessToken, params.pnFolderId, params.docId);
+    await upsertDriveChildFile(params.accessToken, docFolder, LIVE_SNAPSHOT_FILE, params.sealedJson);
+  });
 }
 
 export async function readLiveSnapshotFile(params: {
@@ -336,15 +311,61 @@ export async function removePenDoc(
   pnFolderId: string,
   docId: string
 ): Promise<void> {
-  const rows = (await readLibraryIndex(accessToken, pnFolderId)).filter(
-    (row) => String(row.docId || '') !== docId
-  );
-  await writeLibraryIndex(accessToken, pnFolderId, rows);
-  const root = await penRootFolderId(accessToken, pnFolderId);
-  if (!root) return;
-  const folder = await findChild(accessToken, root, docFolderName(docId), FOLDER);
-  if (!folder) return;
-  await deviceDriveCall('DELETE', `/api/drive/files/${encodeURIComponent(folder)}`, undefined, {
-    accessToken,
+  await runSerial(libraryQueueKey(pnFolderId), async () => {
+    const rows = (await readLibraryIndex(accessToken, pnFolderId)).filter(
+      (row) => String(row.docId || '') !== docId
+    );
+    await writeLibraryIndexUnqueued(accessToken, pnFolderId, rows);
   });
+  await runSerial(docQueueKey(pnFolderId, docId), async () => {
+    const root = await penRootFolderId(accessToken, pnFolderId);
+    if (!root) return;
+    const name = docFolderName(docId);
+    const folder = await findChild(accessToken, root, name, FOLDER);
+    if (!folder) return;
+    await deviceDriveCall('DELETE', `/api/drive/files/${encodeURIComponent(folder)}`, undefined, {
+      accessToken,
+    });
+    forgetDriveChild(root, name);
+  });
+}
+
+/** Owner My Fonts: `par-noir-pen/fonts/{fontId}/`. */
+export async function ensurePenFontFolder(
+  accessToken: string,
+  pnFolderId: string,
+  fontId: string
+): Promise<string> {
+  const root = await ensurePenRoot(accessToken, pnFolderId);
+  const fonts = await ensureDriveChildFolder(accessToken, root, FONTS_DIR);
+  return ensureDriveChildFolder(accessToken, fonts, sanitizeSegment(fontId));
+}
+
+/** `par-noir-pen/fonts/{fontId}/` when it exists; reads never create folders. */
+export async function findPenFontFolder(
+  accessToken: string,
+  pnFolderId: string,
+  fontId: string
+): Promise<string | null> {
+  const root = await penRootFolderId(accessToken, pnFolderId);
+  if (!root) return null;
+  const fonts = await findChild(accessToken, root, FONTS_DIR, FOLDER);
+  if (!fonts) return null;
+  return findChild(accessToken, fonts, sanitizeSegment(fontId), FOLDER);
+}
+
+/** Doc-scoped font copy: `par-noir-pen/{docId}/fonts/{fontId}.penfont`, or null. */
+export async function findDocFontFile(
+  accessToken: string,
+  pnFolderId: string,
+  docId: string,
+  fontId: string
+): Promise<string | null> {
+  const root = await penRootFolderId(accessToken, pnFolderId);
+  if (!root) return null;
+  const docFolder = await findChild(accessToken, root, docFolderName(docId), FOLDER);
+  if (!docFolder) return null;
+  const fonts = await findChild(accessToken, docFolder, FONTS_DIR, FOLDER);
+  if (!fonts) return null;
+  return findChild(accessToken, fonts, `${sanitizeSegment(fontId)}.penfont`);
 }

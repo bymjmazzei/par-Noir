@@ -8,18 +8,21 @@ describe('ensureDeviceDriveLayout', () => {
   it('creates a short-named root tagged with the pN id, reports every step, and never calls the API', async () => {
     const rootCreates: Array<{ name?: string; appProperties?: Record<string, string> }> = [];
     let n = 0;
-    const sheetCreateBodies: unknown[] = [];
+    const sheetCreates: Array<{ id: string; name?: string; parents?: string[] }> = [];
+    const tabSetups: Record<string, { requests?: unknown[] }> = {};
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(String(url)).not.toContain('api.parnoir.com');
       const urlStr = String(url);
+      expect(urlStr.endsWith('/v4/spreadsheets')).toBe(false);
       if (urlStr.includes('drive/v3/files?') && (!init || init.method === undefined || init.method === 'GET')) {
         return new Response(JSON.stringify({ files: [] }), { status: 200 });
       }
       n += 1;
       const id = `id-${n}`;
-      if (urlStr.includes('sheets.googleapis.com/v4/spreadsheets') && init?.method === 'POST') {
-        sheetCreateBodies.push(JSON.parse(String(init.body)));
-        return new Response(JSON.stringify({ spreadsheetId: id }), { status: 200 });
+      const batch = urlStr.match(/\/v4\/spreadsheets\/([^/:?]+):batchUpdate/);
+      if (batch && init?.method === 'POST') {
+        tabSetups[decodeURIComponent(batch[1]!)] = JSON.parse(String(init.body));
+        return new Response(JSON.stringify({}), { status: 200 });
       }
       if (urlStr.includes('/values/')) {
         return new Response(JSON.stringify({}), { status: 200 });
@@ -33,10 +36,14 @@ describe('ensureDeviceDriveLayout', () => {
       if (init?.method === 'POST' && urlStr.includes('drive/v3/files')) {
         const body = JSON.parse(String(init.body)) as {
           name?: string;
+          mimeType?: string;
           parents?: string[];
           appProperties?: Record<string, string>;
         };
         if (!body.parents?.length) rootCreates.push(body);
+        if (body.mimeType === 'application/vnd.google-apps.spreadsheet') {
+          sheetCreates.push({ id, name: body.name, parents: body.parents });
+        }
         return new Response(JSON.stringify({ id, name: body.name }), { status: 200 });
       }
       return new Response(JSON.stringify({ id, files: [] }), { status: 200 });
@@ -63,11 +70,13 @@ describe('ensureDeviceDriveLayout', () => {
     expect(layout.sheetIds.connections).toBeTruthy();
     expect(layout.inboxSheetId).toBeTruthy();
     expect(layout.filesFolderId).toBeTruthy();
-    const indexCreate = sheetCreateBodies.find((b) => {
-      const body = b as { properties?: { title?: string } };
-      return body.properties?.title === 'owner-file-index.xlsx';
-    }) as { sheets?: Array<{ properties?: { title?: string } }> } | undefined;
-    expect(indexCreate?.sheets?.[0]?.properties?.title).toBe('Files');
+    expect(sheetCreates.length).toBeGreaterThan(0);
+    expect(sheetCreates.every((s) => (s.parents?.length ?? 0) > 0)).toBe(true);
+    const indexCreate = sheetCreates.find((s) => s.name === 'owner-file-index.xlsx');
+    const firstTab = tabSetups[indexCreate!.id]?.requests?.[0] as {
+      updateSheetProperties?: { properties?: { title?: string } };
+    };
+    expect(firstTab?.updateSheetProperties?.properties?.title).toBe('Files');
     expect(fetchImpl.mock.calls.some((c) => String(c[0]).includes('/values/Files'))).toBe(true);
     const auth = (fetchImpl.mock.calls.find((c) => String(c[0]).includes('drive'))?.[1] as RequestInit)
       ?.headers as Headers;

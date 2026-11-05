@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { clearDriveChildState } from './driveChild.js';
 import {
   createRecoveryDriveProofSecret,
   deleteLegacyRecoveryWorkbook,
@@ -101,6 +102,10 @@ function entry(epoch: number, custodianId = 'c1'): RecoveryCustodyEntry {
 }
 
 describe('recovery custody on the custodian Drive', () => {
+  beforeEach(() => {
+    clearDriveChildState();
+  });
+
   it('round-trips sealed shares and creates _metadata when missing', async () => {
     const drive = fakeDrive([
       { id: 'root', name: 'par Noir cust', mimeType: FOLDER, parents: [], content: '', appProperties: { pnId: 'pn-cust' } },

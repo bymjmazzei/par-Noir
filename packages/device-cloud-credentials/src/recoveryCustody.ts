@@ -6,7 +6,8 @@
 
 import { METADATA_DIR } from '@par-noir/user-owned-storage';
 import { deviceDriveCall } from './deviceDriveCall.js';
-import { findFolderByName, findOrCreateFolder, findPnRootFolderId } from './deviceDriveFind.js';
+import { findPnRootFolderId } from './deviceDriveFind.js';
+import { DRIVE_FOLDER_MIME, ensureDriveChildFolder, findDriveChild, upsertDriveChildFile } from './driveChild.js';
 import { findRecoveryWorkbookId, listDeviceCustodians, type DeviceCustodian } from './deviceProduct.js';
 
 export const RECOVERY_CUSTODY_FILE = 'recovery-custody.json';
@@ -33,13 +34,6 @@ export type RecoveryDriveOpts = {
   fetchImpl?: typeof fetch;
 };
 
-function textToB64(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
-  return btoa(bin);
-}
-
 async function metadataFolder(opts: RecoveryDriveOpts, create: boolean): Promise<string | null> {
   const root = await findPnRootFolderId(opts.accessToken, opts.pnIdentifier, opts.fetchImpl);
   if (!root) {
@@ -47,13 +41,16 @@ async function metadataFolder(opts: RecoveryDriveOpts, create: boolean): Promise
     return null;
   }
   return create
-    ? findOrCreateFolder(opts.accessToken, METADATA_DIR, root, opts.fetchImpl)
-    : findFolderByName(opts.accessToken, METADATA_DIR, root, opts.fetchImpl);
+    ? ensureDriveChildFolder(opts.accessToken, root, METADATA_DIR, opts.fetchImpl)
+    : findDriveChild(opts.accessToken, root, METADATA_DIR, {
+        mimeType: DRIVE_FOLDER_MIME,
+        fetchImpl: opts.fetchImpl,
+      });
 }
 
 async function findFile(opts: RecoveryDriveOpts, folderId: string, name: string): Promise<string | null> {
   const q = `name='${name}' and '${folderId}' in parents and trashed=false`;
-  const res = await deviceDriveCall('GET', `/api/drive/files?q=${encodeURIComponent(q)}&pageSize=1`, undefined, {
+  const res = await deviceDriveCall('GET', `/api/drive/files?q=${encodeURIComponent(q)}&orderBy=createdTime&pageSize=1`, undefined, {
     accessToken: opts.accessToken,
     fetchImpl: opts.fetchImpl,
   });
@@ -81,23 +78,14 @@ async function readJson<T>(opts: RecoveryDriveOpts, name: string): Promise<T | n
 
 async function writeJson(opts: RecoveryDriveOpts, name: string, value: unknown): Promise<void> {
   const folder = (await metadataFolder(opts, true))!;
-  const fileData = textToB64(JSON.stringify(value));
-  const existing = await findFile(opts, folder, name);
-  const init = { accessToken: opts.accessToken, fetchImpl: opts.fetchImpl };
-  const res = existing
-    ? await deviceDriveCall(
-        'PUT',
-        `/api/drive/files/${encodeURIComponent(existing)}/content`,
-        { fileData, mimeType: 'application/json' },
-        init
-      )
-    : await deviceDriveCall(
-        'POST',
-        '/api/drive/files',
-        { fileData, fileName: name, mimeType: 'application/json', parents: [folder] },
-        init
-      );
-  if (!res.ok) throw new Error(`drive_write_failed_${res.status}`);
+  await upsertDriveChildFile(
+    opts.accessToken,
+    folder,
+    name,
+    JSON.stringify(value),
+    'application/json',
+    opts.fetchImpl
+  );
 }
 
 /** All sealed shares this custodian holds, one per custodian slot (latest epoch). */

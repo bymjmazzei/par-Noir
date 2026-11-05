@@ -38,13 +38,7 @@ export function createFakeGoogle(
 
     if (u.hostname === 'sheets.googleapis.com') {
       const path = decodeURIComponent(u.pathname.replace(/^\/v4\/spreadsheets\/?/, ''));
-      if (!path && method === 'POST') {
-        const id = `created-${++created}`;
-        const tabs: Record<string, string[][]> = {};
-        for (const sheet of body.sheets || []) tabs[sheet.properties.title] = [];
-        files[id] = { name: body.properties.title, parents: ['root'], tabs };
-        return json({ spreadsheetId: id });
-      }
+      if (!path) return json({ error: 'spreadsheets.create lands in My Drive root' }, 400);
       const [id, ...restParts] = path.split('/');
       const rest = restParts.join('/');
       const batch = id.endsWith(':batchUpdate');
@@ -54,11 +48,20 @@ export function createFakeGoogle(
       if (batch) {
         for (const req of body.requests || []) {
           if (req.addSheet) file.tabs[req.addSheet.properties.title] = [];
+          const rename = req.updateSheetProperties?.properties;
+          if (rename?.title !== undefined) {
+            const entries = Object.entries(file.tabs);
+            const at = Number(rename.sheetId);
+            if (entries[at]) entries[at] = [rename.title, entries[at][1]];
+            file.tabs = Object.fromEntries(entries);
+          }
         }
         return json({});
       }
       if (!rest) {
-        return json({ sheets: Object.keys(file.tabs).map((title) => ({ properties: { title } })) });
+        return json({
+          sheets: Object.keys(file.tabs).map((title, i) => ({ properties: { sheetId: i, title } })),
+        });
       }
       if (rest.startsWith('values/')) {
         const append = rest.endsWith(':append');
@@ -82,6 +85,12 @@ export function createFakeGoogle(
 
     if (u.hostname === 'www.googleapis.com' && u.pathname.startsWith('/drive/v3/files')) {
       const id = decodeURIComponent(u.pathname.replace(/^\/drive\/v3\/files\/?/, ''));
+      if (!id && method === 'POST') {
+        const meta = JSON.parse(String(init?.body)) as { name: string; parents?: string[] };
+        const fid = `created-${++created}`;
+        files[fid] = { name: meta.name, parents: meta.parents || [], tabs: { Sheet1: [] } };
+        return json({ id: fid, name: meta.name });
+      }
       if (!id) {
         const q = u.searchParams.get('q') || '';
         const name = /name='([^']+)'/.exec(q)?.[1];
@@ -93,13 +102,6 @@ export function createFakeGoogle(
       }
       const file = files[id];
       if (!file) return json({ error: 'not found' }, 404);
-      if (method === 'PATCH') {
-        const add = u.searchParams.get('addParents');
-        const remove = (u.searchParams.get('removeParents') || '').split(',').filter(Boolean);
-        file.parents = file.parents.filter((p) => !remove.includes(p));
-        if (add) file.parents.push(add);
-        return json({ id, parents: file.parents });
-      }
       return json({ id, name: file.name, parents: file.parents });
     }
 

@@ -198,6 +198,19 @@ export {
 } from './deviceCloudLayoutUpgrade.js';
 export type { DeviceCloudLayoutMigrationId } from './deviceCloudLayoutUpgrade.js';
 export { findPnRootFolderId } from './deviceDriveFind.js';
+export {
+  DRIVE_FOLDER_MIME,
+  DRIVE_SHEET_MIME,
+  findDriveChild,
+  forgetDriveChild,
+  ensureDriveChildFolder,
+  upsertDriveChildFile,
+  upsertDriveChildFileB64,
+  ensureDriveChildSpreadsheet,
+  createDriveChildSpreadsheet,
+  runSerial,
+} from './driveChild.js';
+export type { SpreadsheetSpec, SheetTabSpec, HeaderWrite } from './driveChild.js';
 export { ensureOwnerBlobFolders, blobFolderId } from './ownerBlobFolders.js';
 export type { OwnerBlobFolders, ContentBlobClass } from './ownerBlobFolders.js';
 export {
@@ -287,7 +300,11 @@ export {
   readLibraryIndex,
   readDocTree,
   ensurePenRoot,
+  ensureDocFolder,
   ensureDocChildFolder,
+  ensurePenFontFolder,
+  findPenFontFolder,
+  findDocFontFile,
   writeLibraryIndex,
   upsertLibrarySummary,
   writePenDocFiles,

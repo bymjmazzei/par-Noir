@@ -3,11 +3,10 @@
  */
 
 import {
-  createSpreadsheetInFolder,
-  ensureSpreadsheetInFolder,
+  ensureDriveChildSpreadsheet,
   type HeaderWrite,
   type SpreadsheetSpec,
-} from './deviceSpreadsheetInit.js';
+} from './driveChild.js';
 
 const FILE_INDEX_HEADER: HeaderWrite = {
   range: 'Files!A1:E1',
@@ -19,7 +18,6 @@ const FILE_INDEX_HEADER: HeaderWrite = {
 function indexFilesSpec(driveFileName: string): SpreadsheetSpec {
   return {
     driveFileName,
-    propertiesTitle: driveFileName,
     sheets: [{ title: 'Files', rowCount: 100_000, columnCount: 6 }],
     headers: [FILE_INDEX_HEADER],
   };
@@ -28,7 +26,6 @@ function indexFilesSpec(driveFileName: string): SpreadsheetSpec {
 const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   connections: {
     driveFileName: 'connections.xlsx',
-    propertiesTitle: 'connections.xlsx',
     sheets: [
       { title: 'Connections', rowCount: 100_000, columnCount: 6 },
       { title: 'Blocked', rowCount: 10_000, columnCount: 1 },
@@ -55,7 +52,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   followers: {
     driveFileName: 'followers.xlsx',
-    propertiesTitle: 'followers.xlsx',
     sheets: [{ title: 'Followers', rowCount: 100_000, columnCount: 3 }],
     headers: [
       { range: 'Followers!A1:C1', values: [['Follower DID', 'Followed At', 'Feed ID']] },
@@ -63,7 +59,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   following: {
     driveFileName: 'following.xlsx',
-    propertiesTitle: 'following.xlsx',
     sheets: [{ title: 'Following', rowCount: 100_000, columnCount: 3 }],
     headers: [
       { range: 'Following!A1:C1', values: [['Target Type', 'Target ID', 'Followed At']] },
@@ -71,7 +66,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   'third-party-permissions': {
     driveFileName: 'third-party-permissions.xlsx',
-    propertiesTitle: 'third-party-permissions.xlsx',
     sheets: [{ title: 'Permissions', rowCount: 10_000, columnCount: 15 }],
     headers: [
       {
@@ -100,7 +94,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   devices: {
     driveFileName: 'devices.xlsx',
-    propertiesTitle: 'devices.xlsx',
     sheets: [{ title: 'Devices', rowCount: 50, columnCount: 11 }],
     headers: [
       {
@@ -124,7 +117,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   groups: {
     driveFileName: 'groups.xlsx',
-    propertiesTitle: 'groups.xlsx',
     sheets: [{ title: 'Groups', rowCount: 10_000, columnCount: 8 }],
     headers: [
       {
@@ -146,7 +138,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   notifications: {
     driveFileName: 'notifications.xlsx',
-    propertiesTitle: 'notifications.xlsx',
     sheets: [{ title: 'Notifications', rowCount: 100_000, columnCount: 8 }],
     headers: [
       {
@@ -159,7 +150,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   activity_ledger: {
     driveFileName: 'activity_ledger.xlsx',
-    propertiesTitle: 'activity_ledger.xlsx',
     sheets: [{ title: 'Activities', rowCount: 100_000, columnCount: 8 }],
     headers: [
       {
@@ -181,7 +171,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   messaging_ledger: {
     driveFileName: 'messaging_ledger.xlsx',
-    propertiesTitle: 'messaging_ledger.xlsx',
     sheets: [{ title: 'Activities', rowCount: 100_000, columnCount: 9 }],
     headers: [
       {
@@ -204,7 +193,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   message_requests: {
     driveFileName: 'message_requests.xlsx',
-    propertiesTitle: 'message_requests.xlsx',
     sheets: [{ title: 'Requests', rowCount: 10_000, columnCount: 8 }],
     headers: [
       {
@@ -226,7 +214,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   'data-point-requests': {
     driveFileName: 'data-point-requests.xlsx',
-    propertiesTitle: 'data-point-requests.xlsx',
     sheets: [{ title: 'Requests', rowCount: 10_000, columnCount: 8 }],
     headers: [
       {
@@ -248,7 +235,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   preferences: {
     driveFileName: 'preferences',
-    propertiesTitle: 'preferences',
     sheets: [
       { title: 'Interactions', rowCount: 100_000, columnCount: 11 },
       { title: 'Current', rowCount: 1000, columnCount: 2 },
@@ -290,7 +276,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   engagement: {
     driveFileName: 'engagement.xlsx',
-    propertiesTitle: 'engagement.xlsx',
     sheets: [
       { title: 'Likes', rowCount: 100_000, columnCount: 2 },
       { title: 'Dislikes', rowCount: 100_000, columnCount: 2 },
@@ -322,7 +307,6 @@ const METADATA_SPECS: Record<string, SpreadsheetSpec> = {
   },
   prism_ledger: {
     driveFileName: 'prism_ledger.xlsx',
-    propertiesTitle: 'prism_ledger.xlsx',
     sheets: [{ title: 'Activities', rowCount: 100_000, columnCount: 8 }],
     headers: [
       {
@@ -362,7 +346,6 @@ const INBOX_HEADERS = [
 
 const INBOX_SPEC: SpreadsheetSpec = {
   driveFileName: 'Inbox',
-  propertiesTitle: 'Inbox',
   sheets: [{ title: 'Inbox', rowCount: 10_000, columnCount: 9 }],
   headers: [{ range: 'Inbox!A1:I1', values: [INBOX_HEADERS] }],
 };
@@ -375,7 +358,7 @@ export async function ensureDeviceMetadataSheet(
 ): Promise<string> {
   const spec = METADATA_SPECS[key];
   if (!spec) throw new Error(`Unknown metadata sheet key: ${key}`);
-  return ensureSpreadsheetInFolder(accessToken, metadataFolderId, spec, fetchImpl);
+  return ensureDriveChildSpreadsheet(accessToken, metadataFolderId, spec, fetchImpl);
 }
 
 export async function ensureDeviceInboxSheet(
@@ -383,7 +366,7 @@ export async function ensureDeviceInboxSheet(
   messagesFolderId: string,
   fetchImpl?: typeof fetch
 ): Promise<string> {
-  return ensureSpreadsheetInFolder(accessToken, messagesFolderId, INBOX_SPEC, fetchImpl);
+  return ensureDriveChildSpreadsheet(accessToken, messagesFolderId, INBOX_SPEC, fetchImpl);
 }
 
 export type ContentClassName = 'media' | 'notes' | 'collections';
@@ -410,8 +393,8 @@ export async function ensureDeviceIndexSheet(
         ? 'public-file-index.xlsx'
         : 'owner-file-index.xlsx';
   const spec = indexFilesSpec(driveFileName);
-  return ensureSpreadsheetInFolder(accessToken, folderId, spec, fetchImpl);
+  return ensureDriveChildSpreadsheet(accessToken, folderId, spec, fetchImpl);
 }
 
 /** Exported for tests */
-export { METADATA_SPECS, INBOX_SPEC, createSpreadsheetInFolder };
+export { METADATA_SPECS, INBOX_SPEC };

@@ -3,11 +3,10 @@
  * Column layouts match the sheets the API used to open with a Google token.
  */
 
-import { deviceDriveCall } from './deviceDriveCall.js';
 import { appendSheetValues, readSheetValues, writeSheetValues } from './deviceSheet.js';
+import { ensureDriveChildSpreadsheet } from './driveChild.js';
 
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
-const DRIVE = 'https://www.googleapis.com/drive/v3';
 
 export type DeviceOwnerIndexFile = {
   fileId: string;
@@ -313,68 +312,19 @@ export async function ensureDeviceOwnedAssetsSheet(
   metadataFolderId: string,
   fetchImpl: typeof fetch = fetch
 ): Promise<string> {
-  const q = `name='owned-assets.xlsx' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-  const listed = await deviceDriveCall(
-    'GET',
-    `/api/drive/files?q=${encodeURIComponent(q)}&pageSize=1`,
-    undefined,
-    { accessToken, fetchImpl }
-  );
-  if (listed.ok) {
-    const body = (await listed.json()) as { files?: Array<{ id?: string }> };
-    const existing = body.files?.find((file) => file.id)?.id;
-    if (existing) return existing;
-  }
-
-  const created = await fetchImpl(SHEETS, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      properties: { title: 'owned-assets.xlsx' },
-      sheets: [
-        { properties: { title: 'Assets' } },
-        { properties: { title: 'Delegations' } },
-      ],
-    }),
-  });
-  if (!created.ok) {
-    throw new Error(`owned-assets sheet create failed (${created.status})`);
-  }
-  const spreadsheet = (await created.json()) as { spreadsheetId?: string };
-  const spreadsheetId = spreadsheet.spreadsheetId;
-  if (!spreadsheetId) throw new Error('owned-assets sheet create returned no id');
-
-  const parentsRes = await fetchImpl(
-    `${DRIVE}/files/${encodeURIComponent(spreadsheetId)}?fields=parents`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const parents = parentsRes.ok
-    ? ((await parentsRes.json()) as { parents?: string[] }).parents || []
-    : [];
-  const move = new URLSearchParams();
-  move.set('addParents', metadataFolderId);
-  if (parents.length) move.set('removeParents', parents.join(','));
-  await fetchImpl(`${DRIVE}/files/${encodeURIComponent(spreadsheetId)}?${move.toString()}`, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: '{}',
-  });
-
-  await writeSheetValues(accessToken, spreadsheetId, 'Assets!A1:J1', [ASSET_HEADERS], fetchImpl);
-  await writeSheetValues(
+  return ensureDriveChildSpreadsheet(
     accessToken,
-    spreadsheetId,
-    'Delegations!A1:I1',
-    [DELEGATION_HEADERS],
+    metadataFolderId,
+    {
+      driveFileName: 'owned-assets.xlsx',
+      sheets: [{ title: 'Assets' }, { title: 'Delegations' }],
+      headers: [
+        { range: 'Assets!A1:J1', values: [ASSET_HEADERS] },
+        { range: 'Delegations!A1:I1', values: [DELEGATION_HEADERS] },
+      ],
+    },
     fetchImpl
   );
-  return spreadsheetId;
 }
 
 /** Same cell rewrite the API used when it still opened Drive during migration. */
