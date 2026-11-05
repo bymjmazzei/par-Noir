@@ -354,7 +354,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
               <div className="bg-modal-bg rounded-lg shadow p-4 sm:p-6 lg:p-8 text-text-primary w-full max-w-4xl min-w-0">
                 {/* Tab Navigation - scrollable on narrow viewports; Sub-pN is 3rd tab */}
                 <div className="border-b border-border mb-4 sm:mb-6 relative">
-                  <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto overflow-y-hidden px-1 sm:px-4 justify-start lg:justify-center [scrollbar-width:thin]">
+                  <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto overflow-y-hidden px-1 sm:px-4 justify-start lg:justify-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <button
                       onClick={() => setActiveTab('privacy')}
                       className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
