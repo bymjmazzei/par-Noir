@@ -31,6 +31,8 @@ export abstract class AbstractStorageBackend {
   abstract uploadFile(file: File, folderId?: string, metadata?: unknown): Promise<StorageFile>;
   abstract downloadFile(fileId: string): Promise<Blob>;
   abstract deleteFile(fileId: string): Promise<void>;
+  /** Folder id for this pN's cabinet uploads; '' when the backend has no folders. */
+  abstract ensureFilesFolder(pnIdentifier: string): Promise<string>;
   abstract getUserInfo(): Promise<StorageUserInfo | null>;
 
   async getQuota(): Promise<StorageQuota | null> {

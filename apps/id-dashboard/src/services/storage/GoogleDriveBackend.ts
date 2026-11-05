@@ -479,27 +479,6 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     };
   }
 
-  /**
-   * A folder inside `parentFolderId`. Given only a pN, this is that pN's cabinet
-   * (`files/`). The pN root itself is only ever built by the device Drive layout.
-   */
-  async getOrCreateFolder(
-    name: string,
-    pnIdentifier?: string,
-    parentFolderId?: string
-  ): Promise<string> {
-    const accessToken = await this.ensureAccessToken();
-    if (!accessToken) {
-      console.warn('⚠️ [getOrCreateFolder] Google Drive not connected - returning placeholder');
-      return 'NOT_CONNECTED';
-    }
-    if (!parentFolderId) {
-      if (pnIdentifier) return this.ensureFilesFolder(pnIdentifier);
-      throw new Error('drive_parent_required');
-    }
-    return ensureDriveChildFolder(accessToken, parentFolderId, name);
-  }
-
   /** Resolve the pN root (session index, folder cache, or pnId app-property search). */
   private async resolvePnRootFolderId(pnIdentifier: string): Promise<string> {
     if (!this.token && !(await this.ensureAccessToken())) {
@@ -554,7 +533,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
     const pnFolderId = await this.resolvePnRootFolderId(pnIdentifier);
     if (!pnFolderId || pnFolderId === 'NOT_CONNECTED') return pnFolderId;
-    return this.getOrCreateFolder('files', undefined, pnFolderId);
+    const accessToken = await this.ensureAccessToken();
+    if (!accessToken) return 'NOT_CONNECTED';
+    return ensureDriveChildFolder(accessToken, pnFolderId, 'files');
   }
 
   async listFiles(folderId?: string, pnIdentifier?: string): Promise<StorageFile[]> {

@@ -30,7 +30,7 @@ export class PortableBlobBackend extends AbstractStorageBackend {
     return this.connected;
   }
 
-  async getOrCreateFolder(_name: string, _pnIdentifier?: string): Promise<string> {
+  async ensureFilesFolder(_pnIdentifier: string): Promise<string> {
     return '';
   }
 

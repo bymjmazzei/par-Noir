@@ -100,7 +100,8 @@ export interface StorageBackend {
   downloadFile(fileId: string): Promise<Blob>;
   deleteFile(fileId: string): Promise<void>;
 
-  getOrCreateFolder(name: string, pnIdentifier?: string): Promise<string>;
+  /** Folder id for this pN's cabinet uploads; '' when the backend has no folders. */
+  ensureFilesFolder(pnIdentifier: string): Promise<string>;
 
   getStorageQuota?(): Promise<StorageQuota>;
   getQuota?(): Promise<StorageQuota | null>;

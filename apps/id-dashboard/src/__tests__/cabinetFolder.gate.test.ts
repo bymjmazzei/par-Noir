@@ -20,7 +20,9 @@ describe('dashboard cabinet folder', () => {
     );
     expect(upload).toContain('ensureFilesFolder');
     expect(share).toContain('ensureFilesFolder');
-    expect(backend).toContain("getOrCreateFolder('files'");
+    expect(backend).toContain("ensureDriveChildFolder(accessToken, pnFolderId, 'files')");
+    expect(upload).not.toContain('getOrCreateFolder');
+    expect(share).not.toContain('getOrCreateFolder');
     expect(backend).toContain('resolvedFolderId = await this.ensureFilesFolder(pnIdentifier)');
     expect(backend).toContain('Cabinet upload needs the files folder');
   });
