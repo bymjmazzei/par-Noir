@@ -801,7 +801,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                             </div>
                             <button 
                               onClick={() => setShowDelegationModal(true)}
-                              className="modal-button"
+                              className="modal-button inline-flex items-center"
                             >
                               <Users className="w-4 h-4 mr-2" />
                               Create Delegation
