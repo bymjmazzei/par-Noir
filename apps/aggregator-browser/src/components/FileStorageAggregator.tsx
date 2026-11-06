@@ -256,7 +256,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const newMap = new Map(prev);
           const accountFiles = newMap.get(task.accountId) || [];
           const updatedFiles = accountFiles.map(file =>
-            file.pending?.taskId === task.id
+            file.pending && file.pending.taskId === task.id
               ? { ...file, pending: { ...file.pending, progress: task.progress ?? file.pending.progress } }
               : file
           );
