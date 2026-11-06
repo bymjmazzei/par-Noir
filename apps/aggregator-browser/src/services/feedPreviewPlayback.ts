@@ -5,6 +5,7 @@
  */
 import { API_ENDPOINT } from '../config/api';
 import type { FeedPreviewVariant } from '@par-noir/aggregator-domain';
+import { isAllowedFeedMediaSignedUrl } from '@par-noir/owner-files';
 import { PNOAuthService } from './pnOAuthService';
 import { feedMediaSessionCache } from './feedMediaSessionCache';
 
@@ -34,22 +35,6 @@ export function publicMediaUrl(
   variant: FeedPreviewVariant = 'sd'
 ): string {
   return `${API_ENDPOINT}/api/aggregator/public-media/${encodeURIComponent(fileId)}?variant=${variant}`;
-}
-
-/** Signed feed preview hosts only — never follow arbitrary Location from JSON. */
-export function isAllowedFeedMediaSignedUrl(urlStr: string): boolean {
-  try {
-    const u = new URL(urlStr);
-    if (u.protocol !== 'https:') return false;
-    const h = u.hostname.toLowerCase();
-    return (
-      h.endsWith('.r2.cloudflarestorage.com') ||
-      h === 'feed-media.parnoir.com' ||
-      h.endsWith('.r2.dev')
-    );
-  } catch {
-    return false;
-  }
 }
 
 async function fetchPublicMediaFromNetwork(

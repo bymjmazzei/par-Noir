@@ -27,6 +27,7 @@ export default defineConfig(({ mode, command }) => {
       // Source ESM — dist is CJS and breaks Vite named exports for this workspace package
       '@par-noir/standard-data-points': resolve(__dirname, '../../packages/standard-data-points/src/index.ts'),
       '@par-noir/aggregator-domain': resolve(__dirname, '../../packages/aggregator-domain/src/index.ts'),
+      '@par-noir/owner-files': resolve(__dirname, '../../packages/owner-files/src/index.ts'),
       // pqc-crypto dist is CJS; Vite/Rollup cannot resolve named exports from workspace CJS builds
       // Subpath aliases must be listed before the package root alias.
       '@par-noir/pqc-crypto/oauth-unlock-proof': resolve(__dirname, '../../packages/pqc-crypto/src/oauthUnlockProof.ts'),

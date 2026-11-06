@@ -13,6 +13,7 @@ import {
 import {
   deviceDriveCall,
   ensureDriveChildFolder,
+  ensureOwnerBlobFolders,
   findPnRootFolderId,
   getSessionDriveIndex,
   isAccessTokenFresh,
@@ -20,6 +21,7 @@ import {
   type GoogleAccountRow
 } from '@par-noir/device-cloud-credentials';
 import { isPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import { ownerScanFolderIds } from '@par-noir/owner-files';
 import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../config/googleDriveClientId';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { getStoredToken } from '../parNoirOAuthInline';
@@ -536,6 +538,18 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     const accessToken = await this.ensureAccessToken();
     if (!accessToken) return 'NOT_CONNECTED';
     return ensureDriveChildFolder(accessToken, pnFolderId, 'files');
+  }
+
+  /** Every canonical owner blob folder (files/ + content/*), the same set the browser scans. */
+  async listOwnerFiles(pnIdentifier: string): Promise<StorageFile[]> {
+    const accessToken = await this.ensureAccessToken();
+    if (!accessToken) return [];
+    const index = getSessionDriveIndex(pnIdentifier);
+    const folderIds = index?.pnFolderId
+      ? ownerScanFolderIds(await ensureOwnerBlobFolders(accessToken, index))
+      : ownerScanFolderIds({ filesFolderId: await this.ensureFilesFolder(pnIdentifier) });
+    const lists = await Promise.all(folderIds.map((id) => this.listFiles(id, pnIdentifier)));
+    return lists.flat();
   }
 
   async listFiles(folderId?: string, pnIdentifier?: string): Promise<StorageFile[]> {

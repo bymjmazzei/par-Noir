@@ -1,19 +1,3 @@
-const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i;
-const VIDEO_EXT_RE = /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i;
-const AUDIO_EXT_RE = /\.(mp3|wav|ogg|m4a|aac)$/i;
-
-export function isImageFile(mimeType: string, fileName: string): boolean {
-  return mimeType.startsWith('image/') || IMAGE_EXT_RE.test(fileName);
-}
-
-export function isVideoFile(mimeType: string, fileName: string): boolean {
-  return mimeType.startsWith('video/') || VIDEO_EXT_RE.test(fileName);
-}
-
-export function isAudioFile(mimeType: string, fileName: string): boolean {
-  return mimeType.startsWith('audio/') || AUDIO_EXT_RE.test(fileName);
-}
-
 /** Fetch the latest GitHub release asset matching the current platform and trigger download. */
 export async function downloadLatestDesktopApp(): Promise<void> {
   try {

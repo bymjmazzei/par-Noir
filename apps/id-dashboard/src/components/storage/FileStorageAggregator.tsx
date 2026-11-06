@@ -3,8 +3,22 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState } from 'react';
-import { AlertCircle, Lock, X, Cloud } from 'lucide-react';
+import { AlertCircle, Lock, Cloud, Download, Edit, Flag, Minus, Plus, RefreshCw, Share2, Trash2 } from 'lucide-react';
+import {
+  OwnerFileExplorer,
+  OwnerFileMenuItem,
+  downloadFileName,
+  openStoredBlob,
+  type OwnerAccount,
+  type OwnerExplorerSection,
+  type OwnerFileRow,
+} from '@par-noir/owner-files';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
+import {
+  createDashboardOwnerFilesTransport,
+  ownerRowToAggregatedFile,
+} from '../../services/ownerFilesTransport';
+import { publicKeyFromUnlockedUser } from '../../services/storageUnlockAuth';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
 import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
@@ -16,15 +30,15 @@ import { getStoredToken, getStoredTokenForPn } from '../../services/parNoirOAuth
 import { MultiCloudStoragePanel } from './MultiCloudStoragePanel';
 import {
   EMPTY_EDIT_FORM,
+  GOOGLE_DRIVE_ICON_URL,
   type DriveAccountState,
   type FileStorageAggregatorProps,
   type EditFormState,
 } from './FileStorageAggregatorTypes';
-import { FileStorageFileViewer } from './FileStorageFileViewer';
 import { FileStorageEditMetadataModal } from './FileStorageEditMetadataModal';
 import { FileStorageShareSettingsModal } from './FileStorageShareSettingsModal';
 import { SecureFolderSection } from './SecureFolderSection';
-import { DriveFilesListSection } from './DriveFilesListSection';
+import { DriveLayoutSetupProgress } from './DriveLayoutSetupProgress';
 import { useDriveLayoutInit } from './hooks/useDriveLayoutInit';
 import { useDriveStorageCredentials } from './hooks/useDriveStorageCredentials';
 import { useStorageIdentity } from './hooks/useStorageIdentity';
@@ -121,7 +135,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const loadStorageQuotaRef = React.useRef<(() => Promise<void>) | null>(null);
   const makeShareTokenCacheKey = React.useCallback((backendId: string, backendFileId: string) => `${backendId}|${backendFileId}`, []);
   const [isLoading, setIsLoading] = useState(false);
-  const [files, setFiles] = useState<AggregatedFile[]>([]);
+  const [rows, setRows] = useState<OwnerFileRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [connectedBackends, setConnectedBackends] = useState<Set<string>>(new Set());
@@ -138,41 +152,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
   const [editForm, setEditForm] = useState<EditFormState>({ ...EMPTY_EDIT_FORM });
-  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
-  const actionMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [reportingFile, setReportingFile] = useState<AggregatedFile | null>(null);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
-
-  React.useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!actionMenuRef.current) {
-        return;
-      }
-      if (event.target instanceof Node && !actionMenuRef.current.contains(event.target)) {
-        setOpenMenuFor(null);
-        actionMenuRef.current = null;
-      }
-    };
-
-    if (openMenuFor) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [openMenuFor]);
 
   React.useEffect(() => {
     userEmailsRef.current = userEmails;
   }, [userEmails]);
 
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [viewingFile, setViewingFile] = useState<AggregatedFile | null>(null);
   const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [filePreviewUrls, setFilePreviewUrls] = useState<Map<string, string>>(new Map()); // fileId -> decrypted blob URL
-  const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
   const lastIdentityLogRef = React.useRef<string | null>(null);
   const missingIdentityLogRef = React.useRef(false);
   /** Shared between useLoadAggregatedFiles (scheduleTokenRetry, loadFiles) and the credentials token-refresh handler. */
@@ -516,27 +505,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     shareTokenCache,
   });
 
+  const ownerFilesTransport = React.useMemo(() => {
+    if (!aggregatorService || !cloudPnIdentifier) return null;
+    return createDashboardOwnerFilesTransport({
+      aggregatorService,
+      pnIdentifier: cloudPnIdentifier,
+      resolveOwnerApiToken,
+      ownerKey: () => {
+        const user = authenticatedUserRef.current;
+        const publicKey = resolvedAuthRef.current?.publicKey || publicKeyFromUnlockedUser(user);
+        return user?.id && publicKey ? { id: user.id, publicKey } : null;
+      },
+      shareTokenCache: shareTokenCache.current,
+      makeShareTokenCacheKey,
+    });
+  }, [aggregatorService, cloudPnIdentifier, resolveOwnerApiToken, makeShareTokenCacheKey]);
+
   const { loadFiles, loadStorageQuota } = useLoadAggregatedFiles({
     aggregatorService,
-    authenticatedUser,
-    resolvedAuth,
-    driveAccounts,
+    transport: ownerFilesTransport,
     activeBackendId,
     setActiveBackendId,
-    setFiles,
+    setRows,
     setError,
     setIsLoading,
     setFileMetadataMap,
     setStorageQuotas,
     setUserEmails,
-    loadFileMetadata,
     registerPortableCloudBackends,
     driveReadBlocked,
     deviceGate,
-    resolveOwnerApiToken,
-    getKey2FromSecureStorage,
-    makeShareTokenCacheKey,
-    shareTokenCache,
     pnIdentifierRef,
     driveLayoutInitInFlightRef,
     driveSetupProgressRef,
@@ -562,17 +560,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   }, [showDriveSetupProgress, loadFiles, loadStorageQuota]);
 
-  const filesByBackend = React.useMemo(() => {
-    const map = new Map<string, AggregatedFile[]>();
-    files.forEach((file) => {
-      const key = file.backend || 'google_drive';
-      if (!map.has(key)) {
-        map.set(key, []);
-      }
-      map.get(key)!.push(file);
+  const rowsByAccount = React.useMemo(() => {
+    const map = new Map<string, OwnerFileRow[]>();
+    rows.forEach((row) => {
+      if (!map.has(row.accountKey)) map.set(row.accountKey, []);
+      map.get(row.accountKey)!.push(row);
     });
     return map;
-  }, [files]);
+  }, [rows]);
+
+  const filesByBackend = React.useMemo(() => {
+    const map = new Map<string, AggregatedFile[]>();
+    rowsByAccount.forEach((accountRows, accountKey) => {
+      map.set(accountKey, accountRows.map(ownerRowToAggregatedFile));
+    });
+    return map;
+  }, [rowsByAccount]);
 
   const {
     handleConnectGoogleDrive,
@@ -585,8 +588,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     userEmails,
     setUserEmails,
     setConnectedBackends,
-    setFiles,
-    setFilePreviewUrls,
+    setRows,
     activeBackendId,
     setActiveBackendId,
     setError,
@@ -635,9 +637,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const {
     handleEditMetadata,
     handleSaveMetadata,
-    handleViewFile,
-    loadFilePreview,
-    handleDownload,
     handleMoveToCloud,
     handleBulkDelete,
     toggleFileSelection,
@@ -648,25 +647,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     resolvedAuth,
     aggregatorService,
     driveAccounts,
-    activeBackendId,
-    files,
     filesByBackend,
     fileMetadataMap,
     setFileMetadataMap,
-    filePreviewUrls,
-    setFilePreviewUrls,
-    loadingPreviews,
-    setLoadingPreviews,
     editingFile,
     setEditingFile,
     editForm,
     setEditForm,
-    setViewingFile,
     selectedFiles,
     setSelectedFiles,
     setIsBulkDeleteMode,
-    setOpenMenuFor,
-    actionMenuRef,
     setError,
     setSuccessMessage,
     setIsLoading,
@@ -676,12 +666,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     checkDeviceCapability,
     requireDeviceCapability,
     resolveOwnerApiToken,
-    makeShareTokenCacheKey,
-    loadFileMetadata,
-    shareTokenCache,
     loadFilesRef,
     loadFiles,
   });
+
+  const handleDownload = async (row: OwnerFileRow, decrypted?: Blob) => {
+    if (!ownerFilesTransport || row.origin === 'catalog' || !row.driveFileId) return;
+    try {
+      setError(null);
+      const blob =
+        decrypted ||
+        (await openStoredBlob(ownerFilesTransport, {
+          accountKey: row.accountKey,
+          driveFileId: row.driveFileId,
+          encrypted: row.encrypted,
+          mimeType: row.mimeType,
+        }));
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = downloadFileName(row);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? `Failed to download file: ${err.message}` : 'Failed to download file');
+    }
+  };
 
 
   useLegacyDriveRestore({
@@ -704,10 +716,243 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     []
   );
 
-  const totalFiles = files.length;
   const hasConnectedBackends =
     driveAccounts.length > 0 || portableCloudAccounts.length > 0;
   const connectedStorageCount = driveAccounts.length + portableCloudAccounts.length;
+
+  const iconButton =
+    'p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50';
+
+  const accountSection = (
+    account: OwnerAccount,
+    icon: React.ReactNode,
+    opts: { canDisconnect: boolean; extraLabel?: React.ReactNode }
+  ): OwnerExplorerSection => {
+    const backendId = account.accountKey;
+    const accountRows = rowsByAccount.get(backendId) || [];
+    const selectedCount = accountRows.filter((row) => selectedFiles.has(row.id)).length;
+    const quota = storageQuotas.get(backendId);
+    const percentUsed =
+      quota && quota.totalBytes ? Math.min(100, Math.round((quota.usedBytes / quota.totalBytes) * 100)) : null;
+    const allSelected = accountRows.length > 0 && selectedCount === accountRows.length;
+
+    return {
+      account,
+      rows: accountRows,
+      icon,
+      loading: isLoading && rows.length === 0,
+      emptyMessage: 'No files found for this account',
+      headerActions: (
+        <>
+          {opts.extraLabel}
+          {opts.canDisconnect && connectedBackends.has(backendId) && (
+            <button onClick={() => handleDisconnect(backendId)} className="text-red-400 hover:text-red-300 text-sm">
+              Disconnect
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setActiveBackendId(backendId);
+              void loadFiles({ verifyWithDrive: true });
+            }}
+            disabled={isLoading || driveReadBlocked}
+            className={iconButton}
+            title={driveReadBlocked ? deviceGate?.blockedMessage : 'Refresh Files'}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+          <input
+            type="file"
+            data-backend-id={backendId}
+            className="hidden"
+            disabled={isLoading || driveUploadBlocked}
+            onChange={handleUpload}
+            ref={(el) => {
+              if (el) fileInputRefs.current.set(backendId, el);
+              else fileInputRefs.current.delete(backendId);
+            }}
+          />
+          <button
+            onClick={() => {
+              if (driveUploadBlocked) {
+                setError(deviceGate?.blockedMessage ?? null);
+                return;
+              }
+              setActiveBackendId(backendId);
+              fileInputRefs.current.get(backendId)?.click();
+            }}
+            disabled={isLoading || driveUploadBlocked}
+            className={iconButton}
+            title={driveUploadBlocked ? deviceGate?.blockedMessage : 'Upload File'}
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => {
+              if (isBulkDeleteMode) setSelectedFiles(new Set());
+              setIsBulkDeleteMode(!isBulkDeleteMode);
+            }}
+            disabled={isLoading}
+            className={iconButton}
+            title={isBulkDeleteMode ? 'Cancel Bulk Delete' : 'Bulk Delete'}
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+        </>
+      ),
+      banner: quota ? (
+        <div className="flex items-center justify-between text-xs text-text-secondary bg-neutral-900 rounded-lg px-3 py-2">
+          <span>
+            Used {(quota.usedBytes / (1024 * 1024)).toFixed(1)} MB of {(quota.totalBytes / (1024 * 1024)).toFixed(1)} MB
+          </span>
+          <span>{percentUsed ?? 0}% full</span>
+        </div>
+      ) : undefined,
+      body:
+        showDriveSetupProgress && driveSetupProgress ? (
+          <DriveLayoutSetupProgress progress={driveSetupProgress} />
+        ) : undefined,
+      footer: isBulkDeleteMode ? (
+        <div className="mt-4 pt-4 border-t border-neutral-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (allSelected) {
+                  setSelectedFiles((prev) => {
+                    const next = new Set(prev);
+                    accountRows.forEach((row) => next.delete(row.id));
+                    return next;
+                  });
+                } else {
+                  selectAllFiles(backendId);
+                }
+              }}
+              className="px-3 py-1.5 text-sm text-white hover:bg-neutral-700 rounded transition-colors"
+            >
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            <span className="text-text-secondary text-sm">
+              {selectedCount} file{selectedCount !== 1 ? 's' : ''} selected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={moveDestKey}
+              onChange={(e) => setMoveDestKey(e.target.value)}
+              className="text-sm bg-neutral-800 border border-neutral-600 rounded px-2 py-1.5 text-white"
+              disabled={selectedCount === 0 || isLoading}
+            >
+              <option value="">Move to cloud…</option>
+              {portableCloudAccounts.map((a) => (
+                <option key={`${a.provider}|||${a.accountId}`} value={`${a.provider}|||${a.accountId}`}>
+                  {a.displayName || a.provider}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleMoveToCloud}
+              disabled={selectedCount === 0 || !moveDestKey || isLoading}
+              className="px-3 py-2 bg-violet-600 text-white rounded hover:bg-violet-500 text-sm disabled:opacity-50"
+            >
+              Move
+            </button>
+            <button
+              onClick={() => handleBulkDelete(backendId)}
+              disabled={selectedCount === 0 || isLoading}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete ({selectedCount})
+            </button>
+          </div>
+        </div>
+      ) : undefined,
+    };
+  };
+
+  const explorerSections: OwnerExplorerSection[] = [
+    ...driveAccounts.map((account, index) => {
+      const [provider, accountId = ''] = account.backendId.split('::');
+      return accountSection(
+        {
+          accountKey: account.backendId,
+          provider,
+          accountId,
+          label: userEmails.get(account.backendId) || `Drive ${index + 1}`,
+        },
+        <img src={GOOGLE_DRIVE_ICON_URL} alt="Google Drive" className="h-5 w-5" />,
+        { canDisconnect: true }
+      );
+    }),
+    ...portableCloudAccounts.map((acct) =>
+      accountSection(
+        {
+          accountKey: `${acct.provider}::${acct.accountId}`,
+          provider: acct.provider,
+          accountId: acct.accountId,
+          label: acct.displayName || acct.provider,
+        },
+        <Cloud className="h-5 w-5 text-text-secondary" />,
+        {
+          canDisconnect: false,
+          extraLabel: acct.isSocialCloud ? (
+            <span className="text-xs px-2 py-0.5 rounded bg-blue-900/50 text-blue-300">Social cloud</span>
+          ) : undefined,
+        }
+      )
+    ),
+  ];
+
+  const renderRowMenu = (row: OwnerFileRow, close: () => void) => {
+    const file = ownerRowToAggregatedFile(row);
+    const rating = (fileMetadataMap.get(row.id) ?? row.metadata)?.contentRating;
+    const run = (fn: () => void) => () => {
+      close();
+      fn();
+    };
+    return (
+      <>
+        {rating !== 'nsfw' && rating !== 'x-rated' && (
+          <OwnerFileMenuItem
+            icon={<Flag className="h-4 w-4" />}
+            label="Report as NSFW"
+            disabled={isLoading}
+            onClick={run(() => {
+              setReportingFile(file);
+              setShowReportModal(true);
+            })}
+          />
+        )}
+        <OwnerFileMenuItem
+          icon={<Edit className="h-4 w-4" />}
+          label="Edit metadata"
+          disabled={isLoading}
+          onClick={run(() => handleEditMetadata(file))}
+        />
+        {row.origin !== 'catalog' && (
+          <OwnerFileMenuItem
+            icon={<Download className="h-4 w-4" />}
+            label="Download"
+            disabled={isLoading}
+            onClick={run(() => void handleDownload(row))}
+          />
+        )}
+        <OwnerFileMenuItem
+          icon={<Share2 className="h-4 w-4" />}
+          label="Share settings"
+          disabled={isLoading}
+          onClick={run(() => openShareSettings(file))}
+        />
+        <OwnerFileMenuItem
+          icon={<Trash2 className="h-4 w-4" />}
+          label="Delete"
+          danger
+          disabled={isLoading}
+          onClick={run(() => void handleDelete(file))}
+        />
+      </>
+    );
+  };
 
   return (
     <div className="space-y-6 w-full min-w-0 max-w-full">
@@ -855,54 +1100,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         </div>
       )}
 
-      {hasConnectedBackends && (
-        <DriveFilesListSection
-          driveAccounts={driveAccounts}
-          userEmails={userEmails}
-          filesByBackend={filesByBackend}
-          storageQuotas={storageQuotas}
-          connectedBackends={connectedBackends}
-          files={files}
-          fileMetadataMap={fileMetadataMap}
-          filePreviewUrls={filePreviewUrls}
-          loadingPreviews={loadingPreviews}
-          selectedFiles={selectedFiles}
-          isBulkDeleteMode={isBulkDeleteMode}
+      {hasConnectedBackends && ownerFilesTransport && (
+        <OwnerFileExplorer
+          transport={ownerFilesTransport}
+          sections={explorerSections}
           viewMode={viewMode}
-          openMenuFor={openMenuFor}
-          isLoading={isLoading}
-          driveReadBlocked={driveReadBlocked}
-          driveUploadBlocked={driveUploadBlocked}
-          deviceGateBlockedMessage={deviceGate?.blockedMessage}
-          showDriveSetupProgress={showDriveSetupProgress}
-          driveSetupProgress={driveSetupProgress}
-          authenticatedUserId={authenticatedUser?.id ?? null}
-          portableCloudAccounts={portableCloudAccounts}
-          moveDestKey={moveDestKey}
-          fileInputRefs={fileInputRefs}
-          actionMenuRef={actionMenuRef}
-          setActiveBackendId={setActiveBackendId}
-          setError={setError}
-          setIsBulkDeleteMode={setIsBulkDeleteMode}
-          setSelectedFiles={setSelectedFiles}
-          setViewMode={setViewMode}
-          setOpenMenuFor={setOpenMenuFor}
-          setReportingFile={setReportingFile}
-          setShowReportModal={setShowReportModal}
-          setMoveDestKey={setMoveDestKey}
-          loadFiles={loadFiles}
-          handleDisconnect={handleDisconnect}
-          handleUpload={handleUpload}
-          toggleFileSelection={toggleFileSelection}
-          handleViewFile={handleViewFile}
-          loadFilePreview={loadFilePreview}
-          handleEditMetadata={handleEditMetadata}
-          handleDownload={handleDownload}
-          openShareSettings={openShareSettings}
-          handleDelete={handleDelete}
-          selectAllFiles={selectAllFiles}
-          handleMoveToCloud={handleMoveToCloud}
-          handleBulkDelete={handleBulkDelete}
+          onViewModeChange={setViewMode}
+          selection={{
+            active: isBulkDeleteMode,
+            selectedIds: selectedFiles,
+            onToggle: (row) => toggleFileSelection(row.id),
+          }}
+          renderRowMenu={renderRowMenu}
+          onDownload={(row, blob) => void handleDownload(row, blob)}
         />
       )}
 
@@ -932,33 +1142,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           onSave={handleSaveShareSettings}
           onClose={closeShareSettings}
         />
-      )}
-
-      {/* File Viewer Modal */}
-      {viewingFile && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
-          onClick={() => setViewingFile(null)}
-        >
-          <div 
-            className="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setViewingFile(null)}
-              className="absolute top-4 right-4 z-10 p-2 bg-neutral-800/80 rounded-lg text-white hover:bg-neutral-700 transition-colors"
-            >
-              <X className="h-6 w-6" />
-            </button>
-            
-            <FileStorageFileViewer 
-              file={viewingFile} 
-              previewUrl={filePreviewUrls.get(viewingFile.id) || null}
-              fileMetadata={fileMetadataMap.get(viewingFile.id)}
-              onClose={() => setViewingFile(null)} 
-            />
-          </div>
-        </div>
       )}
 
       {/* Report Content Modal */}

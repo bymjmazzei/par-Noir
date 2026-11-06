@@ -1,5 +1,5 @@
 import { X, RefreshCw } from 'lucide-react';
-import type { DriveFile } from './storageTypes';
+import { rowMetadataId, type OwnerFileRow } from '@par-noir/owner-files';
 import {
   ContentExpiryFields,
   ContentExpiryValue,
@@ -12,7 +12,7 @@ export type ShareIndexer = {
 };
 
 export interface ShareSettingsModalProps {
-  sharingFile: DriveFile;
+  sharingFile: OwnerFileRow;
   shareVisibility: 'public' | 'private';
   setShareVisibility: (v: 'public' | 'private') => void;
   shareNSFW: boolean;
@@ -61,7 +61,7 @@ export function ShareSettingsModal({
           <div>
             <h2 className="text-xl font-semibold text-white uppercase tracking-wide">Share Settings</h2>
             <p className="text-sm text-text-secondary mt-1 truncate max-w-xl">
-              {sharingFile.name.replace(/\.encrypted$/i, '')}
+              {sharingFile.displayName}
             </p>
           </div>
           <button
@@ -86,7 +86,7 @@ export function ShareSettingsModal({
                     onClick={() => {
                       setShareVisibility(option);
                       if (option === 'public' && thirdPartyIndexers.length === 0) {
-                        loadThirdPartyIndexers(sharingFile.id);
+                        loadThirdPartyIndexers(rowMetadataId(sharingFile));
                       }
                     }}
                     className={`text-left px-4 py-3 rounded-xl border transition-colors ${

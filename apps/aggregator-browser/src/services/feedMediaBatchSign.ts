@@ -4,7 +4,8 @@
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from './pnOAuthService';
 import { feedMediaSessionCache } from './feedMediaSessionCache';
-import { isAllowedFeedMediaSignedUrl, FeedMediaNetworkError } from './feedPreviewPlayback';
+import { isAllowedFeedMediaSignedUrl } from '@par-noir/owner-files';
+import { FeedMediaNetworkError } from './feedPreviewPlayback';
 
 const BATCH_CAP = 12;
 

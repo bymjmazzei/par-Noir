@@ -1,0 +1,23 @@
+{
+  "name": "@par-noir/owner-files",
+  "version": "0.1.0",
+  "description": "Unified owner file explorer: inventory, classification, thumbnails, previews, and React UI for browse and dashboard",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "private": true,
+  "dependencies": {
+    "@par-noir/aggregator-domain": "file:../aggregator-domain"
+  },
+  "peerDependencies": {
+    "lucide-react": ">=0.263.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

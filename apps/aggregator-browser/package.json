@@ -43,6 +43,7 @@
     "@par-noir/identity-crypto": "file:../../packages/identity-crypto",
     "@par-noir/identity-migration": "file:../../packages/identity-migration",
     "@par-noir/messaging-ui": "file:../../packages/messaging-ui",
+    "@par-noir/owner-files": "file:../../packages/owner-files",
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
     "@par-noir/pen-protocol": "file:../../packages/pen-protocol",
     "@par-noir/social-connections": "file:../../packages/social-connections",

@@ -108,11 +108,6 @@ export function useDriveFileDeletion({
     });
   };
 
-  // Deselect all files
-  const deselectAllFiles = () => {
-    setSelectedFiles(new Set());
-  };
-
   const handleDelete = async (file: AggregatedFile, skipConfirm: boolean = false) => {
     if (!file.backendFileId) {
       setError('Cannot delete file: missing file ID');
@@ -218,7 +213,6 @@ export function useDriveFileDeletion({
     handleBulkDelete,
     toggleFileSelection,
     selectAllFiles,
-    deselectAllFiles,
     handleDelete,
   };
 }

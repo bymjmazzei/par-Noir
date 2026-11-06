@@ -5,6 +5,7 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
     "../../packages/feed-tile/src/**/*.{js,ts,jsx,tsx}",
     "../../packages/messaging-ui/src/**/*.{js,ts,jsx,tsx}",
+    "../../packages/owner-files/src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {

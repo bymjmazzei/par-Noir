@@ -21,7 +21,8 @@ import type { FileAggregatorService } from '../../../services/aggregator/FileAgg
 import { API_ENDPOINT } from '../../../config/api';
 import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../../config/googleDriveClientId';
 import { persistDriveAccounts } from '../storageHelpers';
-import { AggregatedFile, ShareToken } from '../../../types/aggregator';
+import type { OwnerFileRow } from '@par-noir/owner-files';
+import { ShareToken } from '../../../types/aggregator';
 import {
   type DriveSetupProgress,
   type DriveAccountState,
@@ -36,8 +37,7 @@ export interface UseGoogleDriveOAuthConnectParams {
   userEmails: Map<string, string>;
   setUserEmails: React.Dispatch<React.SetStateAction<Map<string, string>>>;
   setConnectedBackends: React.Dispatch<React.SetStateAction<Set<string>>>;
-  setFiles: React.Dispatch<React.SetStateAction<AggregatedFile[]>>;
-  setFilePreviewUrls: React.Dispatch<React.SetStateAction<Map<string, string>>>;
+  setRows: React.Dispatch<React.SetStateAction<OwnerFileRow[]>>;
   activeBackendId: string | null;
   setActiveBackendId: React.Dispatch<React.SetStateAction<string | null>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -76,8 +76,7 @@ export function useGoogleDriveOAuthConnect({
   userEmails,
   setUserEmails,
   setConnectedBackends,
-  setFiles,
-  setFilePreviewUrls,
+  setRows,
   activeBackendId,
   setActiveBackendId,
   setError,
@@ -129,17 +128,7 @@ export function useGoogleDriveOAuthConnect({
       return next;
     });
 
-    setFiles((prev) => prev.filter((file) => file.backend !== backendId));
-
-    setFilePreviewUrls((prev) => {
-      const next = new Map(prev);
-      Array.from(next.keys()).forEach((key) => {
-        if (key.startsWith(`${backendId}:`)) {
-          next.delete(key);
-        }
-      });
-      return next;
-    });
+    setRows((prev) => prev.filter((row) => row.accountKey !== backendId));
 
     shareTokenCache.current.forEach((_value, key) => {
       if (key.startsWith(`${backendId}|`)) {

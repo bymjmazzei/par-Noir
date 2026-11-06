@@ -7,6 +7,8 @@ export { cryptoWorkerManager } from './cryptoWorkerManager';
 export { SecureCredentialManager } from './secureCredentialManager';
 export { EncryptionManager } from './encryptionManager';
 export { safePnDisplayName } from './displayName';
+export { decryptPrivateFile, decryptPrivateFileBlob } from './privateFile';
+export type { PrivateFilePackageShape, PrivateFileOwner } from './privateFile';
 export type {
   EncryptedData,
   DecryptionParameters,

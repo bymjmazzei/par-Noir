@@ -10,7 +10,7 @@
  *   2. credential persist returning clientSideLayoutRequired
  * fetchOwnerIndex reads the device owner-file-index sheet. It never GETs
  * /api/storage/owner-index. An empty sheet leaves ownerIndex null so
- * mergeDriveScanWithIndex fills via Drive listFiles.
+ * the owner explorer fills via a Drive scan.
  */
 import React from 'react';
 

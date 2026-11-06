@@ -792,7 +792,7 @@ export async function publishPostToOwnerCloud(params: {
       bytes: new Uint8Array(await posterBlob.arrayBuffer()),
       fileName: `pen-${params.bundle.manifest.docId}.${posterBlob.type === 'image/png' ? 'png' : 'jpg'}`,
       title: publishTitle,
-      previews: posterPreview(posterBlob, posterBlob.type || 'image/jpeg'),
+      previews: await posterPreview(posterBlob),
       indexingPermissions,
       replaceFileId,
       metadata: {
@@ -881,7 +881,7 @@ export async function publishPostToOwnerCloud(params: {
         bytes: new Uint8Array(await page.posterBlob.arrayBuffer()),
         fileName: `pen-${docId}-${page.slug}.${mime === 'image/png' ? 'png' : 'jpg'}`,
         title: `${publishTitle} — ${page.slug}`,
-        previews: posterPreview(page.posterBlob, mime),
+        previews: await posterPreview(page.posterBlob),
         indexingPermissions,
         metadata: {
           ...partMeta,
@@ -902,7 +902,7 @@ export async function publishPostToOwnerCloud(params: {
     ),
     fileName: `pen-${docId}.collection.json`,
     title: publishTitle,
-    previews: posterPreview(parentPoster, parentPoster?.type || 'image/jpeg'),
+    previews: await posterPreview(parentPoster),
     indexingPermissions,
     replaceFileId,
     metadata: {
@@ -989,7 +989,7 @@ export async function publishTemplateToOwnerCloud(params: {
     bytes: new TextEncoder().encode(JSON.stringify(ir)),
     fileName: `pen-template-${params.bundle.manifest.docId}.json`,
     title: compiled.title,
-    previews: posterPreview(poster),
+    previews: await posterPreview(poster),
     metadata: {
       ...provenanceFor(params.bundle, licensing, ['pen-templates']),
       fileType: 'note',

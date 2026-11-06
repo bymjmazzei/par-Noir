@@ -2,8 +2,8 @@
  * Owner-index resolution for a single storage backend.
  *
  * The sheet is on the device. This never GETs /api/storage/owner-index.
- * An empty or missing sheet leaves ownerIndex null so mergeDriveScanWithIndex
- * fills Storage via client Drive listFiles.
+ * An empty or missing sheet leaves ownerIndex null so the owner explorer
+ * fills Storage via a client Drive scan.
  */
 import { readDeviceOwnerIndex } from '../../../../services/storage/deviceOwnerIndex';
 

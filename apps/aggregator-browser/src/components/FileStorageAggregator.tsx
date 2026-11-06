@@ -3,22 +3,31 @@
  * Uses API endpoints instead of direct Google Drive access
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { AlertCircle, Cloud } from 'lucide-react';
+import {
+  OwnerFileExplorer,
+  downloadFileName,
+  loadOwnerInventory,
+  makeAccountKey,
+  openStoredBlob,
+  rowMetadataId,
+  type OwnerAccount,
+  type OwnerFileRow,
+} from '@par-noir/owner-files';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { uploadQueueService } from '../services/uploadQueueService';
 import { FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
-import { useLoadFilesForAccount } from '../hooks/useLoadFilesForAccount';
-import type { DriveFile } from './storage/storageTypes';
+import type { DriveAccount } from './storage/storageTypes';
 import { API_ENDPOINT } from '../config/api';
 import {
-  downloadStorageBlob,
   fetchStorageAccounts,
   StorageAccountsFetchError,
 } from '../services/storageApiClient';
+import { createBrowserOwnerFilesTransport } from '../services/ownerFilesTransport';
 import { fetchMusicRegistryCatalog, type CatalogTrack } from '../services/musicRegistryApi';
 import { apiGet, ownerFetch } from '../services/ownerApiFetch';
 import {
@@ -28,9 +37,8 @@ import {
 import { assessCloudSessionReadiness } from '@par-noir/user-owned-storage';
 import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
 
-import { FileViewerModal } from './file/StorageFileViewer';
 import type { FileStorageAggregatorProps } from './storage/FileStorageAggregatorTypes';
-import { AccountFilesPanel } from './storage/AccountFilesPanel';
+import { AccountToolbar, BulkDeleteFooter, CollectionModeFooter } from './storage/AccountToolbar';
 import { FileActionMenu } from './storage/FileActionMenu';
 import { ShareSettingsModal } from './storage/ShareSettingsModal';
 import { UnencryptedUploadAlert } from './storage/UnencryptedUploadAlert';
@@ -39,6 +47,40 @@ import {
   inferExpiryPreset,
 } from './ContentExpiryFields';
 
+function toOwnerAccount(account: DriveAccount, index: number): OwnerAccount {
+  const provider = account.provider || 'google_drive';
+  return {
+    accountKey: makeAccountKey(provider, account.accountId),
+    provider,
+    accountId: account.accountId,
+    label: account.email || account.displayName || `Drive ${index + 1}`,
+  };
+}
+
+function pendingRow(task: any, name: string, mimeType: string, size: number, owner?: OwnerAccount): OwnerFileRow {
+  const id = `uploading_${task.id}`;
+  const accountKey = owner?.accountKey || task.accountId;
+  return {
+    key: `${accountKey}:${id}`,
+    id,
+    accountKey,
+    accountId: task.accountId,
+    provider: owner?.provider || 'google_drive',
+    name,
+    displayName: name,
+    kind: 'encrypted-upload',
+    origin: 'drive',
+    driveFileId: '',
+    mimeType,
+    size,
+    modifiedTime: new Date().toISOString(),
+    visibility: 'private',
+    encrypted: true,
+    indexed: false,
+    pending: { progress: 0, taskId: task.id },
+  };
+}
+
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ 
   authenticatedUser, 
   onOpenTextEditor,
@@ -46,7 +88,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 }) => {
   const { userState } = useUserState();
   const [isLoading, setIsLoading] = useState(false);
-  const [filesByAccount, setFilesByAccount] = useState<Map<string, DriveFile[]>>(new Map());
+  const [filesByAccount, setFilesByAccount] = useState<Map<string, OwnerFileRow[]>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [cloudBanner, setCloudBanner] = useState<
     'none' | 'unlinked' | 'linkedInactive' | 'api_error'
@@ -110,11 +152,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   }, [refreshCloudBanner]);
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-  const [viewingFile, setViewingFile] = useState<DriveFile | null>(null);
-  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const [showAddMenuFor, setShowAddMenuFor] = useState<string | null>(null);
-  const [addMenuPosition, setAddMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
   const [isCollectionMode, setIsCollectionMode] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -130,26 +167,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   } | null>(null);
   const [musicCatalog, setMusicCatalog] = useState<CatalogTrack[]>([]);
   const [nextAudioRegistryTrackId, setNextAudioRegistryTrackId] = useState('');
-  const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
-  const actionMenuRef = useRef<HTMLDivElement | null>(null);
-  const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
-  const addButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   /** Drive files with no Postgres index — skip repeat metadata-index GETs (404 is expected). */
   const metadataMissingIdsRef = useRef<Set<string>>(new Set());
-  const loadFilesTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const loadFilesForAccountRef = useRef<(accountId: string) => Promise<void>>(async () => {});
+  const loadFilesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadFilesRef = useRef<() => Promise<void>>(async () => {});
 
-  const scheduleLoadFilesForAccount = (accountId: string, delayMs = 800) => {
-    const timers = loadFilesTimerRef.current;
-    const existing = timers.get(accountId);
-    if (existing) clearTimeout(existing);
-    timers.set(
-      accountId,
-      setTimeout(() => {
-        timers.delete(accountId);
-        void loadFilesForAccountRef.current(accountId);
-      }, delayMs)
-    );
+  const ownerAccounts = useMemo(() => driveAccounts.map(toOwnerAccount), [driveAccounts]);
+  const ownerAccountsRef = useRef<OwnerAccount[]>(ownerAccounts);
+  ownerAccountsRef.current = ownerAccounts;
+  const transport = useMemo(
+    () => createBrowserOwnerFilesTransport(userState.pnIdentifier || ''),
+    [userState.pnIdentifier]
+  );
+
+  const scheduleLoadFiles = (delayMs = 800) => {
+    if (loadFilesTimerRef.current) clearTimeout(loadFilesTimerRef.current);
+    loadFilesTimerRef.current = setTimeout(() => {
+      loadFilesTimerRef.current = null;
+      void loadFilesRef.current();
+    }, delayMs);
   };
 
   useEffect(() => {
@@ -174,20 +210,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Subscribe to upload queue for optimistic UI updates
   useEffect(() => {
+    const ownerFor = (accountId: string) =>
+      ownerAccountsRef.current.find((a) => a.accountId === accountId);
     const handleTaskAdded = (task: any) => {
       // Create placeholder file entry for optimistic UI
       if (task.type === 'file' && task.file) {
-        const placeholderFile: DriveFile = {
-          id: `uploading_${task.id}`, // Temporary ID
-          name: task.file.name,
-          mimeType: task.file.type || 'application/octet-stream',
-          size: `${Math.round(task.file.size / 1024)} KB`,
-          accountId: task.accountId,
-          isUploading: true,
-          uploadProgress: 0,
-          uploadTaskId: task.id,
-          modifiedTime: new Date().toISOString(),
-        };
+        const placeholderFile = pendingRow(
+          task,
+          task.file.name,
+          task.file.type || 'application/octet-stream',
+          task.file.size,
+          ownerFor(task.accountId)
+        );
 
         setFilesByAccount(prev => {
           const newMap = new Map(prev);
@@ -198,17 +232,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         });
       } else if (task.type === 'textPost' && task.textPost) {
         // For text posts, create a placeholder with the content preview
-        const placeholderFile: DriveFile = {
-          id: `uploading_${task.id}`,
-          name: task.metadata?.name || task.textPost.content?.substring(0, 50) || 'New Note',
-          mimeType: 'application/json',
-          size: '0 KB',
-          accountId: task.accountId,
-          isUploading: true,
-          uploadProgress: 0,
-          uploadTaskId: task.id,
-          modifiedTime: new Date().toISOString(),
-        };
+        const placeholderFile = pendingRow(
+          task,
+          task.metadata?.name || task.textPost.content?.substring(0, 50) || 'New Note',
+          'application/json',
+          0,
+          ownerFor(task.accountId)
+        );
 
         setFilesByAccount(prev => {
           const newMap = new Map(prev);
@@ -225,12 +255,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         setFilesByAccount(prev => {
           const newMap = new Map(prev);
           const accountFiles = newMap.get(task.accountId) || [];
-          const updatedFiles = accountFiles.map(file => {
-            if (file.uploadTaskId === task.id) {
-              return { ...file, uploadProgress: task.progress };
-            }
-            return file;
-          });
+          const updatedFiles = accountFiles.map(file =>
+            file.pending?.taskId === task.id
+              ? { ...file, pending: { ...file.pending, progress: task.progress ?? file.pending.progress } }
+              : file
+          );
           newMap.set(task.accountId, updatedFiles);
           return newMap;
         });
@@ -240,7 +269,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const newMap = new Map(prev);
           const accountFiles = newMap.get(task.accountId) || [];
           // Remove placeholder file
-          const filteredFiles = accountFiles.filter(file => file.uploadTaskId !== task.id);
+          const filteredFiles = accountFiles.filter(file => file.pending?.taskId !== task.id);
           newMap.set(task.accountId, filteredFiles);
           return newMap;
         });
@@ -251,7 +280,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             (t) => t.accountId === task.accountId
           );
           if (!accountStillBusy) {
-            scheduleLoadFilesForAccount(task.accountId);
+            scheduleLoadFiles();
           }
         }
       }
@@ -264,12 +293,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         setFilesByAccount(prev => {
           const newMap = new Map(prev);
           const accountFiles = newMap.get(task.accountId) || [];
-          const updatedFiles = accountFiles.map(file => {
-            if (file.uploadTaskId === id) {
-              return { ...file, uploadProgress: progress };
-            }
-            return file;
-          });
+          const updatedFiles = accountFiles.map(file =>
+            file.pending?.taskId === id ? { ...file, pending: { ...file.pending, progress } } : file
+          );
           newMap.set(task.accountId, updatedFiles);
           return newMap;
         });
@@ -300,70 +326,30 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   }, []); // Empty deps - only subscribe once
 
   // Handle file download
-  const handleDownload = async (file: DriveFile, accountId: string) => {
-    if (!authenticatedUser?.id || !accountId) return;
-
-    // Skip download for files that are still uploading
-    if (file.id.startsWith('uploading_') || (file as any).isUploading) {
-      if (import.meta.env.DEV) console.log('[FileStorageAggregator] Cannot download file that is still uploading');
+  const handleDownload = async (row: OwnerFileRow, decrypted?: Blob) => {
+    if (!authenticatedUser?.id || row.pending || row.origin === 'catalog' || !row.driveFileId) return;
+    if (!userState.pnIdentifier) {
+      setError('Unlock your pN to download files');
       return;
     }
 
     try {
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) {
-        throw new Error('No valid access token');
-      }
-
-      // Use main file ID if this is a thumbnail, otherwise use file ID
-      const fileIdToDownload = file.mainFileId || file.id;
-      const provider =
-        (file as { provider?: string }).provider ||
-        driveAccounts.find((a) => a.accountId === accountId)?.provider ||
-        'google_drive';
-      const pnIdentifier = userState.pnIdentifier;
-      if (!pnIdentifier) {
-        throw new Error('Unlock your pN to download files');
-      }
-      
-      // Get the original filename for download
-      let downloadFileName = file.name;
-      if (file.isThumbnail) {
-        // For thumbnails, try to get the original filename from metadata
-        try {
-          const metadataResponse = await apiGet(
-            `/api/aggregator/metadata-index/${fileIdToDownload}`
-          );
-          
-          if (metadataResponse.ok) {
-            const metadata = await metadataResponse.json();
-            if (metadata.metadata?.name) {
-              downloadFileName = metadata.metadata.name;
-            } else {
-              // Fallback: reconstruct from display name (add back extension if we can infer it)
-              downloadFileName = file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
-            }
-          } else {
-            // Fallback: reconstruct from display name
-              downloadFileName = file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
-          }
-        } catch (metadataError) {
-          // Fallback: reconstruct from display name
-              downloadFileName = file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
-        }
-      }
-
-      const blob = await downloadStorageBlob(accessToken, pnIdentifier, provider, fileIdToDownload, {
-        accountId
-      });
+      const blob =
+        decrypted ||
+        (await openStoredBlob(transport, {
+          accountKey: row.accountKey,
+          driveFileId: row.driveFileId,
+          encrypted: row.encrypted,
+          mimeType: row.mimeType,
+        }));
       const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = downloadFileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = downloadFileName(row);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (err: any) {
       setError(err.message || 'Failed to download file');
       if (import.meta.env.DEV) console.error('[FileStorageAggregator] Download error:', err);
@@ -371,7 +357,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Edit Metadata state
-  const [editingFile, setEditingFile] = useState<DriveFile | null>(null);
+  const [editingFile, setEditingFile] = useState<OwnerFileRow | null>(null);
   const [editForm, setEditForm] = useState<{
     name: string;
     description: string;
@@ -400,7 +386,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, any>>(new Map());
 
   // Share Settings state
-  const [sharingFile, setSharingFile] = useState<DriveFile | null>(null);
+  const [sharingFile, setSharingFile] = useState<OwnerFileRow | null>(null);
   const [sharingAccountId, setSharingAccountId] = useState<string | null>(null);
   const [shareVisibility, setShareVisibility] = useState<'public' | 'private'>('private');
   const [shareNSFW, setShareNSFW] = useState<boolean>(false);
@@ -460,41 +446,49 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     return null;
   };
 
-  const loadFilesForAccount = useLoadFilesForAccount({
-    authenticatedUserId: authenticatedUser?.id,
-    pnIdentifier: userState.pnIdentifier,
-    driveAccounts,
-    fileMetadataMap,
-    loadFileMetadata,
-    setFilesByAccount,
-    setError,
-  });
-
-  loadFilesForAccountRef.current = loadFilesForAccount;
-
-  // Load files for all accounts
-  useEffect(() => {
-    if (driveAccounts.length > 0 && authenticatedUser?.id) {
-      // Load files for each account sequentially to avoid race conditions
-      const loadAllFiles = async () => {
-        setIsLoading(true);
-        setError(null); // Clear previous errors
-        try {
-          for (const account of driveAccounts) {
-            try {
-              await loadFilesForAccount(account.accountId);
-            } catch (err) {
-              // Log error but continue loading other accounts
-              if (import.meta.env.DEV) console.error(`[FileStorageAggregator] Failed to load files for account ${account.accountId}:`, err);
-            }
-          }
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      loadAllFiles();
+  const loadFiles = async () => {
+    const accounts = ownerAccountsRef.current;
+    if (!authenticatedUser?.id || accounts.length === 0) return;
+    if (!userState.pnIdentifier) {
+      setError('Please unlock your pN to view files');
+      return;
     }
-  }, [driveAccounts.length, authenticatedUser?.id]);
+    setIsLoading(true);
+    try {
+      const inventory = await loadOwnerInventory(transport, { accounts });
+      setFilesByAccount((prev) => {
+        const next = new Map<string, OwnerFileRow[]>();
+        for (const account of accounts) {
+          const pending = (prev.get(account.accountId) || []).filter((row) => row.pending);
+          next.set(account.accountId, [...pending, ...(inventory.rowsByAccount[account.accountKey] || [])]);
+        }
+        return next;
+      });
+      setFileMetadataMap((prev) => {
+        const next = new Map(prev);
+        for (const [id, meta] of Object.entries(inventory.metadataById)) next.set(id, meta);
+        return next;
+      });
+      const firstError = Object.values(inventory.errors)[0];
+      setError(firstError && !firstError.includes('No valid access token') ? firstError : null);
+    } catch (err: any) {
+      if (import.meta.env.DEV) console.error('[FileStorageAggregator] Failed to load files:', err);
+      if (err?.message && !err.message.includes('No valid access token')) {
+        setError(err.message || 'Failed to load files');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  loadFilesRef.current = loadFiles;
+
+  useEffect(() => {
+    if (ownerAccounts.length > 0 && authenticatedUser?.id) {
+      setError(null);
+      void loadFiles();
+    }
+  }, [ownerAccounts.length, authenticatedUser?.id]);
 
   // Load third-party indexers
   const loadThirdPartyIndexers = async (fileId: string) => {
@@ -557,10 +551,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Handle edit metadata
-  const handleEditMetadata = async (file: DriveFile) => {
-    
-    // Load existing metadata
-    const metadata = await loadFileMetadata(file.id);
+  const handleEditMetadata = async (file: OwnerFileRow) => {
+    const metadata = (await loadFileMetadata(rowMetadataId(file))) || file.metadata;
     
     // Extract location data if present
     const location = metadata?.locationCreated || metadata?.schema?.locationCreated;
@@ -581,7 +573,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
     setEditForm({
-      name: metadata?.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name),
+      name: metadata?.name || file.displayName,
       description: metadata?.description || '',
       tags: (metadata?.keywords || metadata?.tags || []).join(', '),
       genre: genreString,
@@ -625,7 +617,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
     // Store file reference before closing modal
     const fileToUpdate = editingFile;
-    const fileId = fileToUpdate.id;
+    const fileId = rowMetadataId(fileToUpdate);
+    const rowKey = fileToUpdate.key;
+    const previousDisplayName = fileToUpdate.displayName;
     const accountId = fileToUpdate.accountId || '';
 
     // Optimistically update local metadata map
@@ -652,15 +646,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       setFilesByAccount(prev => {
         const next = new Map(prev);
         const accountFiles = next.get(accountId) || [];
-        const updatedFiles = accountFiles.map(file => {
-          if (file.id === fileId) {
-            return {
-              ...file,
-              displayName: formData.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name)
-            };
-          }
-          return file;
-        });
+        const updatedFiles = accountFiles.map(file =>
+          file.key === rowKey ? { ...file, displayName: formData.name || previousDisplayName } : file
+        );
         next.set(accountId, updatedFiles);
         return next;
       });
@@ -701,10 +689,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return next;
           });
         }
-        // Reload files to ensure metadata is fresh
-        if (accountId) {
-          scheduleLoadFilesForAccount(accountId);
-        }
+        scheduleLoadFiles();
       },
       onError: (error) => {
         if (import.meta.env.DEV) console.error('❌ [Metadata] Failed to update metadata:', error);
@@ -721,15 +706,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           setFilesByAccount(prev => {
             const next = new Map(prev);
             const accountFiles = next.get(accountId) || [];
-            const updatedFiles = accountFiles.map(file => {
-              if (file.id === fileId) {
-                return {
-                  ...file,
-                  displayName: file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name
-                };
-              }
-              return file;
-            });
+            const updatedFiles = accountFiles.map(file =>
+              file.key === rowKey ? { ...file, displayName: previousDisplayName } : file
+            );
             next.set(accountId, updatedFiles);
             return next;
           });
@@ -739,11 +718,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Handle share settings
-  const handleShareSettings = async (file: DriveFile, accountId: string) => {
-    // Orphan Drive files (no public index) default to private / unindexed.
-    const metadata = file.indexMissing === true
-      ? null
-      : await loadFileMetadata(file.id);
+  const handleShareSettings = async (file: OwnerFileRow) => {
+    const metadataId = rowMetadataId(file);
+    const metadata = (await loadFileMetadata(metadataId)) || file.metadata || null;
     const isPublic = metadata?.isPublic === true;
     const isNSFW = metadata?.isNSFW === true;
 
@@ -755,18 +732,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     });
 
     if (isPublic) {
-      await loadThirdPartyIndexers(file.id);
+      await loadThirdPartyIndexers(metadataId);
     }
 
-    setSharingFile({
-      ...file,
-      displayName:
-        (typeof file.displayName === 'string' && file.displayName) ||
-        (typeof metadata?.title === 'string' && metadata.title) ||
-        (typeof metadata?.name === 'string' && metadata.name) ||
-        file.name,
-    });
-    setSharingAccountId(accountId);
+    setSharingFile(file);
+    setSharingAccountId(file.accountId);
     setShareNSFW(isNSFW);
   };
 
@@ -800,7 +770,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
     // Store references before closing modal
     const fileToUpdate = sharingFile;
-    const fileId = fileToUpdate.id;
+    const fileId = rowMetadataId(fileToUpdate);
     const accountId = sharingAccountId || '';
 
     const existingMetadata = fileMetadataMap.get(fileId);
@@ -902,12 +872,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Index may have been created for a former orphan — allow metadata GET again.
         metadataMissingIdsRef.current.delete(fileId);
         if (result?.isPublic && accountId) {
-          scheduleLoadFilesForAccount(accountId, 1200);
+          scheduleLoadFiles(1200);
           const ft = String(
-            result?.fileType ||
-              existingMetadata?.fileType ||
-              (fileToUpdate as { fileType?: string }).fileType ||
-              ''
+            result?.fileType || existingMetadata?.fileType || fileToUpdate.metadata?.fileType || ''
           ).toLowerCase();
           const contentClass: 'media' | 'note' | 'collection' =
             ft.includes('collection') ? 'collection' : ft.includes('note') || ft.includes('thought') ? 'note' : 'media';
@@ -932,13 +899,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Handle file delete
-  const handleDelete = (file: DriveFile, accountId: string) => {
+  const handleDelete = (file: OwnerFileRow) => {
+    const accountId = file.accountId;
     if (!authenticatedUser?.id || !accountId) return;
     
     // Check if this is a collection by checking local metadata cache
     // Don't block on loading metadata - let the background processor handle it
-    const catalogIndexId = (file as { metadataIndexFileId?: string }).metadataIndexFileId;
-    const existingMetadata = fileMetadataMap.get(catalogIndexId || file.id);
+    const metadataIndexFileId = rowMetadataId(file);
+    const existingMetadata = fileMetadataMap.get(metadataIndexFileId) || file.metadata;
     const isCollection = existingMetadata?.fileType === 'collection' && existingMetadata?.collection?.collectionFileIds;
     const collectionFileIds = isCollection ? existingMetadata.collection.collectionFileIds : [];
     const isNoteCollection = existingMetadata?.isNoteCollection === true;
@@ -960,7 +928,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       ? isNoteCollection
         ? `Are you sure you want to delete this note collection and all ${totalFilesToDelete - 1} associated files (${collectionFileIds.length} thumbnails and the main note-collection file)?`
         : `Are you sure you want to delete this collection and all ${collectionFileIds.length} associated files?`
-      : `Are you sure you want to delete "${file.name}"?`;
+      : `Are you sure you want to delete "${file.displayName}"?`;
     
     if (!confirm(confirmMessage)) return;
 
@@ -970,17 +938,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setFilesByAccount(prev => {
       const next = new Map(prev);
       const accountFiles = next.get(accountId) || [];
-      const filteredFiles = accountFiles.filter(f => f.id !== file.id);
+      const filteredFiles = accountFiles.filter(f => f.key !== file.key);
       next.set(accountId, filteredFiles);
       return next;
     });
-    setOpenMenuFor(null);
 
     // Queue background task
     // Background processor will load metadata if needed
-    const catalogBacked = (file as { catalogBacked?: boolean }).catalogBacked === true;
-    const metadataIndexFileId =
-      (file as { metadataIndexFileId?: string }).metadataIndexFileId || file.id;
+    const catalogBacked = file.origin === 'catalog';
 
     uploadQueueService.addTask({
       type: 'deleteFile',
@@ -995,16 +960,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       },
       onComplete: (result) => {
         if (import.meta.env.DEV) console.log('✅ [Delete] File deleted:', result);
-        // Reload files to ensure consistency
-        setTimeout(() => {
-          loadFilesForAccount(accountId);
-        }, 500);
+        scheduleLoadFiles(500);
       },
       onError: (error) => {
         if (import.meta.env.DEV) console.error('❌ [Delete] Failed to delete file:', error);
         setError(error.message || 'Failed to delete file');
         // Reload files to restore UI state on error
-        loadFilesForAccount(accountId);
+        void loadFilesRef.current();
       }
     });
   };
@@ -1055,16 +1017,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const failCount = totalFiles - deletedCount;
           setError(`Deleted ${deletedCount} file${deletedCount !== 1 ? 's' : ''}, ${failCount} failed`);
         }
-        // Reload files to ensure consistency
-        setTimeout(() => {
-          loadFilesForAccount(accountId);
-        }, 500);
+        scheduleLoadFiles(500);
       },
       onError: (error) => {
         if (import.meta.env.DEV) console.error('❌ [BulkDelete] Failed to delete files:', error);
         setError(error.message || 'Failed to delete files');
         // Reload files to restore UI state on error
-        loadFilesForAccount(accountId);
+        void loadFilesRef.current();
       }
     });
   };
@@ -1123,9 +1082,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         onUploadComplete?.('collection');
         // Reload files
         if (accountId && result?.fileId) {
-          setTimeout(() => {
-            loadFilesForAccount(accountId);
-          }, 1000);
+          scheduleLoadFiles(1000);
         }
       },
       onError: (error) => {
@@ -1187,7 +1144,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Select all files in current account
   const selectAllFiles = (accountId: string) => {
     const accountFiles = filesByAccount.get(accountId) || [];
-    const accountFilesIds = accountFiles.map(f => f.id);
+    const accountFilesIds = accountFiles.filter(f => !f.pending).map(f => f.id);
     setSelectedFiles(prev => {
       const newSet = new Set(prev);
       accountFilesIds.forEach(id => newSet.add(id));
@@ -1198,8 +1155,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Deselect all files
 
   // Handle set/unset top post
-  const handleSetTopPost = async (file: DriveFile, accountId: string) => {
-    if (!authenticatedUser?.id || !accountId) return;
+  const handleSetTopPost = async (file: OwnerFileRow) => {
+    if (!authenticatedUser?.id || !file.accountId) return;
+    const metadataId = rowMetadataId(file);
 
     setIsLoading(true);
     setError(null);
@@ -1211,19 +1169,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       // Get current metadata to check if already top post
-      const metadata = fileMetadataMap.get(file.id);
+      const metadata = fileMetadataMap.get(metadataId) || file.metadata;
       const currentIsTopPost = metadata?.isTopPost || false;
       const newIsTopPost = !currentIsTopPost;
 
-      const response = await ownerFetch('PUT', `/api/aggregator/metadata-index/${file.id}`, {
+      const response = await ownerFetch('PUT', `/api/aggregator/metadata-index/${metadataId}`, {
         isTopPost: newIsTopPost
       });
 
       if (response.ok) {
         // Update local metadata
         const updatedMetadata = { ...metadata, isTopPost: newIsTopPost };
-        setFileMetadataMap(prev => new Map(prev).set(file.id, updatedMetadata));
-        setOpenMenuFor(null);
+        setFileMetadataMap(prev => new Map(prev).set(metadataId, updatedMetadata));
       } else {
         const errorText = await response.text();
         throw new Error(`Failed to update top post: ${errorText}`);
@@ -1235,84 +1192,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       setIsLoading(false);
     }
   };
-
-  // Load metadata for files when menu opens
-  useEffect(() => {
-    if (openMenuFor) {
-      // Load metadata for the file when menu opens
-      loadFileMetadata(openMenuFor).catch(err => {
-        if (import.meta.env.DEV) console.warn('[FileStorageAggregator] Failed to load metadata for menu:', err);
-      });
-    }
-  }, [openMenuFor]);
-
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!openMenuFor) return;
-    
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      
-      // Check if click is on the menu button itself
-      const menuButton = document.querySelector(`[data-menu-button="${openMenuFor}"]`);
-      if (menuButton && (menuButton.contains(target) || menuButton === target)) {
-        return; // Don't close if clicking the button
-      }
-      
-      // Check if click is inside the menu
-      if (actionMenuRef.current && actionMenuRef.current.contains(target)) {
-        return; // Don't close if clicking inside menu
-      }
-      
-      // Close menu if clicking outside
-      setOpenMenuFor(null);
-    };
-
-    // Use a delay to avoid immediate closure from the button click
-    const timeout = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside, true);
-    }, 200);
-
-    return () => {
-      clearTimeout(timeout);
-      document.removeEventListener('mousedown', handleClickOutside, true);
-    };
-  }, [openMenuFor]);
-
-  // Close add menu when clicking outside
-  useEffect(() => {
-    if (!showAddMenuFor) return;
-    
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      
-      // Check if click is on the add button itself
-      const addButton = addButtonRefs.current.get(showAddMenuFor);
-      if (addButton && (addButton.contains(target) || addButton === target)) {
-        return; // Don't close if clicking the button
-      }
-      
-      // Check if click is inside the menu (find by checking if it's in a menu element)
-      const menuElement = document.querySelector(`[data-add-menu="${showAddMenuFor}"]`);
-      if (menuElement && menuElement.contains(target)) {
-        return; // Don't close if clicking inside menu
-      }
-      
-      // Close menu if clicking outside
-      setShowAddMenuFor(null);
-      setAddMenuPosition(null);
-    };
-
-    // Use a delay to avoid immediate closure from the button click
-    const timeout = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside, true);
-    }, 200);
-
-    return () => {
-      clearTimeout(timeout);
-      document.removeEventListener('mousedown', handleClickOutside, true);
-    };
-  }, [showAddMenuFor]);
 
   const hasConnectedBackends = driveAccounts.length > 0;
 
@@ -1525,60 +1404,108 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               </select>
             </div>
           )}
-          {driveAccounts.map((account, index) => (
-            <AccountFilesPanel
-              key={account.accountId}
-              account={account}
-              index={index}
-              accountFiles={filesByAccount.get(account.accountId) || []}
-              isLoading={isLoading}
-              viewMode={viewMode}
-              setViewMode={setViewMode}
-              isBulkDeleteMode={isBulkDeleteMode}
-              setIsBulkDeleteMode={setIsBulkDeleteMode}
-              isCollectionMode={isCollectionMode}
-              setIsCollectionMode={setIsCollectionMode}
-              selectedFiles={selectedFiles}
-              setSelectedFiles={setSelectedFiles}
-              collectionFileOrder={collectionFileOrder}
-              setCollectionFileOrder={setCollectionFileOrder}
-              toggleFileSelection={toggleFileSelection}
-              selectAllFiles={selectAllFiles}
-              fileMetadataMap={fileMetadataMap}
-              openMenuFor={openMenuFor}
-              setOpenMenuFor={setOpenMenuFor}
-              setMenuPosition={setMenuPosition}
-              showAddMenuFor={showAddMenuFor}
-              setShowAddMenuFor={setShowAddMenuFor}
-              addMenuPosition={addMenuPosition}
-              setAddMenuPosition={setAddMenuPosition}
-              setViewingFile={setViewingFile}
-              setDriveAccounts={setDriveAccounts}
-              setSelectedAccountId={setSelectedAccountId}
-              setError={setError}
-              fileInputRefs={fileInputRefs}
-              addButtonRefs={addButtonRefs}
-              menuButtonRefs={menuButtonRefs}
-              loadFilesForAccount={loadFilesForAccount}
-              loadFileMetadata={loadFileMetadata}
-              handleUploadForAccount={handleUploadForAccount}
-              beginMediaUpload={beginMediaUpload}
-              handleCreateCollection={handleCreateCollection}
-              handleBulkDelete={handleBulkDelete}
-              onOpenTextEditor={onOpenTextEditor}
-            />
-          ))}
+          <OwnerFileExplorer
+            transport={transport}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            sections={ownerAccounts.map((account) => {
+              const rows = filesByAccount.get(account.accountId) || [];
+              const selectable = rows.filter((row) => !row.pending);
+              const selectedCount = selectable.filter((row) => selectedFiles.has(row.id)).length;
+              return {
+                account,
+                rows,
+                icon: <Cloud className="h-5 w-5 text-blue-400" />,
+                loading: isLoading && rows.length === 0,
+                emptyMessage: 'No files yet',
+                headerActions: (
+                  <AccountToolbar
+                    accountId={account.accountId}
+                    isLoading={isLoading}
+                    isBulkDeleteMode={isBulkDeleteMode}
+                    onDisconnect={() =>
+                      setDriveAccounts((prev) => prev.filter((a) => a.accountId !== account.accountId))
+                    }
+                    onRefresh={() => void loadFiles()}
+                    onUpload={(e) => {
+                      setSelectedAccountId(account.accountId);
+                      void handleUploadForAccount(account.accountId, e);
+                    }}
+                    onNativeMedia={(file) => {
+                      setSelectedAccountId(account.accountId);
+                      beginMediaUpload(file, account.accountId, true);
+                    }}
+                    onStartCollection={() => {
+                      setSelectedAccountId(account.accountId);
+                      setIsCollectionMode(true);
+                      setIsBulkDeleteMode(false);
+                      setSelectedFiles(new Set());
+                      setCollectionFileOrder(new Map());
+                    }}
+                    onToggleBulkDelete={() => {
+                      if (isBulkDeleteMode) setSelectedFiles(new Set());
+                      setIsBulkDeleteMode(!isBulkDeleteMode);
+                    }}
+                    onOpenTextEditor={onOpenTextEditor ? () => onOpenTextEditor(account.accountId) : undefined}
+                    onError={setError}
+                  />
+                ),
+                footer: isCollectionMode ? (
+                  <CollectionModeFooter
+                    selectedCount={selectedCount}
+                    isLoading={isLoading}
+                    onCancel={() => {
+                      setIsCollectionMode(false);
+                      setSelectedFiles(new Set());
+                      setCollectionFileOrder(new Map());
+                    }}
+                    onNext={() => void handleCreateCollection(account.accountId)}
+                  />
+                ) : isBulkDeleteMode ? (
+                  <BulkDeleteFooter
+                    selectedCount={selectedCount}
+                    totalCount={selectable.length}
+                    isLoading={isLoading}
+                    onToggleAll={() => {
+                      if (selectable.length > 0 && selectedCount === selectable.length) {
+                        setSelectedFiles((prev) => {
+                          const next = new Set(prev);
+                          selectable.forEach((row) => next.delete(row.id));
+                          return next;
+                        });
+                      } else {
+                        selectAllFiles(account.accountId);
+                      }
+                    }}
+                    onDelete={() => handleBulkDelete(account.accountId)}
+                  />
+                ) : undefined,
+              };
+            })}
+            selection={{
+              active: isBulkDeleteMode || isCollectionMode,
+              selectedIds: selectedFiles,
+              order: isCollectionMode ? collectionFileOrder : undefined,
+              onToggle: (row) => {
+                if (!row.pending) toggleFileSelection(row.id);
+              },
+            }}
+            renderRowMenu={(row, close) => (
+              <FileActionMenu
+                row={row}
+                isTopPost={(fileMetadataMap.get(rowMetadataId(row)) ?? row.metadata)?.isTopPost === true}
+                isLoading={isLoading}
+                close={close}
+                onEditMetadata={handleEditMetadata}
+                onDownload={(r) => void handleDownload(r)}
+                onShareSettings={(r) => void handleShareSettings(r)}
+                onSetTopPost={(r) => void handleSetTopPost(r)}
+                onDelete={handleDelete}
+              />
+            )}
+            onDownload={(row, blob) => void handleDownload(row, blob)}
+          />
         </div>
-      )}
-
-      {/* File Viewer Modal */}
-      {viewingFile && (
-        <FileViewerModal 
-          file={viewingFile}
-          fileMetadataMap={fileMetadataMap}
-          onClose={() => setViewingFile(null)}
-          onDownload={() => viewingFile.accountId && handleDownload(viewingFile, viewingFile.accountId)}
-        />
       )}
 
       {/* Pre-upload title + caption (browser media/PDF) */}
@@ -1677,23 +1604,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         />
       )}
 
-      {/* Portal-based menu for both grid and list views */}
-      <FileActionMenu
-        openMenuFor={openMenuFor}
-        menuPosition={menuPosition}
-        filesByAccount={filesByAccount}
-        fileMetadataMap={fileMetadataMap}
-        actionMenuRef={actionMenuRef}
-        isLoading={isLoading}
-        setOpenMenuFor={setOpenMenuFor}
-        setMenuPosition={setMenuPosition}
-        handleEditMetadata={handleEditMetadata}
-        handleDownload={handleDownload}
-        handleShareSettings={handleShareSettings}
-        handleSetTopPost={handleSetTopPost}
-        handleDelete={handleDelete}
-      />
-      
       {/* Collection Metadata Modal */}
       <EditMetadataModal
         isOpen={showCollectionMetadataModal && !!pendingCollectionData}

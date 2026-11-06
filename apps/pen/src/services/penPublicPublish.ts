@@ -5,6 +5,7 @@
 
 import {
   FEED_PREVIEW_POSTER_MAX_BYTES,
+  encodePosterFromImage,
   materializePublicShare,
   r2ObjectKey,
   sealPublicShareFromBytes,
@@ -95,12 +96,21 @@ export type FeedPreviewUploads = {
   hd?: FeedPreviewUpload;
 };
 
-/** Poster-only previews for still / note rows. */
-export function posterPreview(
-  blob: Blob | undefined,
-  contentType = 'image/jpeg'
-): FeedPreviewUploads | undefined {
-  return blob && blob.size > 0 ? { poster: { blob, contentType } } : undefined;
+/** Poster-only previews for still / note rows. Oversized stills are re-encoded under the CDN poster cap. */
+export async function posterPreview(blob: Blob | undefined | null): Promise<FeedPreviewUploads | undefined> {
+  if (!blob || blob.size === 0) return undefined;
+  if (blob.size <= FEED_PREVIEW_POSTER_MAX_BYTES) {
+    return { poster: { blob, contentType: blob.type || 'image/jpeg' } };
+  }
+  const encoded = await encodePosterFromImage(blob);
+  return {
+    poster: {
+      blob: encoded.blob,
+      contentType: encoded.contentType,
+      width: encoded.width,
+      height: encoded.height
+    }
+  };
 }
 
 async function uploadFeedVariant(params: {
@@ -233,7 +243,9 @@ export async function publishPublicCloudFile(params: {
 
   let feedPoster: FeedPreviewObjectRef | undefined;
   const poster = previews.poster;
-  if (poster && poster.blob.size > 0 && poster.blob.size <= FEED_PREVIEW_POSTER_MAX_BYTES) {
+  if (poster && poster.blob.size > 0) {
+    const sizeCheck = validateFeedPreviewByteSize('poster', poster.blob.size);
+    if (!sizeCheck.ok) throw new Error(sizeCheck.error);
     feedPoster = await upload('poster', poster);
   }
 

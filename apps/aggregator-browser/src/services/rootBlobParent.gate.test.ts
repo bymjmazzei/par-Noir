@@ -17,10 +17,13 @@ describe('browse blob parents', () => {
     expect(src).not.toContain('finalParents = [index.pnFolderId]');
   });
 
-  it('lists Me from content class folders', () => {
+  it('lists Me from files/ and the content class folders', () => {
     const src = readFileSync(resolve(here, 'storageApiClient.ts'), 'utf8');
-    expect(src).toContain('contentNotesFolderId');
-    expect(src).toContain('contentMediaFolderId');
-    expect(src).toContain('contentCollectionsFolderId');
+    expect(src).toContain('ownerScanFolderIds(folders)');
+    const folders = readFileSync(resolve(here, '../../../../packages/owner-files/src/folders.ts'), 'utf8');
+    expect(folders).toContain('filesFolderId');
+    expect(folders).toContain('contentNotesFolderId');
+    expect(folders).toContain('contentMediaFolderId');
+    expect(folders).toContain('contentCollectionsFolderId');
   });
 });

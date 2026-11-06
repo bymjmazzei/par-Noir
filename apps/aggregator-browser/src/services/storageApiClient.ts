@@ -7,6 +7,7 @@ import {
   ensureOwnerBlobFolders,
   SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT,
 } from '@par-noir/device-cloud-credentials';
+import { ownerScanFolderIds } from '@par-noir/owner-files';
 import { sessionDriveFor } from './sessionDrive';
 
 /** Canonical cache/API key for viewer storage accounts (bare id, no pn- prefix). */
@@ -340,11 +341,7 @@ export async function listStorageFiles(
   if (backend === 'google_drive') {
     const drive = await sessionDriveFor(pnIdentifier);
     const folders = await ensureOwnerBlobFolders(drive.accessToken, drive.index);
-    const parentIds = [
-      folders.contentNotesFolderId,
-      folders.contentMediaFolderId,
-      folders.contentCollectionsFolderId,
-    ];
+    const parentIds = ownerScanFolderIds(folders);
     const listed: ListedStorageFile[] = [];
     for (const parentId of parentIds) {
       const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);

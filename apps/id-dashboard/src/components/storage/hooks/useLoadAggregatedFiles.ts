@@ -2,26 +2,30 @@
  * Aggregated file/quota loading for FileStorageAggregator.
  *
  * Owns loadFiles, loadStorageQuota and the token-retry scheduling that backs them.
- * Per-backend owner-index resolution lives in loadFiles/fetchOwnerIndex, and the
- * Drive-scan for unindexed discovery lives in loadFiles/mergeDriveScanWithIndex.
+ * Listing is the shared owner inventory (@par-noir/owner-files): device owner index,
+ * a Drive scan of the canonical owner folders, and the owner catalog (Pen posts etc.).
  * Durable public-cache cleanup is Cloud SoT reconcile
  * (POST /api/storage/owner-index/:id/reconcile → OAuth-less publicContentRef probe).
  *
  * Device custody note: an owner-index 409 means the server-side Drive index is
  * incomplete (expected when OAuth secrets live on the device, not the API).
- * fetchOwnerIndex leaves ownerIndex null (one API attempt only); mergeDriveScanWithIndex
- * fills via Drive listFiles — never a second owner-index GET, never POST
+ * fetchOwnerIndex leaves the index null (one attempt only) and the inventory
+ * fills via a Drive scan — never a second owner-index GET, never POST
  * /storage/initialize (which 400s without server-held tokens and loops setup UI).
  */
 import React from 'react';
-import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import {
+  loadOwnerInventory,
+  parseAccountKey,
+  type OwnerAccount,
+  type OwnerFileRow,
+  type OwnerFilesTransport,
+} from '@par-noir/owner-files';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { GoogleDriveBackend } from '../../../services/storage/GoogleDriveBackend';
-import { AggregatedFile, PublicMetadata, ShareToken } from '../../../types/aggregator';
-import { publicKeyFromUnlockedUser } from '../../../services/storageUnlockAuth';
+import { PublicMetadata } from '../../../types/aggregator';
 import {
   type DriveSetupProgress,
-  type DriveAccountState,
   type FileStorageAggregatorProps,
 } from '../FileStorageAggregatorTypes';
 import {
@@ -29,33 +33,24 @@ import {
   LOAD_FILES_TIMEOUT_MS,
   waitForDriveLayoutIdle,
 } from './driveLayoutBusy';
-import { fetchOwnerIndex } from './loadFiles/fetchOwnerIndex';
-import { mergeDriveScanWithIndex } from './loadFiles/mergeDriveScanWithIndex';
 import { useTokenRetry } from './loadFiles/useTokenRetry';
-import { applyOwnerCatalogToLoad, fetchOwnerCatalog } from '../../../services/ownerCatalogService';
 
 export interface UseLoadAggregatedFilesParams {
   aggregatorService: FileAggregatorService | null;
-  authenticatedUser: any;
-  resolvedAuth: { publicKey: string; authToken?: string } | null;
-  driveAccounts: DriveAccountState[];
+  /** Null until the canonical pN identifier is known. */
+  transport: OwnerFilesTransport | null;
   activeBackendId: string | null;
   setActiveBackendId: React.Dispatch<React.SetStateAction<string | null>>;
-  setFiles: React.Dispatch<React.SetStateAction<AggregatedFile[]>>;
+  setRows: React.Dispatch<React.SetStateAction<OwnerFileRow[]>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setFileMetadataMap: React.Dispatch<React.SetStateAction<Map<string, PublicMetadata>>>;
   setStorageQuotas: React.Dispatch<React.SetStateAction<Map<string, any>>>;
   setUserEmails: React.Dispatch<React.SetStateAction<Map<string, string>>>;
-  loadFileMetadata: (filesToLoad: AggregatedFile[]) => Promise<void>;
   registerPortableCloudBackends: () => Promise<void>;
   driveReadBlocked: boolean;
   deviceGate: FileStorageAggregatorProps['deviceGate'];
-  resolveOwnerApiToken: (wantedPn?: string | null) => string | null;
-  getKey2FromSecureStorage: (sessionId: string | null | undefined) => string | null;
-  makeShareTokenCacheKey: (backendId: string, backendFileId: string) => string;
   /** Shared refs owned by FileStorageAggregator / useDriveLayoutInit. */
-  shareTokenCache: React.MutableRefObject<Map<string, ShareToken>>;
   pnIdentifierRef: React.MutableRefObject<string | null>;
   driveLayoutInitInFlightRef: React.MutableRefObject<Set<string>>;
   driveSetupProgressRef: React.MutableRefObject<DriveSetupProgress | null>;
@@ -67,27 +62,29 @@ export interface UseLoadAggregatedFilesParams {
   pendingRetryTimeoutRef: React.MutableRefObject<number | null>;
 }
 
+function isDriveTokenCooldown(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    (err as { code?: string } | null)?.code === 'GOOGLE_DRIVE_REFRESH_COOLDOWN' ||
+    message.includes('token refresh is temporarily rate limited') ||
+    message.includes('Google Drive authentication expired')
+  );
+}
+
 export function useLoadAggregatedFiles({
   aggregatorService,
-  authenticatedUser,
-  resolvedAuth,
-  driveAccounts,
+  transport,
   activeBackendId,
   setActiveBackendId,
-  setFiles,
+  setRows,
   setError,
   setIsLoading,
   setFileMetadataMap,
   setStorageQuotas,
   setUserEmails,
-  loadFileMetadata,
   registerPortableCloudBackends,
   driveReadBlocked,
   deviceGate,
-  resolveOwnerApiToken,
-  getKey2FromSecureStorage,
-  makeShareTokenCacheKey,
-  shareTokenCache,
   pnIdentifierRef,
   driveLayoutInitInFlightRef,
   driveSetupProgressRef,
@@ -131,7 +128,7 @@ export function useLoadAggregatedFiles({
       }
     }
     if (driveReadBlocked) {
-      setFiles([]);
+      setRows([]);
       setError(deviceGate?.blockedMessage ?? null);
       setIsLoading(false);
       return;
@@ -164,261 +161,70 @@ export function useLoadAggregatedFiles({
           console.warn('⚠️ [loadFiles] Owner inventory reconcile skipped', reconcileErr);
         }
       }
-      
-      // Ensure backends are initialized (gracefully fail if Google Drive not connected)
-      // Don't block unlock if Google Drive initialization fails
-      if (!aggregatorService) {
-        console.warn('⚠️ [loadFiles] Aggregator service not available');
-        setIsLoading(false);
-        setFiles([]);
+
+      if (!aggregatorService || !transport) {
+        console.warn('⚠️ [loadFiles] Storage service or pN identity not ready');
+        setRows([]);
         return;
       }
 
       await registerPortableCloudBackends();
-      
+
       try {
         await aggregatorService.ensureInitialized();
-      } catch (initError) {
-        // Don't log as error - just return empty list
+      } catch {
         console.warn('⚠️ [loadFiles] Backend initialization skipped (Google Drive may not be connected)');
-        setIsLoading(false);
-        setFiles([]); // Set empty files, don't show error
+        setRows([]);
         return;
       }
 
-      const backendEntries = typeof aggregatorService.listBackendEntries === 'function'
-        ? aggregatorService.listBackendEntries()
-        : [];
-      const connectedEntries = backendEntries.filter(({ backend }) => backend.isConnected());
-
+      const connectedEntries = aggregatorService
+        .listBackendEntries()
+        .filter(({ backend }) => backend.isConnected());
       if (connectedEntries.length === 0) {
-        console.log('ℹ️ [loadFiles] No connected storage backends yet; skipping owner index load until connection completes', {
-          backendEntries: backendEntries.map(({ id }) => id),
-          connectedBackends: connectedEntries.map(({ id }) => id),
-        });
-        setFiles([]);
-        setIsLoading(false);
+        console.log('ℹ️ [loadFiles] No connected storage backends yet; waiting for connection');
+        setRows([]);
         return;
       }
-
       if (timedOut) return;
 
       if (!activeBackendId) {
         setActiveBackendId((prev) => prev || connectedEntries[0]?.id || null);
       }
-      
-      // Try to generate pN identifier - if it fails, backend will search for folders directly
-      let currentPnIdentifier: string | undefined = undefined;
-      
-      try {
-        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
-        
-        // Get credentials (prioritize resolvedAuth, fallback to authenticatedUser + sessionStorage)
-        let key1: string | null = null;
-        let publicKey: string | null = null;
-        // SECURITY: Get credentials from SecureCredentialManager (secrets)
-        const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-        
-        let key2: string | null = credentials?.key2 || null;
-        
-        // SECURITY: Get Key 1 from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
-        if (credentials?.key1 && resolvedAuth?.publicKey) {
-          key1 = credentials.key1;
-          publicKey = resolvedAuth.publicKey;
-          key2 = credentials.key2;
-        } else if (authenticatedUser && credentials) {
-          key1 = credentials.key1;
-          publicKey = authenticatedUser.publicKey || null;
-          key2 = credentials.key2;
-          try {
-            // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
-            const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-            key2 = getKey2FromSecureStorage(sessionId);
-          } catch (e) {
-            // Ignore SecureCredentialManager errors
-          }
-        }
-        
-        // If still missing, try loading from SecureStorage
-        if ((!key1 || !publicKey || !key2)) {
-          try {
-            const { SecureStorage } = await import('../../../utils/storage');
-            const storage = new SecureStorage();
-            await storage.init();
-            const session = await storage.getCurrentSession();
-            if (session) {
-              if (!publicKey) publicKey = (session as any).publicKey || null;
-              if (!key2) {
-                try {
-                  // SECURITY: Get Key 2 from SecureCredentialManager instead of sessionStorage
-                  const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-                  key2 = getKey2FromSecureStorage(sessionId);
-                } catch (e) {
-                  // Ignore
-                }
-              }
-            }
-          } catch (e) {
-            // Ignore
-          }
-        }
-        
-        if (!publicKey) {
-          publicKey = resolvedAuth?.publicKey || publicKeyFromUnlockedUser(authenticatedUser);
-        }
 
-        // Canonical pn must match OAuth JWT (public key only).
-        if (publicKey) {
-          currentPnIdentifier = deriveCanonicalPnIdentifier(publicKey);
-          console.log(`✅ [loadFiles] Generated pN identifier (canonical): ${(currentPnIdentifier || '').substring(0, 8)}...`);
-          console.log(`📁 [loadFiles] Expected folder name: "par Noir - ${(currentPnIdentifier || '').substring(0, 8)}..."`);
-        } else {
-          console.log(`⚠️ [loadFiles] Cannot generate pN identifier (missing publicKey) - backend will search for folders directly`);
-        }
-      } catch (err) {
-        console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
-      }
-      
-      // STANDARDIZED: Only use deriveCanonicalPnIdentifier - no fallbacks
-      // If we don't have credentials, we cannot generate the identifier
-      // This ensures consistency - same credentials always produce same identifier
-      if (!currentPnIdentifier) {
-        console.warn('⚠️ [loadFiles] Cannot generate standardized pN identifier - credentials required');
-        console.warn('⚠️ [loadFiles] Files may not be found until credentials are available');
-      }
-      
-      if (!currentPnIdentifier) {
-        console.warn('⚠️ [loadFiles] Unable to determine pN identifier - owner index cannot be loaded until credentials are available');
-      }
-
-      const aggregatedAllFiles: AggregatedFile[] = [];
-      const aggregatedMetadataMap = new Map<string, PublicMetadata>();
-      const filesNeedingMetadata: AggregatedFile[] = [];
       const retryBackends = new Set<string>();
-
-      for (const entry of connectedEntries) {
-        const backendId = entry.id;
-        const backend = entry.backend as GoogleDriveBackend;
-        const accountForBackend =
-          driveAccounts.find((account) => account.backendId === backendId) || null;
-        const keyPrefix =
-          accountForBackend?.keyPrefix ||
-          (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
-
-        if (rateLimitedBackendsRef.current.has(backendId)) {
-          console.debug('⏳ [loadFiles] Skipping backend during refresh cooldown', { backendId });
+      const accounts: OwnerAccount[] = [];
+      for (const { id, backend } of connectedEntries) {
+        if (rateLimitedBackendsRef.current.has(id)) {
+          console.debug('⏳ [loadFiles] Skipping backend during refresh cooldown', { backendId: id });
           continue;
         }
-
-        if (!backend?.isConnected()) {
-          console.debug('ℹ️ [loadFiles] Backend not connected yet; skipping for now', {
-            backendId,
-            keyPrefix,
-          });
-          continue;
+        if (backend instanceof GoogleDriveBackend && !(await backend.ensureAccessToken())) {
+          retryBackends.add(id);
         }
-
-        const backendProviderForToken =
-          backendId.includes('::') ? backendId.split('::')[0] : backendId;
-        const isPortableBackendForToken = backendProviderForToken !== 'google_drive';
-
-        let ensuredAccessToken: string | null = null;
-        if (typeof backend.ensureAccessToken === 'function') {
-          ensuredAccessToken = await backend.ensureAccessToken();
-        }
-
-        const accessToken = ensuredAccessToken;
-        if (!accessToken && !isPortableBackendForToken) {
-          retryBackends.add(backendId);
-          console.debug('⏳ [loadFiles] Waiting for refreshed token', { backendId });
-        }
-
-        const {
-          ownerIndex,
-          ownerIndexFromApi,
-          skipBackend: ownerIndexSkipBackend,
-        } = await fetchOwnerIndex({
-          backendId,
-          currentPnIdentifier,
-          resolveOwnerApiToken,
-        });
-        if (ownerIndexSkipBackend) {
-          continue;
-        }
-
-        const { filesForBackend, skipBackend: mergeSkipBackend } = await mergeDriveScanWithIndex({
-          backendId,
-          backend,
-          currentPnIdentifier,
-          ownerIndex,
-          ownerIndexFromApi,
-          verifyWithDrive,
-          aggregatedMetadataMap,
-          filesNeedingMetadata,
-          retryBackends,
-          rateLimitedBackendsRef,
-          ownerIndexRetryCountsRef,
-          shareTokenCache,
-          makeShareTokenCacheKey,
-        });
-        if (mergeSkipBackend) {
-          continue;
-        }
-
-        if (filesForBackend.length === 0) {
-          console.debug('ℹ️ [loadFiles] No files discovered for backend', { backendId });
-          continue;
-        }
-
-        aggregatedAllFiles.push(...filesForBackend);
+        const { provider, accountId } = parseAccountKey(id);
+        accounts.push({ accountKey: id, provider, accountId, label: id });
       }
 
-      if (currentPnIdentifier) {
-        const ownerToken = resolveOwnerApiToken(currentPnIdentifier);
-        const catalogBackendId = connectedEntries[0]?.id || 'google_drive';
-        if (ownerToken) {
-          try {
-            const catalog = await fetchOwnerCatalog(currentPnIdentifier, ownerToken);
-            applyOwnerCatalogToLoad({
-              catalog,
-              backendId: catalogBackendId,
-              aggregatedAllFiles,
-              aggregatedMetadataMap
-            });
-          } catch (catalogErr) {
-            console.warn('⚠️ [loadFiles] Owner catalog merge failed (non-blocking):', catalogErr);
-          }
-        }
-      }
-
-      setFiles(aggregatedAllFiles);
-      const normalizedMetadataMap = new Map<string, PublicMetadata>();
-      aggregatedMetadataMap.forEach((metadata, key) => {
-        normalizedMetadataMap.set(key, metadata);
-        if (metadata.backendFileId && metadata.backendFileId !== key) {
-          normalizedMetadataMap.set(metadata.backendFileId, metadata);
-        }
-        if (metadata.fileId && metadata.fileId !== key) {
-          normalizedMetadataMap.set(metadata.fileId, metadata);
-        }
+      const inventory = await loadOwnerInventory(transport, {
+        accounts,
+        verifyWithDrive,
+        onAccountError: (account, err) => {
+          if (!isDriveTokenCooldown(err)) return;
+          retryBackends.add(account.accountKey);
+          rateLimitedBackendsRef.current.add(account.accountKey);
+        },
       });
-      setFileMetadataMap(normalizedMetadataMap);
+      if (timedOut) return;
 
-      const filesWithoutMetadata = filesNeedingMetadata.filter((file) => {
-        if (aggregatedMetadataMap.has(file.id)) {
-          return false;
-        }
-        if (file.backendFileId && aggregatedMetadataMap.has(file.backendFileId)) {
-          return false;
-        }
-        return true;
-      });
-      if (filesWithoutMetadata.length > 0) {
-        loadFileMetadata(filesWithoutMetadata).catch((err) => {
-          console.warn('⚠️ Failed to load file metadata (non-blocking):', err);
-        });
+      for (const account of accounts) {
+        if (!inventory.errors[account.accountKey]) ownerIndexRetryCountsRef.current.delete(account.accountKey);
       }
+      setRows(inventory.rows);
+      setFileMetadataMap(
+        new Map(Object.entries(inventory.metadataById) as Array<[string, PublicMetadata]>)
+      );
+
       if (retryBackends.size > 0) {
         console.debug('⏳ [loadFiles] Scheduling retry after token refresh', {
           retryBackends: Array.from(retryBackends),
@@ -426,9 +232,9 @@ export function useLoadAggregatedFiles({
         scheduleTokenRetry(Array.from(retryBackends));
       }
     } catch (err) {
-        // Don't set error or break unlock - just log it
+      // Don't set error or break unlock - just log it
       console.warn('⚠️ [loadFiles] Error (non-blocking, unlock can proceed):', err);
-      setFiles([]); // Show empty list
+      setRows([]);
     } finally {
       window.clearTimeout(timeoutId);
       if (!timedOut) {
@@ -436,7 +242,7 @@ export function useLoadAggregatedFiles({
         isLoadingFilesRef.current = false;
       }
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry, driveReadBlocked, deviceGate, registerPortableCloudBackends, pnIdentifierRef]);
+  }, [aggregatorService, transport, activeBackendId, scheduleTokenRetry, driveReadBlocked, deviceGate, registerPortableCloudBackends, pnIdentifierRef]);
 
   const loadStorageQuota = React.useCallback(async () => {
     if (!aggregatorService) {
