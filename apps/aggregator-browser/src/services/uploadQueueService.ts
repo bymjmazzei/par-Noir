@@ -3,8 +3,6 @@
  * Manages upload tasks, progress tracking, and parallel processing
  */
 
-import { EventEmitter } from 'events';
-
 export type UploadTaskType = 'file' | 'textPost' | 'multiPage' | 'pdf' | 'updateShareSettings' | 'updateMetadata' | 'createCollection' | 'deleteFile' | 'bulkDelete' | 'addToFeed' | 'saveToFeed';
 
 export type UploadTaskStatus = 'pending' | 'processing' | 'uploading' | 'completed' | 'failed' | 'cancelled';
@@ -57,20 +55,37 @@ export interface QueueProgress {
   overallProgress: number; // 0-100
 }
 
-export class UploadQueueService extends EventEmitter {
+type UploadQueueListener = (...args: any[]) => void;
+
+export class UploadQueueService {
   private static instance: UploadQueueService;
   private queue: Map<string, UploadTask> = new Map();
   private processingTasks: Set<string> = new Set();
   private maxConcurrency: number = 3; // Process up to 3 uploads in parallel
   private isProcessing: boolean = false;
+  private listeners: Map<string, Set<UploadQueueListener>> = new Map();
 
-  private constructor() {
-    super();
-    // Ensure .off() method exists (fallback for polyfills that might not have it)
-    // Node.js EventEmitter.off() was added in v10.0.0, but browser polyfills may not include it
-    if (typeof this.off !== 'function') {
-      this.off = this.removeListener.bind(this);
+  private constructor() {}
+
+  on(event: string, listener: UploadQueueListener): this {
+    let set = this.listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(event, set);
     }
+    set.add(listener);
+    return this;
+  }
+
+  off(event: string, listener: UploadQueueListener): this {
+    this.listeners.get(event)?.delete(listener);
+    return this;
+  }
+
+  private emit(event: string, ...args: unknown[]): void {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    for (const listener of [...set]) listener(...args);
   }
 
   static getInstance(): UploadQueueService {
