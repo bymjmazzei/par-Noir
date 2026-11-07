@@ -88,6 +88,11 @@ export default defineConfig(({ mode, command }) => {
               return 'config'
             }
           }
+          // Vite's dynamic-import helper is used by vendor code; if Rollup places it in an app chunk,
+          // vendor → app → components → react-vendor forms a cycle and module-level icon refs TDZ.
+          if (id.includes('vite/preload-helper')) {
+            return 'vendor';
+          }
           // Vendor chunks
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) {
