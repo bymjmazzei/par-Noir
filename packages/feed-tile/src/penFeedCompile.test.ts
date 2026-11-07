@@ -22,7 +22,6 @@ describe('compilePenFeedTileModel', () => {
       ]
     });
     expect(model.pages[0]?.penFeedPage).toEqual(penFeedPage);
-    expect(model.pages[0]?.actionStageHtml).toBeUndefined();
     expect(model.pageView).toBe('vertical');
   });
 });

@@ -394,8 +394,8 @@ export interface PublicMetadata {
     rect: { x: number; y: number; w: number; h: number };
     label?: string;
   }>;
-  /** HTML overlay painted above the flattened media inside the feed iframe. */
-  actionStageHtml?: string;
+  /** Public child files holding action layer media (penFeedPage.layerMedia), for cleanup on update. */
+  penLayerMediaFileIds?: string[];
   /** Motion-synced action overlay for one feed page (Pen publish). */
   penFeedPage?: PenFeedPageSnapshot;
   /** Pen manifest presentation — collection parent or single post. */

@@ -22,10 +22,8 @@ import {
   DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
-  docToPlainText,
   fitAspectInBox,
   sizeMediaLayerForAttach,
-  getTextLayerDoc,
   isFlowWorkspaceOpen,
   pageAllowsPasteboard,
   isGooglePenFont,
@@ -36,7 +34,6 @@ import {
   layerVisibleInViewer,
   penViewerGroupKey,
   sampleSectionLayers,
-  scorePreviewCaption,
   mergePagePresentation,
   migrateSectionLayerGeomToPx,
   normalizeSection,
@@ -52,12 +49,9 @@ import {
   resolvePagePaddingPx,
   resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
-  timeLayerCaption,
   selectPageSize,
-  sanitizeWidgetMarkup,
   updateLayerLayout,
   upsertLayer,
-  voteFaceForLayer,
   wrapSideFromGeom,
   type PageSizeChoice,
   type PenDocManifest,
@@ -69,29 +63,28 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
-import { WidgetTextInput } from './WidgetTextInput';
-import { WidgetArtLayerFace } from './WidgetArtLayerFace';
+import { PreviewLayerFace } from './PreviewLayerFace';
 import { LayersPopover, layerDisplayLabel, pageLayerLabel } from './LayersPanel';
 import { IconLayers, IconTapeMeasure } from './icons/PenIcons';
 import {
   BodyWrapToolbarButton,
   LayerObjectToolbar,
-  layerChromeStyle,
-  layerPreviewStyle,
   pageFrameStyle
 } from './LayerObjectToolbar';
 import { OrientationChoices } from './PreviewPageBar';
 import { PageGuides } from './PageGuides';
 import { PageSheetColumn } from './PageSheetColumn';
-import { LayerMediaContent } from './LayerMediaContent';
-import { PenMediaPlayer, PublishedEngagementBar } from '@par-noir/feed-tile';
+import {
+  PenMediaPlayer,
+  PublishedEngagementBar,
+  ensureGoogleFontsLoaded,
+  layerFrameStyle
+} from '@par-noir/feed-tile';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { usePlayheadSec } from '../services/playheadStore';
-import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
 import {
-  ResolvedPageBackground,
   PageBackgroundVideoDuration,
   sectionWithPageBackgroundDuration,
   BodyWrapObject,
@@ -99,8 +92,7 @@ import {
   bodyMarginStyle,
   opaqueWrapShell
 } from './editablePagePreview/editablePagePreviewParts';
-
-export { ResolvedPageBackground } from './editablePagePreview/editablePagePreviewParts';
+import { ResolvedPageBackground } from './editablePagePreview/ResolvedPageBackground';
 
 /** Editable page surface — Body (section.doc) under optional overlay layers. */
 export function EditablePagePreview({
@@ -959,7 +951,7 @@ export function EditablePagePreview({
               freePlacement={artboard}
               frameStyle={(item) => {
                 const layer = layers.find((entry) => entry.id === item.id);
-                return layer ? layerChromeStyle(layer) : {};
+                return layer ? layerFrameStyle(layer) : {};
               }}
               selectedId={pageActive ? null : activeLayerId}
               snap={snapEnabled}
@@ -975,169 +967,20 @@ export function EditablePagePreview({
               renderItem={(item) => {
                 const layer = layers.find((l) => l.id === item.id);
                 if (!layer || layer.bodyWrap) return null;
-                const shell = layerPreviewStyle(layer);
-                if (layer.kind === 'group') {
-                  return (
-                    <div
-                      className="h-full w-full"
-                      style={shell}
-                      title={layerDisplayLabel(layer, layers)}
-                    />
-                  );
-                }
-                if (layer.kind === 'image' || layer.kind === 'video') {
-                  // Blur is applied on the media element via mediaFilterCss — drop shell filter.
-                  const { filter: _f, ...shellRest } = shell as CSSProperties & {
-                    filter?: string;
-                  };
-                  return (
-                    <div className="relative h-full w-full" style={shellRest}>
-                      <LayerMediaContent
-                        layer={layer}
-                        onActivate={() => selectLayer(layer.id)}
-                        docId={manifest.docId}
-                        session={session}
-                        onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
-                        selected={activeLayerId === layer.id}
-                      />
-                    </div>
-                  );
-                }
-                if (layer.kind === 'embed') {
-                  return (
-                    <div
-                      className="flex h-full w-full flex-col justify-center gap-1 overflow-hidden p-2 text-left text-xs text-stone-200"
-                      style={shell}
-                      title={layerDisplayLabel(layer, layers)}
-                    >
-                      <div className="font-medium text-stone-100">Embed</div>
-                      <div className="truncate font-mono text-[10px] text-stone-400">
-                        {layer.refDocId || '(no ref)'}
-                      </div>
-                    </div>
-                  );
-                }
-                if (layer.widgetElement === 'svg' && layer.svgSrc) {
-                  return (
-                    <div
-                      className="h-full w-full overflow-hidden"
-                      style={shell}
-                      dangerouslySetInnerHTML={{ __html: sanitizeWidgetMarkup(layer.svgSrc) }}
-                    />
-                  );
-                }
-                if (layer.widgetElement === 'input') {
-                  return (
-                    <WidgetTextInput
-                      layer={layer}
-                      value={inputValues?.[layer.id] || ''}
-                      onChange={(layerId, value) => onInputValue?.(layerId, value)}
-                      onSelect={() => selectLayer(layer.id)}
-                    />
-                  );
-                }
-                if (layer.widgetElement === 'html') {
-                  return (
-                    <WidgetArtLayerFace
-                      layer={layer}
-                      shell={shell}
-                      docId={manifest.docId}
-                      session={session}
-                    />
-                  );
-                }
-                if (layer.widgetElement === 'score') {
-                  return (
-                    <div
-                      className="flex h-full w-full items-center justify-center text-sm font-semibold tabular-nums"
-                      style={{ ...shell, color: layer.textColor || undefined }}
-                    >
-                      {scorePreviewCaption(prepared.layers || [], layer.parentGroupId || null)}
-                    </div>
-                  );
-                }
-                if (layer.widgetElement === 'time') {
-                  return (
-                    <div
-                      className="flex h-full w-full items-center justify-center text-xs"
-                      style={{ ...shell, color: layer.textColor || undefined }}
-                    >
-                      {timeLayerCaption(layer)}
-                    </div>
-                  );
-                }
-                if (layer.kind === 'interactive') {
-                  const counts =
-                    layers.find((item) => item.id === layer.parentGroupId)?.widgetCounts || null;
-                  const runtime =
-                    layer.behavior === 'poll.vote'
-                      ? voteFaceForLayer(prepared, layer, null, counts).text
-                      : '';
-                  const face = layer.textDoc ? docToPlainText(layer.textDoc) : '';
-                  const rich = face ? docToHtml(layer.textDoc) : '';
-                  return (
-                    <button
-                      type="button"
-                      className="pointer-events-auto flex h-full w-full items-center justify-center overflow-hidden px-3 text-sm font-medium"
-                      style={{ ...shell, color: layer.textColor || undefined }}
-                      title={layer.behavior || 'button'}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        selectLayer(layer.id);
-                      }}
-                    >
-                      {runtime ? (
-                        runtime
-                      ) : rich ? (
-                        <span
-                          className="pen-rich-html"
-                          dangerouslySetInnerHTML={{ __html: rich }}
-                        />
-                      ) : (
-                        layer.label || 'Button'
-                      )}
-                    </button>
-                  );
-                }
-                if (layer.backgroundVideo) {
-                  return (
-                    <div className="relative h-full w-full overflow-hidden" style={shell}>
-                      <div className="absolute inset-0">
-                        <ResolvedPageBackground
-                          src={layer.backgroundVideo}
-                          videoSrc={layer.videoSrc}
-                          kind="video"
-                          docId={manifest.docId}
-                          session={session}
-                        />
-                      </div>
-                      <div
-                        className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
-                        style={{
-                          fontFamily: presentation.fontFamily || undefined
-                        }}
-                        dangerouslySetInnerHTML={{
-                          __html:
-                            docToHtml(getTextLayerDoc(layer)) ||
-                            '<p class="text-neutral-400">Text</p>'
-                        }}
-                      />
-                    </div>
-                  );
-                }
-                const html = docToHtml(getTextLayerDoc(layer));
                 return (
-                  <div className="relative h-full w-full overflow-hidden" style={shell}>
-                    <div
-                      className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
-                      style={{
-                        fontFamily: presentation.fontFamily || undefined
-                      }}
-                      dangerouslySetInnerHTML={{
-                        __html: html || '<p class="text-neutral-400">Text</p>'
-                      }}
-                    />
-                  </div>
+                  <PreviewLayerFace
+                    layer={layer}
+                    layers={layers}
+                    section={prepared}
+                    presentation={presentation}
+                    session={session}
+                    docId={manifest.docId}
+                    inputValues={inputValues}
+                    onInputValue={onInputValue}
+                    onSelect={() => selectLayer(layer.id)}
+                    onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
+                    selected={activeLayerId === layer.id}
+                  />
                 );
               }}
             />

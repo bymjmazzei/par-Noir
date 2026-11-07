@@ -164,80 +164,6 @@ body {
   min-height: 20rem;
 }
 
-/* Preview / compiled HTML — same break policy as the writing surface */
-.pen-rich-html {
-  hyphens: auto;
-  -webkit-hyphens: auto;
-  -ms-hyphens: auto;
-  hyphenate-character: '-';
-  overflow-wrap: break-word;
-  word-break: normal;
-}
-
-.pen-rich-html p {
-  margin: 0.35em 0;
-}
-
-.pen-rich-html h1 {
-  font-size: 1.35em;
-  font-weight: 650;
-  margin: 0.4em 0;
-}
-
-.pen-rich-html h2 {
-  font-size: 1.15em;
-  font-weight: 650;
-  margin: 0.35em 0;
-}
-
-.pen-rich-html h3 {
-  font-size: 1.05em;
-  font-weight: 650;
-  margin: 0.3em 0;
-}
-
-.pen-rich-html ul {
-  list-style: disc;
-  padding-left: 1.25em;
-  margin: 0.35em 0;
-}
-
-.pen-rich-html ol {
-  list-style: decimal;
-  padding-left: 1.25em;
-  margin: 0.35em 0;
-}
-
-.pen-rich-html blockquote {
-  border-left: 2px solid #d6d3d1;
-  padding-left: 0.75em;
-  color: #57534e;
-  font-style: italic;
-  margin: 0.4em 0;
-}
-
-.pen-rich-html table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 0.5em 0;
-}
-
-.pen-rich-html td,
-.pen-rich-html th {
-  border: 1px solid #e7e5e4;
-  padding: 0.25em 0.4em;
-}
-
-.pen-rich-html img {
-  max-width: 100%;
-  height: auto;
-}
-
-.pen-rich-html a {
-  color: #0369a1;
-  text-decoration: underline;
-}
-
 .ProseMirror {
   min-height: 18rem;
   outline: none;
@@ -536,22 +462,6 @@ body {
   display: block;
   max-width: 100%;
   height: auto;
-}
-
-.pen-rich-html figure[data-wrap='left'],
-.pen-rich-html img[data-wrap='left'],
-.pen-rich-html video[data-wrap='left'] {
-  float: left;
-  margin: 0 1em 0.5em 0;
-  max-width: 45%;
-}
-
-.pen-rich-html figure[data-wrap='right'],
-.pen-rich-html img[data-wrap='right'],
-.pen-rich-html video[data-wrap='right'] {
-  float: right;
-  margin: 0 0 0.5em 1em;
-  max-width: 45%;
 }
 
 .pen-embed-card {

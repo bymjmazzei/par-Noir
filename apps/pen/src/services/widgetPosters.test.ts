@@ -69,9 +69,8 @@ describe('publish poster keeps HTML snippet art', () => {
     const raster = read('src/services/rasterizePagePoster.ts');
     expect(raster).toMatch(/await inlineHtmlSnippets\(el, clone\);\s*sanitizeCloneForRaster\(clone\)/);
     expect(raster).toMatch(/sanitizeWidgetMarkup\(html\)/);
-    expect(read('src/components/WidgetArtLayerFace.tsx')).toMatch(/data-pen-html-snippet="1"/);
-    for (const face of ['src/components/EditablePagePreview.tsx', 'src/components/PreviewLayerFace.tsx']) {
-      expect(read(face)).toMatch(/<WidgetArtLayerFace\b/);
-    }
+    expect(read('../../packages/feed-tile/src/PenLayerFace.tsx')).toMatch(/data-pen-html-snippet="1"/);
+    expect(read('src/components/EditablePagePreview.tsx')).toMatch(/<PreviewLayerFace\b/);
+    expect(read('src/components/PreviewLayerFace.tsx')).toMatch(/<PenLayerFace\b/);
   });
 });

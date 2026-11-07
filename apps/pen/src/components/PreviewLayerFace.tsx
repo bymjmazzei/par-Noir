@@ -1,24 +1,21 @@
 /** How an absolute layer looks on the page or the screen strip. */
 
-import type { CSSProperties } from 'react';
+import type { ReactNode } from 'react';
 import {
-  docToHtml,
-  docToPlainText,
-  timeLayerCaption,
-  getTextLayerDoc,
-  sanitizeWidgetMarkup,
+  layerMediaSource,
+  scorePreviewCaption,
   voteFaceForLayer,
   type PenPageLayer,
   type PenPagePresentation,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
+import { isPenMediaSrcRef } from '@par-noir/pen-media';
+import { PenLayerFace, layerFaceStyle } from '@par-noir/feed-tile';
 import { layerDisplayLabel } from './LayersPanel';
-import { WidgetTextInput } from './WidgetTextInput';
-import { layerPreviewStyle } from './LayerObjectToolbar';
 import { LayerMediaContent } from './LayerMediaContent';
+import { ResolvedPageBackground } from './editablePagePreview/ResolvedPageBackground';
+import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import type { PenSession } from '../services/penSession';
-import { ResolvedPageBackground } from './EditablePagePreview';
-import { WidgetArtLayerFace } from './WidgetArtLayerFace';
 
 export function PreviewLayerFace({
   layer,
@@ -35,7 +32,8 @@ export function PreviewLayerFace({
 }: {
   layer: PenPageLayer;
   layers: PenPageLayer[];
-  section: PenSectionContent;
+  /** Poll and score captions read the section; defaults to `layers`. */
+  section?: PenSectionContent;
   presentation: PenPagePresentation;
   session?: PenSession | null;
   docId?: string;
@@ -45,30 +43,16 @@ export function PreviewLayerFace({
   onNaturalAspect?: (aspect: number) => void;
   selected?: boolean;
 }) {
-  const shell = layerPreviewStyle(layer);
-  if (layer.kind === 'group') {
-    return <div className="h-full w-full" style={shell} title={layerDisplayLabel(layer, layers)} />;
-  }
-  if (layer.kind === 'image' || layer.kind === 'video') {
-    const { filter: _filter, ...shellRest } = shell as CSSProperties & { filter?: string };
-    return (
-      <div className="relative h-full w-full" style={shellRest}>
-        <LayerMediaContent
-          layer={layer}
-          onActivate={onSelect}
-          docId={docId}
-          session={session}
-          onNaturalAspect={onNaturalAspect}
-          selected={selected}
-        />
-      </div>
-    );
-  }
+  const source = layerMediaSource(layer);
+  const backgroundRef =
+    source?.kind === 'image' && layer.kind !== 'image' && isPenMediaSrcRef(source.src) ? source.src : '';
+  const { resolved: backgroundImageSrc } = useResolvedMediaSrc(backgroundRef, { docId, session });
+
   if (layer.kind === 'embed') {
     return (
       <div
         className="flex h-full w-full flex-col justify-center gap-1 overflow-hidden p-2 text-left text-xs text-stone-200"
-        style={shell}
+        style={layerFaceStyle(layer)}
         title={layerDisplayLabel(layer, layers)}
       >
         <div className="font-medium text-stone-100">Embed</div>
@@ -76,100 +60,55 @@ export function PreviewLayerFace({
       </div>
     );
   }
-  if (layer.widgetElement === 'svg' && layer.svgSrc) {
-    return (
-      <div
-        className="h-full w-full overflow-hidden"
-        style={shell}
-        dangerouslySetInnerHTML={{ __html: sanitizeWidgetMarkup(layer.svgSrc) }}
-      />
-    );
-  }
-  if (layer.widgetElement === 'html') {
-    return <WidgetArtLayerFace layer={layer} shell={shell} docId={docId} session={session} />;
-  }
-  if (layer.widgetElement === 'input') {
-    return (
-      <WidgetTextInput
+
+  const sec: PenSectionContent = section || { slug: '', doc: { type: 'doc', content: [] }, layers };
+  let media: ReactNode;
+  if (layer.kind === 'image' || layer.kind === 'video') {
+    media = (
+      <LayerMediaContent
         layer={layer}
-        value={inputValues?.[layer.id] || ''}
-        onChange={(layerId, value) => onInputValue?.(layerId, value)}
-        onSelect={onSelect}
+        onActivate={onSelect}
+        docId={docId}
+        session={session}
+        onNaturalAspect={onNaturalAspect}
+        selected={selected}
+      />
+    );
+  } else if (source?.kind === 'video') {
+    media = (
+      <ResolvedPageBackground
+        src={layer.backgroundVideo || ''}
+        videoSrc={layer.videoSrc}
+        kind="video"
+        docId={docId}
+        session={session}
       />
     );
   }
-  if (layer.widgetElement === 'time') {
-    return (
-      <div
-        className="flex h-full w-full items-center justify-center text-xs"
-        style={{ ...shell, color: layer.textColor || undefined }}
-      >
-        {timeLayerCaption(layer)}
-      </div>
-    );
-  }
-  if (layer.kind === 'interactive') {
+
+  let runtimeLabel: string | undefined;
+  if (layer.kind === 'interactive' && layer.behavior === 'poll.vote') {
     const counts = layers.find((item) => item.id === layer.parentGroupId)?.widgetCounts || null;
-    const runtime =
-      layer.behavior === 'poll.vote' ? voteFaceForLayer(section, layer, null, counts).text : '';
-    const face = layer.textDoc ? docToPlainText(layer.textDoc) : '';
-    const rich = face ? docToHtml(layer.textDoc) : '';
-    return (
-      <button
-        type="button"
-      className="pointer-events-auto flex h-full w-full items-center justify-center overflow-hidden px-3 text-sm font-medium"
-      style={{ ...shell, color: layer.textColor || undefined }}
-        title={layer.behavior || 'button'}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
-      >
-        {runtime ? (
-          runtime
-        ) : rich ? (
-          <span className="pen-rich-html" dangerouslySetInnerHTML={{ __html: rich }} />
-        ) : (
-          layer.label || 'Button'
-        )}
-      </button>
-    );
+    runtimeLabel = voteFaceForLayer(sec, layer, null, counts).text || undefined;
   }
-  if (layer.backgroundVideo) {
-    return (
-      <div className="relative h-full w-full overflow-hidden" style={shell}>
-        <div className="absolute inset-0">
-          <ResolvedPageBackground
-            src={layer.backgroundVideo}
-            videoSrc={layer.videoSrc}
-            kind="video"
-            docId={docId}
-            session={session}
-          />
-        </div>
-        <div
-          className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
-          style={{
-            fontFamily: presentation.fontFamily || undefined
-          }}
-          dangerouslySetInnerHTML={{
-            __html: docToHtml(getTextLayerDoc(layer)) || '<p class="text-neutral-400">Text</p>'
-          }}
-        />
-      </div>
-    );
-  }
+  const caption =
+    layer.widgetElement === 'score'
+      ? scorePreviewCaption(sec.layers || [], layer.parentGroupId || null)
+      : undefined;
+
   return (
-    <div className="relative h-full w-full overflow-hidden" style={shell}>
-      <div
-        className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
-        style={{
-          fontFamily: presentation.fontFamily || undefined
-        }}
-        dangerouslySetInnerHTML={{
-          __html: docToHtml(getTextLayerDoc(layer)) || '<p class="text-neutral-400">Text</p>'
-        }}
-      />
-    </div>
+    <PenLayerFace
+      layer={layer}
+      editor
+      fontFamily={presentation.fontFamily}
+      runtimeLabel={runtimeLabel}
+      caption={caption}
+      inputValue={inputValues?.[layer.id]}
+      onInput={onInputValue}
+      onPress={() => onSelect()}
+      mediaSrc={backgroundImageSrc || undefined}
+      media={media}
+      title={layer.kind === 'group' ? layerDisplayLabel(layer, layers) : undefined}
+    />
   );
 }

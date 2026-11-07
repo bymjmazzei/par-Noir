@@ -73,7 +73,6 @@ import {
   remapSectionsForAspect,
   normalizeGalleryAspect,
   isSheetTrigger,
-  buildActionStageHtml,
   sectionHasVoteButton,
   structureFromLayers,
   type PenDocComment,
@@ -183,7 +182,7 @@ import { assertDocMediaOnDrive } from '../../services/penDraftFlush';
 import { ensurePublishPlaybackBytes } from '../../services/penPublishMedia';
 import type { ShareToFeedSubmit } from '../../components/ShareToFeedDialog';
 import { forkDocForNewPost } from '../../services/forkDocForNewPost';
-import { ensureGoogleFontsLoaded } from '../../services/penGoogleFonts';
+import { ensureGoogleFontsLoaded } from '@par-noir/feed-tile';
 import {
   appendLocalComment,
   listLocalComments,

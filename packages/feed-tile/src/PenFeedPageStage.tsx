@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildActionOverlayAtTime,
-  docToHtml,
-  docToPlainText,
+  collectFontFamiliesFromLayers,
+  isDirectImageSrc,
+  layerMediaSource,
   penViewerGroupKey,
   pollCountsFromWidgetView,
   scoreCaption,
@@ -15,6 +16,7 @@ import {
   voteFaceForLayer,
   type PenActionEffect,
   type PenActionTrack,
+  type PenFeedLayerMedia,
   type PenFeedPagePayload,
   type PenPageLayer,
   type PenSectionContent,
@@ -24,16 +26,21 @@ import {
 import type { CSSProperties } from 'react';
 import { DEFAULT_FEED_PLAYBACK, FeedLoopVideo, type FeedPlayback } from './FeedLoopVideo.js';
 import { LeaveSheet, needsLeaveSheet, type LeaveEffect } from './LeaveSheet.js';
+import { PenLayerFace } from './PenLayerFace.js';
+import { ensureGoogleFontsLoaded } from './penGoogleFonts.js';
+import { layerFrameStyle } from './penLayerStyle.js';
 
-function buttonLabel(
+/** Resolves a published layer media file to an address the stage can draw. */
+export type ResolveLayerMedia = (fileId: string, kind: PenFeedLayerMedia['kind']) => Promise<string>;
+
+/** Poll result that replaces the label, or a live counter shown after it. */
+function buttonRuntime(
   layer: PenPageLayer,
   state: PenViewerState,
   allLayers: PenPageLayer[],
   docId: string,
   widgetViews: Record<string, WidgetViewPayload>
-): string {
-  const face = layer.textDoc ? docToPlainText(layer.textDoc).trim() : '';
-  const authored = face || layer.label || 'Button';
+): { runtimeLabel?: string; labelSuffix?: string } {
   if (layer.behavior === 'poll.vote' && docId) {
     const widgetId = trackingWidgetId(docId, allLayers, layer);
     const view = widgetId ? widgetViews[widgetId] : undefined;
@@ -55,15 +62,10 @@ function buttonLabel(
       undefined,
       view?.phase
     ).text;
-    return runtime || authored;
+    return runtime ? { runtimeLabel: runtime } : {};
   }
   const live = penViewerButtonFace(layer, state);
-  return live ? `${authored} · ${live}` : authored;
-}
-
-function displayableSrc(src: string | undefined): string | undefined {
-  const value = (src || '').trim();
-  return /^(https?:|blob:|data:image\/)/i.test(value) ? value : undefined;
+  return live ? { labelSuffix: live } : {};
 }
 
 /** Face px scaled by the layer's group zoom (tailwind text-sm is 14px, text-xs 12px). */
@@ -75,8 +77,8 @@ function faceFontPx(layer: PenPageLayer, basePx: number): string | undefined {
 type StageCanvas = { w: number; h: number; inset: number };
 
 function layerShellStyle(layer: PenPageLayer, canvas: StageCanvas): CSSProperties {
-  const scale = layer.contentScale ?? 1;
   return {
+    ...layerFrameStyle(layer),
     position: 'absolute',
     boxSizing: 'border-box',
     left: `${((layer.x + canvas.inset) / canvas.w) * 100}%`,
@@ -84,11 +86,7 @@ function layerShellStyle(layer: PenPageLayer, canvas: StageCanvas): CSSPropertie
     width: `${(layer.w / canvas.w) * 100}%`,
     height: `${(layer.h / canvas.h) * 100}%`,
     zIndex: layer.zIndex,
-    backgroundColor: layer.backgroundColor || undefined,
-    color: layer.textColor || undefined,
-    opacity: layer.opacity != null ? Math.max(0, Math.min(100, layer.opacity)) / 100 : undefined,
     transform: layer.rotate ? `rotate(${layer.rotate}deg)` : undefined,
-    borderRadius: layer.cornerRadius != null ? `${layer.cornerRadius * scale}px` : undefined,
     fontSize: faceFontPx(layer, 14)
   };
 }
@@ -102,17 +100,13 @@ function TimeFace({ layer, shell }: { layer: PenPageLayer; shell: CSSProperties 
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [ticking]);
-  const caption = timeLayerCaption(layer, now);
-  if (!caption) return null;
   return (
-    <div
-      className="pointer-events-none flex items-center justify-center overflow-hidden whitespace-nowrap text-xs tabular-nums"
+    <PenLayerFace
+      layer={layer}
       style={{ ...shell, fontSize: faceFontPx(layer, 12) }}
-      data-pen-layer={layer.id}
-      data-pen-time="1"
-    >
-      {caption}
-    </div>
+      paintScale={layer.contentScale}
+      caption={timeLayerCaption(layer, now)}
+    />
   );
 }
 
@@ -123,6 +117,9 @@ function OverlayLayer({
   allLayers,
   docId,
   widgetViews,
+  fontFamily,
+  mediaSrc,
+  playback,
   onPress,
   onInput
 }: {
@@ -132,86 +129,74 @@ function OverlayLayer({
   allLayers: PenPageLayer[];
   docId: string;
   widgetViews: Record<string, WidgetViewPayload>;
+  fontFamily?: string;
+  mediaSrc?: string;
+  playback: FeedPlayback;
   onPress: (layerId: string) => void;
   onInput: (layerId: string, value: string) => void;
 }) {
   const shell = layerShellStyle(layer, canvas);
-  if (layer.kind === 'interactive' && layer.behavior) {
-    return (
-      <button
-        type="button"
-        className="flex h-full w-full items-center justify-center overflow-hidden px-2 text-sm font-medium"
-        style={shell}
-        data-pen-layer={layer.id}
-        data-pen-behavior={layer.behavior}
-        onClick={(e) => {
-          e.stopPropagation();
-          onPress(layer.id);
-        }}
-      >
-        {buttonLabel(layer, state, allLayers, docId, widgetViews)}
-      </button>
-    );
-  }
-  if (layer.kind === 'interactive') {
-    return (
-      <button type="button" className="flex h-full w-full items-center justify-center text-sm font-medium" style={shell}>
-        {buttonLabel(layer, state, allLayers, docId, widgetViews)}
-      </button>
-    );
-  }
   if (layer.widgetElement === 'time') {
     return <TimeFace layer={layer} shell={shell} />;
   }
-  if (layer.widgetElement === 'input') {
-    return (
-      <input
-        type="text"
-        className="h-full w-full px-2 text-sm"
-        style={{ ...shell, color: layer.textColor || '#141414', backgroundColor: layer.backgroundColor || '#ffffff' }}
-        data-pen-layer={layer.id}
-        placeholder={layer.label || layer.name || ''}
-        value={state.inputs[layer.id] || ''}
-        onChange={(e) => onInput(layer.id, e.target.value)}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-      />
-    );
-  }
-  if (layer.widgetElement === 'score') {
-    const text = scoreCaption(allLayers, state, layer.parentGroupId || null);
-    if (!text) return null;
-    return (
-      <div
-        className="flex h-full w-full items-center justify-center text-sm font-semibold tabular-nums"
-        style={shell}
-        data-pen-layer={layer.id}
-        data-pen-score="1"
-      >
-        {text}
-      </div>
-    );
-  }
-  if (layer.kind === 'text' && layer.textDoc) {
-    const html = docToHtml(layer.textDoc);
-    return (
-      <div
-        className="pen-rich-html overflow-hidden p-2 text-sm"
-        style={shell}
-        data-pen-layer={layer.id}
-        dangerouslySetInnerHTML={{ __html: html || docToPlainText(layer.textDoc) }}
-      />
-    );
-  }
-  const src = layer.kind === 'image' ? displayableSrc(layer.imageSrc) : undefined;
-  if (src) {
-    return (
-      <div className="overflow-hidden" style={shell} data-pen-layer={layer.id}>
-        <img src={src} alt="" className="h-full w-full object-cover" />
-      </div>
-    );
-  }
-  return null;
+  const runtime =
+    layer.kind === 'interactive' ? buttonRuntime(layer, state, allLayers, docId, widgetViews) : {};
+  const caption =
+    layer.widgetElement === 'score'
+      ? scoreCaption(allLayers, state, layer.parentGroupId || null)
+      : undefined;
+  return (
+    <PenLayerFace
+      layer={layer}
+      style={shell}
+      paintScale={layer.contentScale}
+      fontFamily={fontFamily}
+      {...runtime}
+      caption={caption}
+      inputValue={state.inputs[layer.id]}
+      onInput={onInput}
+      onPress={layer.kind === 'interactive' && layer.behavior ? onPress : undefined}
+      mediaSrc={mediaSrc}
+      playback={playback}
+    />
+  );
+}
+
+/** Published layer media resolved through the host, keyed by layer id. */
+function useLayerMediaSrc(
+  layerMedia: PenFeedPagePayload['layerMedia'],
+  resolve: ResolveLayerMedia | undefined
+): Record<string, string> {
+  const [resolved, setResolved] = useState<Record<string, string>>({});
+  const key = layerMedia ? JSON.stringify(layerMedia) : '';
+  useEffect(() => {
+    const entries = Object.entries(layerMedia || {});
+    if (!resolve || !entries.length) {
+      setResolved({});
+      return;
+    }
+    let cancel = false;
+    void Promise.all(
+      entries.map(async ([layerId, media]) => {
+        try {
+          return [layerId, await resolve(media.fileId, media.kind)] as const;
+        } catch {
+          return null;
+        }
+      })
+    ).then((rows) => {
+      if (cancel) return;
+      const next: Record<string, string> = {};
+      for (const row of rows) if (row) next[row[0]] = row[1];
+      setResolved(next);
+    });
+    return () => {
+      cancel = true;
+    };
+    // layerMedia is compared by value through key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, resolve]);
+  return resolved;
 }
 
 export function PenFeedPageStage({
@@ -225,6 +210,7 @@ export function PenFeedPageStage({
   onTrack,
   onPressBlocked,
   onReportLink,
+  resolveLayerMedia,
   actorId,
   fit = 'cover',
   playback = DEFAULT_FEED_PLAYBACK
@@ -247,6 +233,8 @@ export function PenFeedPageStage({
   onPressBlocked?: () => void;
   /** Report link on the leave sheet. Omit where there is nothing to report to. */
   onReportLink?: (url: string) => void;
+  /** Loads `penFeedPage.layerMedia` files. Pass a stable function. */
+  resolveLayerMedia?: ResolveLayerMedia;
   /** Hashed viewer id stamped on sheet rows. */
   actorId?: string;
   fit?: 'cover' | 'contain';
@@ -257,6 +245,13 @@ export function PenFeedPageStage({
   const [leaving, setLeaving] = useState<LeaveEffect | null>(null);
   const viewerRef = useRef(viewer);
   viewerRef.current = viewer;
+  const layerMediaSrc = useLayerMediaSrc(penFeedPage.layerMedia, resolveLayerMedia);
+
+  useEffect(() => {
+    ensureGoogleFontsLoaded(
+      collectFontFamiliesFromLayers(penFeedPage.actionSection.layers, penFeedPage.fontFamily)
+    );
+  }, [penFeedPage.actionSection.layers, penFeedPage.fontFamily]);
 
   const press = (layerId: string) => {
     const layers = penFeedPage.actionSection.layers;
@@ -349,19 +344,25 @@ export function PenFeedPageStage({
       ) : null}
       <div className="pointer-events-none absolute inset-0">
         <div className="pointer-events-auto relative h-full w-full">
-          {layers.map((layer) => (
-            <OverlayLayer
-              key={layer.id}
-              layer={layer}
-              canvas={canvas}
-              state={viewer}
-              allLayers={penFeedPage.actionSection.layers}
-              docId={docId}
-              widgetViews={widgetViews}
-              onPress={press}
-              onInput={typeInput}
-            />
-          ))}
+          {layers.map((layer) => {
+            const own = layerMediaSource(layer)?.src;
+            return (
+              <OverlayLayer
+                key={layer.id}
+                layer={layer}
+                canvas={canvas}
+                state={viewer}
+                allLayers={penFeedPage.actionSection.layers}
+                docId={docId}
+                widgetViews={widgetViews}
+                fontFamily={penFeedPage.fontFamily}
+                mediaSrc={layerMediaSrc[layer.id] || (isDirectImageSrc(own) ? own : undefined)}
+                playback={playback}
+                onPress={press}
+                onInput={typeInput}
+              />
+            );
+          })}
         </div>
       </div>
       {leaving ? (

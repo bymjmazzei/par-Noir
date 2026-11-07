@@ -15,14 +15,15 @@ describe('PenFeedPageStage overlay clock', () => {
   it('draws time layers as a ticking caption, not an empty box', () => {
     const src = readFileSync(resolve(root, 'PenFeedPageStage.tsx'), 'utf8');
     expect(src).toMatch(/widgetElement === 'time'\) \{\s*return <TimeFace/);
-    expect(src).toMatch(/data-pen-time="1"/);
     expect(src).toMatch(/timeLayerCaption\(layer, now\)/);
+    const face = readFileSync(resolve(root, 'PenLayerFace.tsx'), 'utf8');
+    expect(face).toMatch(/data-pen-time="1"/);
   });
 
   it('a group-scaled widget shrinks its labels and corners in the feed', () => {
     const src = readFileSync(resolve(root, 'PenFeedPageStage.tsx'), 'utf8');
     expect(src).toMatch(/fontSize: faceFontPx\(layer, 14\)/);
     expect(src).toMatch(/fontSize: faceFontPx\(layer, 12\)/);
-    expect(src).toMatch(/layer\.cornerRadius \* scale/);
+    expect(src).toMatch(/paintScale=\{layer\.contentScale\}/);
   });
 });

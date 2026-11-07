@@ -24,7 +24,7 @@ export const PEN_INDEX_KEYS = [
   'templateId',
   'contentClass',
   'actionOverlays',
-  'actionStageHtml',
+  'penLayerMediaFileIds',
   'penFeedPage',
   'pageView',
   'pageSwipeAxis',
@@ -67,18 +67,16 @@ export function penIndexFields(body: unknown): Record<string, unknown> {
   } else {
     delete out.feedIds;
   }
-  if (Array.isArray(out.companionAudioFileIds)) {
-    out.companionAudioFileIds = out.companionAudioFileIds.filter(
-      (id) => typeof id === 'string' && id.length > 0
-    );
-  } else {
-    delete out.companionAudioFileIds;
+  for (const key of ['companionAudioFileIds', 'penLayerMediaFileIds'] as const) {
+    const ids = out[key];
+    if (Array.isArray(ids)) {
+      out[key] = ids.filter((id) => typeof id === 'string' && id.length > 0);
+    } else {
+      delete out[key];
+    }
   }
   for (const key of ['companionAudioOffsetsSec', 'companionAudioGains'] as const) {
     if (!Array.isArray(out[key])) delete out[key];
-  }
-  if (typeof out.actionStageHtml !== 'string' || !out.actionStageHtml.trim()) {
-    delete out.actionStageHtml;
   }
   if (out.penTemplateKind !== 'template' && out.penTemplateKind !== 'remix') {
     delete out.penTemplateKind;

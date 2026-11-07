@@ -23,11 +23,11 @@ import {
   feedPagePlainText,
   audioPublishPlan,
   collectActionOverlays,
-  buildActionStageHtml,
   stripPollSpreadsheet,
   stripPollSpreadsheetFromSection,
   type PenDocManifest,
   type PenEmbedResolveResult,
+  type PenFeedLayerMedia,
   type PenSectionContent,
   type ResolvePenEmbed
 } from '@par-noir/pen-protocol';
@@ -52,16 +52,22 @@ import {
 } from './penPublishGates';
 import {
   defaultCloudRequest,
+  layerMediaPreviews,
   posterPreview,
   publishPublicCloudFile,
   renderNotePoster,
   type CloudRequest
 } from './penPublicPublish';
+import { ensurePenMediaUrl } from '@par-noir/pen-media';
 import type { FeedPublishExtras } from './penFeedMetadata';
 import { metadataFieldsFromPublishForm } from './penFeedMetadata';
 import { isTemplatesCatalogClass } from './classFeedRailItems';
 import { ensureShareFeedIds } from './penFeedTargets';
-import { penFeedPageForSection, penPresentationFields } from './penFeedPagePublish';
+import {
+  actionLayerMediaRefs,
+  penFeedPageForSection,
+  penPresentationFields
+} from './penFeedPagePublish';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
 /** Legacy browse handoff key — still written alongside for one release. */
@@ -463,11 +469,15 @@ function sectionBySlug(
 }
 
 /** Per-page metadata on a collection part: action overlay, slug for `slug:` jumps, and the page title. */
-function collectionPartPageMeta(bundle: LocalDocBundle, slug: string): Record<string, unknown> {
+function collectionPartPageMeta(
+  bundle: LocalDocBundle,
+  slug: string,
+  mediaByRef?: Record<string, PenFeedLayerMedia>
+): Record<string, unknown> {
   const section = sectionBySlug(bundle, slug);
   const index = Math.max(0, bundle.manifest.toc.indexOf(slug));
   return {
-    ...(section ? { penFeedPage: penFeedPageForSection(section, bundle.manifest) } : {}),
+    ...(section ? { penFeedPage: penFeedPageForSection(section, bundle.manifest, mediaByRef) } : {}),
     penPageSlug: slug,
     penPageTitle: pageTitleFor(
       bundle.manifest,
@@ -595,11 +605,6 @@ export function actionOverlaysForPost(
   return collectActionOverlays(sections, docId);
 }
 
-/** Overlay HTML stored beside actionOverlays. Inert media is not in this string. */
-export function actionStageHtmlForPost(sections: LocalDocBundle['sections']): string {
-  return buildActionStageHtml(sections);
-}
-
 export type PublishPostTarget =
   | { kind: 'new' }
   | { kind: 'update'; fileId: string };
@@ -607,7 +612,20 @@ export type PublishPostTarget =
 type PriorPublishedRow = {
   collectionFileIds: string[];
   companionAudioFileIds: string[];
+  layerMediaFileIds: string[];
 };
+
+const NO_PRIOR_ROW: PriorPublishedRow = {
+  collectionFileIds: [],
+  companionAudioFileIds: [],
+  layerMediaFileIds: []
+};
+
+function stringIds(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((id): id is string => typeof id === 'string' && !!id)
+    : [];
+}
 
 async function loadPriorPublishedRow(
   request: CloudRequest | undefined,
@@ -618,20 +636,60 @@ async function loadPriorPublishedRow(
     'GET',
     `/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`
   );
-  if (!res.ok) return { collectionFileIds: [], companionAudioFileIds: [] };
+  if (!res.ok) return NO_PRIOR_ROW;
   const data = (await res.json()) as { metadata?: Record<string, unknown> };
   const meta = data.metadata || {};
   const collection =
     meta.collection && typeof meta.collection === 'object'
       ? (meta.collection as { collectionFileIds?: unknown })
       : null;
-  const collectionFileIds = Array.isArray(collection?.collectionFileIds)
-    ? collection!.collectionFileIds!.filter((id): id is string => typeof id === 'string' && !!id)
-    : [];
-  const companionAudioFileIds = Array.isArray(meta.companionAudioFileIds)
-    ? meta.companionAudioFileIds.filter((id): id is string => typeof id === 'string' && !!id)
-    : [];
-  return { collectionFileIds, companionAudioFileIds };
+  return {
+    collectionFileIds: stringIds(collection?.collectionFileIds),
+    companionAudioFileIds: stringIds(meta.companionAudioFileIds),
+    layerMediaFileIds: stringIds(meta.penLayerMediaFileIds)
+  };
+}
+
+/**
+ * Public copies of the Pen media that feed action layers paint (revealed images, Art video…).
+ * The owner's `penmedia:` files are private, so viewers load these instead.
+ */
+async function publishActionLayerMedia(params: {
+  bundle: LocalDocBundle;
+  pnIdentifier: string;
+  request?: CloudRequest;
+  parentFolderId: string;
+  title: string;
+  provenance: Record<string, unknown>;
+  indexingPermissions?: Parameters<typeof publishPublicCloudFile>[0]['indexingPermissions'];
+}): Promise<{ mediaByRef: Record<string, PenFeedLayerMedia>; fileIds: string[] }> {
+  const docId = params.bundle.manifest.docId;
+  const mediaByRef: Record<string, PenFeedLayerMedia> = {};
+  const fileIds: string[] = [];
+  const refs = actionLayerMediaRefs(params.bundle.sections, params.bundle.manifest);
+  for (const [index, { src, kind }] of refs.entries()) {
+    const url = await ensurePenMediaUrl({ src, docId, pnIdentifier: params.pnIdentifier });
+    if (!url) throw new Error(`layer_media_unavailable ${src}`);
+    const blob = await (await fetch(url)).blob();
+    const uploaded = await publishPublicCloudFile({
+      request: params.request,
+      parentFolderId: params.parentFolderId,
+      bytes: new Uint8Array(await blob.arrayBuffer()),
+      fileName: `pen-${docId}-layer-${index}.${kind === 'video' ? 'video' : 'image'}`,
+      title: `${params.title} — layer media`,
+      previews: await layerMediaPreviews(blob, kind),
+      indexingPermissions: params.indexingPermissions,
+      metadata: {
+        ...params.provenance,
+        fileType: kind,
+        contentClass: 'media',
+        isPartOfCollection: true
+      }
+    });
+    mediaByRef[src] = { fileId: uploaded.fileId, kind };
+    fileIds.push(uploaded.fileId);
+  }
+  return { mediaByRef, fileIds };
 }
 
 /** Delete superseded collection children / companion audio after an in-place post update. */
@@ -737,10 +795,9 @@ export async function publishPostToOwnerCloud(params: {
   if (target.kind === 'update' && !replaceFileId) {
     throw new Error('update_requires_file_id');
   }
-  const prior =
-    replaceFileId
-      ? await loadPriorPublishedRow(params.request, replaceFileId)
-      : { collectionFileIds: [] as string[], companionAudioFileIds: [] as string[] };
+  const prior = replaceFileId
+    ? await loadPriorPublishedRow(params.request, replaceFileId)
+    : NO_PRIOR_ROW;
   const publishMeta = params.feedPublish
     ? metadataFieldsFromPublishForm(params.feedPublish.metadata)
     : {};
@@ -775,10 +832,19 @@ export async function publishPostToOwnerCloud(params: {
   );
   const base = provenanceFor(params.bundle, licensing, effectiveFeedIds);
   const actionOverlays = actionOverlaysForPost(params.bundle.sections, params.bundle.manifest.docId);
-  const actionStageHtml = actionStageHtmlForPost(params.bundle.sections);
+  const layerMedia = await publishActionLayerMedia({
+    bundle: params.bundle,
+    pnIdentifier: params.pnIdentifier,
+    request: params.request,
+    parentFolderId,
+    title: publishTitle,
+    provenance: provenanceFor(params.bundle, licensing, ['collection-part']),
+    indexingPermissions
+  });
+  const { mediaByRef } = layerMedia;
   const overlayMeta = {
     ...(actionOverlays.length ? { actionOverlays } : {}),
-    ...(actionStageHtml ? { actionStageHtml } : {})
+    ...(layerMedia.fileIds.length ? { penLayerMediaFileIds: layerMedia.fileIds } : {})
   };
   const caption =
     typeof publishMeta.description === 'string' ? publishMeta.description : undefined;
@@ -801,7 +867,7 @@ export async function publishPostToOwnerCloud(params: {
         ...overlayMeta,
         ...penPresentationFields(params.bundle.manifest),
         ...(section
-          ? { penFeedPage: penFeedPageForSection(section, params.bundle.manifest) }
+          ? { penFeedPage: penFeedPageForSection(section, params.bundle.manifest, mediaByRef) }
           : {}),
         fileType: 'image',
         contentClass: 'media',
@@ -809,7 +875,7 @@ export async function publishPostToOwnerCloud(params: {
       }
     });
     penFeedMediaBySlug[slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'image' };
-    await cleanupAfterUpdate({ request: params.request, prior, keepChildren: [] });
+    await cleanupAfterUpdate({ request: params.request, prior, keepChildren: layerMedia.fileIds });
     return { fileId: uploaded.fileId, penFeedMediaBySlug };
   }
 
@@ -818,7 +884,7 @@ export async function publishPostToOwnerCloud(params: {
     const videoSlug = params.video.slug;
     const videoSection = sectionBySlug(params.bundle, videoSlug);
     const videoPageMeta = videoSection
-      ? { penFeedPage: penFeedPageForSection(videoSection, params.bundle.manifest) }
+      ? { penFeedPage: penFeedPageForSection(videoSection, params.bundle.manifest, mediaByRef) }
       : {};
     const uploaded = await publishPublicCloudFile({
       request: params.request,
@@ -841,7 +907,7 @@ export async function publishPostToOwnerCloud(params: {
       }
     });
     penFeedMediaBySlug[videoSlug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'video' };
-    await cleanupAfterUpdate({ request: params.request, prior, keepChildren: [] });
+    await cleanupAfterUpdate({ request: params.request, prior, keepChildren: layerMedia.fileIds });
     return { fileId: uploaded.fileId, penFeedMediaBySlug };
   }
 
@@ -853,7 +919,7 @@ export async function publishPostToOwnerCloud(params: {
     const partMeta = {
       ...publishMeta,
       ...provenanceFor(params.bundle, licensing, ['collection-part']),
-      ...collectionPartPageMeta(params.bundle, page.slug),
+      ...collectionPartPageMeta(params.bundle, page.slug, mediaByRef),
       contentClass: 'media',
       isPartOfCollection: true
     };
@@ -916,11 +982,15 @@ export async function publishPostToOwnerCloud(params: {
       description: caption
     }
   });
-  await cleanupAfterUpdate({ request: params.request, prior, keepChildren: childIds });
+  await cleanupAfterUpdate({
+    request: params.request,
+    prior,
+    keepChildren: [...childIds, ...layerMedia.fileIds]
+  });
   return { fileId: uploaded.fileId, penFeedMediaBySlug };
 }
 
-/** Superseded collection children and companion audio from before audio lived in the file. */
+/** Superseded collection children, layer media, and companion audio from before audio lived in the file. */
 async function cleanupAfterUpdate(params: {
   request?: CloudRequest;
   prior: PriorPublishedRow;
@@ -929,7 +999,8 @@ async function cleanupAfterUpdate(params: {
   const keep = new Set(params.keepChildren);
   const stale = [
     ...params.prior.collectionFileIds,
-    ...params.prior.companionAudioFileIds
+    ...params.prior.companionAudioFileIds,
+    ...params.prior.layerMediaFileIds
   ].filter((id) => id && !keep.has(id));
   await deleteSupersededIndexRows(params.request, [...new Set(stale)]);
 }

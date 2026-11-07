@@ -92,7 +92,7 @@ describe('widget preview builder', () => {
     const preview = readFileSync(resolve(root, 'EditablePagePreview.tsx'), 'utf8');
     expect(panel).toMatch(/WidgetArtFillEditor/);
     expect(artEditor).toMatch(/Art background/);
-    expect(preview).toMatch(/WidgetArtLayerFace/);
+    expect(preview).toMatch(/<PreviewLayerFace\b/);
     const placed = placeWidgetLayer(emptySection('card'), null, 'html');
     const section = setWidgetHtml(placed.section, placed.layerId, '<b>x</b>');
     const art = section.layers?.find((layer) => layer.id === placed.layerId)!;

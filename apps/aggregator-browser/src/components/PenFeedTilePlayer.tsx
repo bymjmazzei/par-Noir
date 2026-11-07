@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FeedTileSurface, type FeedPlayback, type FeedTileViewModel } from '@par-noir/feed-tile';
+import {
+  FeedTileSurface,
+  type FeedPlayback,
+  type FeedTileViewModel,
+  type ResolveLayerMedia
+} from '@par-noir/feed-tile';
 import {
   collectWidgetIds,
   type PenActionEffect,
@@ -7,6 +12,11 @@ import {
   type WidgetViewPayload
 } from '@par-noir/pen-protocol';
 import { fetchPenWidgetView, runFeedPenEffect, sendPenTap } from '../services/penFeedActionHandler';
+import { resolvePublicMediaObjectUrl } from '../services/feedPreviewPlayback';
+
+/** Public copies of revealed images and videos, through the same CDN route as post media. */
+const resolveLayerMedia: ResolveLayerMedia = (fileId, kind) =>
+  resolvePublicMediaObjectUrl(fileId, kind === 'video' ? 'sd' : 'poster');
 
 /** Pen feed tile centered in a feed slide; loads widget view state for backend widgets. */
 export function PenFeedTilePlayer({
@@ -106,6 +116,7 @@ export function PenFeedTilePlayer({
         onTrack={handleTrack}
         onPressBlocked={onPressBlocked}
         onReportLink={onReportLink}
+        resolveLayerMedia={resolveLayerMedia}
         playback={playback}
         onPageChange={onPageChange}
       />

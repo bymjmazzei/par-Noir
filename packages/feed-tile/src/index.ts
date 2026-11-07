@@ -4,7 +4,13 @@ export {
   type FeedTileViewModel,
   type FeedTilePage
 } from './FeedTileSurface.js';
+import './penRichHtml.css';
+
 export { PenFeedPageStage } from './PenFeedPageStage.js';
+export { PenLayerFace, type PenLayerFaceProps } from './PenLayerFace.js';
+export { layerFaceStyle, layerFrameStyle } from './penLayerStyle.js';
+export { ensureGoogleFontLoaded, ensureGoogleFontsLoaded } from './penGoogleFonts.js';
+export type { ResolveLayerMedia } from './PenFeedPageStage.js';
 export { FeedTileTestOverlay } from './FeedTileTestOverlay.js';
 export { sandboxEffect, type SandboxOutcome } from './sandboxEffect.js';
 export { resolveNavigatePageIndex, saveIcsFile } from './penNavigate.js';

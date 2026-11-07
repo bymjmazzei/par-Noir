@@ -4,7 +4,7 @@
  */
 
 import { PEN_GOOGLE_FONTS_ALL } from './googleFontFamilies.js';
-import type { PenDocManifest, PenSectionContent, PenTipTapNode } from './types.js';
+import type { PenDocManifest, PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js';
 
 export { PEN_GOOGLE_FONTS_ALL };
 export type { PenGoogleFontFamily } from './googleFontFamilies.js';
@@ -116,10 +116,20 @@ export function collectFontFamiliesFromDoc(params: {
   if (pageFam) out.add(pageFam);
   for (const section of params.sections) {
     walkTipTapFamilies(section.doc, out);
-    for (const layer of section.layers || []) {
-      walkTipTapFamilies(layer.textDoc, out);
-    }
+    for (const fam of collectFontFamiliesFromLayers(section.layers || [])) out.add(fam);
   }
+  return [...out];
+}
+
+/** Distinct font families used by overlay layer text, plus the doc default when set. */
+export function collectFontFamiliesFromLayers(
+  layers: Array<Pick<PenPageLayer, 'textDoc'>>,
+  defaultFamily?: string | null
+): string[] {
+  const out = new Set<string>();
+  const fam = String(defaultFamily || '').trim();
+  if (fam) out.add(fam);
+  for (const layer of layers) walkTipTapFamilies(layer.textDoc, out);
   return [...out];
 }
 

@@ -8,7 +8,6 @@ import {
   attachMediaToLayer,
   defaultLayerName,
   layerShadowCss,
-  layerStrokeStyle,
   patchLayerStyle,
   wrapSideFromGeom,
   type PenPageLayer,
@@ -26,7 +25,7 @@ import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
 import { sectionWithProbedVideoLayerDuration } from '../services/applyVideoLayerDuration';
 import { setAttachPoster } from '../services/attachPosterCache';
-import { isPenMediaSrcRef, resolvePenMediaSrc } from '@par-noir/pen-media';
+import { resolvePenMediaSrc } from '@par-noir/pen-media';
 import type { PenSession } from '../services/penSession';
 
 export type ObjectToolTarget =
@@ -850,55 +849,6 @@ export function LayerObjectToolbar({
       />
     </div>
   );
-}
-
-/** Shadow, blur, opacity, blend, and stroke belong to the layer frame, outside the clipped face. */
-export function layerChromeStyle(layer: PenPageLayer): CSSProperties {
-  const shadow = layerShadowCss(layer);
-  const stroke = layerStrokeStyle(layer);
-  const opacityPct = layer.opacity ?? 100;
-  const blendAmt = (layer.blendAmount ?? 100) / 100;
-  const boxShadow =
-    stroke.boxShadow && shadow ? `${stroke.boxShadow}, ${shadow}` : stroke.boxShadow || shadow;
-  const style: CSSProperties = {
-    opacity: (opacityPct / 100) * (layer.mixBlendMode && layer.mixBlendMode !== 'normal' ? blendAmt : 1),
-    mixBlendMode: (layer.mixBlendMode as CSSProperties['mixBlendMode']) || undefined,
-    filter: layer.blur ? `blur(${layer.blur}px)` : undefined,
-    boxShadow,
-    border: stroke.border,
-    outline: stroke.outline,
-    outlineOffset: stroke.outlineOffset
-  };
-  if (layer.kind === 'group') {
-    style.border = style.border || '1px dashed rgba(0,0,0,0.25)';
-  }
-  return style;
-}
-
-/** Fill painted on the clipped face. Text color lives in the text document. */
-export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
-  const style: CSSProperties = {};
-  if (layer.kind === 'group') {
-    style.backgroundColor = 'transparent';
-    return style;
-  }
-  if (layer.kind === 'image' || layer.kind === 'video') {
-    style.backgroundColor = layer.backgroundColor || 'transparent';
-    return style;
-  }
-  if (layer.cornerRadius) style.borderRadius = `${layer.cornerRadius}px`;
-  if (layer.backgroundGradient) {
-    style.backgroundImage = layer.backgroundGradient;
-  } else if (layer.backgroundImage && !isPenMediaSrcRef(layer.backgroundImage)) {
-    style.backgroundImage = `url(${layer.backgroundImage})`;
-    style.backgroundSize = 'cover';
-    style.backgroundPosition = 'center';
-  } else if (layer.backgroundColor) {
-    style.backgroundColor = layer.backgroundColor;
-  } else {
-    style.backgroundColor = 'rgba(255,255,255,0.95)';
-  }
-  return style;
 }
 
 export function pageFrameStyle(presentation: PenPagePresentation): CSSProperties {

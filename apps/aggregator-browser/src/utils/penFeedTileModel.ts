@@ -35,9 +35,7 @@ export function buildPenFeedTileModelForPost(
     mediaSrc: media.src || media.posterUrl,
     mediaKind: media.kind || mediaKindForMeta(meta),
     posterUrl: media.posterUrl,
-    penFeedPage,
-    actionStageHtml:
-      typeof meta.actionStageHtml === 'string' ? meta.actionStageHtml : undefined
+    penFeedPage
   };
   const model = compilePenFeedTileModel({
     title:
@@ -78,11 +76,7 @@ export function buildPenCollectionFeedTileModel(
       mediaSrc: member.videoUrl || member.posterUrl,
       mediaKind: kind,
       posterUrl: member.posterUrl,
-      penFeedPage: penFeedPageFromMetadata(member.meta),
-      actionStageHtml:
-        typeof member.meta.actionStageHtml === 'string'
-          ? member.meta.actionStageHtml
-          : undefined
+      penFeedPage: penFeedPageFromMetadata(member.meta)
     });
   }
   const model = compilePenFeedTileModel({

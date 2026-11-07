@@ -5,7 +5,9 @@
 
 import {
   FEED_PREVIEW_POSTER_MAX_BYTES,
+  encodeFeedPreviewsForPublish,
   encodePosterFromImage,
+  getPublishTier,
   materializePublicShare,
   r2ObjectKey,
   sealPublicShareFromBytes,
@@ -110,6 +112,31 @@ export async function posterPreview(blob: Blob | undefined | null): Promise<Feed
       width: encoded.width,
       height: encoded.height
     }
+  };
+}
+
+/** CDN previews for a layer's own image or video (public video rows need poster + sd). */
+export async function layerMediaPreviews(
+  blob: Blob,
+  kind: 'image' | 'video'
+): Promise<FeedPreviewUploads | undefined> {
+  if (kind === 'image') return posterPreview(blob);
+  const encoded = await encodeFeedPreviewsForPublish(
+    blob,
+    blob.type || 'video/mp4',
+    getPublishTier(PEN_PUBLISH_PLAN_ID)
+  );
+  const upload = (p: typeof encoded.poster): FeedPreviewUpload => ({
+    blob: p.blob,
+    contentType: p.contentType,
+    width: p.width,
+    height: p.height,
+    durationMs: p.durationMs
+  });
+  return {
+    poster: upload(encoded.poster),
+    ...(encoded.sd ? { sd: upload(encoded.sd) } : {}),
+    ...(encoded.hd ? { hd: upload(encoded.hd) } : {})
   };
 }
 

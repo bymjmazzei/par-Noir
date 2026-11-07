@@ -14,8 +14,8 @@ describe('PenFeedPageStage press path', () => {
     expect(stage).not.toMatch(/type: 'pen-action'/);
   });
 
-  it('paints inputs and revealed targets', () => {
-    expect(stage).toMatch(/widgetElement === 'input'/);
+  it('paints revealed targets through the face shared with the Pen editor', () => {
+    expect(stage).toMatch(/<PenLayerFace/);
     expect(stage).toMatch(/buildActionOverlayAtTime\(\s*penFeedPage\.actionSection,\s*overlayTime,/);
   });
 

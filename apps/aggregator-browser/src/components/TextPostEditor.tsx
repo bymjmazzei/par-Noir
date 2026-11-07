@@ -25,7 +25,7 @@ import {
   uploadPersonalFont,
   tryGetMlKemSecretKey
 } from '../services/penFontsCloud';
-import { ensureGoogleFontLoaded, ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
+import { ensureGoogleFontLoaded, ensureGoogleFontsLoaded } from '@par-noir/feed-tile';
 import { GoogleFontPreviewLabel } from './GoogleFontPreviewLabel';
 
 // Helper function to convert hex to RGB

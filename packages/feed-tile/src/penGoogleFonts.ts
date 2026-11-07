@@ -1,5 +1,5 @@
 /**
- * On-demand Google Fonts CSS injection for Pen / Pen Mini editors.
+ * On-demand Google Fonts CSS for Pen, Pen Mini, and feed playback.
  * Batches families so scrolling the full catalog does not open one link per row.
  */
 
@@ -56,9 +56,4 @@ export function ensureGoogleFontLoaded(family: string): void {
 
 export function ensureGoogleFontsLoaded(families: string[]): void {
   for (const f of families) ensureGoogleFontLoaded(f);
-}
-
-export function isGoogleFontCssQueuedOrLoaded(family: string): boolean {
-  const fam = family.trim();
-  return injected.has(fam) || pending.has(fam);
 }

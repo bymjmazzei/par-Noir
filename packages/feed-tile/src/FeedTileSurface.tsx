@@ -1,15 +1,13 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { useEffect, useMemo, useRef } from 'react';
-import {
-  buildActionStageDocument,
-  readPenActionMessage,
-  type PenActionEffect,
-  type PenActionTrack,
-  type PenFeedPagePayload,
-  type WidgetViewPayload
+import { useEffect, useRef } from 'react';
+import type {
+  PenActionEffect,
+  PenActionTrack,
+  PenFeedPagePayload,
+  WidgetViewPayload
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from './PenMediaPlayer.js';
-import { PenFeedPageStage } from './PenFeedPageStage.js';
+import { PenFeedPageStage, type ResolveLayerMedia } from './PenFeedPageStage.js';
 import { resolveNavigatePageIndex, saveIcsFile } from './penNavigate.js';
 import { DEFAULT_FEED_PLAYBACK, FeedLoopVideo, type FeedPlayback } from './FeedLoopVideo.js';
 
@@ -23,9 +21,7 @@ export type FeedTilePage = {
   mediaSrc?: string;
   /** When mediaSrc is a video URL. */
   mediaKind?: 'image' | 'video';
-  /** Action overlay HTML. When set, the page is one iframe: media behind this HTML. */
-  actionStageHtml?: string;
-  /** Motion-synced action overlay (preferred over actionStageHtml). */
+  /** Motion-synced action overlay drawn over the page media. */
   penFeedPage?: PenFeedPagePayload;
   backgroundColor?: string;
   textColor?: string;
@@ -138,54 +134,6 @@ function plainFromHtml(html: string | undefined): string {
     .trim();
 }
 
-/** Legacy iframe overlay. Its press message carries only behavior + row, so only votes map. */
-function PenActionStage({
-  mediaSrc,
-  mediaKind,
-  overlayHtml,
-  onEffect
-}: {
-  mediaSrc?: string;
-  mediaKind?: 'image' | 'video';
-  overlayHtml: string;
-  onEffect?: (effect: PenActionEffect) => void;
-}) {
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  const srcDoc = useMemo(
-    () =>
-      buildActionStageDocument({
-        mediaSrc,
-        mediaKind,
-        overlayHtml
-      }),
-    [mediaSrc, mediaKind, overlayHtml]
-  );
-  useEffect(() => {
-    if (!onEffect) return;
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== frameRef.current?.contentWindow) return;
-      const message = readPenActionMessage(event.data);
-      if (message?.behavior !== 'poll.vote') return;
-      onEffect({
-        kind: 'vote',
-        layerId: message.layerId,
-        optionId: message.bindRowId || message.layerId
-      });
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [onEffect]);
-  return (
-    <iframe
-      ref={frameRef}
-      title="Pen action stage"
-      sandbox="allow-scripts"
-      className="absolute inset-0 h-full w-full border-0"
-      srcDoc={srcDoc}
-    />
-  );
-}
-
 export type MediaFit = 'cover' | 'contain';
 
 const PAGE_SETTLE_MS = 150;
@@ -197,6 +145,7 @@ function PageSurface({
   onTrack,
   onPressBlocked,
   onReportLink,
+  resolveLayerMedia,
   actorId,
   penDocId,
   widgetViews,
@@ -210,6 +159,7 @@ function PageSurface({
   onTrack?: (track: PenActionTrack) => void;
   onPressBlocked?: () => void;
   onReportLink?: (url: string) => void;
+  resolveLayerMedia?: ResolveLayerMedia;
   actorId?: string;
   penDocId?: string;
   widgetViews?: Record<string, WidgetViewPayload>;
@@ -242,6 +192,7 @@ function PageSurface({
         onTrack={onTrack}
         onPressBlocked={onPressBlocked}
         onReportLink={onReportLink}
+        resolveLayerMedia={resolveLayerMedia}
         actorId={actorId}
         fit={fit}
         playback={playback}
@@ -251,14 +202,7 @@ function PageSurface({
 
   return (
     <div className="relative h-full w-full overflow-hidden" style={surface}>
-      {page.actionStageHtml ? (
-        <PenActionStage
-          mediaSrc={page.mediaSrc}
-          mediaKind={page.mediaKind}
-          overlayHtml={page.actionStageHtml}
-          onEffect={onEffect}
-        />
-      ) : page.mediaSrc ? (
+      {page.mediaSrc ? (
         isVideo ? (
           <div className="absolute inset-0">
             <TileVideo src={page.mediaSrc} fit={fit} playback={playback} />
@@ -273,7 +217,7 @@ function PageSurface({
           </div>
         </div>
       )}
-      {page.mediaSrc && !page.actionStageHtml ? (
+      {page.mediaSrc ? (
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
       ) : null}
     </div>
@@ -294,6 +238,7 @@ export function FeedTileSurface({
   onTrack,
   onPressBlocked,
   onReportLink,
+  resolveLayerMedia,
   actorId,
   externalClockSec,
   playback,
@@ -326,6 +271,8 @@ export function FeedTileSurface({
   onPressBlocked?: () => void;
   /** Report link on the leave sheet. Published feed posts only. */
   onReportLink?: (url: string) => void;
+  /** Loads the public copies of action layer media. Pass a stable function. */
+  resolveLayerMedia?: ResolveLayerMedia;
   /** Hashed viewer id stamped on sheet rows. */
   actorId?: string;
   /** Editor preview: sync overlay motion to timeline scrubber. */
@@ -481,6 +428,7 @@ export function FeedTileSurface({
                 onTrack={onTrack}
                 onPressBlocked={onPressBlocked}
                 onReportLink={onReportLink}
+                resolveLayerMedia={resolveLayerMedia}
                 actorId={actorId}
                 penDocId={model.penDocId}
                 widgetViews={model.widgetViews}
@@ -517,6 +465,7 @@ export function FeedTileSurface({
                 onTrack={onTrack}
                 onPressBlocked={onPressBlocked}
                 onReportLink={onReportLink}
+                resolveLayerMedia={resolveLayerMedia}
                 actorId={actorId}
                 penDocId={model.penDocId}
                 widgetViews={model.widgetViews}
@@ -539,6 +488,7 @@ export function FeedTileSurface({
           onTrack={onTrack}
           onPressBlocked={onPressBlocked}
           onReportLink={onReportLink}
+          resolveLayerMedia={resolveLayerMedia}
           actorId={actorId}
           penDocId={model.penDocId}
           widgetViews={model.widgetViews}

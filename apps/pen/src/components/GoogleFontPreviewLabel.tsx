@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';
-import { ensureGoogleFontLoaded } from '../services/penGoogleFonts';
+import { ensureGoogleFontLoaded } from '@par-noir/feed-tile';
 
 export function GoogleFontPreviewLabel({
   family,

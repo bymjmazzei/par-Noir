@@ -82,7 +82,6 @@ import {
   formCollectsToSheet,
   inputColumnKeys,
   isSheetTrigger,
-  buildActionStageHtml,
   nextAllocatePress,
   nextRankPress,
   rankColumnKeys,
@@ -202,7 +201,7 @@ import {
   ensureDocScopedFonts,
   loadDocScopedFontsForEditor
 } from '../../services/penDocFonts';
-import { ensureGoogleFontsLoaded } from '../../services/penGoogleFonts';
+import { ensureGoogleFontsLoaded } from '@par-noir/feed-tile';
 import {
   appendLocalComment,
   listLocalComments,

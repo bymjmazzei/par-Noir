@@ -17,12 +17,19 @@ export type PenFeedActionSection = {
   timelineDurationSec?: number;
 };
 
+/** A public copy of one action layer's Pen media, uploaded at publish. */
+export type PenFeedLayerMedia = { fileId: string; kind: 'image' | 'video' };
+
 export type PenFeedPagePayload = {
   slug: string;
   canvas: { w: number; h: number };
   /** Body padding. Layer x/y are measured from inside it, so the stage adds it back. */
   contentInsetPx?: number;
   timelineDurationSec?: number;
+  /** Doc default font for text layers without their own font mark. */
+  fontFamily?: string;
+  /** Public media for action layers whose image or video is a Pen media ref, by layer id. */
+  layerMedia?: Record<string, PenFeedLayerMedia>;
   actionSection: PenFeedActionSection;
 };
 

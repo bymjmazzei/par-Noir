@@ -4,8 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode
+  type PointerEvent as ReactPointerEvent
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -21,11 +20,9 @@ import {
   defaultEditorPagePresentation,
   DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-  docToHtml,
   docToPlainText,
   fitAspectInBox,
   sizeMediaLayerForAttach,
-  getTextLayerDoc,
   isFlowWorkspaceOpen,
   pageAllowsPasteboard,
   isGooglePenFont,
@@ -65,74 +62,11 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { type LayoutItem } from '../layout';
-import { WidgetTextInput } from '../WidgetTextInput';
-import { layerDisplayLabel } from '../LayersPanel';
-import {
-  layerChromeStyle,
-  layerPreviewStyle
-} from '../LayerObjectToolbar';
-import { LayerMediaContent } from '../LayerMediaContent';
-import { PenMediaPlayer, PublishedEngagementBar } from '@par-noir/feed-tile';
-import { usePlaybackMode } from '../../hooks/usePlaybackMode';
+import { PreviewLayerFace } from '../PreviewLayerFace';
+import { layerFaceStyle, layerFrameStyle } from '@par-noir/feed-tile';
 import { useResolvedMediaSrc } from '../../hooks/useResolvedMediaSrc';
-import { getAttachPoster } from '../../services/attachPosterCache';
 import type { PenSession } from '../../services/penSession';
 import { waitForPageBackgroundVideoDurationSec } from '../../services/videoLayerDuration';
-export function ResolvedPageBackground({
-  src,
-  kind,
-  docId,
-  session,
-  videoSrc
-}: {
-  src: string;
-  kind: 'image' | 'video';
-  docId?: string;
-  session?: PenSession | null;
-  videoSrc?: string;
-}) {
-  const playback = usePlaybackMode();
-  const playSrc =
-    kind === 'video'
-      ? publishPlaybackSrc({ videoSrc, backgroundVideo: src })
-      : src;
-  const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
-  const posterUrl =
-    kind === 'video' && playSrc && !resolved
-      ? getAttachPoster(publishPlaybackSrc({ videoSrc, backgroundVideo: src }))
-      : null;
-  if (!playSrc && kind === 'video') return null;
-  if (kind === 'video') {
-    const videoStyle = { objectFit: 'cover' as const };
-    return (
-      <div
-        data-pen-playback={playback}
-        data-pen-page-background="video"
-        className="pointer-events-none absolute inset-0 z-0"
-      >
-        {!resolved ? (
-          posterUrl ? (
-            <img src={posterUrl} alt="" className="h-full w-full object-cover" draggable={false} />
-          ) : (
-            <div className="h-full w-full bg-neutral-200/80" aria-hidden />
-          )
-        ) : null}
-        {resolved ? (
-          <PenMediaPlayer src={resolved} className="h-full w-full" videoStyle={videoStyle} />
-        ) : null}
-      </div>
-    );
-  }
-  if (!resolved) return null;
-  return (
-    <div
-      data-pen-page-background="image"
-      className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
-      style={{ backgroundImage: `url(${resolved})` }}
-    />
-  );
-}
-
 /** Probe page background video length for the section clock (not tied to timeline UI). */
 export function PageBackgroundVideoDuration({
   src,
@@ -201,7 +135,7 @@ export function bodyMarginStyle(presentation: PenPagePresentation): CSSPropertie
 }
 
 export function opaqueWrapShell(layer: PenPageLayer): CSSProperties {
-  const shell = { ...layerPreviewStyle(layer) };
+  const shell = layerFaceStyle(layer);
   if (layer.kind === 'image' || layer.kind === 'video') {
     shell.backgroundColor = layer.backgroundColor || 'transparent';
     shell.opacity = 1;
@@ -291,7 +225,7 @@ export function BodyWrapObject({
     pointerEvents: 'none'
   };
 
-  const wrapChrome = layerChromeStyle(layer);
+  const wrapChrome = layerFrameStyle(layer);
   const boxStyle: CSSProperties = {
     ...opaqueWrapShell(layer),
     float: side,
@@ -394,69 +328,20 @@ export function BodyWrapObject({
     onCommit({ ...clamped, bodyWrap: wrapSideFromGeom(clamped.x, clamped.w, cw) });
   }
 
-  let inner: ReactNode = null;
-  if (layer.kind === 'image' || layer.kind === 'video') {
-    inner = (
-      <LayerMediaContent
-        layer={layer}
-        onActivate={onSelect}
-        docId={docId}
-        session={session}
-        onNaturalAspect={onNaturalAspect}
-        selected={selected}
-      />
-    );
-  } else if (layer.widgetElement === 'input') {
-    inner = (
-      <WidgetTextInput
-        layer={layer}
-        value={inputValues?.[layer.id] || ''}
-        onChange={(layerId, value) => onInputValue?.(layerId, value)}
-        onSelect={onSelect}
-      />
-    );
-  } else if (layer.kind === 'text') {
-    const html = docToHtml(getTextLayerDoc(layer));
-    inner = (
-      <div
-        className="pen-rich-html h-full w-full overflow-hidden p-2 text-sm"
-        style={{
-          fontFamily: presentation.fontFamily || undefined
-        }}
-        title={layerDisplayLabel(layer, allLayers)}
-        dangerouslySetInnerHTML={{
-          __html: html || '<p class="text-neutral-400">Text</p>'
-        }}
-      />
-    );
-  } else if (layer.kind === 'embed') {
-    inner = (
-      <div
-        className="flex h-full w-full flex-col justify-center gap-1 overflow-hidden p-2 text-left text-xs text-stone-200"
-        title={layerDisplayLabel(layer, allLayers)}
-      >
-        <div className="font-medium text-stone-100">Embed</div>
-        <div className="truncate font-mono text-[10px] text-stone-400">
-          {layer.refDocId || '(no ref)'}
-        </div>
-      </div>
-    );
-  } else if (layer.kind === 'interactive') {
-    inner = (
-      <button
-        type="button"
-        className="flex h-full w-full items-center justify-center overflow-hidden px-3 text-sm font-medium"
-        title={`${layer.behavior || 'interactive'} → ${layer.bindDocId || ''}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
-      >
-        {layer.label || 'Action'}
-      </button>
-    );
-  }
-  if (!inner) return null;
+  const inner = (
+    <PreviewLayerFace
+      layer={layer}
+      layers={allLayers}
+      presentation={presentation}
+      session={session}
+      docId={docId}
+      inputValues={inputValues}
+      onInputValue={onInputValue}
+      onSelect={onSelect}
+      onNaturalAspect={onNaturalAspect}
+      selected={selected}
+    />
+  );
 
   return (
     <>

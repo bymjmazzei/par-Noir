@@ -13,7 +13,6 @@ export type PenFeedCompilePageInput = {
   backgroundColor?: string;
   textColor?: string;
   penFeedPage?: PenFeedPagePayload;
-  actionStageHtml?: string;
 };
 
 export type PenFeedCompileInput = {
@@ -37,7 +36,6 @@ function pageFromInput(input: PenFeedCompilePageInput, titleFallback: string): F
     mediaKind: input.mediaKind,
     backgroundColor: input.backgroundColor,
     textColor: input.textColor,
-    actionStageHtml: input.penFeedPage ? undefined : input.actionStageHtml,
     penFeedPage: input.penFeedPage
   };
 }
