@@ -5,8 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { SessionVaultEnrollPrompt, SessionVaultUnlockOverlay } from '@par-noir/oauth-ui';
-import type { PrismSession } from '../services/prismAuthService';
-import { saveSession as persistPrismSession } from '../services/prismAuthService';
+import { restorePrismSession, type PrismSession } from '../services/prismAuthService';
 import {
   clearPrismSessionVault,
   enrollPrismSessionVault,
@@ -19,13 +18,11 @@ const DECLINED_KEY = 'pn_vault_enroll_declined_prism';
 
 interface PrismSessionVaultHostProps {
   session: PrismSession | null;
-  onSession: (s: PrismSession | null) => void;
   onLoadingDone: () => void;
 }
 
 export function PrismSessionVaultHost({
   session,
-  onSession,
   onLoadingDone,
 }: PrismSessionVaultHostProps) {
   const [showUnlock, setShowUnlock] = useState(false);
@@ -96,16 +93,14 @@ export function PrismSessionVaultHost({
         setError('No saved session');
         return;
       }
-      const s = JSON.parse(payload.sessionJson) as PrismSession;
-      await persistPrismSession(s);
-      onSession(s);
+      restorePrismSession(JSON.parse(payload.sessionJson) as PrismSession);
       setShowUnlock(false);
     } catch (e: any) {
       setError(e?.message || 'Biometric unlock failed');
     } finally {
       setBusy(false);
     }
-  }, [onSession]);
+  }, []);
 
   const handleEnroll = useCallback(async () => {
     if (!session) return;

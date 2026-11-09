@@ -42,11 +42,9 @@ function peekMlKemSecretKey(messagingHandoff?: unknown): string | null {
 
 function LockedView({
   onApplyOpen,
-  onOAuthComplete,
   onMessagingHandoff,
 }: {
   onApplyOpen: () => void;
-  onOAuthComplete: () => Promise<void>;
   onMessagingHandoff?: (result: PnOAuthPopupResult) => void;
 }) {
   return (
@@ -90,7 +88,6 @@ function LockedView({
                         : undefined,
                     consentShown: r.consent_shown === '1',
                   });
-                  await onOAuthComplete();
                 } catch (e) {
                   console.error('[Prism] Unlock: token exchange failed', e);
                 }
@@ -337,7 +334,7 @@ function UnlockedView({ mlKemSecretKey }: { mlKemSecretKey?: string | null }) {
 function AppContent() {
   const [applyOpen, setApplyOpen] = useState(false);
   const [mlKemSecretKey, setMlKemSecretKey] = useState<string | null>(() => peekMlKemSecretKey());
-  const { session, loading, refreshSession } = useAuth();
+  const { session, loading } = useAuth();
 
   useEffect(() => {
     SplashScreen.hide().catch(() => {});
@@ -368,7 +365,6 @@ function AppContent() {
     <>
       <LockedView
         onApplyOpen={() => setApplyOpen(true)}
-        onOAuthComplete={refreshSession}
         onMessagingHandoff={(r) => {
           const key = peekMlKemSecretKey(r.messagingHandoff);
           if (key) setMlKemSecretKey(key);

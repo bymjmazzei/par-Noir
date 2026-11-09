@@ -10,7 +10,6 @@ import { Capacitor } from '@capacitor/core';
 import { API_ENDPOINT } from '../config/api';
 import { getPrismRedirectUri, PRISM_CLIENT_ID, prismOnBeforeNavigate } from '../utils/oauth';
 import { exchangeCodeForToken } from '../services/prismAuthService';
-import { useAuth } from '../contexts/AuthContext';
 import { fetchReputation, submitRayApply } from '../services/prismApi';
 
 interface ApplyModalProps {
@@ -25,7 +24,6 @@ function randomHex(bytes: number): string {
 }
 
 export function ApplyModal({ open, onClose }: ApplyModalProps) {
-  const { refreshSession } = useAuth();
   const [busy, setBusy] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
 
@@ -74,7 +72,6 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
             : undefined,
         consentShown: result.consent_shown === '1',
       });
-      await refreshSession();
       try {
         const reputation = await fetchReputation(session.accessToken);
         if (reputation.eligible) {
