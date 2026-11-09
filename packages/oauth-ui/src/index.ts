@@ -51,6 +51,7 @@ export const PN_MESSAGING_IDENTITY_MESSAGE = 'pn_messaging_identity' as const;
 export const PN_MESSAGING_SESSION_MESSAGE = 'pn_messaging_session' as const;
 export { LockButton } from './LockButton';
 export type { LockButtonProps } from './LockButton';
+export * from './session';
 export {
   initPnOAuthDebugFromUrl,
   isPnOAuthDebugEnabled,

@@ -1,12 +1,16 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { UnlockIcon } from './UnlockIcon';
 import { revokePortalToken } from './portalOAuthSession';
+import type { PnSession } from './session/pnSession';
 
 export interface LockButtonProps {
-  onLock: () => void | Promise<void>;
-  /** If provided, will POST to /oauth/revoke before calling onLock */
+  /** Shared session: lock runs app hooks, locks every app in this browser, reloads home. */
+  session?: Pick<PnSession, 'lock'>;
+  /** Legacy path for apps not yet on the shared session. */
+  onLock?: () => void | Promise<void>;
+  /** Legacy: POST /oauth/revoke before onLock. */
   refreshToken?: string | null;
-  /** API base URL for revoke endpoint */
+  /** Legacy: API base URL for revoke endpoint */
   apiEndpoint?: string;
   children?: ReactNode;
   className?: string;
@@ -16,9 +20,10 @@ export interface LockButtonProps {
 }
 
 /**
- * Button that ends the session. Optionally revokes refresh token before calling onLock.
+ * Button that ends the session.
  */
 export function LockButton({
+  session,
   onLock,
   refreshToken,
   apiEndpoint,
@@ -28,6 +33,10 @@ export function LockButton({
   title = 'Lock session',
 }: LockButtonProps) {
   const handleClick = async () => {
+    if (session) {
+      await session.lock('manual');
+      return;
+    }
     if (refreshToken && apiEndpoint) {
       try {
         await revokePortalToken({
@@ -39,7 +48,7 @@ export function LockButton({
         /* best-effort */
       }
     }
-    await onLock();
+    await onLock?.();
   };
 
   const iconStyle: CSSProperties = {

@@ -3,6 +3,7 @@
  */
 
 import { oauthStatesMatch } from './pnOAuthPopup';
+import { getOrCreateBrowserId } from './session/browserCookies';
 
 export { oauthStatesMatch };
 
@@ -11,6 +12,8 @@ export interface PortalTokenResponse {
   refresh_token?: string;
   expires_in?: number;
   token_type?: string;
+  /** Idle lock for this pN in seconds; 0 = trusted device. */
+  idle_timeout_s?: number;
 }
 
 export interface PortalOAuthSessionKeys {
@@ -40,6 +43,8 @@ export async function exchangePortalAuthorizationCode(opts: {
   if (opts.grantedDataPoints && opts.grantedDataPoints.length > 0) {
     body.granted_data_points = opts.grantedDataPoints;
   }
+  const browserId = getOrCreateBrowserId();
+  if (browserId) body.browser_id = browserId;
   const res = await fetch(`${opts.apiEndpoint.replace(/\/$/, '')}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
