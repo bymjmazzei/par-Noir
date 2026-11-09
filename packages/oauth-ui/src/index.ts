@@ -22,7 +22,6 @@ export {
 export { postBrokerLaunched, pollBrokerLaunchedOnce, brokerLaunchContextFromUrl } from './brokerLaunched';
 export {
   exchangePortalAuthorizationCode,
-  refreshPortalAccessToken,
   fetchPortalUserInfo,
   revokePortalToken,
   markPortalCodeProcessed,

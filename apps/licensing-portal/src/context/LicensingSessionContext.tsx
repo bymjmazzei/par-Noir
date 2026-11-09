@@ -13,20 +13,37 @@ import {
   isOAuthResumeUrl,
   PN_OAUTH_RESUME_SEARCH_KEY,
   oauthStatesMatch,
-  refreshPortalAccessToken,
-  type PnOAuthPopupResult
+  createPnSession,
+  exchangePortalAuthorizationCode,
+  fetchPortalUserInfo,
+  setPendingGrant,
+  usePnSession,
+  wipeThirdPartyCloudOnLock,
+  type PnOAuthPopupResult,
+  type PortalTokenResponse
 } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
-const STORAGE_ACCESS = 'licensing_portal_access_token';
-const STORAGE_REFRESH = 'licensing_portal_refresh_token';
 const STORAGE_OAUTH_CTX = 'licensing_portal_oauth_ctx';
 const STORAGE_POPUP_STATE = 'pn_oauth_state';
 /** Prevents double token exchange (popup + opener nav race). */
 const STORAGE_PROCESSED_CODE = 'licensing_portal_oauth_code_done';
 /** Cross-mount guard while oauth_resume exchange runs. */
 const STORAGE_RESUME_INFLIGHT = 'licensing_portal_oauth_resume_inflight';
+
+export const licensingSession = createPnSession({
+  clientId: PN_CLIENT_ID,
+  apiEndpoint: API_ENDPOINT,
+  storageKey: 'licensing_portal_session'
+});
+
+licensingSession.onWipe(async () => {
+  await wipeThirdPartyCloudOnLock(licensingSession.load()?.pnIdentifier).catch(() => undefined);
+  sessionStorage.removeItem(STORAGE_OAUTH_CTX);
+  sessionStorage.removeItem(STORAGE_POPUP_STATE);
+  sessionStorage.removeItem(STORAGE_PROCESSED_CODE);
+});
 
 function clearOAuthResumeQuery(): void {
   window.history.replaceState({}, '', window.location.pathname);
@@ -44,41 +61,14 @@ export interface LicensingUserInfo {
   pn_identifier?: string;
 }
 
-async function tryRefreshAccessToken(): Promise<string | null> {
-  if (typeof sessionStorage === 'undefined') return null;
-  const refresh = sessionStorage.getItem(STORAGE_REFRESH);
-  if (!refresh?.trim()) return null;
-  const data = await refreshPortalAccessToken({
-    apiEndpoint: API_ENDPOINT,
-    clientId: PN_CLIENT_ID,
-    refreshToken: refresh
-  });
-  if (!data?.access_token) return null;
-  sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
-  if (data.refresh_token) {
-    sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
-  }
-  return data.access_token;
-}
-
 function getAccessToken(): string | null {
-  if (typeof sessionStorage === 'undefined') return null;
-  const t = sessionStorage.getItem(STORAGE_ACCESS);
-  return t && t.trim() ? t.trim() : null;
+  return licensingSession.load()?.accessToken ?? null;
 }
 
 function initialLoadingSession(): boolean {
   if (typeof window === 'undefined') return false;
   if (isOAuthResumeUrl()) return true;
   return Boolean(getAccessToken());
-}
-
-export function clearLicensingSession(): void {
-  sessionStorage.removeItem(STORAGE_ACCESS);
-  sessionStorage.removeItem(STORAGE_REFRESH);
-  sessionStorage.removeItem(STORAGE_OAUTH_CTX);
-  sessionStorage.removeItem(STORAGE_POPUP_STATE);
-  sessionStorage.removeItem(STORAGE_PROCESSED_CODE);
 }
 
 interface LicensingSessionValue {
@@ -98,7 +88,8 @@ interface LicensingSessionValue {
 const LicensingSessionContext = createContext<LicensingSessionValue | null>(null);
 
 export function LicensingSessionProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => getAccessToken());
+  const session = usePnSession(licensingSession);
+  const token = session?.accessToken ?? null;
   const [user, setUser] = useState<LicensingUserInfo | null>(null);
   const [loadingSession, setLoadingSession] = useState(initialLoadingSession);
   const [error, setError] = useState<string | null>(null);
@@ -114,37 +105,23 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
   }, []);
 
   const refreshUser = useCallback(async () => {
-    let t = getAccessToken();
+    let t = await licensingSession.getAccessToken();
     if (!t) {
       setUser(null);
-      setToken(null);
       return;
     }
-    setToken((prev) => (prev === t ? prev : t));
     try {
       let res = await fetch(`${API_ENDPOINT}/oauth/userinfo`, {
         headers: { Authorization: `Bearer ${t}` }
       });
       if (res.status === 401) {
-        const next = await tryRefreshAccessToken();
-        if (next) {
-          setToken(next);
-          res = await fetch(`${API_ENDPOINT}/oauth/userinfo`, {
-            headers: { Authorization: `Bearer ${next}` }
-          });
-        }
+        t = await licensingSession.getAccessToken({ forceRefresh: true });
+        if (!t) return;
+        res = await fetch(`${API_ENDPOINT}/oauth/userinfo`, {
+          headers: { Authorization: `Bearer ${t}` }
+        });
       }
-      if (res.status === 401) {
-        clearLicensingSession();
-        setUser(null);
-        setToken(null);
-        return;
-      }
-      if (res.ok) {
-        setUser((await res.json()) as LicensingUserInfo);
-      } else {
-        setUser(null);
-      }
+      setUser(res.ok ? ((await res.json()) as LicensingUserInfo) : null);
     } catch {
       setUser(null);
     }
@@ -186,35 +163,31 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
-    const body: Record<string, unknown> = {
-      code: result.code,
-      client_id: ctx.clientId,
-      redirect_uri: ctx.redirectUri,
-      grant_type: 'authorization_code'
-    };
-    if (result.granted_data_points !== undefined) {
-      body.granted_data_points = result.granted_data_points;
-    }
-    const tokenRes = await fetch(`${API_ENDPOINT}/oauth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = (await tokenRes.json().catch(() => ({}))) as {
-      access_token?: string;
-      refresh_token?: string;
-      error_description?: string;
-      error?: string;
-    };
-    if (!tokenRes.ok) {
-      setError(data.error_description || data.error || 'Token exchange failed');
+    let data: PortalTokenResponse;
+    let info: LicensingUserInfo;
+    try {
+      data = await exchangePortalAuthorizationCode({
+        apiEndpoint: API_ENDPOINT,
+        clientId: ctx.clientId || PN_CLIENT_ID,
+        code: result.code,
+        redirectUri: ctx.redirectUri,
+        grantedDataPoints:
+          typeof result.granted_data_points === 'string'
+            ? result.granted_data_points.split(',').filter(Boolean)
+            : undefined
+      });
+      info = (await fetchPortalUserInfo({
+        apiEndpoint: API_ENDPOINT,
+        accessToken: data.access_token
+      })) as LicensingUserInfo;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Token exchange failed');
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
-    if (data.access_token) sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
-    if (data.refresh_token) sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+    licensingSession.begin(data, { pnIdentifier: info.pn_identifier || info.sub || 'unknown' });
+    setUser(info);
     if (typeof result.granted_data_points === 'string' && result.consent_shown === '1') {
-      const { setPendingGrant } = await import('@par-noir/oauth-ui');
       setPendingGrant(
         ctx.clientId || PN_CLIENT_ID,
         result.granted_data_points.split(',').filter(Boolean)
@@ -223,7 +196,6 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
     sessionStorage.removeItem(STORAGE_OAUTH_CTX);
     sessionStorage.removeItem(STORAGE_POPUP_STATE);
     sessionStorage.setItem(STORAGE_PROCESSED_CODE, codeKey);
-    setToken(data.access_token ?? null);
     setError(null);
   }, []);
 
@@ -306,32 +278,7 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
     [completeOAuth, refreshUser]
   );
 
-  const signOut = useCallback(async () => {
-    try {
-      const { wipeThirdPartyCloudOnLock } = await import('@par-noir/oauth-ui');
-      await wipeThirdPartyCloudOnLock(user?.pn_identifier);
-    } catch {
-      /* ignore */
-    }
-    const refresh = sessionStorage.getItem(STORAGE_REFRESH);
-    if (refresh) {
-      try {
-        await fetch(`${API_ENDPOINT}/oauth/revoke`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: refresh, token_type_hint: 'refresh_token' })
-        });
-      } catch {
-        /* best-effort */
-      }
-    }
-    clearLicensingSession();
-    processedCodesRef.current.clear();
-    setToken(null);
-    setUser(null);
-    setError(null);
-    setLoadingSession(false);
-  }, [user?.pn_identifier]);
+  const signOut = useCallback(() => licensingSession.lock('manual'), []);
 
   const signedIn = Boolean(token) && !loadingSession;
 

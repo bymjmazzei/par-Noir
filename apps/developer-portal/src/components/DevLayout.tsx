@@ -8,7 +8,7 @@ import {
   parseMessagingHandoffFromStorage,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE
 } from '@par-noir/oauth-ui';
-import { usePortal } from '../context/PortalContext';
+import { devPortalSession, usePortal } from '../context/PortalContext';
 import { fetchPlatformAccess } from '../services/platformApi';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -38,7 +38,6 @@ export function DevLayout() {
     setError,
     handleBeforeUnlock,
     onPopupResult,
-    signOut,
     apiEndpoint,
     clientId
   } = usePortal();
@@ -87,9 +86,7 @@ export function DevLayout() {
                   {user?.pn_identifier || user?.sub ? ` · ${user.pn_identifier || user.sub}` : ''}
                 </span>
                 <LockButton
-                  onLock={signOut}
-                  refreshToken={sessionStorage.getItem('dev_portal_refresh_token')}
-                  apiEndpoint={apiEndpoint}
+                  session={devPortalSession}
                   className="dev-btn dev-btn--ghost dev-btn--inline-icon"
                 >
                   Lock
