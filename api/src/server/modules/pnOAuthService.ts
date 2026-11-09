@@ -48,6 +48,9 @@ export class OauthUnlockProofError extends Error {
   }
 }
 
+/** Scopes signed for unlock-proof actions that never mint a session. */
+export const UNLOCK_PROOF_ACTION_SCOPES = ['pn:push_register', 'pn:push_unregister'] as const;
+
 export interface AuthorizationCode {
   code: string;
   clientId: string;
@@ -321,25 +324,20 @@ export class PNOAuthService {
   }
 
   /**
-   * Verify ML-DSA unlock proof, then mint an authorization code.
-   * Identity (did / pnIdentifier) is derived from the verified public key only.
+   * Single-use challenge + ML-DSA proof check shared by every unlock-proof route.
+   * Identity is derived from the verified public key only.
    */
-  static async authenticateWithUnlockProof(params: {
+  private static async verifyUnlockProof(params: {
     clientId: string;
     redirectUri: string;
-    scope: string[];
+    scope: string;
     state?: string;
     nonce?: string;
     challengeId: string;
     publicKey: string;
     signature: string;
-    /** Validated S256 challenge (see normalizePkceChallenge). */
-    codeChallenge?: string | null;
-  }): Promise<{ code: string; did: string; pnIdentifier: string; publicKey: string }> {
+  }): Promise<{ did: string; pnIdentifier: string }> {
     const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
-    if (clientRequiresPkce(params.clientId) && !params.codeChallenge) {
-      throw new OauthUnlockProofError('invalid_request', 'code_challenge is required for this client', 400);
-    }
     const record = await takeUnlockChallengeRecord(params.challengeId);
 
     if (!record) {
@@ -365,14 +363,13 @@ export class PNOAuthService {
       );
     }
 
-    const scopeStr = params.scope.join(' ');
     const ok = verifyOauthUnlockProof(
       params.signature,
       {
         challenge: record.challenge,
         clientId: params.clientId,
         redirectUri: normalizedRedirectUri,
-        scope: scopeStr,
+        scope: params.scope,
         state: params.state,
         nonce: params.nonce,
         publicKey: params.publicKey,
@@ -385,9 +382,65 @@ export class PNOAuthService {
         'Unlock proof signature verification failed'
       );
     }
+    return {
+      did: deriveDidFromPublicKey(params.publicKey),
+      pnIdentifier: deriveCanonicalPnIdentifier(params.publicKey),
+    };
+  }
 
-    const did = deriveDidFromPublicKey(params.publicKey);
-    const pnIdentifier = deriveCanonicalPnIdentifier(params.publicKey);
+  /**
+   * Proof for a non-session action (push device registration). The scope names
+   * the action, so the signature cannot be replayed to mint a code and vice versa.
+   */
+  static async verifyUnlockProofForAction(params: {
+    action: (typeof UNLOCK_PROOF_ACTION_SCOPES)[number];
+    clientId: string;
+    redirectUri: string;
+    state?: string;
+    nonce?: string;
+    challengeId: string;
+    publicKey: string;
+    signature: string;
+  }): Promise<{ did: string; pnIdentifier: string }> {
+    if (!UNLOCK_PROOF_ACTION_SCOPES.includes(params.action)) {
+      throw new OauthUnlockProofError('invalid_scope', 'Unknown unlock-proof action', 400);
+    }
+    return this.verifyUnlockProof({ ...params, scope: params.action });
+  }
+
+  /**
+   * Verify ML-DSA unlock proof, then mint an authorization code.
+   * Identity (did / pnIdentifier) is derived from the verified public key only.
+   */
+  static async authenticateWithUnlockProof(params: {
+    clientId: string;
+    redirectUri: string;
+    scope: string[];
+    state?: string;
+    nonce?: string;
+    challengeId: string;
+    publicKey: string;
+    signature: string;
+    /** Validated S256 challenge (see normalizePkceChallenge). */
+    codeChallenge?: string | null;
+  }): Promise<{ code: string; did: string; pnIdentifier: string; publicKey: string }> {
+    const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
+    if (clientRequiresPkce(params.clientId) && !params.codeChallenge) {
+      throw new OauthUnlockProofError('invalid_request', 'code_challenge is required for this client', 400);
+    }
+    if (params.scope.some((s) => (UNLOCK_PROOF_ACTION_SCOPES as readonly string[]).includes(s))) {
+      throw new OauthUnlockProofError('invalid_scope', 'Action scopes cannot mint a session', 400);
+    }
+    const { did, pnIdentifier } = await this.verifyUnlockProof({
+      clientId: params.clientId,
+      redirectUri: params.redirectUri,
+      scope: params.scope.join(' '),
+      state: params.state,
+      nonce: params.nonce,
+      challengeId: params.challengeId,
+      publicKey: params.publicKey,
+      signature: params.signature,
+    });
     const code = await this.generateAuthorizationCode({
       clientId: params.clientId,
       redirectUri: normalizedRedirectUri,

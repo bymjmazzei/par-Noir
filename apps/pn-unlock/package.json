@@ -13,15 +13,16 @@
     "cap:add": "npx cap add android && npx cap add ios"
   },
   "dependencies": {
-    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
-    "@par-noir/device-session-vault": "file:../../packages/device-session-vault",
-    "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
     "@bytetrade/capacitor-native-biometric": "^6.0.5",
     "@capacitor/app": "^6.0.0",
     "@capacitor/browser": "^6.0.0",
     "@capacitor/core": "^6.0.0",
+    "@capacitor/push-notifications": "^6.0.5",
     "@capacitor/splash-screen": "^6.0.0",
     "@capacitor/status-bar": "^6.0.0",
+    "@par-noir/device-session-vault": "file:../../packages/device-session-vault",
+    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
+    "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
     "capacitor-secure-storage-plugin": "^0.10.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

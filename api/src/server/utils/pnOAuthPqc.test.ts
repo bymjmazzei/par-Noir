@@ -173,3 +173,73 @@ describe('OAuth unlock proof gate', () => {
     expect(payload?.pnIdentifier).toBe(expectedPn);
   });
 });
+
+describe('unlock proof for actions (native push registration)', () => {
+  const clientId = 'browser-app';
+  const redirectUri = 'https://browse.parnoir.com/oauth-callback.html';
+
+  async function signedAction(scope: string) {
+    const dsa = mlDsa65Keygen();
+    const publicKey = bytesToBase64(dsa.publicKey);
+    const issued = await PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const signature = signOauthUnlockProof(
+      { challenge: issued.challenge, clientId, redirectUri, scope, state: 's', nonce: 'n', publicKey },
+      dsa.secretKey
+    );
+    return { publicKey, challengeId: issued.challengeId, signature };
+  }
+
+  it('verifies a push proof and derives the pN from the key, without minting a code', async () => {
+    const p = await signedAction('pn:push_register');
+    const out = await PNOAuthService.verifyUnlockProofForAction({
+      action: 'pn:push_register',
+      clientId,
+      redirectUri,
+      state: 's',
+      nonce: 'n',
+      ...p,
+    });
+    expect(out.pnIdentifier).toBe(deriveCanonicalPnIdentifier(p.publicKey));
+    expect(out).not.toHaveProperty('code');
+  });
+
+  it('a push proof cannot mint a session', async () => {
+    const p = await signedAction('pn:push_register');
+    await expect(
+      PNOAuthService.authenticateWithUnlockProof({
+        clientId,
+        redirectUri,
+        scope: ['pn:push_register'],
+        state: 's',
+        nonce: 'n',
+        ...p,
+      })
+    ).rejects.toBeInstanceOf(OauthUnlockProofError);
+  });
+
+  it('a session proof cannot register push', async () => {
+    const p = await signedAction('openid profile');
+    await expect(
+      PNOAuthService.verifyUnlockProofForAction({
+        action: 'pn:push_register',
+        clientId,
+        redirectUri,
+        state: 's',
+        nonce: 'n',
+        ...p,
+      })
+    ).rejects.toBeInstanceOf(OauthUnlockProofError);
+  });
+
+  it('rejects unknown actions', async () => {
+    const p = await signedAction('pn:anything');
+    await expect(
+      PNOAuthService.verifyUnlockProofForAction({
+        action: 'pn:anything' as never,
+        clientId,
+        redirectUri,
+        ...p,
+      })
+    ).rejects.toBeInstanceOf(OauthUnlockProofError);
+  });
+});

@@ -346,3 +346,81 @@ export function setupPushRoutes(app: express.Application): void {
     }
   });
 }
+
+const FCM_TOKEN_RE = /^[A-Za-z0-9_:.-]{16,4096}$/;
+const FORBIDDEN_UNLOCK_FIELDS = ['passcode', 'pn_name', 'pnName', 'key1', 'key2', 'password'];
+
+/**
+ * Native push for the pN Unlock app, which has no OAuth session: each pN in the
+ * device vault signs a single-use challenge with its ML-DSA key. The proof's
+ * scope names the action, so it can never mint a session.
+ */
+export function setupPushUnlockRoutes(app: express.Application): void {
+  const handle = (action: 'pn:push_register' | 'pn:push_unregister') =>
+    async (req: express.Request, res: express.Response) => {
+      const body = (req.body || {}) as Record<string, unknown>;
+      if (FORBIDDEN_UNLOCK_FIELDS.some((f) => body[f] != null)) {
+        return res.status(400).json({ error: 'invalid_request' });
+      }
+      const str = (k: string) => (typeof body[k] === 'string' ? (body[k] as string) : '');
+      const clientId = str('client_id');
+      const redirectUri = str('redirect_uri');
+      const token = str('token');
+      const platform = str('platform');
+      if (!clientId || !redirectUri || !str('challenge_id') || !str('public_key') || !str('signature')) {
+        return res.status(400).json({ error: 'invalid_request' });
+      }
+      if (!FCM_TOKEN_RE.test(token) || (platform !== 'ios' && platform !== 'android')) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'token and platform required' });
+      }
+      const { isFirstPartyClient } = await import('./integratorStoragePaths');
+      if (!isFirstPartyClient(clientId)) {
+        return res.status(403).json({ error: 'forbidden', reason: 'first_party_required' });
+      }
+
+      const { PNOAuthService, OauthUnlockProofError } = await import('./pnOAuthService');
+      let pnIdentifier: string;
+      try {
+        ({ pnIdentifier } = await PNOAuthService.verifyUnlockProofForAction({
+          action,
+          clientId,
+          redirectUri,
+          state: str('state') || undefined,
+          nonce: str('nonce') || undefined,
+          challengeId: str('challenge_id'),
+          publicKey: str('public_key'),
+          signature: str('signature'),
+        }));
+      } catch (err) {
+        if (err instanceof OauthUnlockProofError) {
+          return res.status(err.httpStatus).json({ error: err.code, error_description: err.message });
+        }
+        return res.status(500).json({ error: 'server_error' });
+      }
+
+      try {
+        if (action === 'pn:push_register') {
+          await PushService.subscribe(pnIdentifier, {
+            kind: 'fcm',
+            appId: 'unlock',
+            endpoint: token,
+            platform,
+            categories: normalizeCategories(body.categories),
+          });
+        } else {
+          await PushService.unsubscribe(pnIdentifier, token);
+        }
+        return res.json({ success: true });
+      } catch (error) {
+        safeLogger.error('[Push] native registration failed', {
+          pnIdHash: hashIdentifier(pnIdentifier),
+          action,
+          err: error instanceof Error ? error.message : String(error),
+        });
+        return res.status(500).json({ error: 'server_error' });
+      }
+    };
+
+  app.post('/oauth/push/register', handle('pn:push_register'));
+  app.post('/oauth/push/unregister', handle('pn:push_unregister'));
+}

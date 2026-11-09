@@ -13,10 +13,13 @@ import {
   type UnlockIdentityListing,
 } from '@par-noir/device-session-vault';
 import type { UnlockVaultAdapter } from '@par-noir/oauth-ui';
+import { registerPushForVaultEntries, unregisterPushForVaultEntry } from './nativePush';
 
 const APP_ID = 'unlock' as const;
 
 let vaultSingleton: DeviceSessionVault | UnsupportedSessionVault | null = null;
+/** Entries from the last biometric unlock, kept in memory to sign push unregister on remove. */
+let lastUnlocked = new Map<string, UnlockKeysPayload>();
 
 async function getVault(): Promise<DeviceSessionVault | UnsupportedSessionVault> {
   if (vaultSingleton) return vaultSingleton;
@@ -92,13 +95,17 @@ async function enrollUnlockSessionVault(payload: UnlockKeysPayload): Promise<voi
 async function unlockSessionVaultEntries(reason?: string): Promise<UnlockKeysPayload[]> {
   const v = await getVault();
   const payload = await v.unlockWithBiometric(APP_ID, reason);
-  if (!payload) return [];
-  if (payload.kind === 'unlock_multi') return payload.entries;
-  if (payload.kind === 'unlock_keys') return [payload];
-  return [];
+  const entries =
+    payload?.kind === 'unlock_multi' ? payload.entries : payload?.kind === 'unlock_keys' ? [payload] : [];
+  lastUnlocked = new Map(entries.map((e) => [e.identityId, e]));
+  void registerPushForVaultEntries(entries).catch(() => undefined);
+  return entries;
 }
 
 async function removeUnlockVaultIdentity(identityId: string): Promise<void> {
+  const entry = lastUnlocked.get(identityId);
+  if (entry) await unregisterPushForVaultEntry(entry).catch(() => undefined);
+  lastUnlocked.delete(identityId);
   const v = await getVault();
   await v.removeUnlockIdentity(identityId);
 }

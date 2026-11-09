@@ -310,3 +310,11 @@ export {
   type AgentCustodyBridgeDeps,
 } from './agentCustody';
 export { AGENT_SIGN_IN_CLIENT_ID } from './consentUnlock/constants';
+export {
+  PUSH_PROOF_CLIENT_ID,
+  PUSH_PROOF_REDIRECT_URI,
+  registerNativePushForEntries,
+  sendNativePushProof,
+  type NativePushAction,
+  type NativePushVaultEntry,
+} from './push/nativePushRegistration';

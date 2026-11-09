@@ -74,7 +74,12 @@ import { setupUserRoutes } from './server/modules/userRoutes';
 import { setupDriveRoutes } from './server/modules/driveRoutes';
 import { setupPnOAuthRoutes } from './server/modules/pnOAuthRoutes';
 import { setupSessionPolicyRoutes } from './server/modules/sessionPolicy';
-import { PushDispatcher, pushCategoryForRealtime, setupPushRoutes } from './server/modules/pushService';
+import {
+  PushDispatcher,
+  pushCategoryForRealtime,
+  setupPushRoutes,
+  setupPushUnlockRoutes,
+} from './server/modules/pushService';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -1004,6 +1009,7 @@ class ProductionServer {
     });
     setupSessionPolicyRoutes(this.app);
     setupPushRoutes(this.app);
+    setupPushUnlockRoutes(this.app);
 
     registerAdminDeveloperRoutes(this.app);
     registerIdentityMigrationRoutes(this.app);

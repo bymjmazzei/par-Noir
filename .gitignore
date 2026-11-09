@@ -240,3 +240,7 @@ pnpm-lock.yaml
 .env.production.local .env.production
 apps/id-dashboard/env.production
 apps/id-dashboard/env-backups/
+
+# Firebase native push config (supplied locally, never committed)
+apps/pn-unlock/android/app/google-services.json
+apps/pn-unlock/ios/App/App/GoogleService-Info.plist
