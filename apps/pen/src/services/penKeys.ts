@@ -5,8 +5,7 @@ import {
   parseMessagingHandoffFromStorage,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE
 } from '@par-noir/oauth-ui';
-import type { PenSession } from './penSession';
-import { savePenSession } from './penSession';
+import { penSession, type PenSession, type PenSessionKeys } from './penSession';
 
 /** Prefer session ML-DSA keys from messaging handoff. No ephemeral fallback. */
 export function resolveSigningKeys(session: PenSession): {
@@ -32,7 +31,9 @@ export function resolveSigningKeys(session: PenSession): {
 }
 
 /** Merge durable ML-DSA from oauth messaging stash into a Pen session when missing. */
-export function enrichSessionSigningKeys(session: PenSession): PenSession {
+export function enrichSessionSigningKeys<T extends { pnIdentifier: string } & PenSessionKeys>(
+  session: T
+): T {
   if (session.mlDsaPublicKey && session.mlDsaSecretKey) return session;
   let fromStorage:
     | { mlKemSecretKey: string; mlDsaSecretKey?: string; mlDsaPublicKey?: string }
@@ -55,18 +56,17 @@ export function enrichSessionSigningKeys(session: PenSession): PenSession {
     fromStorage
   );
   if (!merged?.mlDsaPublicKey || !merged?.mlDsaSecretKey) return session;
-  const next: PenSession = {
-    ...session,
+  const keys = {
     mlKemSecretKey: merged.mlKemSecretKey || session.mlKemSecretKey,
     mlDsaPublicKey: merged.mlDsaPublicKey,
     mlDsaSecretKey: merged.mlDsaSecretKey
   };
   try {
-    savePenSession(next);
+    if (penSession.load()?.pnIdentifier === session.pnIdentifier) penSession.update(keys);
   } catch {
     /* ignore */
   }
-  return next;
+  return { ...session, ...keys };
 }
 
 /** True when handoff includes ML-DSA pair Pen needs for genesis/promote. */

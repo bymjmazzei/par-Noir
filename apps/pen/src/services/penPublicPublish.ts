@@ -18,7 +18,7 @@ import {
 import { getCloudAccessTokenFromSession, shareDeviceDriveFile } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { ownerFetch } from './penOwnerFetch';
-import { loadPenSession } from './penSession';
+import { penSession } from './penSession';
 import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
 
 export type CloudRequest = (
@@ -174,7 +174,7 @@ async function uploadFeedVariant(params: {
     await blobToBase64(blob),
     params.parentFolderId
   );
-  const pn = loadPenSession()?.pnIdentifier;
+  const pn = penSession.load()?.pnIdentifier;
   const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
   const publicUrl = cloudToken ? await shareDeviceDriveFile(cloudToken, ownerId) : '';
   const ensureRes = await params.request(
@@ -256,7 +256,7 @@ export async function publishPublicCloudFile(params: {
             base64,
             params.parentFolderId
           );
-      const pn = loadPenSession()?.pnIdentifier;
+      const pn = penSession.load()?.pnIdentifier;
       const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
       const publicUrl = cloudToken ? await shareDeviceDriveFile(cloudToken, objectId) : undefined;
       return { objectId, publicUrl };

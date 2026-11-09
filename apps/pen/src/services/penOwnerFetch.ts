@@ -5,7 +5,7 @@
 
 import { fetchDeviceDriveForSession, omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
-import { loadPenSession, savePenSession } from './penSession';
+import { penSession } from './penSession';
 
 export type OwnerFetchInit = Omit<RequestInit, 'method' | 'headers' | 'body'> & {
   extraHeaders?: Record<string, string>;
@@ -36,8 +36,8 @@ async function request(opts: {
   drive: boolean;
 }): Promise<Response> {
   const { extraHeaders, pnIdentifier, authToken, ...rest } = opts.init ?? {};
-  const session = loadPenSession();
-  const token = authToken || session?.accessToken || '';
+  const session = penSession.load();
+  const token = authToken || (await penSession.getAccessToken()) || '';
   if (opts.drive) {
     const driveResponse = await fetchDeviceDriveForSession({
       method: opts.method,
@@ -120,11 +120,4 @@ export async function apiFetch(
 
 export async function apiGet(pathOrUrl: string, init?: OwnerFetchInit): Promise<Response> {
   return request({ method: 'GET', pathOrUrl, init, drive: false });
-}
-
-/** Refresh helper if bearer 401 — updates stored session when caller has new token. */
-export function updateSessionAccessToken(accessToken: string): void {
-  const s = loadPenSession();
-  if (!s) return;
-  savePenSession({ ...s, accessToken });
 }

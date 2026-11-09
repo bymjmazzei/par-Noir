@@ -84,6 +84,7 @@ import {
   type PenLicensingRoot
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../../services/penSession';
+import { penSession } from '../../services/penSession';
 import { FormatRibbon, PageCanvas } from '../../components/PageCanvas';
 import { EditablePagePreview } from '../../components/EditablePagePreview';
 import { ScreenLayerStage } from '../../components/ScreenLayerStage';
@@ -1418,8 +1419,10 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       });
     };
     window.addEventListener('beforeunload', flush);
+    const offLock = penSession.onBeforeLock(flush);
     return () => {
       flush();
+      offLock();
       window.removeEventListener('beforeunload', flush);
     };
   }, [session.pnIdentifier]);

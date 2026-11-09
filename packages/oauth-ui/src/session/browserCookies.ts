@@ -6,6 +6,7 @@
 
 export const PN_BROWSER_ID_COOKIE = 'pn_bid';
 export const PN_LAST_ACTIVE_COOKIE = 'pn_last_active';
+export const PN_LOCKED_AT_COOKIE = 'pn_locked_at';
 
 const MAX_AGE_S = 400 * 24 * 60 * 60;
 const BROWSER_ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
@@ -64,13 +65,26 @@ export function getOrCreateBrowserId(): string | undefined {
   return readCookie(PN_BROWSER_ID_COOKIE) === next ? next : undefined;
 }
 
-/** Last user activity across every app in this browser (ms epoch). */
-export function readSharedLastActive(): number {
-  const raw = readCookie(PN_LAST_ACTIVE_COOKIE);
+function readEpochCookie(name: string): number {
+  const raw = readCookie(name);
   const n = raw ? Number(raw) : 0;
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Last user activity across every app in this browser (ms epoch). */
+export function readSharedLastActive(): number {
+  return readEpochCookie(PN_LAST_ACTIVE_COOKIE);
+}
+
 export function writeSharedLastActive(at: number): void {
   writeCookie(PN_LAST_ACTIVE_COOKIE, String(Math.floor(at)));
+}
+
+/** When any app in this browser last locked (ms epoch). Sessions unlocked before it are dead. */
+export function readSharedLockedAt(): number {
+  return readEpochCookie(PN_LOCKED_AT_COOKIE);
+}
+
+export function writeSharedLockedAt(at: number): void {
+  writeCookie(PN_LOCKED_AT_COOKIE, String(Math.floor(at)));
 }

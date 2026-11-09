@@ -17,6 +17,7 @@ import {
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
   PN_CLOUD_CREDENTIALS_READY_EVENT,
   hasCloudCredentialsReady,
+  usePnSession,
   type PnOAuthPopupResult
 } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
@@ -25,12 +26,7 @@ import { DocJoinPage } from './pages/DocJoinPage';
 import { DocPreviewPage } from './pages/DocPreviewPage';
 import { DocListPage, type PenAddIntent } from './pages/DocListPage';
 import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
-import {
-  clearPenSession,
-  loadPenSession,
-  savePenSession,
-  type PenSession
-} from './services/penSession';
+import { penSession, type PenSession } from './services/penSession';
 import { enrichSessionSigningKeys, handoffHasSigningKeys } from './services/penKeys';
 import { flushPenSyncQueue } from './services/penSyncFlush';
 import { drainPenMailbox, clearPenMailboxSessionCache } from './services/penCollab';
@@ -107,8 +103,24 @@ function handoffSessionFields(messagingHandoff?: unknown): {
   return out;
 }
 
+penSession.onBeforeLock(async () => {
+  const s = penSession.load();
+  if (s && hasCloudCredentialsReady(s.pnIdentifier)) await flushPenSyncQueue(s);
+});
+
+// Keep local doc buffers across lock — cloud decrypt needs an owner-wrapped
+// docKey (registered at bootstrap); wiping local made listed docs open as
+// "Document not found" after re-unlock.
+penSession.onWipe(async () => {
+  const s = penSession.load();
+  if (!s) return;
+  await wipeThirdPartyCloudOnLock(s.pnIdentifier);
+  clearDocKeysForSession();
+  clearPenMailboxSessionCache(s.pnIdentifier);
+});
+
 function Locked() {
-  const [session, setSession] = useState<PenSession | null>(null);
+  const session = usePnSession(penSession);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lockedView, setLockedView] = useState<'home' | 'templates'>(() =>
@@ -119,17 +131,6 @@ function Locked() {
   );
   const navigate = useNavigate();
   const location = useLocation();
-
-  const applySession = useCallback(
-    (next: PenSession) => {
-      savePenSession(next);
-      setSession(next);
-      setLockedView('home');
-      navigate('/');
-      // Drive sync waits for ThirdPartyCloudReconnectHost → cloud credentials ready
-    },
-    [navigate]
-  );
 
   const onPopup = useCallback(
     async (r: PnOAuthPopupResult) => {
@@ -180,19 +181,17 @@ function Locked() {
               ''
           ).trim() || 'unknown';
 
-        const next = enrichSessionSigningKeys({
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          pnIdentifier: pn,
-          ...mergedFields
-        });
-        if (!next.mlDsaPublicKey || !next.mlDsaSecretKey) {
+        const sessionFields = enrichSessionSigningKeys({ pnIdentifier: pn, ...mergedFields });
+        if (!sessionFields.mlDsaPublicKey || !sessionFields.mlDsaSecretKey) {
           setError(
             'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
           );
           return;
         }
-        applySession(next);
+        // Drive sync waits for ThirdPartyCloudReconnectHost → cloud credentials ready
+        penSession.begin(tokens, sessionFields);
+        setLockedView('home');
+        navigate('/');
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unlock failed');
       } finally {
@@ -200,14 +199,12 @@ function Locked() {
         sessionStorage.removeItem(OAUTH_STATE_KEY);
       }
     },
-    [applySession]
+    [navigate]
   );
 
   useEffect(() => {
-    const existing = loadPenSession();
-    if (existing) {
-      setSession(enrichSessionSigningKeys(existing));
-    }
+    const existing = penSession.load();
+    if (existing) enrichSessionSigningKeys(existing);
   }, []);
 
   useEffect(() => {
@@ -217,24 +214,7 @@ function Locked() {
     saveBrowseDensity('_locked', 'feed');
   }, [location.pathname]);
 
-  if (session?.accessToken) {
-    return (
-      <AuthenticatedApp
-        session={session}
-        onLock={async () => {
-          await wipeThirdPartyCloudOnLock(session.pnIdentifier);
-          clearDocKeysForSession();
-          // Keep local doc buffers across lock — cloud decrypt needs an owner-wrapped
-          // docKey (registered at bootstrap); wiping local made listed docs open as
-          // "Document not found" after re-unlock.
-          clearPenMailboxSessionCache(session.pnIdentifier);
-          clearPenSession();
-          setSession(null);
-          setLockedView('home');
-        }}
-      />
-    );
-  }
+  if (session) return <AuthenticatedApp session={session} />;
 
   const lockedUnlock = {
     onBeforeNavigate: (state: string) => {
@@ -417,13 +397,7 @@ function AddMenu({
   );
 }
 
-function AuthenticatedApp({
-  session,
-  onLock
-}: {
-  session: PenSession;
-  onLock: () => void | Promise<void>;
-}) {
+function AuthenticatedApp({ session }: { session: PenSession }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [docs, setDocs] = useState<LocalDocSummary[]>([]);
@@ -598,9 +572,7 @@ function AuthenticatedApp({
         </div>
         <LockButton
           className="pen-app-chrome-lock"
-          onLock={onLock}
-          refreshToken={session.refreshToken}
-          apiEndpoint={API_ENDPOINT}
+          session={penSession}
           title="Lock session"
           showIcon
         >

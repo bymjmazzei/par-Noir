@@ -1,32 +1,18 @@
-/** Pen session load/save — thin helper for ownerFetch + cloud mint. */
+/** Pen's instance of the shared pN session (refresh, idle lock, lock-all, reload home). */
 
-export interface PenSession {
-  accessToken: string;
-  refreshToken?: string;
-  pnIdentifier: string;
+import { createPnSession, type PnSessionRecord } from '@par-noir/oauth-ui';
+import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
+
+export interface PenSessionKeys {
   mlDsaPublicKey?: string;
   mlDsaSecretKey?: string;
   mlKemSecretKey?: string;
 }
 
-export const PEN_SESSION_KEY = 'pen_session';
+export type PenSession = PnSessionRecord<PenSessionKeys>;
 
-export function loadPenSession(): PenSession | null {
-  try {
-    const raw = sessionStorage.getItem(PEN_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PenSession;
-    if (!parsed?.accessToken || !parsed?.pnIdentifier) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-export function savePenSession(session: PenSession): void {
-  sessionStorage.setItem(PEN_SESSION_KEY, JSON.stringify(session));
-}
-
-export function clearPenSession(): void {
-  sessionStorage.removeItem(PEN_SESSION_KEY);
-}
+export const penSession = createPnSession<PenSessionKeys>({
+  clientId: PN_CLIENT_ID,
+  apiEndpoint: API_ENDPOINT,
+  storageKey: 'pen_session',
+});

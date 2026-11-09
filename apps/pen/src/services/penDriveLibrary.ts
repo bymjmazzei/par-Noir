@@ -13,7 +13,7 @@ import {
 } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
-import { loadPenSession } from './penSession';
+import { penSession } from './penSession';
 
 export async function penSessionDrive(identityId: string): Promise<{
   accessToken: string;
@@ -21,12 +21,12 @@ export async function penSessionDrive(identityId: string): Promise<{
 }> {
   const accessToken = getCloudAccessTokenFromSession(identityId);
   if (!accessToken) throw new Error('cloud_on_device');
-  const oauth = loadPenSession();
   const localEnv = getSessionCloudCredentials(identityId);
-  if (oauth?.accessToken && localEnv) {
+  const authToken = localEnv ? await penSession.getAccessToken() : null;
+  if (authToken && localEnv) {
     await repairServerCloudRegistrationIfNeeded({
       apiEndpoint: API_ENDPOINT,
-      authToken: oauth.accessToken,
+      authToken,
       pnIdentifier: identityId,
       localEnvelope: localEnv,
       googleAccessToken: accessToken,

@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPnSession, bindSessionLockedEvent } from './pnSession';
 import { PN_LAST_ACTIVE_COOKIE, getOrCreateBrowserId, sharedCookieDomain } from './browserCookies';
+import { livePnSessionRecord } from './usePnSession';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -152,13 +153,13 @@ describe('lock', () => {
     const s = makeSession();
     seed(s);
     s.onBeforeLock(async () => {
-      order.push('flush');
+      order.push(`flush:${await s.getAccessToken()}`);
     });
     s.onWipe(() => {
       order.push('wipe');
     });
     await s.lock('manual');
-    expect(order).toEqual(['flush', 'wipe', 'fetch:https://api.test/oauth/lock-browser', 'reload']);
+    expect(order).toEqual(['flush:at-1', 'wipe', 'fetch:https://api.test/oauth/lock-browser', 'reload']);
     expect(s.load()).toBeNull();
   });
 
@@ -186,6 +187,19 @@ describe('lock', () => {
     expect(reload).toHaveBeenCalledWith('/');
   });
 
+  it('a manual lock in another app locks sessions unlocked before it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+    const pen = makeSession(memoryStorage());
+    const browse = makeSession(memoryStorage());
+    seed(pen);
+    seed(browse);
+    clock += 1000;
+    await pen.lock('manual');
+    reload.mockReset();
+    expect(await browse.getAccessToken()).toBeNull();
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledWith('/'));
+  });
+
   it('locks on session_locked from another app', async () => {
     const handlers = new Map<string, () => void>();
     const socket = { on: (ev: string, fn: () => void) => handlers.set(ev, fn) };
@@ -194,6 +208,17 @@ describe('lock', () => {
     bindSessionLockedEvent(socket, s);
     handlers.get('session_locked')?.();
     await vi.waitFor(() => expect(reload).toHaveBeenCalledWith('/'));
+  });
+});
+
+describe('livePnSessionRecord', () => {
+  it('keeps identity while token fields follow refreshes', () => {
+    const s = makeSession();
+    seed(s);
+    const view = livePnSessionRecord(s, s.load()!);
+    s.update({ accessToken: 'at-9' });
+    expect(view.accessToken).toBe('at-9');
+    expect(view.pnIdentifier).toBe('pn-abc');
   });
 });
 

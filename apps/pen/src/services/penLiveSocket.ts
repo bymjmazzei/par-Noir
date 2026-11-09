@@ -5,7 +5,9 @@
 
 import { io, type Socket } from 'socket.io-client';
 import type { PenLiveTransport, PenLiveWireKind, PenLiveWirePayload } from '@par-noir/pen-live';
+import { bindSessionLockedEvent, pnSocketAuth } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../config/api';
+import { penSession } from './penSession';
 
 const EVENT_BY_KIND: Record<PenLiveWireKind, string> = {
   batch: 'pen:batch',
@@ -14,20 +16,19 @@ const EVENT_BY_KIND: Record<PenLiveWireKind, string> = {
   control: 'pen:control'
 };
 
-let shared: { token: string; socket: Socket; users: number } | null = null;
+let shared: { socket: Socket; users: number; unbind: () => void } | null = null;
 
-function acquireSocket(accessToken: string): Socket {
-  if (shared && shared.token === accessToken) {
+function acquireSocket(): Socket {
+  if (shared) {
     shared.users += 1;
     return shared.socket;
   }
-  if (shared) shared.socket.disconnect();
   const socket = io(API_ENDPOINT, {
-    auth: { token: accessToken },
+    auth: pnSocketAuth(penSession),
     transports: ['websocket', 'polling'],
     reconnection: true
   });
-  shared = { token: accessToken, socket, users: 1 };
+  shared = { socket, users: 1, unbind: bindSessionLockedEvent(socket, penSession) };
   return socket;
 }
 
@@ -35,6 +36,7 @@ function releaseSocket(socket: Socket): void {
   if (!shared || shared.socket !== socket) return;
   shared.users -= 1;
   if (shared.users <= 0) {
+    shared.unbind();
     shared.socket.disconnect();
     shared = null;
   }
@@ -44,8 +46,8 @@ export interface PenLiveSocketTransport extends PenLiveTransport {
   close(): void;
 }
 
-export function createPenLiveTransport(accessToken: string): PenLiveSocketTransport {
-  const socket = acquireSocket(accessToken);
+export function createPenLiveTransport(): PenLiveSocketTransport {
+  const socket = acquireSocket();
   const rooms = new Set<string>();
   const handlers = new Set<
     (kind: PenLiveWireKind, roomToken: string, payload: PenLiveWirePayload) => void

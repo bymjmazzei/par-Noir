@@ -10,7 +10,12 @@
  */
 
 import { refreshPortalAccessToken, type PortalTokenResponse } from '../portalOAuthSession';
-import { readSharedLastActive, writeSharedLastActive } from './browserCookies';
+import {
+  readSharedLastActive,
+  readSharedLockedAt,
+  writeSharedLastActive,
+  writeSharedLockedAt,
+} from './browserCookies';
 
 export type PnLockReason = 'manual' | 'idle' | 'expired' | 'remote';
 
@@ -94,6 +99,7 @@ export function createPnSession<E extends object = object>(config: PnSessionConf
   const listeners = new Set<(record: PnSessionRecord<E> | null) => void>();
   let refreshInFlight: Promise<string | null> | null = null;
   let locking: Promise<void> | null = null;
+  let flushingBeforeLock = false;
   let lastActivityWrite = 0;
 
   const store = () => config.storage ?? defaultStorage();
@@ -191,9 +197,14 @@ export function createPnSession<E extends object = object>(config: PnSessionConf
   }
 
   async function getAccessToken(): Promise<string | null> {
-    if (locking) return null;
+    // Before-lock hooks may still flush with the current token; nothing refreshes once locking.
+    if (locking) return flushingBeforeLock ? load()?.accessToken ?? null : null;
     const record = load();
     if (!record) return null;
+    if (isLockedElsewhere(record)) {
+      void lock('remote');
+      return null;
+    }
     if (isIdleExpired()) {
       void lock('idle');
       return null;
@@ -209,6 +220,10 @@ export function createPnSession<E extends object = object>(config: PnSessionConf
 
   function lastActive(record: PnSessionRecord<E>): number {
     return Math.max(record.lastActiveAt || 0, readSharedLastActive());
+  }
+
+  function isLockedElsewhere(record: PnSessionRecord<E>): boolean {
+    return readSharedLockedAt() > (record.unlockedAt || 0);
   }
 
   function isIdleExpired(): boolean {
@@ -251,7 +266,10 @@ export function createPnSession<E extends object = object>(config: PnSessionConf
     if (locking) return locking;
     locking = (async () => {
       const record = load();
+      if (reason === 'manual') writeSharedLockedAt(now());
+      flushingBeforeLock = true;
       await runHooks(beforeLock, reason, config.beforeLockTimeoutMs ?? 3000);
+      flushingBeforeLock = false;
       await runHooks(wipe, reason);
       if (reason === 'manual' && record?.refreshToken) {
         try {
@@ -273,8 +291,10 @@ export function createPnSession<E extends object = object>(config: PnSessionConf
 
   function startIdleWatch(): () => void {
     if (typeof window === 'undefined' || typeof document === 'undefined') return () => undefined;
+    // getAccessToken covers locked-elsewhere, idle, and refresh-ahead-of-expiry,
+    // so the stored token stays fresh for readers that only call load().
     const check = () => {
-      if (load() && isIdleExpired()) void lock('idle');
+      if (load()) void getAccessToken();
     };
     const onActivity = () => touch();
     const onWake = () => {

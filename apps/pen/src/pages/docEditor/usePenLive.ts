@@ -214,7 +214,7 @@ export function usePenLive(params: {
     const isOwner = signer.pnHash === ownerPnHash;
     const ydoc = new Y.Doc();
     const bridge = new PenLiveBridge(ydoc, penEditorSchema());
-    const transport = createPenLiveTransport(session.accessToken);
+    const transport = createPenLiveTransport();
 
     const rolesSource = (): PenRoleAssignment[] => {
       const manifestRoles = bundleRef.current?.manifest.roles || [];
@@ -457,7 +457,7 @@ export function usePenLive(params: {
     };
     // Roles changes go through setRoles below; a new epoch or key restarts the session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shared, groupId, docKey, keyEpoch, ownerPnHash, ownerKey, docId, session.pnIdentifier, session.accessToken]);
+  }, [shared, groupId, docKey, keyEpoch, ownerPnHash, ownerKey, docId, session.pnIdentifier]);
 
   useEffect(() => {
     const onRekeyEvent = (e: Event) => {

@@ -29,7 +29,7 @@ import { downloadPenMedia } from '@par-noir/pen-media';
 import { listCloudMedia, pickDeviceImageFile, type CloudImageItem } from '../services/penAttach';
 import { listLocalDocs, loadLocalDoc, type LocalDocSummary } from '../services/penLocalStore';
 import { createTablePrimitiveDoc } from '../services/createDocFromTemplate';
-import { loadPenSession } from '../services/penSession';
+import { penSession } from '../services/penSession';
 import {
   listPersonalFonts,
   pickFontFile,
@@ -828,7 +828,7 @@ export function FormatRibbon({
             </RibbonItem>
             <RibbonItem
               onClick={() => {
-                const session = loadPenSession();
+                const session = penSession.load();
                 if (!session || !pnIdentifier) return;
                 void createTablePrimitiveDoc({ session }).then((bundle) => {
                   ed.chain()
