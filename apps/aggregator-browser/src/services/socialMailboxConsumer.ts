@@ -240,15 +240,26 @@ let hotDrainWaiters: Array<{
   resolve: (r: MailboxDrainResult) => void;
   reject: (e: unknown) => void;
 }> = [];
+/** A batch is visible-only only if every request in it was. */
+let hotDrainVisibleOnly = true;
 
 let rerunRequested = false;
 
-async function drainOnce(): Promise<MailboxDrainResult> {
+function isHidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState !== 'visible';
+}
+
+/**
+ * Realtime hints drain even in a hidden tab while unlocked (the consumer only runs
+ * between unlock and lock), so a backgrounded tab still applies follows and messages.
+ * The slow backstop stays visible-only.
+ */
+async function drainOnce(visibleOnly: boolean): Promise<MailboxDrainResult> {
   if (running) {
     rerunRequested = true;
     return EMPTY;
   }
-  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return EMPTY;
+  if (isHidden() && (visibleOnly || !started)) return EMPTY;
   running = true;
   try {
     const result = await drainSocialMailbox();
@@ -272,21 +283,24 @@ async function drainOnce(): Promise<MailboxDrainResult> {
  * Debounced drain for realtime hints (new_message / mailbox_pending).
  * Callers that must reload Sheets after apply should await this.
  */
-export function requestHotDrain(): Promise<MailboxDrainResult> {
+export function requestHotDrain(opts: { visibleOnly?: boolean } = {}): Promise<MailboxDrainResult> {
   return new Promise((resolve, reject) => {
     hotDrainWaiters.push({ resolve, reject });
+    hotDrainVisibleOnly = hotDrainVisibleOnly && opts.visibleOnly === true;
     if (hotDrainTimer != null) clearTimeout(hotDrainTimer);
     hotDrainTimer = setTimeout(() => {
       hotDrainTimer = null;
       const waiters = hotDrainWaiters;
+      const visibleOnly = hotDrainVisibleOnly;
       hotDrainWaiters = [];
+      hotDrainVisibleOnly = true;
       void (async () => {
         try {
           // If a drain is already running, wait briefly then run again so we catch new jobs.
           if (running) {
             await new Promise((r) => setTimeout(r, HOT_DRAIN_DEBOUNCE_MS));
           }
-          const result = await drainOnce();
+          const result = await drainOnce(visibleOnly);
           for (const w of waiters) w.resolve(result);
         } catch (e) {
           for (const w of waiters) w.reject(e);
@@ -314,7 +328,7 @@ export function startSocialMailboxConsumer(): void {
   window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudCredentialsReady);
   document.addEventListener('visibilitychange', onVisibilityChange);
   intervalId = window.setInterval(() => {
-    void requestHotDrain();
+    void requestHotDrain({ visibleOnly: true });
   }, DRAIN_INTERVAL_MS);
   void (async () => {
     const session = PNOAuthService.loadSession();
@@ -337,6 +351,7 @@ export function stopSocialMailboxConsumer(): void {
     hotDrainTimer = null;
   }
   hotDrainWaiters = [];
+  hotDrainVisibleOnly = true;
   rerunRequested = false;
   if (typeof window !== 'undefined') {
     window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudCredentialsReady);
