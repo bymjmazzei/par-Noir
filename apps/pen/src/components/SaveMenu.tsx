@@ -40,19 +40,10 @@ export function SaveMenu({
 
   return (
     <div className="relative flex items-center gap-2" ref={rootRef}>
-      <div className="relative hidden min-w-[6rem] max-w-[min(22rem,38vw)] sm:block">
-        {lastDraftAt && (
+      <div className="hidden min-w-[6rem] max-w-[min(22rem,38vw)] sm:block">
+        {toast ? (
           <span
-            className={`text-[11px] text-neutral-600 transition-opacity ${toast ? 'opacity-0' : ''}`}
-            title={lastDraftAt}
-          >
-            Draft {formatRelative(lastDraftAt)}
-            {dirty ? ' · unsaved' : ''}
-          </span>
-        )}
-        {toast && (
-          <span
-            className={`absolute inset-0 overflow-hidden text-[11px] leading-snug line-clamp-2 whitespace-normal break-words ${
+            className={`block truncate text-[11px] ${
               errorMessage ? 'text-red-600' : 'text-teal-800'
             }`}
             role="status"
@@ -60,7 +51,12 @@ export function SaveMenu({
           >
             {toast}
           </span>
-        )}
+        ) : lastDraftAt ? (
+          <span className="block truncate text-[11px] text-neutral-600" title={lastDraftAt}>
+            Draft {formatRelative(lastDraftAt)}
+            {dirty ? ' · unsaved' : ''}
+          </span>
+        ) : null}
       </div>
       <button
         type="button"
