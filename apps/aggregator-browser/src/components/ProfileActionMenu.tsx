@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PN_DID_PREFIX } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { createPortal } from 'react-dom';
-import { User, MessageCircle, UserPlus, Check, X, Clock, Pencil, UserMinus, BadgeCheck } from 'lucide-react';
+import { User, MessageCircle, UserPlus, Check, X, Clock, Pencil, UserMinus, BadgeCheck, ShieldCheck } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection, resolveConnectionStatusFromCache } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
@@ -19,7 +19,11 @@ import {
 import { hasFeedPreviewPlayback, resolvePublicMediaObjectUrl } from '../services/feedPreviewPlayback';
 import { IndexedFile } from '../types/aggregator';
 import { getUserProfile, updateDisplayName as updateDisplayNameAPI } from '../services/profileService';
-import { fetchListedPublicNamesForPn } from '../services/publicNamesService';
+import {
+  fetchListedPublicNamesForPn,
+  handleProofLabel,
+  type ListedPublicName
+} from '../services/publicNamesService';
 
 interface ProfileActionMenuProps {
   creatorId: string;
@@ -85,28 +89,23 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [profileImageLoading, setProfileImageLoading] = useState(false);
   const [externalDisplayName, setExternalDisplayName] = useState<string | null>(null);
-  const [attestedPublicName, setAttestedPublicName] = useState<string | null>(null);
-  const [publicNameProofType, setPublicNameProofType] = useState<string | null>(null);
+  const [handle, setHandle] = useState<ListedPublicName | null>(null);
+  const attestedPublicName = handle?.publicName || null;
+  const handleProven = handle ? handle.proofType !== 'claim' : false;
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     (async () => {
       if (!creatorId) {
-        setAttestedPublicName(null);
-        setPublicNameProofType(null);
+        setHandle(null);
         return;
       }
       const names = await fetchListedPublicNamesForPn(creatorId);
       if (cancelled) return;
-      const primary = names.find((n) => n.isVanity) || names[0];
-      setAttestedPublicName(primary?.publicName || null);
-      setPublicNameProofType(primary?.proofType || null);
+      setHandle(names.find((n) => n.isVanity) || names[0] || null);
     })().catch(() => {
-      if (!cancelled) {
-        setAttestedPublicName(null);
-        setPublicNameProofType(null);
-      }
+      if (!cancelled) setHandle(null);
     });
     return () => {
       cancelled = true;
@@ -592,11 +591,18 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
               style={{ width: iconPx * 0.62, height: iconPx * 0.62 }}
             />
           )}
-          {attestedPublicName && (
+          {handleProven && (
             <BadgeCheck
               className="absolute bottom-0 right-0 text-blue-400 bg-black rounded-full"
               style={{ width: iconPx * 0.36, height: iconPx * 0.36 }}
-              aria-label="Verified public name"
+              aria-label="Proven handle"
+            />
+          )}
+          {handle?.ownerVerified && (
+            <ShieldCheck
+              className="absolute bottom-0 left-0 text-emerald-400 bg-black rounded-full"
+              style={{ width: iconPx * 0.36, height: iconPx * 0.36 }}
+              aria-label="Verified person"
             />
           )}
         </div>
@@ -700,8 +706,11 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
                     <span className="text-white font-medium text-sm truncate">
                       {attestedPublicName || displayName}
                     </span>
-                    {attestedPublicName && (
-                      <BadgeCheck className="h-3.5 w-3.5 text-blue-400 shrink-0" aria-label="Verified" />
+                    {handleProven && (
+                      <BadgeCheck className="h-3.5 w-3.5 text-blue-400 shrink-0" aria-label="Proven handle" />
+                    )}
+                    {handle?.ownerVerified && (
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-label="Verified person" />
                     )}
                     {isOwnProfile && (
                       <button
@@ -717,14 +726,14 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
                       </button>
                     )}
                   </div>
-                  {attestedPublicName && (
+                  {handle && (
                     <span className="text-neutral-400 text-[10px] truncate">
-                      {publicNameProofType === 'youtube'
-                        ? 'Verified via YouTube'
-                        : publicNameProofType === 'dns'
-                          ? 'Verified via domain'
-                          : 'Verified public name'}
-                      {displayName && displayName !== attestedPublicName ? ` · ${displayName}` : ''}
+                      {handleProofLabel(handle.proofType)}
+                      {handle.ownerVerified ? ' · Verified person' : ''}
+                      {handle.verifiedDisplayName ? ` · ${handle.verifiedDisplayName}` : ''}
+                      {displayName && displayName !== handle.publicName && displayName !== handle.verifiedDisplayName
+                        ? ` · ${displayName}`
+                        : ''}
                     </span>
                   )}
                 </div>

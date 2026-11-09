@@ -14,10 +14,23 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+export type HandleProofType = 'claim' | 'dns' | 'youtube';
+
+/** A listed handle with its proof level and the owner's verification (never the owner's pN). */
 export interface ListedPublicName {
   publicName: string;
-  proofType: 'dns' | 'youtube' | string;
+  proofType: HandleProofType;
+  strength: number;
   isVanity: boolean;
+  ownerVerified: boolean;
+  verifiedDisplayName?: string;
+}
+
+/** Proof level shown next to a handle. Claimed handles are first-come, not proven. */
+export function handleProofLabel(proofType: HandleProofType): string {
+  if (proofType === 'dns') return 'Domain handle';
+  if (proofType === 'youtube') return 'YouTube handle';
+  return 'Claimed handle';
 }
 
 const BY_PN_CACHE_TTL_MS = 5 * 60 * 1000;

@@ -205,16 +205,7 @@ BEGIN
                  WHERE table_name='feeds' AND column_name='annual_price') THEN
     ALTER TABLE feeds ADD COLUMN annual_price DECIMAL(10, 2);
   END IF;
-
-  -- Add subdomain column
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                 WHERE table_name='feeds' AND column_name='subdomain') THEN
-    ALTER TABLE feeds ADD COLUMN subdomain VARCHAR(255);
-  END IF;
 END $$;
-
--- Create unique index on subdomain
-CREATE UNIQUE INDEX IF NOT EXISTS idx_feeds_subdomain ON feeds(subdomain) WHERE subdomain IS NOT NULL;
 
 -- Create feed_payments table for tracking feed creation payments
 CREATE TABLE IF NOT EXISTS feed_payments (

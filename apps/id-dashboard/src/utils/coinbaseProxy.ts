@@ -25,7 +25,6 @@ export interface CoinbaseCheckout {
     feedDescription?: string;
     monthlyPrice?: string;
     annualPrice?: string;
-    subdomain?: string;
   };
 }
 
@@ -48,7 +47,6 @@ export interface CheckoutRequest {
     feedDescription?: string;
     monthlyPrice?: string;
     annualPrice?: string;
-    subdomain?: string;
   };
 }
 

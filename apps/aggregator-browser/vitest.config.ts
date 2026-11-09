@@ -12,6 +12,7 @@ export default defineConfig({
       '@par-noir/pqc-crypto/ml-dsa': path.resolve(pqcSrc, 'mlDsa.ts'),
       '@par-noir/pqc-crypto/ml-kem': path.resolve(pqcSrc, 'mlKem.ts'),
       '@par-noir/pqc-crypto/constants': path.resolve(pqcSrc, 'constants.ts'),
+      '@par-noir/pqc-crypto/personal-feed': path.resolve(pqcSrc, 'personalFeed.ts'),
       '@par-noir/pqc-crypto': path.resolve(pqcSrc, 'index.ts'),
     },
   },

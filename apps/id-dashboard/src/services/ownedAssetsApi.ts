@@ -35,6 +35,11 @@ export interface OwnedAssetDto {
   revokedAt: string | null;
 }
 
+/** The browser-registered personal feed: derived key, so no export, rotate, or revoke. */
+export function isPersonalFeedAsset(asset: Pick<OwnedAssetDto, 'kind' | 'metadata'>): boolean {
+  return asset.kind === 'feed' && asset.metadata?.tier === 'personal';
+}
+
 function pnKey(pnIdentifier: string): string {
   return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 }

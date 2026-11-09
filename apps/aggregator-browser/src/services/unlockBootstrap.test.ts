@@ -29,7 +29,20 @@ vi.mock('./deviceService', () => ({
   }))
 }));
 
+const personalFeedMock = vi.hoisted(() => ({
+  ensurePersonalFeed: vi.fn(async () => null),
+  installPersonalFeedBootstrap: vi.fn()
+}));
+vi.mock('./personalFeed', () => personalFeedMock);
+
 describe('runUnlockBootstrap', () => {
+  it('starts personal feed registration on unlock', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ feedTokens: [] }) })));
+    await runUnlockBootstrap('token-pf', 'pn-test');
+    expect(personalFeedMock.installPersonalFeedBootstrap).toHaveBeenCalled();
+    expect(personalFeedMock.ensurePersonalFeed).toHaveBeenCalled();
+  });
+
   afterEach(() => {
     invalidateUnlockBootstrap();
     vi.unstubAllGlobals();

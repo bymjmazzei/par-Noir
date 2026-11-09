@@ -79,13 +79,18 @@ export function registerVerificationSyncRoute(app: Application): void {
   app.post('/api/verification/sync', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const { VerificationIntegrationService } = await import('./verificationIntegrationService');
-      const { identityId, verificationId, verifiedAt } = req.body;
+      const { identityId, verificationId, verifiedAt, legalName } = req.body;
 
       if (!identityId || !verificationId || !verifiedAt) {
         return res.status(400).json({ error: 'identityId, verificationId, and verifiedAt are required' });
       }
 
-      await VerificationIntegrationService.syncVerificationStatus(identityId, verificationId, verifiedAt);
+      await VerificationIntegrationService.syncVerificationStatus(
+        identityId,
+        verificationId,
+        verifiedAt,
+        typeof legalName === 'string' ? legalName : undefined
+      );
 
       return res.json({ success: true, message: 'Verification status synced' });
     } catch (error: any) {

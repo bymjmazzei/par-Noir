@@ -1,0 +1,31 @@
+{
+  "name": "@par-noir/public-names",
+  "version": "0.1.0",
+  "description": "par Noir handle rules: normalization, confusable skeleton, registry-signed handle receipts",
+  "main": "dist/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && tsc -p tsconfig.esm.json",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.0",
+    "@par-noir/pqc-crypto": "file:../pqc-crypto"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "license": "UNLICENSED",
+  "files": ["dist", "src"]
+}

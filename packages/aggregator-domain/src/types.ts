@@ -185,7 +185,11 @@ export interface Feed {
   feedDescription?: string;
   /** pN identifier of feed host */
   creatorId: string;
-  creatorTier: 'free' | 'feed' | 'self-hosted';
+  creatorTier: 'free' | 'personal' | 'feed' | 'self-hosted';
+  /** Feed sub-pN; personal feeds derive it from the root key. */
+  subPnIdentifier?: string;
+  /** Owner's verified legal name, shown only when the owner opts in. */
+  verifiedDisplayName?: string;
   branding?: {
     bannerImage?: string;
     avatar?: string;
@@ -202,7 +206,6 @@ export interface Feed {
   isPaid?: boolean;
   monthlyPrice?: number;
   annualPrice?: number;
-  subdomain?: string;
 }
 
 // ============================================================================

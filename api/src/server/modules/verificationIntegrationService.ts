@@ -4,30 +4,34 @@
  */
 
 import { getDatabasePool } from '../utils/database';
+import { legalNameHmac } from './verifiedNameService';
 
 export class VerificationIntegrationService {
   /**
    * Sync verification status to verified_identities table
-   * Called when identity verification completes
+   * Called when identity verification completes. The legal name is kept only as an HMAC.
    */
   static async syncVerificationStatus(
     identityId: string,
     verificationId: string,
-    verifiedAt: string
+    verifiedAt: string,
+    legalName?: string
   ): Promise<void> {
     const db = getDatabasePool();
+    const nameHmac = legalName && legalName.trim() ? legalNameHmac(legalName) : null;
     
     try {
       await db.query(`
-        INSERT INTO verified_identities (identity_id, verification_id, verified_at, is_active, verification_level)
-        VALUES ($1, $2, $3, TRUE, 'verified')
+        INSERT INTO verified_identities (identity_id, verification_id, verified_at, is_active, verification_level, legal_name_hmac)
+        VALUES ($1, $2, $3, TRUE, 'verified', $4)
         ON CONFLICT (identity_id) 
         DO UPDATE SET 
           verification_id = $2,
           verified_at = $3,
           is_active = TRUE,
-          verification_level = 'verified'
-      `, [identityId, verificationId, verifiedAt]);
+          verification_level = 'verified',
+          legal_name_hmac = COALESCE($4, verified_identities.legal_name_hmac)
+      `, [identityId, verificationId, verifiedAt, nameHmac]);
       
       console.log(`✅ Synced verification status for identity: ${identityId}`);
     } catch (error) {

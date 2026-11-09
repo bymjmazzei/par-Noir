@@ -14,7 +14,9 @@ export interface Feed {
   feedCategory?: FeedCategory;
   feedDescription?: string;
   creatorId: string;
-  creatorTier: 'free' | 'feed' | 'self-hosted';
+  creatorTier: 'free' | 'personal' | 'feed' | 'self-hosted';
+  subPnIdentifier?: string;
+  verifiedDisplayName?: string;
   branding?: {
     bannerImage?: string;
     avatar?: string;
@@ -31,7 +33,6 @@ export interface Feed {
   isPaid: boolean;
   monthlyPrice?: number;
   annualPrice?: number;
-  subdomain?: string;
 }
 
 export interface FeedPost {
@@ -99,7 +100,6 @@ export class FeedService {
     isPaid?: boolean;
     monthlyPrice?: number;
     annualPrice?: number;
-    subdomain?: string;
   }): Promise<Feed> {
     const creatorDid = getLocalUserId();
     const response = await ownerFetch(requireOwnerApiToken(), 'POST', '/api/feeds', {

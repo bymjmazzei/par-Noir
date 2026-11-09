@@ -29,6 +29,11 @@
       "types": "./dist/oauthUnlockProof.d.ts",
       "import": "./dist/oauthUnlockProof.js",
       "require": "./dist/oauthUnlockProof.js"
+    },
+    "./personal-feed": {
+      "types": "./dist/personalFeed.d.ts",
+      "import": "./dist/personalFeed.js",
+      "require": "./dist/personalFeed.js"
     }
   },
 

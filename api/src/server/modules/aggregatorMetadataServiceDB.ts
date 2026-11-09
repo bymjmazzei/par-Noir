@@ -375,6 +375,18 @@ export class AggregatorMetadataServiceDB {
       });
 
       await this.syncFileVisibilityOverrides(validatedMetadata.fileId, validatedMetadata.indexingPermissions);
+
+      // A public post keeps its feeds' handles from expiring.
+      const postedFeedIds = (validatedMetadata as { feedIds?: unknown }).feedIds;
+      if (validatedMetadata.isPublic === true && Array.isArray(postedFeedIds) && postedFeedIds.length > 0) {
+        try {
+          await db.query(`UPDATE feeds SET last_activity_at = NOW() WHERE feed_id = ANY($1::text[])`, [
+            postedFeedIds.filter((id): id is string => typeof id === 'string').slice(0, 50)
+          ]);
+        } catch (error) {
+          safeLogger.warn('[submitMetadata] feed activity update failed (non-critical)', { error: error as Error });
+        }
+      }
       
       // SCALABILITY: Invalidate cache when metadata is added/updated
       try {

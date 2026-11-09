@@ -919,11 +919,6 @@ export async function initializeDatabase(): Promise<void> {
       WHERE status = 'listed'
     `);
     await db.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_public_names_vanity_per_pn
-      ON public_names (pn_identifier)
-      WHERE is_vanity = true
-    `);
-    await db.query(`
       CREATE INDEX IF NOT EXISTS idx_public_names_pn
       ON public_names (pn_identifier)
     `);
@@ -1208,6 +1203,19 @@ export async function initializeDatabase(): Promise<void> {
     } catch (migrationError: unknown) {
       console.debug(
         'ℹ️ agent_pen_draft_quota migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const namesPath = path.join(__dirname, '../../migrations/add_public_names_on_feeds.sql');
+      await db.query(fs.readFileSync(namesPath, 'utf-8'));
+      console.log('✅ public names on feeds migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ public names on feeds migration error (may already be applied):',
         migrationError instanceof Error ? migrationError.message : migrationError
       );
     }

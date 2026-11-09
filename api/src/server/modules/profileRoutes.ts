@@ -92,6 +92,7 @@ export function setupProfileRoutes(app: express.Application, _deps: ProfileRoute
         if (!row) {
           return res.json({ profiles: [] });
         }
+        const [badge] = await PublicNameService.badges([row]);
         return res.json({
           profiles: [
             {
@@ -99,7 +100,10 @@ export function setupProfileRoutes(app: express.Application, _deps: ProfileRoute
               displayName: row.publicName,
               publicName: row.publicName,
               proofType: row.proofType,
-              verified: true,
+              strength: badge.strength,
+              verified: row.proofType !== 'claim',
+              ownerVerified: badge.ownerVerified,
+              ...(badge.verifiedDisplayName ? { verifiedDisplayName: badge.verifiedDisplayName } : {}),
               isVanity: row.isVanity,
             },
           ],

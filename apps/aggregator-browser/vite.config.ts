@@ -28,6 +28,7 @@ export default defineConfig(({ mode, command }) => {
       '@par-noir/pqc-crypto/encoding': path.resolve(__dirname, '../../packages/pqc-crypto/src/encoding.ts'),
       '@par-noir/pqc-crypto/ml-dsa': path.resolve(__dirname, '../../packages/pqc-crypto/src/mlDsa.ts'),
       '@par-noir/pqc-crypto/constants': path.resolve(__dirname, '../../packages/pqc-crypto/src/constants.ts'),
+      '@par-noir/pqc-crypto/personal-feed': path.resolve(__dirname, '../../packages/pqc-crypto/src/personalFeed.ts'),
       '@par-noir/pqc-crypto': path.resolve(__dirname, '../../packages/pqc-crypto/src/index.ts'),
       '@par-noir/recovery-crypto': path.resolve(__dirname, '../../packages/recovery-crypto/src/index.ts'),
     }

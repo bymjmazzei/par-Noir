@@ -1144,39 +1144,66 @@ function verifyAgentStatement(args: {
   if (!statement || typeof args.signature !== 'string' || !args.signature) {
     throw invalid('agent_statement_required');
   }
-  if (
-    !assertMlDsa65PublicKeyB64(statement.rootPublicKey) ||
-    deriveCanonicalPnIdentifier(statement.rootPublicKey) !== args.root
-  ) {
-    throw invalid('agent_statement_root_mismatch');
-  }
-  let ok = false;
-  try {
-    ok = mlDsa65Verify(
-      base64ToBytes(args.signature),
-      canonicalDelegationBytes(statement),
-      base64ToBytes(statement.rootPublicKey)
-    );
-  } catch {
-    ok = false;
-  }
-  if (!ok) throw invalid('agent_signature_invalid');
-  if (
-    statement.agentPnIdentifier !== args.subject ||
-    statement.agentPublicKey !== args.publicKey ||
-    !sameScopeSet(statement.scopes, args.scopes) ||
-    statement.expiresAt !== args.expiresAt
-  ) {
-    throw invalid('agent_statement_mismatch');
-  }
-  const issued = Date.parse(statement.issuedAt);
-  if (issued > args.now + STATEMENT_MAX_SKEW_MS || issued < args.now - STATEMENT_MAX_AGE_MS) {
-    throw invalid('agent_statement_stale');
-  }
+  verifyRootSignedStatement({
+    prefix: 'agent',
+    root: args.root,
+    rootPublicKey: statement.rootPublicKey,
+    bytes: canonicalDelegationBytes(statement),
+    signature: args.signature,
+    issuedAt: statement.issuedAt,
+    now: args.now,
+    beforeFreshness: () => {
+      if (
+        statement.agentPnIdentifier !== args.subject ||
+        statement.agentPublicKey !== args.publicKey ||
+        !sameScopeSet(statement.scopes, args.scopes) ||
+        statement.expiresAt !== args.expiresAt
+      ) {
+        throw invalid('agent_statement_mismatch');
+      }
+    }
+  });
   if (statement.expiresAt && Date.parse(statement.expiresAt) <= args.now) {
     throw invalid('agent_statement_expired');
   }
   return statement;
+}
+
+/**
+ * The root pN's ML-DSA key signed `bytes`, the key derives `root`, and the statement
+ * was issued within the freshness window. Errors are `${prefix}_*` INVALID_INPUT.
+ */
+export function verifyRootSignedStatement(args: {
+  prefix: string;
+  root: string;
+  rootPublicKey: string;
+  bytes: Uint8Array;
+  signature: string;
+  issuedAt: string;
+  now: number;
+  beforeFreshness?: () => void;
+}): void {
+  if (typeof args.signature !== 'string' || !args.signature) {
+    throw invalid(`${args.prefix}_statement_required`);
+  }
+  if (
+    !assertMlDsa65PublicKeyB64(args.rootPublicKey) ||
+    deriveCanonicalPnIdentifier(args.rootPublicKey) !== normalizePn(args.root)
+  ) {
+    throw invalid(`${args.prefix}_statement_root_mismatch`);
+  }
+  let ok = false;
+  try {
+    ok = mlDsa65Verify(base64ToBytes(args.signature), args.bytes, base64ToBytes(args.rootPublicKey));
+  } catch {
+    ok = false;
+  }
+  if (!ok) throw invalid(`${args.prefix}_signature_invalid`);
+  args.beforeFreshness?.();
+  const issued = Date.parse(args.issuedAt);
+  if (issued > args.now + STATEMENT_MAX_SKEW_MS || issued < args.now - STATEMENT_MAX_AGE_MS) {
+    throw invalid(`${args.prefix}_statement_stale`);
+  }
 }
 
 function safeJson(text: string): unknown {

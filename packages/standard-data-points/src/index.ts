@@ -107,6 +107,18 @@ export {
   isPrivateTextType
 } from './agentCustody';
 export {
+  type PersonalFeedStatement,
+  type HandleTransferStatement,
+  PERSONAL_FEED_STATEMENT_VERSION,
+  HANDLE_TRANSFER_STATEMENT_VERSION,
+  parsePersonalFeedStatement,
+  canonicalPersonalFeedBytes,
+  buildPersonalFeedStatement,
+  parseHandleTransferStatement,
+  canonicalHandleTransferBytes,
+  buildHandleTransferStatement
+} from './ownerStatements';
+export {
   type PermissionManifestItem,
   type PermissionManifestItemType,
   type IntegratorPermissionManifest,

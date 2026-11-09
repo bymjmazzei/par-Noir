@@ -8,6 +8,7 @@ import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PNOAuthService, type FeedToken, type OAuthUserInfo } from './pnOAuthService';
 import { getUserProfile } from './profileService';
 import { fetchDeviceRegistry, wireLocalDeviceProofSigner, type DeviceRegistrySummary } from './deviceService';
+import { ensurePersonalFeed, installPersonalFeedBootstrap } from './personalFeed';
 
 export interface UnlockBootstrapResult {
   userInfo: OAuthUserInfo;
@@ -46,6 +47,9 @@ export async function runUnlockBootstrap(
       loadOwnProfileDisplayName(userInfo.pn_identifier),
       loadRegistryAndWire(pnIdentifier, accessToken)
     ]);
+
+    installPersonalFeedBootstrap();
+    void ensurePersonalFeed();
 
     return { userInfo, feedTokens, profileDisplayName: profile, registry };
   })().finally(() => {

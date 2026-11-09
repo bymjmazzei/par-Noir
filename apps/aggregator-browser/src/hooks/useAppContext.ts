@@ -7,10 +7,24 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Feed } from '../types/aggregator';
 import { FeedService } from '../services/feedService';
 import { PNOAuthService, FeedToken } from '../services/pnOAuthService';
+import { PERSONAL_FEED_CHANGE_EVENT } from '../services/personalFeed';
 
 export type AppContext =
   | { type: 'pn'; id: string; name: string; pnIdentifier: string }
-  | { type: 'feed'; id: string; name: string; feedId: string; isOwned: boolean; feedToken?: FeedToken };
+  | {
+      type: 'feed';
+      id: string;
+      name: string;
+      feedId: string;
+      isOwned: boolean;
+      isPersonal?: boolean;
+      feedToken?: FeedToken;
+    };
+
+/** No explicit choice yet: the personal feed, else the pN itself. */
+export function pickDefaultContext(contexts: AppContext[], pnContext: AppContext): AppContext {
+  return contexts.find((c) => c.type === 'feed' && c.isPersonal) ?? pnContext;
+}
 
 export interface UseAppContextOptions {
   /** Kept for call-site compatibility; controlled feeds no longer use catalog as lock-menu source. */
@@ -29,10 +43,12 @@ export function useAppContext(
   const [availableContexts, setAvailableContexts] = useState<AppContext[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const isLoadingRef = useRef(false);
+  const reloadPendingRef = useRef(false);
+  const loadContextsRef = useRef<(() => Promise<void>) | null>(null);
   const delegatedLoadedRef = useRef(false);
   const delegatedFeedsRef = useRef<Feed[]>([]);
 
-  const loadContexts = useCallback(async () => {
+  const loadContexts = useCallback(async (): Promise<void> => {
     if (!pnIdentifier) {
       setAvailableContexts([]);
       setActiveContext(null);
@@ -40,6 +56,7 @@ export function useAppContext(
     }
 
     if (isLoadingRef.current) {
+      reloadPendingRef.current = true;
       return;
     }
 
@@ -90,6 +107,7 @@ export function useAppContext(
         name: f.feedName,
         feedId: f.feedId,
         isOwned: true,
+        isPersonal: f.creatorTier === 'personal',
         feedToken: feedTokensMap.get(f.feedId)
       }));
 
@@ -106,17 +124,23 @@ export function useAppContext(
       setAvailableContexts(contexts);
 
       setActiveContext((prev) => {
-        if (!prev) return pnContext;
+        const fallback = pickDefaultContext(contexts, pnContext);
+        if (!prev) return fallback;
         const stillExists = contexts.find((c) => c.type === prev.type && c.id === prev.id);
-        return stillExists ? prev : pnContext;
+        return stillExists ?? fallback;
       });
     } catch (error) {
       console.error('Failed to load contexts:', error);
     } finally {
       setIsLoading(false);
       isLoadingRef.current = false;
+      if (reloadPendingRef.current) {
+        reloadPendingRef.current = false;
+        void loadContextsRef.current?.();
+      }
     }
   }, [pnIdentifier, includeDelegated]);
+  loadContextsRef.current = loadContexts;
 
   useEffect(() => {
     if (pnIdentifier && !isLoadingRef.current) {
@@ -125,26 +149,13 @@ export function useAppContext(
   }, [pnIdentifier, includeDelegated, loadContexts]);
 
   useEffect(() => {
-    if (activeContext) {
-      localStorage.setItem('pn_active_context', JSON.stringify(activeContext));
-    }
-  }, [activeContext]);
-
-  useEffect(() => {
-    if (!activeContext && pnIdentifier) {
-      try {
-        const stored = localStorage.getItem('pn_active_context');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed.type === 'pn' && parsed.pnIdentifier === pnIdentifier) {
-            setActiveContext(parsed);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load persisted context:', error);
-      }
-    }
-  }, [activeContext, pnIdentifier]);
+    if (!pnIdentifier || typeof window === 'undefined') return;
+    const onPersonalFeed = () => {
+      void loadContexts();
+    };
+    window.addEventListener(PERSONAL_FEED_CHANGE_EVENT, onPersonalFeed);
+    return () => window.removeEventListener(PERSONAL_FEED_CHANGE_EVENT, onPersonalFeed);
+  }, [pnIdentifier, loadContexts]);
 
   return {
     activeContext,

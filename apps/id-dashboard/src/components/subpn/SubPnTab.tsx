@@ -37,14 +37,11 @@ import {
   agentFromShellSession,
   registerAiAgent,
   revokeAiAgent,
+  isPersonalFeedAsset,
   type OwnedAssetDto
 } from '../../services/ownedAssetsApi';
-import {
-  getMonetizationStatusCached,
-  getOwnedAssetsCached,
-} from '../../services/dashboardSessionCache';
+import { getOwnedAssetsCached } from '../../services/dashboardSessionCache';
 import { republishOwnedAssetsManifest } from '../../services/ownedAssetsManifestService';
-import { FeedCreator } from '../feeds/FeedCreator';
 import { AiAgentConnectCard, AiAgentConnectorList } from './AiAgentConnect';
 
 const SUB_KINDS = ['feed', 'device', 'ai_agent', 'smart_device'] as const;
@@ -57,8 +54,8 @@ const KIND_LABELS: Record<SubKind, string> = {
   smart_device: 'Smart device (IoT)',
 };
 
-/** Kinds always available; feed requires verified identity. */
-const BASE_SUB_KINDS: SubKind[] = ['device', 'ai_agent', 'smart_device'];
+/** Feeds are not created here: each pN's personal feed is registered by the browser. */
+const CREATABLE_SUB_KINDS: SubKind[] = ['device', 'ai_agent', 'smart_device'];
 
 const FEED_CAPABILITY_SCOPES = [
   {
@@ -137,42 +134,12 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [newDelPn, setNewDelPn] = useState('');
   const [newDelClient, setNewDelClient] = useState('');
   const [delegationBusyScope, setDelegationBusyScope] = useState<string | null>(null);
-  const [showFeedCreator, setShowFeedCreator] = useState(false);
-  const [isIdentityVerified, setIsIdentityVerified] = useState(false);
   const [agentScopes, setAgentScopes] = useState<AiScope[]>([AI_SCOPES.filesPublished]);
   const [agentAck, setAgentAck] = useState(false);
   const [heldAttestations, setHeldAttestations] = useState<AgentAttestation[] | null>(null);
   const [agentProofs, setAgentProofs] = useState<string[]>([]);
   const agentDraftRef = React.useRef<AgentDelegationDraft | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const creatableKinds: SubKind[] = isIdentityVerified
-    ? ['feed', ...BASE_SUB_KINDS]
-    : BASE_SUB_KINDS;
-
-  useEffect(() => {
-    if (!accessToken) {
-      setIsIdentityVerified(false);
-      return;
-    }
-    let cancelled = false;
-    void getMonetizationStatusCached(accessToken)
-      .then((s) => {
-        if (!cancelled) setIsIdentityVerified(!!s.verified);
-      })
-      .catch(() => {
-        if (!cancelled) setIsIdentityVerified(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (createKind === 'feed' && !isIdentityVerified) {
-      setCreateKind('ai_agent');
-    }
-  }, [createKind, isIdentityVerified]);
 
   const syncIpfsManifest = useCallback(
     async (_list: OwnedAssetDto[]) => {
@@ -255,10 +222,6 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   }, [loadDelegations]);
 
   const createSub = async () => {
-    if (createKind === 'feed') {
-      setShowFeedCreator(true);
-      return;
-    }
     if (createKind === 'ai_agent') return;
     if (!accessToken) {
       setErr('Sign in with par Noir (OAuth) to register subs.');
@@ -699,34 +662,17 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               value={createKind}
               onChange={(e) => setCreateKind(e.target.value as SubKind)}
             >
-              {creatableKinds.map((k) => (
+              {CREATABLE_SUB_KINDS.map((k) => (
                 <option key={k} value={k}>
                   {KIND_LABELS[k]}
                 </option>
               ))}
             </select>
           </label>
-          {!isIdentityVerified && (
-            <p className="text-xs text-text-secondary">
-              Feed sub-pNs appear here after you verify your identity (Privacy &amp; Sharing).
-            </p>
-          )}
-          {createKind === 'feed' ? (
-            <>
-              <p className="text-sm text-text-secondary">
-                Feeds require a monthly subscription. After activation the feed appears in this list; post and switch
-                contexts in the browser.
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowFeedCreator(true)}
-                className="w-full py-2 rounded-md bg-primary text-bg-primary font-medium hover:opacity-90 disabled:opacity-50"
-                disabled={loading || !accessToken}
-              >
-                Subscribe and register feed — $5 / month
-              </button>
-            </>
-          ) : createKind === 'ai_agent' ? (
+          <p className="text-xs text-text-secondary">
+            Your personal feed is created automatically the first time you open the browser.
+          </p>
+          {createKind === 'ai_agent' ? (
             <>
               <label className="block text-sm">
                 <span className="text-text-secondary">Name</span>
@@ -881,12 +827,18 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                       these scopes on every request; revoke stops access immediately.
                     </p>
                   )}
-                  {selected.kind === 'feed' && (
-                    <p>
-                      Monthly feed sub-pN. Post and switch contexts in the browser. Delegate read / write / manage below
-                      so other pNs can use this feed.
-                    </p>
-                  )}
+                  {selected.kind === 'feed' &&
+                    (isPersonalFeedAsset(selected) ? (
+                      <p>
+                        Your personal feed. Its key is derived from your root identity, so it cannot be exported or
+                        rotated on its own. Delegate read / write / manage below so other pNs can use this feed.
+                      </p>
+                    ) : (
+                      <p>
+                        Monthly feed sub-pN. Post and switch contexts in the browser. Delegate read / write / manage
+                        below so other pNs can use this feed.
+                      </p>
+                    ))}
                   {selected.kind === 'device' && (
                     <p>
                       <strong>Device:</strong> Your phone, laptop, or tablet. For device sync and per-device identity;
@@ -908,13 +860,15 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              className="text-sm px-3 py-1 rounded-md border border-red-700 text-red-400 hover:bg-red-900/20"
-              onClick={() => void revokeSelected()}
-            >
-              {selected.kind === 'ai_agent' ? 'Revoke AI agent' : 'Revoke on API'}
-            </button>
+            {!isPersonalFeedAsset(selected) && (
+              <button
+                type="button"
+                className="text-sm px-3 py-1 rounded-md border border-red-700 text-red-400 hover:bg-red-900/20"
+                onClick={() => void revokeSelected()}
+              >
+                {selected.kind === 'ai_agent' ? 'Revoke AI agent' : 'Revoke on API'}
+              </button>
+            )}
           </div>
 
           {selected.kind === 'ai_agent' ? (
@@ -936,6 +890,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               <AiAgentConnectCard />
             </div>
           ) : (
+          <>
+          {!isPersonalFeedAsset(selected) && (
           <>
           <div className="border-t border-border pt-4 space-y-3">
             <h5 className="font-medium flex items-center gap-2">
@@ -988,6 +944,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               Download JSON
             </button>
           </div>
+          </>
+          )}
 
           <div className="border-t border-border pt-4 space-y-3">
             <h5 className="font-medium flex items-center gap-2">
@@ -1179,19 +1137,6 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
             </div>
           </div>
         </div>
-      )}
-
-      {showFeedCreator && (
-        <FeedCreator
-          isOpen={showFeedCreator}
-          onClose={() => setShowFeedCreator(false)}
-          authenticatedUser={sessionId ? { id: sessionId } : null}
-          pnIdentifier={pnIdentifier}
-          onFeedCreated={async () => {
-            setShowFeedCreator(false);
-            await load({ force: true });
-          }}
-        />
       )}
     </div>
   );

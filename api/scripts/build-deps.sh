@@ -21,6 +21,8 @@ PACKAGES=(
   recovery-crypto
   device-auth
   standard-data-points
+  # Imports pqc-crypto.
+  public-names
   aggregator-domain
   dm-crypto
   zk-protocol-v1

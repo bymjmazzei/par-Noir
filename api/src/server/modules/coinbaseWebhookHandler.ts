@@ -107,9 +107,9 @@ export class CoinbaseWebhookHandler {
         await db.query(`
           INSERT INTO feeds (
             feed_id, feed_name, feed_category, feed_description, creator_did, creator_tier,
-            is_paid, monthly_price, annual_price, subdomain, branding, created_at, updated_at,
+            is_paid, monthly_price, annual_price, branding, created_at, updated_at,
             subscriber_count, post_count
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         `, [
           feedId,
           feedName,
@@ -120,7 +120,6 @@ export class CoinbaseWebhookHandler {
           true,
           parseFloat(metadata.monthlyPrice || '5.00'),
           parseFloat(metadata.annualPrice || '50.00'),
-          metadata.subdomain || null,
           JSON.stringify({}),
           now,
           now,

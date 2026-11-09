@@ -218,12 +218,13 @@ export function setupFeedRoutes(app: Application) {
         now
       ]);
 
-      // Update feed post count
+      // Update feed post count and activity
       await db.query(`
         UPDATE feeds 
         SET post_count = (
           SELECT COUNT(*) FROM feed_posts WHERE feed_id = $1
-        )
+        ),
+        last_activity_at = NOW()
         WHERE feed_id = $1
       `, [feedId]);
 
@@ -790,8 +791,7 @@ export function setupFeedRoutes(app: Application) {
           updated_at: row.updated_at,
           is_paid: row.is_paid,
           monthly_price: row.monthly_price,
-          annual_price: row.annual_price,
-          subdomain: row.subdomain
+          annual_price: row.annual_price
         };
         const feed = FeedService.rowToFeed(feedRow);
         byFeedId.set(feed.feedId, {
@@ -933,24 +933,26 @@ export function setupFeedRoutes(app: Application) {
         return res.status(400).json({ error: 'pN identifier not found in token' });
       }
 
-      // Fetch feed tokens owned by this pN (safe metadata only; never return Key 1 or Key 2)
+      // Paid feeds via feed_tokens plus the personal feed (safe metadata only; never return Key 1 or Key 2)
       const result = await db.query(`
-        SELECT 
-          ft.feed_id,
+        SELECT
+          f.feed_id,
           ft.public_key,
           f.feed_name,
-          f.sub_pn_identifier
-        FROM feed_tokens ft
-        JOIN feeds f ON ft.feed_id = f.feed_id
-        WHERE ft.owner_pn_identifier = $1
-        AND f.status = 'active'
+          f.sub_pn_identifier,
+          f.creator_tier
+        FROM feeds f
+        LEFT JOIN feed_tokens ft ON ft.feed_id = f.feed_id AND ft.owner_pn_identifier = $1
+        WHERE f.status = 'active'
+        AND (ft.owner_pn_identifier = $1 OR (f.creator_tier = 'personal' AND f.owner_pn_identifier = $1))
       `, [pnIdentifier]);
 
       const feedTokens = result.rows.map(row => ({
         feedId: row.feed_id,
         feedName: row.feed_name,
         subPnIdentifier: row.sub_pn_identifier,
-        publicKey: row.public_key
+        publicKey: row.public_key,
+        tier: row.creator_tier === 'personal' ? 'personal' : 'feed'
       }));
 
       return res.json({ feedTokens });
@@ -959,6 +961,86 @@ export function setupFeedRoutes(app: Application) {
       return res.status(500).json({ error: 'Failed to get feed tokens' });
     }
   });
+
+  /**
+   * POST /api/feeds/personal
+   * Register (or return) the caller's personal feed. Body: { statement, signature, label? }
+   * where the root pN signed a PersonalFeedStatement binding the derived feed key.
+   */
+  app.post('/api/feeds/personal', async (req: Request, res: Response) => {
+    try {
+      const tokenPayload = getBearerTokenPayload(req);
+      if (!tokenPayload?.pnIdentifier) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+      const { statement, signature, label } = req.body || {};
+      const registration = await FeedService.registerPersonalFeed({
+        rootPn: tokenPayload.pnIdentifier,
+        statement,
+        signature: typeof signature === 'string' ? signature : '',
+        label: typeof label === 'string' ? label : undefined
+      });
+      return res.status(registration.created ? 201 : 200).json(registration);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === 'INVALID_INPUT') {
+        return res.status(400).json({ error: (error as Error).message });
+      }
+      if (code === 'FORBIDDEN') {
+        return res.status(409).json({ error: (error as Error).message });
+      }
+      console.error('Register personal feed error:', error);
+      return res.status(500).json({ error: 'Failed to register personal feed' });
+    }
+  });
+
+  /**
+   * POST /api/feeds/:feedId/verified-name { displayName }
+   * Show a display name on the feed when it matches the owner's verified legal name (HMAC).
+   * DELETE clears it.
+   */
+  const verifiedNameErrors: Record<string, number> = {
+    INVALID_NAME: 400,
+    NAME_MISMATCH: 400,
+    NOT_VERIFIED: 403,
+    FEED_NOT_OWNED: 403
+  };
+  const verifiedNameRoute =
+    (handler: (pn: string, feedId: string, req: Request) => Promise<unknown>) =>
+    async (req: Request, res: Response) => {
+      try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (!tokenPayload?.pnIdentifier) {
+          return res.status(401).json({ error: 'Invalid token' });
+        }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+        const out = await handler(tokenPayload.pnIdentifier, String(req.params.feedId || ''), req);
+        return res.json(out);
+      } catch (error) {
+        const code = (error as { code?: string }).code || '';
+        const status = verifiedNameErrors[code];
+        if (status) return res.status(status).json({ error: code.toLowerCase() });
+        console.error('Verified feed name error:', error);
+        return res.status(500).json({ error: 'Failed to update verified name' });
+      }
+    };
+  app.post(
+    '/api/feeds/:feedId/verified-name',
+    verifiedNameRoute(async (pn, feedId, req) => {
+      const { VerifiedNameService } = await import('./verifiedNameService');
+      const displayName = typeof req.body?.displayName === 'string' ? req.body.displayName : '';
+      return { verifiedDisplayName: await VerifiedNameService.setFeedVerifiedName(pn, feedId, displayName) };
+    })
+  );
+  app.delete(
+    '/api/feeds/:feedId/verified-name',
+    verifiedNameRoute(async (pn, feedId) => {
+      const { VerifiedNameService } = await import('./verifiedNameService');
+      await VerifiedNameService.clearFeedVerifiedName(pn, feedId);
+      return { success: true };
+    })
+  );
 
   /**
    * POST /api/feeds/activate-after-verification
@@ -1070,7 +1152,6 @@ export function setupFeedRoutes(app: Application) {
           isPaid,
           monthlyPrice,
           annualPrice,
-          subdomain,
         } = req.body;
 
         if (!feedName || !creatorDid) {
@@ -1080,6 +1161,9 @@ export function setupFeedRoutes(app: Application) {
         // Only paid tiers can create feeds
         if (creatorTier === 'free') {
           return res.status(403).json({ error: 'Free tier cannot create feeds. Upgrade to feed or self-hosted tier.' });
+        }
+        if (creatorTier === 'personal') {
+          return res.status(400).json({ error: 'Personal feeds are registered via POST /api/feeds/personal' });
         }
 
         const { isDidRevokedForNetwork } = await import('./identitySuccessionService');
@@ -1102,7 +1186,7 @@ export function setupFeedRoutes(app: Application) {
 
         // Optional feed plan metadata (owner paid tier / list pricing). Platform does not
         // process viewer subscriptions to feeds; see feedSubscriptionPolicy.
-        if (isPaid !== undefined || monthlyPrice !== undefined || annualPrice !== undefined || subdomain) {
+        if (isPaid !== undefined || monthlyPrice !== undefined || annualPrice !== undefined) {
           const db = (await import('../utils/database')).getDatabasePool();
           const updates: string[] = [];
           const params: any[] = [];
@@ -1123,12 +1207,6 @@ export function setupFeedRoutes(app: Application) {
             updates.push(`annual_price = $${paramCount}`);
             params.push(annualPrice);
           }
-          if (subdomain !== undefined) {
-            paramCount++;
-            updates.push(`subdomain = $${paramCount}`);
-            params.push(subdomain || null);
-          }
-
           if (updates.length > 0) {
             paramCount++;
             updates.push(`updated_at = NOW()`);
@@ -1147,7 +1225,6 @@ export function setupFeedRoutes(app: Application) {
                 isPaid: isPaid !== undefined ? isPaid : updatedFeed.isPaid,
                 monthlyPrice: monthlyPrice !== undefined ? monthlyPrice : updatedFeed.monthlyPrice,
                 annualPrice: annualPrice !== undefined ? annualPrice : updatedFeed.annualPrice,
-                subdomain: subdomain !== undefined ? subdomain : updatedFeed.subdomain,
               });
             }
           }

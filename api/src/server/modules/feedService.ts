@@ -3,9 +3,33 @@
  * Manages feeds, subscriptions, and feed posts
  */
 
+import { randomUUID } from 'crypto';
+import {
+  assertMlDsa65PublicKeyB64,
+  deriveCanonicalPnIdentifier
+} from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import { canonicalPersonalFeedBytes, parsePersonalFeedStatement } from '@par-noir/standard-data-points';
 import { getDatabasePool } from '../utils/database';
 import { cacheActorId } from '../utils/cacheActor';
 import { DriveIndexError } from './pnDriveIndex';
+import { verifyRootSignedStatement } from './ownedAssetService';
+
+function normalizePn(pn: string): string {
+  const t = String(pn || '').trim();
+  return t.startsWith('pn-') ? t : `pn-${t}`;
+}
+
+function invalidInput(message: string): Error {
+  return Object.assign(new Error(message), { code: 'INVALID_INPUT' });
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 // Types (duplicated from frontend to avoid circular dependencies)
 export type FeedCategory =
@@ -27,7 +51,11 @@ export interface Feed {
   feedCategory: FeedCategory;
   feedDescription?: string;
   creatorId: string;
-  creatorTier: 'free' | 'feed' | 'self-hosted';
+  creatorTier: FeedTier;
+  /** Feed sub-pN subject; personal feeds derive it from the root key. */
+  subPnIdentifier?: string;
+  /** Legal name shown on the feed after identity verification (owner opt-in). */
+  verifiedDisplayName?: string;
   branding?: {
     bannerImage?: string;
     avatar?: string;
@@ -44,7 +72,15 @@ export interface Feed {
   isPaid?: boolean;
   monthlyPrice?: number;
   annualPrice?: number;
-  subdomain?: string;
+}
+
+export type FeedTier = 'personal' | 'feed' | 'self-hosted';
+
+export interface PersonalFeedRegistration {
+  feed: Feed;
+  assetId: string;
+  subPnIdentifier: string;
+  created: boolean;
 }
 
 export interface FeedRow {
@@ -71,10 +107,11 @@ export interface FeedRow {
   is_paid?: boolean;
   monthly_price?: number;
   annual_price?: number;
-  subdomain?: string | null;
   sub_pn_identifier?: string | null;
   owner_pn_identifier?: string | null;
   status?: string | null;
+  verified_display_name?: string | null;
+  last_activity_at?: string | null;
   google_drive_folder_id?: string | null;
 }
 
@@ -91,7 +128,6 @@ export class FeedService {
     isPaid?: boolean;
     monthlyPrice?: number;
     annualPrice?: number;
-    subdomain?: string;
     // feedRatingRange removed - feeds accept all content
     branding?: {
       bannerImage?: string;
@@ -105,8 +141,8 @@ export class FeedService {
     const result = await db.query<FeedRow>(`
       INSERT INTO feeds (
         feed_name, feed_category, feed_description, creator_did, creator_tier,
-        rating_range, branding, is_paid, monthly_price, annual_price, subdomain
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        rating_range, branding, is_paid, monthly_price, annual_price
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [
       data.feedName,
@@ -118,8 +154,7 @@ export class FeedService {
       JSON.stringify(data.branding || {}),
       data.isPaid || false,
       data.monthlyPrice ?? null,
-      data.annualPrice ?? null,
-      data.subdomain || null
+      data.annualPrice ?? null
     ]);
 
     return this.rowToFeed(result.rows[0]);
@@ -497,12 +532,13 @@ export class FeedService {
         ON CONFLICT (feed_id, file_id) DO NOTHING
       `, [feedId, fileId, addedBy]);
 
-      // Update post count
+      // Update post count; activity keeps an unverified owner's handle from expiring
       await db.query(`
         UPDATE feeds 
         SET post_count = (
           SELECT COUNT(*) FROM feed_posts WHERE feed_id = $1
-        )
+        ),
+        last_activity_at = NOW()
         WHERE feed_id = $1
       `, [feedId]);
 
@@ -967,13 +1003,141 @@ export class FeedService {
   }
 
   /**
+   * One personal feed per pN. The browser derives the feed key from the root key and the
+   * root signs a statement binding it; the device writes the Drive owned-asset row.
+   * Idempotent: repeat calls return the same feed. A new feed key re-keys in place so the
+   * feed id, posts and handles stay put.
+   */
+  static async registerPersonalFeed(params: {
+    rootPn: string;
+    statement: unknown;
+    signature: string;
+    label?: string;
+    now?: number;
+  }): Promise<PersonalFeedRegistration> {
+    const root = normalizePn(params.rootPn);
+    const raw = typeof params.statement === 'string' ? safeJson(params.statement) : params.statement;
+    const statement = parsePersonalFeedStatement(raw);
+    if (!statement) throw invalidInput('personal_feed_statement_required');
+    verifyRootSignedStatement({
+      prefix: 'personal_feed',
+      root,
+      rootPublicKey: statement.rootPublicKey,
+      bytes: canonicalPersonalFeedBytes(statement),
+      signature: params.signature,
+      issuedAt: statement.issuedAt,
+      now: params.now ?? Date.now(),
+      beforeFreshness: () => {
+        if (
+          !assertMlDsa65PublicKeyB64(statement.feedPublicKey) ||
+          deriveCanonicalPnIdentifier(statement.feedPublicKey) !== statement.feedPnIdentifier
+        ) {
+          throw invalidInput('personal_feed_key_mismatch');
+        }
+        if (statement.feedPnIdentifier === root) throw invalidInput('personal_feed_is_root');
+      }
+    });
+    const subject = statement.feedPnIdentifier;
+    const label = String(params.label || '').trim().slice(0, 64) || 'Personal feed';
+
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.upsertPersonalFeed({
+          root,
+          subject,
+          publicKey: statement.feedPublicKey,
+          label,
+          statement,
+          signature: params.signature
+        });
+      } catch (err: any) {
+        if (err?.code === '23505' && attempt === 0) continue;
+        throw err;
+      }
+    }
+  }
+
+  private static async upsertPersonalFeed(args: {
+    root: string;
+    subject: string;
+    publicKey: string;
+    label: string;
+    statement: unknown;
+    signature: string;
+  }): Promise<PersonalFeedRegistration> {
+    const db = getDatabasePool();
+    const existing = await db.query<FeedRow>(
+      `SELECT * FROM feeds WHERE owner_pn_identifier = $1 AND creator_tier = 'personal' LIMIT 1`,
+      [args.root]
+    );
+    let row = existing.rows[0];
+    const assets = await db.query(
+      `SELECT id, root_pn_identifier, kind FROM pn_owned_assets
+       WHERE (kind = 'feed' AND metadata->>'feedId' = $1) OR subject_pn_identifier = $2`,
+      [row?.feed_id ?? '', args.subject]
+    );
+    for (const a of assets.rows as Record<string, unknown>[]) {
+      if (String(a.root_pn_identifier) !== args.root || String(a.kind) !== 'feed') {
+        throw Object.assign(new Error('personal_feed_conflict'), { code: 'FORBIDDEN' });
+      }
+    }
+    let created = false;
+    if (!row) {
+      const inserted = await db.query<FeedRow>(
+        `INSERT INTO feeds (
+          feed_name, creator_did, creator_tier, status, sub_pn_identifier, owner_pn_identifier,
+          rating_range, branding, is_paid
+        ) VALUES ($1, $2, 'personal', 'active', $3, $2, '[]'::jsonb, '{}'::jsonb, false)
+        RETURNING *`,
+        [args.label, args.root, args.subject]
+      );
+      row = inserted.rows[0];
+      created = true;
+    } else if (row.sub_pn_identifier !== args.subject) {
+      const rekeyed = await db.query<FeedRow>(
+        `UPDATE feeds SET sub_pn_identifier = $2, updated_at = NOW() WHERE feed_id = $1 RETURNING *`,
+        [row.feed_id, args.subject]
+      );
+      row = rekeyed.rows[0] ?? row;
+    }
+
+    const assetId = assets.rows.length > 0 ? String(assets.rows[0].id) : randomUUID();
+    await db.query(
+      `INSERT INTO pn_owned_assets (
+        id, root_pn_identifier, subject_pn_identifier, kind, status, metadata, subject_public_key,
+        delegation_statement, delegation_signature
+      ) VALUES ($1, $2, $3, 'feed', 'active', $4::jsonb, $5, $6::jsonb, $7)
+      ON CONFLICT (id) DO UPDATE SET
+        status = 'active',
+        subject_pn_identifier = EXCLUDED.subject_pn_identifier,
+        metadata = EXCLUDED.metadata,
+        subject_public_key = EXCLUDED.subject_public_key,
+        delegation_statement = EXCLUDED.delegation_statement,
+        delegation_signature = EXCLUDED.delegation_signature,
+        updated_at = NOW(),
+        revoked_at = NULL`,
+      [
+        assetId,
+        args.root,
+        args.subject,
+        JSON.stringify({ feedId: row.feed_id, tier: 'personal', label: row.feed_name }),
+        args.publicKey,
+        JSON.stringify(args.statement),
+        args.signature
+      ]
+    );
+    return { feed: this.rowToFeed(row), assetId, subPnIdentifier: args.subject, created };
+  }
+
+  /**
    * Convert database row to Feed object
    */
   static rowToFeed(row: FeedRow): Feed {
     // Only return feeds for paid tiers (feed or self-hosted)
     // Free tier creators don't have feeds in the Feed interface
-    const creatorTier = row.creator_tier === 'free' ? 'feed' : row.creator_tier as 'free' | 'feed' | 'self-hosted';
-    
+    const creatorTier: FeedTier =
+      row.creator_tier === 'personal' || row.creator_tier === 'self-hosted' ? row.creator_tier : 'feed';
+
     return {
       feedId: row.feed_id,
       feedName: row.feed_name,
@@ -982,6 +1146,8 @@ export class FeedService {
       // feedRatingRange removed - feeds accept all content
       creatorId: row.creator_did,
       creatorTier: creatorTier,
+      subPnIdentifier: row.sub_pn_identifier || undefined,
+      verifiedDisplayName: row.verified_display_name || undefined,
       branding: row.branding || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -989,8 +1155,7 @@ export class FeedService {
       postCount: row.post_count,
       isPaid: row.is_paid || false,
       monthlyPrice: row.monthly_price ? parseFloat(row.monthly_price.toString()) : undefined,
-      annualPrice: row.annual_price ? parseFloat(row.annual_price.toString()) : undefined,
-      subdomain: row.subdomain || undefined
+      annualPrice: row.annual_price ? parseFloat(row.annual_price.toString()) : undefined
     };
   }
 }

@@ -829,10 +829,6 @@ class ProductionServer {
     const { setupWidgetRoutes } = await import('./server/modules/widgetRoutes');
     setupWidgetRoutes(this.app);
 
-    // Subdomain Routes
-    const { setupSubdomainRoutes } = await import('./server/modules/subdomainRoutes');
-    setupSubdomainRoutes(this.app);
-
     // Coinbase Commerce Webhook Handler
     await registerCoinbaseWebhookRoutes(this.app);
 
@@ -1178,6 +1174,16 @@ class ProductionServer {
             console.warn('[PlatformRegistrySync] Could not schedule sync:', e);
           }
         })();
+        (async () => {
+          try {
+            const { PublicNameService } = await import('./server/modules/publicNameService');
+            const { ProtectedNameService } = await import('./server/modules/protectedNameService');
+            PublicNameService.startExpirySweep();
+            ProtectedNameService.start();
+          } catch (e) {
+            console.warn('[public-names] Could not schedule expiry sweep / protected list refresh:', e);
+          }
+        })();
         resolve();
       });
 
@@ -1196,6 +1202,14 @@ class ProductionServer {
     if (this._reconcileInterval) {
       clearInterval(this._reconcileInterval);
       this._reconcileInterval = null;
+    }
+    try {
+      const { PublicNameService } = await import('./server/modules/publicNameService');
+      const { ProtectedNameService } = await import('./server/modules/protectedNameService');
+      PublicNameService.stopExpirySweep();
+      ProtectedNameService.stop();
+    } catch (error) {
+      console.warn('Failed to stop public name timers:', error);
     }
     try {
       PlatformRegistrySyncService.stopPeriodicSync();
