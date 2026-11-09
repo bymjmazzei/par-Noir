@@ -1,9 +1,8 @@
 import React from 'react';
+import { SessionPolicySettings } from './SessionPolicySettings';
 
 interface SecuritySettings {
-  autoLock: boolean;
   biometricRequired: boolean;
-  sessionTimeout: number;
   threatNotifications: boolean;
 }
 
@@ -22,20 +21,8 @@ export const SecuritySettingsPanel: React.FC<SecuritySettingsPanelProps> = React
         Security Settings
       </h3>
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-gray-600 dark:text-gray-400">Auto Lock</span>
-          <button
-            onClick={() => onSettingUpdate('autoLock', !settings.autoLock)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              settings.autoLock ? 'bg-blue-600' : 'bg-gray-200'
-            }`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              settings.autoLock ? 'translate-x-6' : 'translate-x-1'
-            }`} />
-          </button>
-        </div>
-        
+        <SessionPolicySettings />
+
         <div className="flex items-center justify-between">
           <span className="text-gray-600 dark:text-gray-400">Biometric Required</span>
           <button
@@ -48,20 +35,6 @@ export const SecuritySettingsPanel: React.FC<SecuritySettingsPanelProps> = React
               settings.biometricRequired ? 'translate-x-6' : 'translate-x-1'
             }`} />
           </button>
-        </div>
-        
-        <div className="flex items-center justify-between">
-          <span className="text-gray-600 dark:text-gray-400">Session Timeout</span>
-          <select
-            value={settings.sessionTimeout}
-            onChange={(e) => onSettingUpdate('sessionTimeout', parseInt(e.target.value))}
-            className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm"
-          >
-            <option value={15}>15 minutes</option>
-            <option value={30}>30 minutes</option>
-            <option value={60}>1 hour</option>
-            <option value={120}>2 hours</option>
-          </select>
         </div>
         
         <div className="flex items-center justify-between">

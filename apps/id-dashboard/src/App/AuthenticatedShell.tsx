@@ -13,6 +13,7 @@ import { PrivacyDataPointsPanel } from '../components/privacy/PrivacyDataPointsP
 import { AiAgentsPrivacyRow } from '../components/privacy/AiAgentsPrivacyRow';
 import { AdvancedPrivacySettingsBody } from '../components/privacy/AdvancedPrivacySettingsBody';
 import { PublicNamesSection } from '../components/privacy/PublicNamesSection';
+import { SessionPolicySettings } from '../components/security/SessionPolicySettings';
 import { SharePnCard } from '../components/SharePnCard';
 import { STANDARD_DATA_POINTS, getDataPointMinLevel } from '@par-noir/standard-data-points';
 import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
@@ -461,6 +462,9 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           </div>
                         ) : (
                           <>
+                        <div className="bg-secondary rounded-lg p-6 mb-6">
+                          <SessionPolicySettings />
+                        </div>
                         <PublicNamesSection
                           accessToken={apiToken || null}
                           pnIdentifier={recoveryVaultPnId || null}

@@ -5,8 +5,12 @@
  */
 import React from 'react';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
-import type { HostedShellSession } from '@par-noir/oauth-ui';
-import { exchangeCodeForToken, setStoredToken } from '../services/parNoirOAuthInline';
+import type { HostedShellSession, PortalTokenResponse } from '@par-noir/oauth-ui';
+import {
+  beginDashboardSession,
+  dashboardSession,
+  exchangeCodeForToken,
+} from '../services/parNoirOAuthInline';
 import { pnShortName } from '../services/pnFileName';
 import { IntegrationCredentialManager } from '../utils/integrationCredentialManager';
 import { notificationsService } from '../utils/notificationsService';
@@ -268,7 +272,8 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     setTimeout(() => setError(null), 9000);
   };
 
-  const handleLogout = async () => {
+  /** Runs on every lock (manual, idle, expired, another app) before the session layer reloads home. */
+  const teardownOnLock = async () => {
     try {
       logDebug('Logging out...');
       
@@ -342,9 +347,6 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
       setSuccessWithTimeout(null);
       setLoading(false);
       
-        // Clear the last unlock time to force lock on next open
-        localStorage.removeItem('pwa-last-unlock-time');
-      
       // Clear initialization flag so scan can run again on next app load
       localStorage.removeItem('pwa_initialized');
       localStorage.removeItem('pwa_directory_handle'); // Clean up old file system handles
@@ -365,11 +367,20 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
       setError(null);
       setSuccessWithTimeout(null);
       setLoading(false);
-      
-      // Clear the last unlock time even if logout fails
-        localStorage.removeItem('pwa-last-unlock-time');
     }
   };
+
+  const teardownRef = React.useRef(teardownOnLock);
+  teardownRef.current = teardownOnLock;
+  React.useEffect(() => dashboardSession.onWipe(() => teardownRef.current()), []);
+
+  const unlocked = !!authenticatedUser;
+  React.useEffect(() => {
+    if (!unlocked) return;
+    return dashboardSession.startIdleWatch();
+  }, [unlocked]);
+
+  const handleLogout = () => dashboardSession.lock('manual');
 
 
 
@@ -450,12 +461,15 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     setLoading(true);
     setError(null);
     try {
-      let accessToken = session.accessToken;
+      let tokens: PortalTokenResponse | null = session.accessToken
+        ? { access_token: session.accessToken, expires_in: 3600 }
+        : null;
       if (session.code) {
         const redirectUri = `${window.location.origin}${window.location.pathname}${window.location.search}`;
-        accessToken = await exchangeCodeForToken(session.code, redirectUri);
+        tokens = await exchangeCodeForToken(session.code, redirectUri);
       }
-      if (!accessToken) {
+      const accessToken = tokens?.access_token;
+      if (!tokens || !accessToken) {
         throw new Error('Unlock did not return a session');
       }
       if (session.op === 'seal_vault' && session.result?.sealedVault) {
@@ -489,12 +503,9 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
         publicKey: session.publicKey,
       });
       if (session.publicKey) {
-        await adoptShellAccessToken(accessToken, session.publicKey);
+        await adoptShellAccessToken(tokens, session.publicKey);
       } else {
-        setStoredToken({
-          accessToken,
-          expiresAt: Date.now() + 60 * 60 * 1000,
-        });
+        await beginDashboardSession(tokens);
       }
       setAuthenticatedUser({
         id: session.did,

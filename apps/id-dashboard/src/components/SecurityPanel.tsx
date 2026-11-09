@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Shield, AlertTriangle, CheckCircle, Lock, Eye, EyeOff, Settings, RefreshCw } from 'lucide-react';
 import { security } from '../utils/security';
 import { cryptoWorkerManager } from '@par-noir/identity-crypto';
+import { SessionPolicySettings } from './security/SessionPolicySettings';
 
 interface SecurityStatus {
   deviceSecurity: boolean;
@@ -26,9 +27,7 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = React.memo(({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [threatHistory, setThreatHistory] = useState<any[]>([]);
   const [securitySettings, setSecuritySettings] = useState({
-    autoLock: true,
     biometricRequired: false,
-    sessionTimeout: 30,
     threatNotifications: true
   });
 
@@ -301,20 +300,8 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = React.memo(({
             Security Settings
           </h3>
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600 dark:text-gray-400">Auto Lock</span>
-              <button
-                onClick={() => updateSecuritySetting('autoLock', !securitySettings.autoLock)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  securitySettings.autoLock ? 'bg-blue-600' : 'bg-gray-200'
-                }`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  securitySettings.autoLock ? 'translate-x-6' : 'translate-x-1'
-                }`} />
-              </button>
-            </div>
-            
+            <SessionPolicySettings />
+
             <div className="flex items-center justify-between">
               <span className="text-gray-600 dark:text-gray-400">Biometric Required</span>
               <button
@@ -329,19 +316,6 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = React.memo(({
               </button>
             </div>
             
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600 dark:text-gray-400">Session Timeout</span>
-              <select
-                value={securitySettings.sessionTimeout}
-                onChange={(e) => updateSecuritySetting('sessionTimeout', parseInt(e.target.value))}
-                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm"
-              >
-                <option value={15}>15 minutes</option>
-                <option value={30}>30 minutes</option>
-                <option value={60}>1 hour</option>
-                <option value={120}>2 hours</option>
-              </select>
-            </div>
           </div>
         </div>
       </div>

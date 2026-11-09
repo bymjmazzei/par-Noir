@@ -92,7 +92,6 @@ export function useAppState() {
 
   // PWA functionality
   const [pwaState, pwaHandlers] = usePWA();
-  const [isPWALocked, setIsPWALocked] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -101,12 +100,6 @@ export function useAppState() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      logDebug('PWA Lock State:', isPWALocked);
-    }
-  }, [isPWALocked]);
 
   if (process.env.NODE_ENV === 'development') {
     logDebug('PWA State:', pwaState);
@@ -155,8 +148,6 @@ export function useAppState() {
     setShowVerificationModal,
 
     pwaState,
-    pwaHandlers,
-    isPWALocked,
-    setIsPWALocked
+    pwaHandlers
   };
 }

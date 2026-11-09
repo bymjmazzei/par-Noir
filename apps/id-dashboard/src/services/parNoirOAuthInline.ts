@@ -3,16 +3,17 @@
  * Unlock-proof mint lives in `@par-noir/oauth-ui` (never send Key 2 on the wire).
  */
 
-import { API_ENDPOINT } from '../config/api';
+import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 import { retry } from '../utils/helpers';
 import { IdentityCrypto } from '@par-noir/identity-crypto';
 import {
+  createPnSession,
   exchangePortalAuthorizationCode,
   mintAccessTokenWithUnlockProof,
   oauthStatesMatch,
+  type PortalTokenResponse,
 } from '@par-noir/oauth-ui';
 
-const PN_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
 const STORAGE_KEY = 'pn_api_token';
 const OAUTH_STATE_KEY = 'pn_oauth_state';
 
@@ -54,16 +55,32 @@ function extractMlDsaSecretKeyB64(decrypted: {
   return sk;
 }
 
+/**
+ * Dashboard instance of the shared pN session: the owner API JWT refreshes ahead of
+ * expiry, idle / lock-all / expiry run the logout teardown and reload home.
+ */
+export const dashboardSession = createPnSession({
+  clientId: PN_CLIENT_ID,
+  apiEndpoint: API_ENDPOINT,
+  storageKey: STORAGE_KEY,
+});
+
+/** Start the API session for the unlocked pN (unlock-proof mint or shell exchange). */
+export async function beginDashboardSession(tokens: PortalTokenResponse, publicKey?: string): Promise<string> {
+  const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+  const pnIdentifier = publicKey ? deriveCanonicalPnIdentifier(publicKey) : '';
+  return dashboardSession.begin(tokens, { pnIdentifier: pnIdentifier || 'unknown' }).accessToken;
+}
+
+/** Sync read for owner routes; the idle watch keeps the stored token refreshed. */
 export function getStoredToken(): StoredToken | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredToken;
-    if (parsed.expiresAt < Date.now() + 60_000) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  const record = dashboardSession.load();
+  if (!record || record.expiresAt < Date.now() + 60_000) return null;
+  return {
+    accessToken: record.accessToken,
+    expiresAt: record.expiresAt,
+    pnIdentifier: record.pnIdentifier === 'unknown' ? undefined : record.pnIdentifier,
+  };
 }
 
 /** Returns stored token only when it was issued for this pN (prevents cross-pN 403s). */
@@ -75,22 +92,13 @@ export function getStoredTokenForPn(wantedPn: string): StoredToken | null {
   return token;
 }
 
-export function setStoredToken(token: StoredToken | null): void {
-  if (token) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(token));
-  else sessionStorage.removeItem(STORAGE_KEY);
-}
-
-export function clearStoredToken(): void {
-  setStoredToken(null);
-}
-
 /**
  * Decrypt on-device, then mint via shared oauth-ui unlock-proof helpers.
  * Key 2 / Key 1 never leave this function onto the wire.
  */
 export async function acquireApiTokenInline(
   input: InlineOAuthAcquireInput
-): Promise<{ accessToken: string; pnIdentifier: string }> {
+): Promise<{ accessToken: string; pnIdentifier: string; tokens: PortalTokenResponse }> {
   const redirectUri = input.redirectUri || `${window.location.origin}/oauth-callback.html`;
   const state = crypto.getRandomValues(new Uint8Array(16));
   const stateHex = Array.from(state, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -122,16 +130,15 @@ export async function acquireApiTokenInline(
   });
 }
 
-export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<string> {
+export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<PortalTokenResponse> {
   return retry(async () => {
     try {
-      const data = await exchangePortalAuthorizationCode({
+      return await exchangePortalAuthorizationCode({
         apiEndpoint: API_ENDPOINT,
         clientId: PN_CLIENT_ID,
         code,
         redirectUri,
       });
-      return data.access_token;
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Token exchange failed';
       const error = new Error(

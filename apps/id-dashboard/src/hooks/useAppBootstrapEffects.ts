@@ -1,14 +1,12 @@
 /**
  * Boot-time effects for the dashboard shell: deep-link/route handling, system
- * initialization, storage + cloud sync bring-up, and PWA lock management.
+ * initialization, storage + cloud sync bring-up.
  *
  * Extracted from App.tsx: App owns the state, this hook owns the behavior.
  */
 import type React from 'react';
 import { useEffect } from 'react';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { Capacitor } from '@capacitor/core';
-import { App as CapApp } from '@capacitor/app';
 import { analytics } from '../utils/analytics';
 import { cloudSyncManager } from '../utils/cloudSync';
 import { IntegrationCredentialManager } from '../utils/integrationCredentialManager';
@@ -38,13 +36,10 @@ export interface UseAppBootstrapEffectsParams {
 
 
   pwaState: any;
-  isPWALocked: boolean;
-  setIsPWALocked: React.Dispatch<React.SetStateAction<boolean>>;
 
   error: string | null;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setSuccessWithTimeout: (message: string | null) => void;
-  showSuccessMessage: (message: string) => void;
 
   checkForCloudUpdates: () => Promise<void>;
   syncFromWebappStorage: () => Promise<{ identities: any[] } | null>;
@@ -69,12 +64,9 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
     setPendingCustodianInvitationData,
     setShowCustodianAcceptanceModal,
     pwaState,
-    isPWALocked,
-    setIsPWALocked,
     error,
     setError,
     setSuccessWithTimeout,
-    showSuccessMessage,
     checkForCloudUpdates,
     syncFromWebappStorage,
     logDebug,
@@ -373,110 +365,6 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
     initializeApp();
   }, [storage]);
 
-  // PWA lock management with stable dependencies
-  useEffect(() => {
-    let lockTimeout: NodeJS.Timeout | null = null;
-    const capListenerRef = { current: null as { remove: () => Promise<void> } | null };
-
-    const checkInitialLock = () => {
-      if (pwaState.isInstalled && !authenticatedUser) {
-        const lastUnlockTime = localStorage.getItem('pwa-last-unlock-time');
-        if (lastUnlockTime) {
-          const unlockTime = parseInt(lastUnlockTime);
-          const now = Date.now();
-          const timeSinceUnlock = now - unlockTime;
-
-          if (timeSinceUnlock > 5 * 60 * 1000) {
-            setIsPWALocked(true);
-          }
-        }
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden && pwaState.isInstalled && authenticatedUser) {
-        if (lockTimeout) clearTimeout(lockTimeout);
-        lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
-      }
-    };
-
-    const handleUserActivity = () => {
-      if (lockTimeout) clearTimeout(lockTimeout);
-      if (document.hidden && pwaState.isInstalled && authenticatedUser) {
-        lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    document.addEventListener('mousedown', handleUserActivity);
-    document.addEventListener('keydown', handleUserActivity);
-    document.addEventListener('touchstart', handleUserActivity);
-
-    void (async () => {
-      try {
-        if (Capacitor.isNativePlatform()) {
-          const listener = await CapApp.addListener('appStateChange', ({ isActive }) => {
-            if (pwaState.isInstalled && authenticatedUser) {
-              if (!isActive) {
-                if (lockTimeout) clearTimeout(lockTimeout);
-                lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
-              } else if (lockTimeout) {
-                clearTimeout(lockTimeout);
-                lockTimeout = null;
-              }
-            }
-          });
-          capListenerRef.current = listener;
-        }
-      } catch {
-        // CapApp not available
-      }
-    })();
-
-    checkInitialLock();
-
-    if (document.hidden && pwaState.isInstalled && authenticatedUser) {
-      lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
-    }
-
-    return () => {
-      if (lockTimeout) clearTimeout(lockTimeout);
-      capListenerRef.current?.remove?.();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      document.removeEventListener('mousedown', handleUserActivity);
-      document.removeEventListener('keydown', handleUserActivity);
-      document.removeEventListener('touchstart', handleUserActivity);
-    };
-  }, [pwaState.isInstalled]);
-
-  // Handle PWA unlock
-  const handlePWAUnlock = () => {
-    // Only show success message if this is actually an unlock action
-    // (i.e., if the PWA was previously locked)
-    const wasLocked = isPWALocked;
-
-    setIsPWALocked(false);
-    // Store the unlock time
-    localStorage.setItem('pwa-last-unlock-time', Date.now().toString());
-
-    // Only show success message if this was actually an unlock action
-    if (wasLocked) {
-      // Show appropriate message based on context with proper timeout management
-      if (authenticatedUser) {
-        // This is an ID unlock, not a PWA unlock
-        showSuccessMessage('Identity unlocked successfully');
-      } else {
-        // This is a PWA unlock
-        showSuccessMessage('PWA unlocked successfully');
-      }
-    }
-  };
-
-  // Handle PWA fallback to Key 2 (mobile only)
-  const handlePWAFallback = () => {
-    setIsPWALocked(false);
-  };
-
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(null), 9000);
@@ -487,9 +375,4 @@ export function useAppBootstrapEffects(params: UseAppBootstrapEffectsParams) {
   useEffect(() => {
     logDebug('PWA State:', pwaState);
   }, [pwaState]);
-
-  return {
-    handlePWAUnlock,
-    handlePWAFallback
-  };
 }

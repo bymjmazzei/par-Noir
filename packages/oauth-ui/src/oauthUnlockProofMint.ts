@@ -8,7 +8,7 @@ import {
   deriveCanonicalPnIdentifier,
   signOauthUnlockProof,
 } from '@par-noir/pqc-crypto/oauth-unlock-proof';
-import { exchangePortalAuthorizationCode } from './portalOAuthSession';
+import { exchangePortalAuthorizationCode, type PortalTokenResponse } from './portalOAuthSession';
 
 export interface OauthUnlockChallenge {
   challengeId: string;
@@ -141,7 +141,7 @@ export async function authenticateWithUnlockProof(
 
 export async function mintAccessTokenWithUnlockProof(
   params: AuthenticateWithUnlockProofParams
-): Promise<{ accessToken: string; pnIdentifier: string; code: string }> {
+): Promise<{ accessToken: string; pnIdentifier: string; code: string; tokens: PortalTokenResponse }> {
   const { code, pnIdentifier } = await authenticateWithUnlockProof(params);
   const token = await exchangePortalAuthorizationCode({
     apiEndpoint: params.apiEndpoint,
@@ -152,5 +152,5 @@ export async function mintAccessTokenWithUnlockProof(
   if (!token.access_token) {
     throw new Error('Token exchange returned no access_token');
   }
-  return { accessToken: token.access_token, pnIdentifier, code };
+  return { accessToken: token.access_token, pnIdentifier, code, tokens: token };
 }

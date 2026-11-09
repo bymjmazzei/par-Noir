@@ -1,26 +1,34 @@
 /**
  * par Noir API token for owned-assets and other API routes.
  * The dashboard's local session token is not a valid OAuth JWT.
- * This hook manages a par Noir OAuth token obtained via the same popup flow as the browser.
+ * The token lives in the shared pN session (refresh, idle lock, lock-all).
  */
 
 import { useState, useCallback, useEffect } from 'react';
+import type { PortalTokenResponse } from '@par-noir/oauth-ui';
 import {
   acquireApiTokenInline,
-  clearStoredToken,
+  beginDashboardSession,
   consumeOAuthResumeFromUrl,
+  dashboardSession,
   exchangeCodeForToken,
   getStoredToken,
-  setStoredToken,
   type InlineOAuthAcquireInput
 } from '../services/parNoirOAuthInline';
-import { shellUnlockStoredToken } from '../services/shellUnlockToken';
 
 export function useApiToken() {
   // Do not hydrate from sessionStorage here — token is pN-scoped and may belong to a different identity.
   const [apiToken, setApiToken] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+
+  useEffect(
+    () =>
+      dashboardSession.subscribe((record) => {
+        setApiToken(record?.accessToken ?? null);
+      }),
+    []
+  );
 
   /**
    * Parent-window return path: oauth-callback can resume into /?oauth_resume=1&code=...
@@ -39,11 +47,10 @@ export function useApiToken() {
         setIsConnecting(true);
         try {
           const redirectUri = `${window.location.origin}/oauth-callback.html`;
-          const token = await exchangeCodeForToken(resume.code, redirectUri);
-          if (token) {
+          const tokens = await exchangeCodeForToken(resume.code, redirectUri);
+          if (tokens.access_token) {
             // OAuth resume cannot know which pN this token is for — force re-mint on unlock.
-            clearStoredToken();
-            setApiToken(null);
+            dashboardSession.clear();
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
@@ -59,8 +66,7 @@ export function useApiToken() {
   }, []);
 
   const clearApiToken = useCallback(() => {
-    clearStoredToken();
-    setApiToken(null);
+    dashboardSession.clear();
     setConnectError(null);
   }, []);
 
@@ -69,12 +75,12 @@ export function useApiToken() {
     return null;
   }, []);
 
-  const adoptShellAccessToken = useCallback(async (accessToken: string, publicKey: string): Promise<string> => {
-    const record = await shellUnlockStoredToken(accessToken, publicKey);
-    setStoredToken(record);
-    setApiToken(record.accessToken);
-    return record.accessToken;
-  }, []);
+  /** Shell unlock has no Key 2. The exchanged token is the API token for this pN. */
+  const adoptShellAccessToken = useCallback(
+    (tokens: PortalTokenResponse, publicKey: string): Promise<string> =>
+      beginDashboardSession(tokens, publicKey),
+    []
+  );
 
   const ensureApiTokenAfterUnlock = useCallback(
     async (input: InlineOAuthAcquireInput): Promise<string | null> => {
@@ -91,19 +97,13 @@ export function useApiToken() {
       }
 
       // Stored token is missing or belongs to a different pN — drop it and mint a new one.
-      if (existing && existing.pnIdentifier !== wantedPn) {
-        clearStoredToken();
-        setApiToken(null);
-      }
+      if (existing && existing.pnIdentifier !== wantedPn) dashboardSession.clear();
 
       setIsConnecting(true);
       setConnectError(null);
       try {
-        const { accessToken, pnIdentifier } = await acquireApiTokenInline(input);
-        const expiresAt = Date.now() + 60 * 60 * 1000;
-        setStoredToken({ accessToken, expiresAt, pnIdentifier });
-        setApiToken(accessToken);
-        return accessToken;
+        const { tokens } = await acquireApiTokenInline(input);
+        return await beginDashboardSession(tokens, input.publicKey);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setConnectError(msg);

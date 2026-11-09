@@ -130,8 +130,6 @@ function App() {
     setShowVerificationModal,
     pwaState,
     pwaHandlers,
-    isPWALocked,
-    setIsPWALocked,
     successTimeoutRef
   } = appState;
 
@@ -1186,12 +1184,9 @@ function App() {
     setPendingCustodianInvitationData,
     setShowCustodianAcceptanceModal,
     pwaState,
-    isPWALocked,
-    setIsPWALocked,
     error,
     setError,
     setSuccessWithTimeout,
-    showSuccessMessage,
     checkForCloudUpdates,
     syncFromWebappStorage,
     logDebug,
