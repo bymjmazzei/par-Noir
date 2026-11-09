@@ -12,9 +12,19 @@ import {
   deriveDidFromPublicKey,
   verifyOauthUnlockProof,
 } from '@par-noir/pqc-crypto/oauth-unlock-proof';
-import { AGENT_MCP_CLIENT_ID, isAgentConnectorClientId } from '@par-noir/standard-data-points';
+import {
+  AGENT_MCP_CLIENT_ID,
+  isAgentClassClientId,
+  isAgentConnectorClientId,
+} from '@par-noir/standard-data-points';
 import { mcpResourceUrl } from './mcpResource';
 import { getDatabasePool } from '../utils/database';
+import {
+  DEFAULT_SESSION_POLICY,
+  getSessionPolicy,
+  idleTimeoutSeconds,
+  isFamilyIdleExpired,
+} from './sessionPolicy';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
 import { appendSecurityAuditEvent } from './auditService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
@@ -93,6 +103,8 @@ export interface AccessToken {
   expires_in: number; // seconds
   refresh_token?: string;
   scope?: string;
+  /** Idle lock in seconds for this pN; 0 = trusted device (no idle lock). */
+  idle_timeout_s?: number;
 }
 
 export interface TokenPayload {
@@ -107,6 +119,8 @@ export interface TokenPayload {
   iss?: string;
   aud?: string;
   nbf?: number;
+  /** Browser binding: every first-party app in one browser shares this id. */
+  bid?: string;
 }
 
 /**
@@ -176,6 +190,8 @@ interface RefreshTokenRecord {
   replaced_by?: string | null;
   revoked_at?: Date | null;
   reuse_detected_at?: Date | null;
+  created_at?: Date | null;
+  browser_id?: string | null;
 }
 
 // In-memory storage for access tokens (short-lived). Auth codes + broker pending
@@ -551,6 +567,7 @@ export class PNOAuthService {
     clientId: string;
     redirectUri: string;
     codeVerifier?: string;
+    browserId?: string;
   }): Promise<AccessToken | null> {
     // Check if this code was already exchanged (idempotency). PKCE codes are never cached.
     const existingExchange = codeToTokenMap.get(params.code);
@@ -625,7 +642,8 @@ export class PNOAuthService {
       publicKey: authCode.publicKey, // Pass publicKey for file decryption
       pnIdentifier: authCode.pnIdentifier, // Use pN identifier directly (derived client-side)
       clientId: params.clientId,
-      scope: authCode.scope
+      scope: authCode.scope,
+      browserId: params.browserId
     });
 
     // Generate refresh token (now async - stores in database)
@@ -634,15 +652,20 @@ export class PNOAuthService {
       publicKey: authCode.publicKey, // Include publicKey for file decryption
       pnIdentifier: authCode.pnIdentifier, // Use pN identifier directly (derived client-side)
       clientId: params.clientId,
-      scope: authCode.scope
+      scope: authCode.scope,
+      browserId: params.browserId
     });
 
+    const policy = isAgentClassClientId(params.clientId)
+      ? { ...DEFAULT_SESSION_POLICY, trustedDevice: true }
+      : await getSessionPolicy(authCode.pnIdentifier);
     const tokenResponse: AccessToken = {
       access_token: accessToken,
       token_type: 'Bearer',
       expires_in: Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
       refresh_token: refreshToken,
-      scope: authCode.scope.join(' ')
+      scope: authCode.scope.join(' '),
+      idle_timeout_s: idleTimeoutSeconds(policy)
     };
 
     // Store the exchange result for idempotency (keep for 30 seconds)
@@ -674,7 +697,8 @@ export class PNOAuthService {
     publicKey?: string; 
     pnIdentifier?: string; // pN identifier (derived client-side)
     clientId: string; 
-    scope: string[] 
+    scope: string[];
+    browserId?: string;
   }): Promise<string> {
     // Use provided pN identifier (derived client-side)
     // SECURITY: Never derive from secrets - Key 1 and Key 2 are never accepted
@@ -696,7 +720,8 @@ export class PNOAuthService {
       jti: crypto.randomUUID(),
       iss: this.TOKEN_ISSUER,
       aud: this.audienceFor(params.clientId),
-      nbf: now
+      nbf: now,
+      ...(params.browserId ? { bid: params.browserId } : {})
     };
     const token = await this.signJwt({
       did: payload.did,
@@ -711,6 +736,7 @@ export class PNOAuthService {
       exp: now + Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
       issuedAt: payload.issuedAt,
       expiresAt: payload.expiresAt,
+      ...(payload.bid ? { bid: payload.bid } : {}),
     });
     
     // Store token payload for validation
@@ -733,10 +759,13 @@ export class PNOAuthService {
     scope: string[] 
     familyId?: string;
     parentTokenHash?: string;
+    browserId?: string;
+    /** Rotations inherit the family's expiry so 30 days is a hard cap, not a sliding one. */
+    familyExpiresAt?: Date;
   }): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex');
     const tokenHash = this.hashRefreshToken(token);
-    const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY);
+    const expiresAt = params.familyExpiresAt ?? new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY);
     const familyId = params.familyId || crypto.randomUUID();
     const jti = crypto.randomUUID();
     
@@ -745,8 +774,8 @@ export class PNOAuthService {
     const db = getDatabasePool();
     try {
       await db.query(
-        `INSERT INTO oauth_refresh_tokens (refresh_token, did, pn_identifier, public_key, client_id, scope, expires_at, family_id, jti, previous_token_hash)
-         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO oauth_refresh_tokens (refresh_token, did, pn_identifier, public_key, client_id, scope, expires_at, family_id, jti, previous_token_hash, browser_id)
+         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (refresh_token) 
          DO UPDATE SET 
            did = $2,
@@ -757,8 +786,20 @@ export class PNOAuthService {
            expires_at = $6,
            family_id = $7,
            jti = $8,
-           previous_token_hash = $9`,
-        [tokenHash, params.did, params.publicKey, params.clientId, params.scope, expiresAt, familyId, jti, params.parentTokenHash || null]
+           previous_token_hash = $9,
+           browser_id = $10`,
+        [
+          tokenHash,
+          params.did,
+          params.publicKey,
+          params.clientId,
+          params.scope,
+          expiresAt,
+          familyId,
+          jti,
+          params.parentTokenHash || null,
+          params.browserId || null,
+        ]
       );
     } catch (error) {
       safeLogger.error('[OAuth] Failed to store refresh token in database', {
@@ -780,7 +821,7 @@ export class PNOAuthService {
     try {
       // Query refresh token from database
       const result = await db.query(
-        `SELECT refresh_token, did, public_key, client_id, scope, expires_at, family_id, jti, used_at, replaced_by, revoked_at, reuse_detected_at
+        `SELECT refresh_token, did, public_key, client_id, scope, expires_at, family_id, jti, used_at, replaced_by, revoked_at, reuse_detected_at, created_at, browser_id
          FROM oauth_refresh_tokens 
          WHERE refresh_token = $1`,
         [tokenHash]
@@ -837,6 +878,22 @@ export class PNOAuthService {
         return null;
       }
 
+      // Agents run unattended; the idle lock governs human sessions only.
+      const policy = isAgentClassClientId(clientId)
+        ? { ...DEFAULT_SESSION_POLICY, trustedDevice: true }
+        : await getSessionPolicy(subjectPn);
+      if (isFamilyIdleExpired(tokenData.created_at, policy, this.ACCESS_TOKEN_EXPIRY)) {
+        await db.query(
+          `UPDATE oauth_refresh_tokens
+           SET revoked_at = NOW(), revoked_reason = 'idle_timeout'
+           WHERE family_id = $1 AND revoked_at IS NULL`,
+          [tokenData.family_id || tokenHash]
+        );
+        return null;
+      }
+
+      const browserId = tokenData.browser_id || undefined;
+
       // Generate new access token
       // Use stored pN identifier from refresh token if available
       const accessToken = await this.generateAccessToken({
@@ -844,7 +901,8 @@ export class PNOAuthService {
         publicKey: tokenData.public_key || undefined,
         pnIdentifier: subjectPn,
         clientId: clientId,
-        scope: tokenData.scope || []
+        scope: tokenData.scope || [],
+        browserId
       });
 
       const nextRefreshToken = await this.generateRefreshToken({
@@ -855,6 +913,8 @@ export class PNOAuthService {
         scope: tokenData.scope || [],
         familyId: tokenData.family_id || tokenHash,
         parentTokenHash: tokenHash,
+        browserId,
+        familyExpiresAt: expiresAt,
       });
 
       await db.query(
@@ -870,7 +930,8 @@ export class PNOAuthService {
         token_type: 'Bearer',
         expires_in: Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
         refresh_token: responseRefreshToken,
-        scope: (tokenData.scope || []).join(' ')
+        scope: (tokenData.scope || []).join(' '),
+        idle_timeout_s: idleTimeoutSeconds(policy)
       };
     } catch (error) {
       safeLogger.error('[OAuth] Error refreshing access token', {
@@ -922,6 +983,7 @@ export class PNOAuthService {
         jti: typeof decoded.jti === 'string' ? decoded.jti : undefined,
         iss: typeof decoded.iss === 'string' ? decoded.iss : undefined,
         aud: typeof decoded.aud === 'string' ? decoded.aud : undefined,
+        ...(typeof decoded.bid === 'string' ? { bid: decoded.bid } : {}),
       };
       if (!payload.did || !payload.clientId) return null;
 
@@ -961,6 +1023,55 @@ export class PNOAuthService {
         err: error instanceof Error ? error.message : String(error),
       });
       return false;
+    }
+  }
+
+  /**
+   * Revoke every live refresh-token family for this pN in the caller's browser.
+   * The caller proves membership by presenting one of those refresh tokens.
+   * Without a browser binding only the caller's own family is revoked.
+   */
+  static async lockBrowser(
+    refreshToken: string
+  ): Promise<{ pnIdentifier?: string; browserId?: string; revokedFamilies: number } | null> {
+    const db = getDatabasePool();
+    const tokenHash = this.hashRefreshToken(refreshToken);
+    try {
+      const result = await db.query(
+        `SELECT public_key, family_id, browser_id FROM oauth_refresh_tokens WHERE refresh_token = $1`,
+        [tokenHash]
+      );
+      const row = result.rows[0] as
+        | { public_key?: string | null; family_id?: string | null; browser_id?: string | null }
+        | undefined;
+      if (!row) return null;
+      const pnIdentifier = row.public_key ? deriveCanonicalPnIdentifier(row.public_key) : undefined;
+      const browserId = row.browser_id || undefined;
+
+      const revoked = browserId && row.public_key
+        ? await db.query(
+            `UPDATE oauth_refresh_tokens
+             SET revoked_at = NOW(), revoked_reason = 'browser_lock'
+             WHERE browser_id = $1 AND public_key = $2 AND revoked_at IS NULL
+             RETURNING family_id`,
+            [browserId, row.public_key]
+          )
+        : await db.query(
+            `UPDATE oauth_refresh_tokens
+             SET revoked_at = NOW(), revoked_reason = 'browser_lock'
+             WHERE family_id = $1 AND revoked_at IS NULL
+             RETURNING family_id`,
+            [row.family_id || tokenHash]
+          );
+      const families = new Set(
+        (revoked.rows as Array<{ family_id?: string | null }>).map((r) => r.family_id || '')
+      );
+      return { pnIdentifier, browserId, revokedFamilies: families.size };
+    } catch (error) {
+      safeLogger.error('[OAuth] Error locking browser sessions', {
+        err: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 

@@ -14,6 +14,8 @@ import { brokerPrivateKeyName } from './brokerPrivateKeys';
 import { isAgentClassClientId, isAgentConnectorClientId } from '@par-noir/standard-data-points';
 import { resolveConnectorAuthorize } from './agentConnectorOAuth';
 import { isMcpResource } from './mcpResource';
+import { normalizeBrowserId } from './sessionPolicy';
+import { emitSessionLocked } from './realtimeEvents';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -651,8 +653,16 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
     // Use lenient rate limiter for OAuth token exchange (users may unlock multiple times during setup)
     app.post('/oauth/token', oauthTokenLimiter, async (req, res) => {
       try {
-        const { code, client_id, redirect_uri, grant_type, granted_data_points, code_verifier, resource } =
-          req.body || {};
+        const {
+          code,
+          client_id,
+          redirect_uri,
+          grant_type,
+          granted_data_points,
+          code_verifier,
+          resource,
+          browser_id,
+        } = req.body || {};
         res.set('Cache-Control', 'no-store');
 
         // RFC 8707: only connectors hold /mcp tokens, and their audience is fixed by client type.
@@ -702,7 +712,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           code,
           clientId: client_id,
           redirectUri: redirect_uri,
-          codeVerifier: typeof code_verifier === 'string' ? code_verifier : undefined
+          codeVerifier: typeof code_verifier === 'string' ? code_verifier : undefined,
+          browserId: normalizeBrowserId(browser_id)
         });
 
         if (!tokenResponse) {
@@ -1249,6 +1260,30 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           error: 'server_error',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get client'
         });
+      }
+    });
+
+    // POST /oauth/lock-browser - lock every app for this pN in the caller's browser
+    app.post('/oauth/lock-browser', authLimiter, async (req, res) => {
+      try {
+        const refreshToken = req.body?.refresh_token;
+        const reason = req.body?.reason === 'idle' ? 'idle' : 'manual';
+        if (typeof refreshToken !== 'string' || !refreshToken.trim()) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'Missing required parameter: refresh_token'
+          });
+        }
+        const locked = await PNOAuthService.lockBrowser(refreshToken.trim());
+        if (locked?.pnIdentifier && locked.browserId) {
+          emitSessionLocked(locked.pnIdentifier, locked.browserId, reason);
+        }
+        return res.json({ locked: true });
+      } catch (error: unknown) {
+        safeLogger.error('[OAuth] lock-browser failed', {
+          err: error instanceof Error ? error.message : String(error),
+        });
+        return res.status(500).json({ error: 'server_error' });
       }
     });
 

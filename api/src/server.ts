@@ -73,6 +73,7 @@ import { setupConnectionRoutes } from './server/modules/connectionRoutes';
 import { setupUserRoutes } from './server/modules/userRoutes';
 import { setupDriveRoutes } from './server/modules/driveRoutes';
 import { setupPnOAuthRoutes } from './server/modules/pnOAuthRoutes';
+import { setupSessionPolicyRoutes } from './server/modules/sessionPolicy';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -935,10 +936,11 @@ class ProductionServer {
         console.log(`Client connected: ${socket.id}`);
       }
 
-      const oauth = (socket.data as { oauth?: { pnIdentifier?: string } }).oauth;
+      const oauth = (socket.data as { oauth?: { pnIdentifier?: string; bid?: string } }).oauth;
       if (oauth?.pnIdentifier) {
-        const { pnRoomId } = require('./server/modules/realtimeEvents');
+        const { pnRoomId, browserRoomId } = require('./server/modules/realtimeEvents');
         socket.join(pnRoomId(oauth.pnIdentifier));
+        if (oauth.bid) socket.join(browserRoomId(oauth.pnIdentifier, oauth.bid));
       }
       const { attachPenLiveRelay } = require('./server/modules/penLiveRelay');
       attachPenLiveRelay(socket);
@@ -963,9 +965,12 @@ class ProductionServer {
       });
     });
 
-    const { registerRealtimeEmitter } = require('./server/modules/realtimeEvents');
+    const { registerRealtimeEmitter, registerRoomEmitter } = require('./server/modules/realtimeEvents');
     registerRealtimeEmitter((pn: string, event: string, payload: Record<string, unknown>) => {
       this.emitRealtime(pn, event, payload);
+    });
+    registerRoomEmitter((room: string, event: string, payload: Record<string, unknown>) => {
+      this.io.to(room).emit(event, payload);
     });
   }
 
@@ -994,6 +999,7 @@ class ProductionServer {
       oauthTokenLimiter,
       authLimiter,
     });
+    setupSessionPolicyRoutes(this.app);
 
     registerAdminDeveloperRoutes(this.app);
     registerIdentityMigrationRoutes(this.app);
