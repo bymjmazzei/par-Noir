@@ -2,8 +2,9 @@
  * Single Socket.IO connection shared across the messaging app.
  */
 
+import { bindSessionLockedEvent, pnSocketAuth } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../config/api';
-import { PNOAuthService } from './pnOAuthService';
+import { browseSession } from './pnOAuthService';
 
 export type RealtimeEventType = 'new_message' | 'new_notification' | 'mailbox_pending';
 
@@ -60,8 +61,7 @@ async function ensureConnected(): Promise<void> {
   if (connectPromise) return connectPromise;
 
   connectPromise = (async () => {
-    const session = PNOAuthService.loadSession();
-    if (!session?.accessToken) {
+    if (!browseSession.load()) {
       notifyConnected(false);
       return;
     }
@@ -69,8 +69,9 @@ async function ensureConnected(): Promise<void> {
     const { io } = await import('socket.io-client');
     const s = io(API_ENDPOINT, {
       transports: ['websocket', 'polling'],
-      auth: { token: session.accessToken },
+      auth: pnSocketAuth(browseSession),
     });
+    bindSessionLockedEvent(s, browseSession);
 
     s.on('new_message', (raw: unknown) => {
       const payload = asPayload(raw);

@@ -58,7 +58,8 @@ export interface PnSession<E extends object = object> {
   begin(tokens: PortalTokenResponse, fields: { pnIdentifier: string } & E): PnSessionRecord<E>;
   /** Clear storage without reload (failed unlock, abandoned handoff). */
   clear(): void;
-  getAccessToken(): Promise<string | null>;
+  /** forceRefresh: after a 401, rotate even if the stored token looks fresh. */
+  getAccessToken(opts?: { forceRefresh?: boolean }): Promise<string | null>;
   onBeforeLock(fn: PnSessionHook): () => void;
   onWipe(fn: PnSessionHook): () => void;
   subscribe(fn: (record: PnSessionRecord<E> | null) => void): () => void;
@@ -196,7 +197,7 @@ export function createPnSession<E extends object = object>(config: PnSessionConf
     return next.accessToken;
   }
 
-  async function getAccessToken(): Promise<string | null> {
+  async function getAccessToken(opts?: { forceRefresh?: boolean }): Promise<string | null> {
     // Before-lock hooks may still flush with the current token; nothing refreshes once locking.
     if (locking) return flushingBeforeLock ? load()?.accessToken ?? null : null;
     const record = load();
@@ -209,7 +210,7 @@ export function createPnSession<E extends object = object>(config: PnSessionConf
       void lock('idle');
       return null;
     }
-    if (record.expiresAt - skew > now()) return record.accessToken;
+    if (!opts?.forceRefresh && record.expiresAt - skew > now()) return record.accessToken;
     if (!refreshInFlight) {
       refreshInFlight = refresh(record).finally(() => {
         refreshInFlight = null;

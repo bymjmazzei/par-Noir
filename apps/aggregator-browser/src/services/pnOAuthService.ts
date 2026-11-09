@@ -6,8 +6,13 @@
  * Unlock proof is an ML-DSA-65 signature over a server challenge.
  */
 
-import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
-import { buildOAuthConsentUrl } from '@par-noir/oauth-ui';
+import {
+  buildOAuthConsentUrl,
+  createPnSession,
+  getOrCreateBrowserId,
+  pushPnOAuthDebug,
+  writeSharedLastActive,
+} from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID, getPnOAuthScopes } from '../config/oauthClient';
 import { browseOAuthRedirectUri } from './browseOAuthRedirect';
@@ -20,15 +25,13 @@ function getClientId(): string {
 const REDIRECT_URI =
   typeof window !== 'undefined' ? browseOAuthRedirectUri() : '';
 
-/** Fired when OAuth session is unrecoverable (refresh failed or expired with no refresh). */
-export const PN_OAUTH_SESSION_DEAD_EVENT = 'pn_oauth_session_dead';
-
 export interface OAuthTokenResponse {
   access_token: string;
   token_type: 'Bearer';
   expires_in: number;
   refresh_token?: string;
   scope?: string;
+  idle_timeout_s?: number;
 }
 
 export interface OAuthUserInfo {
@@ -58,7 +61,22 @@ export interface AuthSession {
   nickname?: string; // Optional nickname if available
   pnIdentifier?: string; // pN identifier from database (e.g., "83c1db813607")
   feedTokens?: FeedToken[]; // Safe metadata for context switching; no credentials
+  /** Idle lock seconds from the token response; 0 = trusted device. */
+  idleTimeoutS?: number;
+  unlockedAt?: number;
+  lastActiveAt?: number;
 }
+
+type BrowseSessionExtra = Pick<AuthSession, 'did' | 'publicKey' | 'nickname' | 'feedTokens'>;
+
+/** Browse / messaging instance of the shared pN session (refresh, idle lock, lock-all, reload home). */
+export const browseSession = createPnSession<BrowseSessionExtra>({
+  clientId: PN_CLIENT_ID,
+  apiEndpoint: API_ENDPOINT,
+  storageKey: 'pn_oauth_session',
+});
+
+const DEFAULT_IDLE_TIMEOUT_S = 3600;
 
 export class PNOAuthService {
   /**
@@ -133,7 +151,8 @@ export class PNOAuthService {
           client_id: getClientId(),
           redirect_uri: finalRedirectUri,
           grant_type: 'authorization_code',
-          granted_data_points: grantedDataPoints
+          granted_data_points: grantedDataPoints,
+          browser_id: getOrCreateBrowserId()
         })
       });
 
@@ -161,29 +180,6 @@ export class PNOAuthService {
 
     PNOAuthService.tokenExchangeInflight.set(exchangeKey, work);
     return work;
-  }
-
-  /**
-   * Refresh access token using refresh token
-   */
-  static async refreshAccessToken(refreshToken: string): Promise<OAuthTokenResponse> {
-    const response = await fetch(`${API_ENDPOINT}/oauth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        refresh_token: refreshToken,
-        client_id: getClientId()
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Token refresh failed' }));
-      throw new Error(error.error_description || error.error || 'Token refresh failed');
-    }
-
-    return response.json();
   }
 
   /**
@@ -308,57 +304,49 @@ export class PNOAuthService {
   }
 
   /**
-   * Save session to sessionStorage (reduced persistence surface).
+   * Start a fresh unlock (code exchange or device-vault restore): idle and
+   * lock-elsewhere clocks start now, never from a restored snapshot.
+   */
+  static beginSession(session: AuthSession): void {
+    const t = Date.now();
+    browseSession.save({
+      ...session,
+      pnIdentifier: session.pnIdentifier || session.did,
+      idleTimeoutS: session.idleTimeoutS ?? DEFAULT_IDLE_TIMEOUT_S,
+      unlockedAt: t,
+      lastActiveAt: t,
+    });
+    writeSharedLastActive(t);
+  }
+
+  /**
+   * Update non-token fields on the current session (public key, pN identifier, feed tokens).
+   * Token fields always stay as stored: callers often spread a snapshot taken before a
+   * refresh, and writing back a rotated-out refresh token would trip reuse detection.
    */
   static saveSession(session: AuthSession): void {
-    this.sessionDeadNotified = false;
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('pn_oauth_session', JSON.stringify(session));
-    }
+    const current = browseSession.load();
+    if (!current) return;
+    browseSession.save({
+      ...current,
+      ...session,
+      accessToken: current.accessToken,
+      refreshToken: current.refreshToken,
+      expiresAt: current.expiresAt,
+      idleTimeoutS: current.idleTimeoutS,
+      unlockedAt: current.unlockedAt,
+      lastActiveAt: current.lastActiveAt,
+      pnIdentifier: session.pnIdentifier || current.pnIdentifier || session.did,
+    });
   }
 
-  /**
-   * Load session from sessionStorage
-   */
   static loadSession(): AuthSession | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    try {
-      const stored = sessionStorage.getItem('pn_oauth_session');
-      if (!stored) {
-        return null;
-      }
-
-      const session: AuthSession = JSON.parse(stored);
-      
-      // Check if session is expired
-      if (session.expiresAt < Date.now()) {
-        // Try to refresh if we have a refresh token
-        if (session.refreshToken) {
-          // Refresh will be handled by caller
-          return session;
-        }
-        // Session expired and no refresh token — auth is dead
-        this.notifySessionDead();
-        return null;
-      }
-
-      return session;
-    } catch (error) {
-      console.error('Failed to load session:', error);
-      return null;
-    }
+    return browseSession.load();
   }
 
-  /**
-   * Clear session
-   */
+  /** Drop the stored session without reload (failed or abandoned unlock). Locks go through browseSession.lock. */
   static clearSession(): void {
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('pn_oauth_session');
-    }
+    browseSession.clear();
     clearFeedMediaSessionCache();
     void import('./sessionVaultNative')
       .then((m) => m.clearBrowserSessionVault())
@@ -366,85 +354,14 @@ export class PNOAuthService {
     resetFeedFirstPaintGate();
   }
 
-  /**
-   * Check if session is valid
-   */
+  /** Usable now or refreshable; idle / revoked sessions lock and reload instead. */
   static isSessionValid(session: AuthSession): boolean {
-    return session.expiresAt > Date.now();
+    return session.expiresAt > Date.now() || !!session.refreshToken;
   }
 
-  // Track ongoing token refresh to prevent concurrent refreshes
-  private static refreshPromise: Promise<string | null> | null = null;
-  /** Emit auth-death at most once until a new session is saved. */
-  private static sessionDeadNotified = false;
-
-  private static notifySessionDead(): void {
-    this.clearSession();
-    if (typeof window === 'undefined') return;
-    if (this.sessionDeadNotified) return;
-    this.sessionDeadNotified = true;
-    window.dispatchEvent(new CustomEvent(PN_OAUTH_SESSION_DEAD_EVENT));
-  }
-
-  /**
-   * Get a valid access token, refreshing if necessary
-   * @param forceRefresh - If true, force a token refresh even if token hasn't expired
-   */
+  /** @param forceRefresh - after a 401, rotate even if the token has not expired */
   static async getValidAccessToken(forceRefresh: boolean = false): Promise<string | null> {
-    const session = this.loadSession();
-    
-    if (!session) {
-      return null;
-    }
-
-    // If session is expired or force refresh is requested, try to refresh
-    const isExpired = session.expiresAt < Date.now();
-    if (isExpired || forceRefresh) {
-      if (!session.refreshToken) {
-        console.warn('[PNOAuth] Session expired and no refresh token available');
-        this.notifySessionDead();
-        return null;
-      }
-
-      // If a refresh is already in progress, wait for it instead of starting a new one
-      if (this.refreshPromise) {
-        return this.refreshPromise;
-      }
-
-      // Start a new refresh
-      this.refreshPromise = (async () => {
-        try {
-          console.log(`[PNOAuth] Refreshing access token (expired: ${isExpired}, forced: ${forceRefresh})`);
-          const tokenResponse = await this.refreshAccessToken(session.refreshToken!);
-          
-          // Update session with new token
-          const updatedSession: AuthSession = {
-            ...session,
-            accessToken: tokenResponse.access_token,
-            expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
-            refreshToken: tokenResponse.refresh_token || session.refreshToken
-          };
-          
-          this.saveSession(updatedSession);
-          console.log('[PNOAuth] Token refreshed successfully');
-          
-          return tokenResponse.access_token;
-        } catch (error: any) {
-          console.error('[PNOAuth] Failed to refresh token:', error);
-          console.warn('[PNOAuth] Refresh token invalid or expired. User needs to re-authenticate.');
-          this.notifySessionDead();
-          return null;
-        } finally {
-          // Clear the promise so future refreshes can proceed
-          this.refreshPromise = null;
-        }
-      })();
-
-      return this.refreshPromise;
-    }
-
-    // Token is valid, return it (logging removed - was too verbose)
-    return session.accessToken;
+    return browseSession.getAccessToken({ forceRefresh });
   }
 
   /**

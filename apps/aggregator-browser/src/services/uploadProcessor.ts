@@ -80,7 +80,7 @@ export async function processUploadTask(task: UploadTask): Promise<void> {
       throw new Error('No publicKey available for encryption');
     }
 
-    const accessToken = await PNOAuthService.getValidAccessToken(true);
+    const accessToken = await PNOAuthService.getValidAccessToken();
     if (!accessToken) {
       throw new Error('No valid access token');
     }

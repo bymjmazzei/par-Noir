@@ -15,7 +15,7 @@ import {
   parseMessagingIdentityFromHash,
 } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
-import { PNOAuthService, PN_OAUTH_SESSION_DEAD_EVENT } from '../services/pnOAuthService';
+import { PNOAuthService, browseSession } from '../services/pnOAuthService';
 import { getUserProfile } from '../services/profileService';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/oauthClient';
@@ -317,7 +317,7 @@ export function useAuthAndSession({
           updateDisplayName(userInfo.nickname);
         }
 
-        PNOAuthService.saveSession(sessionWithIdentifier);
+        PNOAuthService.beginSession(sessionWithIdentifier);
 
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith(PN_DID_PREFIX)) {
           setUnlocked(userInfo.pn_identifier);
@@ -858,34 +858,36 @@ export function useAuthAndSession({
 
   useEffect(() => registerMessagingReconnect(reconnectPnForMessaging), [reconnectPnForMessaging]);
 
-  /** Full teardown when OAuth cannot be recovered (same as manual lock). */
-  const applyAuthDeathLock = useCallback(async () => {
-    const pn = userState.pnIdentifier;
-    clearOAuthHandoffComplete();
-    clearStaleOAuthCallbackStorage();
-    const { resetUnlockSessionCoordinator } = await import('../services/unlockSessionCoordinator');
-    resetUnlockSessionCoordinator();
-    try {
-      const { wipeAggregatorCloudOnLock } = await import('../components/AggregatorCloudReconnectHost');
-      await wipeAggregatorCloudOnLock(pn);
-    } catch {
-      /* ignore */
-    }
-    disconnectRealtimeSync();
-    stopSocialMailboxConsumer();
-    invalidateDeviceRegistryCache();
-    setLocked();
-    clearDmIdentity();
-    PNOAuthService.clearSession();
-  }, [setLocked, userState.pnIdentifier]);
+  // Every lock (manual, idle, expired, another app) runs this teardown, then the
+  // session layer clears storage and reloads home.
+  useEffect(
+    () =>
+      browseSession.onWipe(async () => {
+        const pn = browseSession.load()?.pnIdentifier ?? null;
+        clearOAuthHandoffComplete();
+        clearStaleOAuthCallbackStorage();
+        const { resetUnlockSessionCoordinator } = await import('../services/unlockSessionCoordinator');
+        resetUnlockSessionCoordinator();
+        try {
+          const { wipeAggregatorCloudOnLock } = await import('../components/AggregatorCloudReconnectHost');
+          await wipeAggregatorCloudOnLock(pn);
+        } catch {
+          /* ignore */
+        }
+        disconnectRealtimeSync();
+        stopSocialMailboxConsumer();
+        invalidateDeviceRegistryCache();
+        setLocked();
+        clearDmIdentity();
+        PNOAuthService.clearSession();
+      }),
+    [setLocked]
+  );
 
   useEffect(() => {
-    const onSessionDead = () => {
-      void applyAuthDeathLock();
-    };
-    window.addEventListener(PN_OAUTH_SESSION_DEAD_EVENT, onSessionDead);
-    return () => window.removeEventListener(PN_OAUTH_SESSION_DEAD_EVENT, onSessionDead);
-  }, [applyAuthDeathLock]);
+    if (!userState.isUnlocked) return;
+    return browseSession.startIdleWatch();
+  }, [userState.isUnlocked]);
 
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
@@ -909,30 +911,9 @@ export function useAuthAndSession({
     };
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
-  // On return from idle: refresh/validate token; unrecoverable → session-dead event → lock
-  useEffect(() => {
-    if (!userState.isUnlocked) return;
-    const revalidate = () => {
-      if (document.visibilityState !== 'visible') return;
-      void (async () => {
-        const token = await PNOAuthService.getValidAccessToken();
-        if (!token) {
-          // Event may already have fired; ensure UI locks if session was already cleared
-          void applyAuthDeathLock();
-        }
-      })();
-    };
-    document.addEventListener('visibilitychange', revalidate);
-    window.addEventListener('focus', revalidate);
-    return () => {
-      document.removeEventListener('visibilitychange', revalidate);
-      window.removeEventListener('focus', revalidate);
-    };
-  }, [userState.isUnlocked, applyAuthDeathLock]);
-
   const handleLockUnlock = useCallback(async () => {
     if (userState.isUnlocked) {
-      await applyAuthDeathLock();
+      await browseSession.lock('manual');
     } else {
       try {
         await runOAuthPopupUnlock();
@@ -993,7 +974,6 @@ export function useAuthAndSession({
     }
   }, [
     userState.isUnlocked,
-    applyAuthDeathLock,
     runOAuthPopupUnlock,
     runOAuthCallback,
     setLocked,

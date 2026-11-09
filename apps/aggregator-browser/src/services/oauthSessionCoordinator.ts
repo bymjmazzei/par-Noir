@@ -121,7 +121,8 @@ export async function completeOAuthUnlock(payload: OAuthUnlockPayload): Promise<
         nickname: userInfo.nickname,
         pnIdentifier: userInfo.pn_identifier || undefined,
         publicKey: userInfo.public_key,
-        feedTokens: bootstrap.feedTokens
+        feedTokens: bootstrap.feedTokens,
+        idleTimeoutS: tokenResponse.idle_timeout_s
       };
 
       resolveWork(buildResult(session, userInfo, bootstrap, bootstrap.feedTokens));

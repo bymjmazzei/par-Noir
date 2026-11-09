@@ -59,7 +59,7 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
           updateDisplayName(userInfo.nickname);
         }
 
-        PNOAuthService.saveSession(session);
+        PNOAuthService.beginSession(session);
 
         const identifier = userInfo.pn_identifier || userInfo.did;
         if (!identifier) throw new Error('No identifier available from user info');

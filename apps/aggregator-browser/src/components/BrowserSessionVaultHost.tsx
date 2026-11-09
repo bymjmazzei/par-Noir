@@ -118,7 +118,7 @@ export function BrowserSessionVaultHost({ onSessionRestored }: BrowserSessionVau
       }
       if (payload.kind === 'browse_oauth' || payload.kind === 'messaging_session') {
         const session = JSON.parse(payload.oauthSessionJson);
-        PNOAuthService.saveSession(session);
+        PNOAuthService.beginSession(session);
         if (
           payload.kind === 'messaging_session' &&
           payload.dmSessionJson
