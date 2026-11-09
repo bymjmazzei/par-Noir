@@ -372,6 +372,8 @@ export function registerDeviceAuthRoutes(app: Application): void {
       if (!row) return res.status(404).json({ error: 'device_not_found' });
 
       await upsertDevice(bundle, { ...row, status: 'revoked' });
+      const { PushService } = await import('./pushService');
+      await PushService.removeDevice(pn, req.params.deviceId).catch(() => undefined);
 
       return res.json({ success: true, deviceId: req.params.deviceId });
     } catch (e) {

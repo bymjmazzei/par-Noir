@@ -74,6 +74,7 @@ import { setupUserRoutes } from './server/modules/userRoutes';
 import { setupDriveRoutes } from './server/modules/driveRoutes';
 import { setupPnOAuthRoutes } from './server/modules/pnOAuthRoutes';
 import { setupSessionPolicyRoutes } from './server/modules/sessionPolicy';
+import { PushDispatcher, pushCategoryForRealtime, setupPushRoutes } from './server/modules/pushService';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -987,6 +988,8 @@ class ProductionServer {
     } catch (err: unknown) {
       console.warn('[Realtime] emit failed:', (err as Error)?.message);
     }
+    const category = pushCategoryForRealtime(event, payload);
+    if (category) PushDispatcher.notify(pnIdentifier, category);
   }
 
   /**
@@ -1000,6 +1003,7 @@ class ProductionServer {
       authLimiter,
     });
     setupSessionPolicyRoutes(this.app);
+    setupPushRoutes(this.app);
 
     registerAdminDeveloperRoutes(this.app);
     registerIdentityMigrationRoutes(this.app);

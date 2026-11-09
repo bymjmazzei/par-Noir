@@ -25,17 +25,38 @@ async function getAdmin(): Promise<any> {
   }
 }
 
+const INVALID_TOKEN_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+]);
+
+/** collapseKey keeps one visible notification per category on the device. */
 export async function sendPushViaFCM(
   tokens: string[],
-  payload: PushPayload
-): Promise<void> {
+  payload: PushPayload,
+  collapseKey?: string
+): Promise<{ invalidTokens: string[] }> {
+  if (!tokens.length) return { invalidTokens: [] };
   const a = await getAdmin();
   const message = {
     notification: { title: payload.title, body: payload.body },
     data: payload.data || {},
     tokens,
-    android: { priority: 'high' as const },
-    apns: { payload: { aps: { sound: 'default' } } }
+    android: {
+      priority: 'high' as const,
+      ...(collapseKey ? { collapseKey, notification: { tag: collapseKey } } : {}),
+    },
+    apns: {
+      ...(collapseKey ? { headers: { 'apns-collapse-id': collapseKey } } : {}),
+      payload: { aps: { sound: 'default' } },
+    },
   };
-  await a.messaging().sendEachForMulticast(message);
+  const result = await a.messaging().sendEachForMulticast(message);
+  const invalidTokens: string[] = [];
+  (result?.responses ?? []).forEach((r: { success: boolean; error?: { code?: string } }, i: number) => {
+    if (!r.success && r.error?.code && INVALID_TOKEN_CODES.has(r.error.code)) {
+      invalidTokens.push(tokens[i]);
+    }
+  });
+  return { invalidTokens };
 }

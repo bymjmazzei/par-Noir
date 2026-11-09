@@ -1527,6 +1527,19 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const pushPath = path.join(__dirname, '../../migrations/add_push_subscriptions.sql');
+      await db.query(fs.readFileSync(pushPath, 'utf-8'));
+      console.log('✅ Push subscriptions migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ Push subscriptions migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);
