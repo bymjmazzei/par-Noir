@@ -53,8 +53,13 @@ export async function subscribeWebPush(opts: WebPushOptions): Promise<WebPushRes
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return 'denied';
 
-  const keyRes = await fetch(`${opts.apiEndpoint}/api/push/vapid-public-key`);
-  if (!keyRes.ok) return 'unconfigured';
+  // /api/push is first-party only, including the key lookup.
+  const token = await opts.getAccessToken();
+  if (!token) return 'failed';
+  const auth = { Authorization: `Bearer ${token}` };
+
+  const keyRes = await fetch(`${opts.apiEndpoint}/api/push/vapid-public-key`, { headers: auth });
+  if (!keyRes.ok) return keyRes.status === 503 ? 'unconfigured' : 'failed';
   const { publicKey } = (await keyRes.json()) as { publicKey?: string };
   if (!publicKey) return 'unconfigured';
 
@@ -67,11 +72,9 @@ export async function subscribeWebPush(opts: WebPushOptions): Promise<WebPushRes
       applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
     }));
 
-  const token = await opts.getAccessToken();
-  if (!token) return 'failed';
   const res = await fetch(`${opts.apiEndpoint}/api/push/subscriptions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', ...auth },
     body: JSON.stringify({
       appId: opts.appId,
       subscription: sub.toJSON(),

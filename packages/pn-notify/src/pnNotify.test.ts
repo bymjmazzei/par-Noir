@@ -126,6 +126,7 @@ describe('web push client', () => {
     expect(pushManager.subscribe).toHaveBeenCalledWith(
       expect.objectContaining({ userVisibleOnly: true, applicationServerKey: new Uint8Array([1, 2, 3]) })
     );
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer at');
     const [url, init] = fetchMock.mock.calls[1];
     expect(url).toBe('https://api/api/push/subscriptions');
     expect(init.headers.Authorization).toBe('Bearer at');
