@@ -12,6 +12,12 @@ interface ExtensionWarningBannerProps {
   onDismiss?: () => void;
 }
 
+const BANNER_TITLES: Record<ExtensionWarning['type'], string> = {
+  'suspicious-script': 'Security Warning: Possible Browser Extension Detected',
+  'modified-dom': 'Security Notice: Page Modified by an Extension',
+  unknown: 'Security Notice',
+};
+
 export const ExtensionWarningBanner: React.FC<ExtensionWarningBannerProps> = ({ onDismiss }) => {
   const [warnings, setWarnings] = useState<ExtensionWarning[]>([]);
   const [isVisible, setIsVisible] = useState(false);
@@ -20,7 +26,7 @@ export const ExtensionWarningBanner: React.FC<ExtensionWarningBannerProps> = ({ 
   useEffect(() => {
     // Check for warnings periodically
     const checkWarnings = () => {
-      const currentWarnings = ExtensionDetector.getWarnings();
+      const currentWarnings = ExtensionDetector.getWarnings().filter(w => w.severity !== 'low');
       setWarnings(currentWarnings);
       setIsVisible(currentWarnings.length > 0 && !dismissed);
     };
@@ -59,7 +65,7 @@ export const ExtensionWarningBanner: React.FC<ExtensionWarningBannerProps> = ({ 
             <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <h3 className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
-                Security Warning: Browser Extension Detected
+                {BANNER_TITLES[displayWarning.type]}
               </h3>
               <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-2">
                 {displayWarning.message}

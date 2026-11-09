@@ -6,7 +6,7 @@
  */
 
 export interface ExtensionWarning {
-  type: 'suspicious-script' | 'modified-dom' | 'external-resource' | 'unknown';
+  type: 'suspicious-script' | 'modified-dom' | 'unknown';
   severity: 'low' | 'medium' | 'high';
   message: string;
   recommendation: string;
@@ -75,17 +75,6 @@ export class ExtensionDetector {
         recommendation: 'Some browser extensions modify web pages. Ensure you trust all installed extensions.'
       });
     }
-
-    // Check for external resources
-    const externalResources = this.detectExternalResources();
-    if (externalResources.length > 0) {
-      this.warnings.push({
-        type: 'external-resource',
-        severity: 'low',
-        message: `Detected ${externalResources.length} external resource(s) loaded`,
-        recommendation: 'External resources may be loaded by extensions. Verify they are from trusted sources.'
-      });
-    }
   }
 
   /**
@@ -141,32 +130,6 @@ export class ExtensionDetector {
     });
 
     return suspiciousElements;
-  }
-
-  /**
-   * Detect external resources
-   */
-  private static detectExternalResources(): string[] {
-    const external: string[] = [];
-    const currentOrigin = window.location.origin;
-
-    // Check images
-    const images = Array.from(document.querySelectorAll('img[src]'));
-    images.forEach(img => {
-      const src = img.getAttribute('src');
-      if (src && !src.startsWith('data:') && !src.startsWith('blob:')) {
-        try {
-          const imgUrl = new URL(src, window.location.href);
-          if (imgUrl.origin !== currentOrigin) {
-            external.push(src);
-          }
-        } catch (e) {
-          // Invalid URL
-        }
-      }
-    });
-
-    return external;
   }
 
   /**
