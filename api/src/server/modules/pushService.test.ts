@@ -9,6 +9,7 @@ import {
   PushService,
   PUSH_COALESCE_MS,
   normalizeWebSubscription,
+  onePerBrowser,
   pushCategoryForRealtime,
   pushPayloadFor,
 } from './pushService';
@@ -119,6 +120,25 @@ describe('PushService.send', () => {
     expect((del?.params[0] as string[]).sort()).toEqual(['f-bad', 'w-gone']);
     const upd = dbState.queries.find((q) => q.sql.startsWith('UPDATE'));
     expect((upd?.params[0] as string[]).sort()).toEqual(['f-ok', 'w-ok']);
+  });
+});
+
+describe('onePerBrowser', () => {
+  it('keeps one subscription per browser, preferring the app for the category', () => {
+    const row = (id: string, app_id: string, browser_id: string | null, created_at = '2026-01-01') =>
+      ({ id, kind: 'web' as const, app_id, endpoint: id, p256dh: 'k', auth: 'a', browser_id, created_at });
+    const picked = onePerBrowser(
+      [
+        row('pen-b1', 'pen', 'b1'),
+        row('msg-b1', 'messaging', 'b1'),
+        row('dash-b1', 'dashboard', 'b1'),
+        row('pen-b2', 'pen', 'b2'),
+        row('dash-b2-new', 'dashboard', 'b2', '2026-02-01'),
+        row('loose', 'pen', null),
+      ],
+      'messages'
+    ).map((r) => r.id);
+    expect(picked.sort()).toEqual(['dash-b2-new', 'loose', 'msg-b1']);
   });
 });
 

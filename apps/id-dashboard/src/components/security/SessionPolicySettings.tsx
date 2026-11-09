@@ -6,10 +6,12 @@ import {
   IDLE_MINUTE_OPTIONS,
   type SessionPolicy,
 } from '@par-noir/oauth-ui';
+import { NotificationsToggle } from '@par-noir/pn-notify';
 import { API_ENDPOINT } from '../../config/api';
 import { dashboardSession } from '../../services/parNoirOAuthInline';
 
 const TRUSTED = 'trusted';
+const getAccessToken = () => dashboardSession.getAccessToken();
 
 /** Idle lock for this pN across every par Noir app. Applies to other apps on their next token refresh. */
 export function SessionPolicySettings() {
@@ -53,6 +55,7 @@ export function SessionPolicySettings() {
   };
 
   return (
+    <>
     <div className="flex items-center justify-between gap-4 flex-wrap">
       <div>
         <span className="text-text-primary font-medium">Lock after inactivity</span>
@@ -77,5 +80,15 @@ export function SessionPolicySettings() {
         <option value={TRUSTED}>Trusted device</option>
       </select>
     </div>
+    <NotificationsToggle
+      apiEndpoint={API_ENDPOINT}
+      getAccessToken={getAccessToken}
+      appId="dashboard"
+      swUrl="/sw.js"
+      className="mt-4"
+      labelClassName="text-text-primary font-medium"
+      hintClassName="text-xs text-text-secondary"
+    />
+    </>
   );
 }

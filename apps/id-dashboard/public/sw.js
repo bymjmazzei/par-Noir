@@ -1,3 +1,4 @@
+importScripts('/pn-notify-sw.js');
 /* Dashboard shell cache: offline fallback for SPA navigation only */
 const CACHE = 'pn-dashboard-v1';
 

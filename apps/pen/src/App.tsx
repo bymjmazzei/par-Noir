@@ -20,6 +20,7 @@ import {
   usePnSession,
   type PnOAuthPopupResult
 } from '@par-noir/oauth-ui';
+import { NotificationsBellButton } from '@par-noir/pn-notify';
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
 import { DocJoinPage } from './pages/DocJoinPage';
@@ -305,6 +306,8 @@ function Locked() {
   );
 }
 
+const getPenAccessToken = () => penSession.getAccessToken();
+
 function AddMenu({
   onSelect,
   templatesOnly = false
@@ -570,14 +573,22 @@ function AuthenticatedApp({ session }: { session: PenSession }) {
             </span>
           )}
         </div>
-        <LockButton
-          className="pen-app-chrome-lock"
-          session={penSession}
-          title="Lock session"
-          showIcon
-        >
-          {false}
-        </LockButton>
+        <div className="flex items-center">
+          <NotificationsBellButton
+            className="pen-app-chrome-lock"
+            apiEndpoint={API_ENDPOINT}
+            getAccessToken={getPenAccessToken}
+            appId="pen"
+          />
+          <LockButton
+            className="pen-app-chrome-lock"
+            session={penSession}
+            title="Lock session"
+            showIcon
+          >
+            {false}
+          </LockButton>
+        </div>
       </header>
       <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
         <Routes>

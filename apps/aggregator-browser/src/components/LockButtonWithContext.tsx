@@ -7,8 +7,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, User, Rss } from 'lucide-react';
 import { LockIcon, UnlockIcon } from '@par-noir/oauth-ui';
+import { NotificationsBellButton } from '@par-noir/pn-notify';
 import { useUserState } from '../contexts/UserStateContext';
 import { AppContext } from '../hooks/useAppContext';
+import { API_ENDPOINT } from '../config/api';
+import { browseSession } from '../services/pnOAuthService';
+
+const getBrowseAccessToken = () => browseSession.getAccessToken();
+const pushAppId = () =>
+  typeof window !== 'undefined' && window.location.hostname.startsWith('messaging.') ? 'messaging' : 'browse';
 
 interface LockButtonWithContextProps {
   onLockUnlock: () => void;
@@ -78,6 +85,15 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
           <LockIcon className="h-5 w-5" />
         )}
       </button>
+
+      {userState.isUnlocked && (
+        <NotificationsBellButton
+          className="p-1.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto"
+          apiEndpoint={API_ENDPOINT}
+          getAccessToken={getBrowseAccessToken}
+          appId={pushAppId()}
+        />
+      )}
 
       {/* Context Switcher Arrow - Only show when unlocked and has feeds (not just pN identity) */}
       {userState.isUnlocked && hasFeeds && (

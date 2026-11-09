@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
 import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-endpoint.mjs';
+import { pnNotifyServiceWorker } from '../../packages/pn-notify/vite.mjs';
 
 export default defineConfig(({ mode, command }) => {
   assertViteApiEndpointForBuild({ command, mode, root: __dirname });
@@ -10,6 +11,7 @@ export default defineConfig(({ mode, command }) => {
   plugins: [
     react(),
     nodePolyfills({ include: ['crypto'] }),
+    pnNotifyServiceWorker(),
   ],
   resolve: {
     alias: {
@@ -19,6 +21,7 @@ export default defineConfig(({ mode, command }) => {
       '@par-noir/device-client': path.resolve(__dirname, '../../packages/device-client/src/index.ts'),
       '@par-noir/pen-protocol': path.resolve(__dirname, '../../packages/pen-protocol/src/index.ts'),
       '@par-noir/feed-tile': path.resolve(__dirname, '../../packages/feed-tile/src/index.ts'),
+      '@par-noir/pn-notify': path.resolve(__dirname, '../../packages/pn-notify/src/index.ts'),
       '@par-noir/owner-files': path.resolve(__dirname, '../../packages/owner-files/src/index.ts'),
       // pqc-crypto dist is CJS; Vite/Rollup cannot resolve named exports from workspace CJS builds
       '@par-noir/pqc-crypto/oauth-unlock-proof': path.resolve(__dirname, '../../packages/pqc-crypto/src/oauthUnlockProof.ts'),

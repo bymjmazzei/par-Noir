@@ -1,0 +1,23 @@
+{
+  "name": "@par-noir/pn-notify",
+  "version": "0.1.0",
+  "description": "Content-free Web Push for par Noir apps: subscribe, service-worker handlers, opt-in toggle",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "private": true,
+  "files": [
+    "src",
+    "sw",
+    "vite.mjs"
+  ],
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

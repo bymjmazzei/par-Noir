@@ -22,6 +22,13 @@ export interface PushPayload {
   data?: Record<string, string>;
 }
 
+/** Apps that best handle each category, most preferred first (picks one tab per browser). */
+const PREFERRED_APPS: Record<PushCategory, string[]> = {
+  messages: ['messaging', 'browse'],
+  social: ['browse', 'pen'],
+  security: ['dashboard'],
+};
+
 export const PUSH_COPY: Record<PushCategory, { title: string; body: string; app: string }> = {
   messages: { title: 'par Noir', body: 'You have a new message', app: 'messaging' },
   social: { title: 'par Noir', body: 'You have new notifications', app: 'browse' },
@@ -61,9 +68,38 @@ export interface PushSubscriptionInput {
 interface SubscriptionRow {
   id: string;
   kind: 'web' | 'fcm';
+  app_id: string;
   endpoint: string;
   p256dh: string | null;
   auth: string | null;
+  browser_id: string | null;
+  created_at: Date | string | null;
+}
+
+/** Every par Noir origin in one browser shares a browser id; notify that browser once. */
+export function onePerBrowser(rows: SubscriptionRow[], category: PushCategory): SubscriptionRow[] {
+  const preferred = PREFERRED_APPS[category];
+  const rank = (r: SubscriptionRow) => {
+    const i = preferred.indexOf(r.app_id);
+    return i === -1 ? preferred.length : i;
+  };
+  const picked = new Map<string, SubscriptionRow>();
+  const unbound: SubscriptionRow[] = [];
+  for (const r of rows) {
+    if (!r.browser_id) {
+      unbound.push(r);
+      continue;
+    }
+    const cur = picked.get(r.browser_id);
+    if (
+      !cur ||
+      rank(r) < rank(cur) ||
+      (rank(r) === rank(cur) && new Date(r.created_at ?? 0).getTime() > new Date(cur.created_at ?? 0).getTime())
+    ) {
+      picked.set(r.browser_id, r);
+    }
+  }
+  return [...picked.values(), ...unbound];
 }
 
 const APP_ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
@@ -169,7 +205,7 @@ export class PushService {
   static async send(pnIdentifier: string, category: PushCategory): Promise<void> {
     const pool = getDatabasePool();
     const result = await pool.query(
-      `SELECT id, kind, endpoint, p256dh, auth FROM push_subscriptions
+      `SELECT id, kind, app_id, endpoint, p256dh, auth, browser_id, created_at FROM push_subscriptions
        WHERE pn_identifier = $1 AND $2 = ANY(categories)`,
       [normalizePn(pnIdentifier), category]
     );
@@ -180,7 +216,10 @@ export class PushService {
     const gone: string[] = [];
     const delivered: string[] = [];
 
-    const web = rows.filter((r) => r.kind === 'web' && r.p256dh && r.auth);
+    const web = onePerBrowser(
+      rows.filter((r) => r.kind === 'web' && r.p256dh && r.auth),
+      category
+    );
     if (web.length && ensureVapid()) {
       const body = JSON.stringify(payload);
       await Promise.all(

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import { resolve, normalize } from 'path'
 import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-endpoint.mjs'
+import { pnNotifyServiceWorker } from '../../packages/pn-notify/vite.mjs'
 
 /** Only our app config — NOT vendor `src/config/...` paths, which would break the bundle with TDZ errors */
 const APP_CONFIG_DIR = normalize(resolve(__dirname, 'src/config')).replace(/\\/g, '/')
@@ -16,6 +17,7 @@ export default defineConfig(({ mode, command }) => {
     react(),
     // genSTARK / AirScript pull Node builtins (`fs`, `crypto`, …); required for ZK v2 in the browser bundle
     nodePolyfills({ include: ['buffer', 'process', 'crypto', 'stream', 'util', 'path', 'fs'] }),
+    pnNotifyServiceWorker(),
   ],
   worker: {
     format: 'es',
@@ -28,6 +30,7 @@ export default defineConfig(({ mode, command }) => {
       '@par-noir/standard-data-points': resolve(__dirname, '../../packages/standard-data-points/src/index.ts'),
       '@par-noir/aggregator-domain': resolve(__dirname, '../../packages/aggregator-domain/src/index.ts'),
       '@par-noir/owner-files': resolve(__dirname, '../../packages/owner-files/src/index.ts'),
+      '@par-noir/pn-notify': resolve(__dirname, '../../packages/pn-notify/src/index.ts'),
       // pqc-crypto dist is CJS; Vite/Rollup cannot resolve named exports from workspace CJS builds
       // Subpath aliases must be listed before the package root alias.
       '@par-noir/pqc-crypto/oauth-unlock-proof': resolve(__dirname, '../../packages/pqc-crypto/src/oauthUnlockProof.ts'),

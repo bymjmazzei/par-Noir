@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
 import { assertViteApiEndpointForBuild } from '../../scripts/vite-require-api-endpoint.mjs';
+import { pnNotifyServiceWorker } from '../../packages/pn-notify/vite.mjs';
 
 const pqcSrc = path.resolve(__dirname, '../../packages/pqc-crypto/src');
 const penSrc = path.resolve(__dirname, '../../packages/pen-protocol/src');
@@ -17,6 +18,7 @@ export default defineConfig(({ command, mode }) => {
   base: './',
   plugins: [
     react(),
+    pnNotifyServiceWorker(),
     // genSTARK / AirScript pull Node builtins (`fs`, `crypto`, …); required for ZK v2 in the browser bundle
     nodePolyfills({
       include: isVitest ? ['crypto'] : ['buffer', 'process', 'crypto', 'stream', 'util', 'path', 'fs'],
@@ -43,6 +45,7 @@ export default defineConfig(({ command, mode }) => {
       '@par-noir/pen-protocol': path.resolve(penSrc, 'index.ts'),
       '@par-noir/pen-live': path.resolve(__dirname, '../../packages/pen-live/src/index.ts'),
       '@par-noir/feed-tile': path.resolve(__dirname, '../../packages/feed-tile/src/index.ts'),
+      '@par-noir/pn-notify': path.resolve(__dirname, '../../packages/pn-notify/src/index.ts'),
       '@par-noir/pen-media': path.resolve(__dirname, '../../packages/pen-media/src/index.ts'),
       '@par-noir/aggregator-domain': path.resolve(aggregatorDomainSrc, 'index.ts'),
       '@par-noir/zk-protocol-v2/envelope': path.resolve(zkProtocolV2Src, 'envelope.ts'),
