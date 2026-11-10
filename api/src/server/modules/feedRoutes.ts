@@ -97,72 +97,18 @@ export function setupFeedRoutes(app: Application) {
               message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
             });
           }
-          const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
-          const alreadyApproved = await isFileApprovedByPrism(fileId);
-          const { googleDriveProxyService } = await import('./googleDriveProxy');
-          const driveFileId = String((fileEntry.metadata as any)?.backendFileId ?? fileId ?? '');
-          const mimeType = String((fileEntry.metadata as any)?.mimeType ?? 'application/octet-stream');
-          const {
-            applyPublishSafetyGate,
-            isMetadataProhibited,
-            shouldSkipPublishSafetyGate,
-          } = await import('./publishSafetyGate');
-          const safety = await applyPublishSafetyGate({
-            googleDriveProxy: googleDriveProxyService,
+          const { runPublishModeration, respondPublishModeration } = await import('./publishModeration');
+          const moderation = await runPublishModeration({
             ownerPnIdentifier: ownerPn,
             fileId,
-            driveFileId,
-            mimeType,
-            skip: shouldSkipPublishSafetyGate({
-              isNoteThumbnail:
-                (fileEntry.metadata as any)?.isNoteThumbnail === true ||
-                (fileEntry.metadata as any)?.isThoughtThumbnail === true,
-              thought: (fileEntry.metadata as any)?.thought,
-              note: (fileEntry.metadata as any)?.note,
-              textPost: (fileEntry.metadata as any)?.textPost,
-            }),
-            existingIsProhibited: isMetadataProhibited(fileEntry.metadata as any),
+            metadata: (fileEntry.metadata || {}) as any,
           });
-          if (safety.status === 'prohibited') {
-            return res.status(422).json({
-              status: 'prohibited',
-              error: 'Content prohibited',
-              message:
-                safety.reason ||
-                'This content cannot be made public on the network. Your file remains private. Upload a new file to retry.',
-            });
-          }
-          if (safety.forceNsfw) {
+          if (respondPublishModeration(res, moderation)) return;
+          if (moderation.status === 'ok' && moderation.forceNsfw) {
             try {
               await metadataService.updateMetadata(fileId, { isNSFW: true });
             } catch (nsfwErr) {
               console.warn('[Feed] Failed to auto-set isNSFW:', (nsfwErr as Error)?.message);
-            }
-          }
-          if (!alreadyApproved) {
-            const { runDMCACheck } = await import('./dmcaGate');
-            const dmcaResult = await runDMCACheck(googleDriveProxyService, ownerPn, driveFileId, mimeType);
-            if (!dmcaResult.passed) {
-              const queueItemId = await addToPrismQueue({
-                fileId,
-                ownerPnIdentifier: ownerPn,
-                flagSource: 'bot',
-                reporterPnIdentifier: null,
-                reportType: 'dmca_bot',
-              });
-              const { addContentNotice } = await import('./contentNoticesService');
-              await addContentNotice({
-                ownerPnIdentifier: ownerPn,
-                fileId,
-                type: 'pending_review',
-                source: 'bot',
-              });
-              return res.status(202).json({
-                status: 'pending_review',
-                error: 'Content flagged for DMCA review',
-                message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
-                queueItemId: queueItemId || undefined,
-              });
             }
           }
         }

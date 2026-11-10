@@ -442,71 +442,16 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             requestId
           });
         }
-        const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
-        const alreadyApproved = await isFileApprovedByPrism(validatedMetadata.fileId);
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
-        const driveFileId = validatedMetadata.backendFileId || validatedMetadata.fileId;
-        const mimeType = (validatedMetadata as any).mimeType || 'application/octet-stream';
-        const {
-          applyPublishSafetyGate,
-          isMetadataProhibited,
-          shouldSkipPublishSafetyGate,
-        } = await import('./publishSafetyGate');
         const existingEntry = await service.getFileMetadata(validatedMetadata.fileId);
-        const existingMeta = (existingEntry?.metadata || validatedMetadata) as any;
-        const skipSafety = shouldSkipPublishSafetyGate({
-          isNoteThumbnail: existingMeta?.isNoteThumbnail,
-          thought: existingMeta?.thought ?? (validatedMetadata as any).thought,
-          textPost: existingMeta?.textPost ?? (validatedMetadata as any).textPost,
-        });
-        const safety = await applyPublishSafetyGate({
-          googleDriveProxy: googleDriveProxyService,
+        const { runPublishModeration, respondPublishModeration } = await import('./publishModeration');
+        const moderation = await runPublishModeration({
           ownerPnIdentifier,
           fileId: validatedMetadata.fileId,
-          driveFileId,
-          mimeType,
-          skip: skipSafety,
-          existingIsProhibited: isMetadataProhibited(existingMeta) || isMetadataProhibited(validatedMetadata as any),
+          metadata: { ...(existingEntry?.metadata || {}), ...validatedMetadata } as any,
         });
-        if (safety.status === 'prohibited') {
-          return res.status(422).json({
-            status: 'prohibited',
-            error: 'Content prohibited',
-            message:
-              safety.reason ||
-              'This content cannot be made public on the network. Your file remains private. Upload a new file to retry.',
-            requestId,
-          });
-        }
-        if (safety.forceNsfw) {
+        if (respondPublishModeration(res, moderation, requestId)) return;
+        if (moderation.status === 'ok' && moderation.forceNsfw) {
           (validatedMetadata as any).isNSFW = true;
-        }
-        if (!alreadyApproved) {
-          const { runDMCACheck } = await import('./dmcaGate');
-          const dmcaResult = await runDMCACheck(googleDriveProxyService, ownerPnIdentifier, driveFileId, mimeType, undefined);
-          if (!dmcaResult.passed) {
-            const queueItemId = await addToPrismQueue({
-              fileId: validatedMetadata.fileId,
-              ownerPnIdentifier: ownerPnIdentifier,
-              flagSource: 'bot',
-              reporterPnIdentifier: null,
-              reportType: 'dmca_bot',
-            });
-            const { addContentNotice } = await import('./contentNoticesService');
-            await addContentNotice({
-              ownerPnIdentifier: ownerPnIdentifier,
-              fileId: validatedMetadata.fileId,
-              type: 'pending_review',
-              source: 'bot',
-            });
-            return res.status(202).json({
-              status: 'pending_review',
-              error: 'Content flagged for DMCA review',
-              message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
-              queueItemId: queueItemId || undefined,
-              requestId
-            });
-          }
         }
       }
 
@@ -1697,74 +1642,17 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                   message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
                 });
               }
-              // Publish safety (prohibited/nsfw) then DMCA (skip DMCA if Prism already approved)
-              const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
-              const alreadyApproved = await isFileApprovedByPrism(fileId);
-              const { shouldSkipDmcaGate } = await import('./dmcaGate');
-              const skipDmca = shouldSkipDmcaGate({ isNoteThumbnail, thought, textPost });
-              const {
-                applyPublishSafetyGate,
-                isMetadataProhibited,
-                shouldSkipPublishSafetyGate,
-              } = await import('./publishSafetyGate');
-              const mimeForSafety = (driveFile as any).mimeType || 'application/octet-stream';
-              const safety = await applyPublishSafetyGate({
-                googleDriveProxy: googleDriveProxyService,
+              const { runPublishModeration, respondPublishModeration } = await import('./publishModeration');
+              const moderation = await runPublishModeration({
                 ownerPnIdentifier: userIdentifier,
                 fileId,
-                driveFileId: fileId,
-                mimeType: mimeForSafety,
-                accountId,
-                skip: shouldSkipPublishSafetyGate({ isNoteThumbnail, thought, textPost }),
-                existingIsProhibited: isMetadataProhibited(initialMetadata as any),
+                metadata: { ...initialMetadata, mimeType: driveFile.mimeType },
               });
-              if (safety.status === 'prohibited') {
-                return res.status(422).json({
-                  status: 'prohibited',
-                  error: 'Content prohibited',
-                  message:
-                    safety.reason ||
-                    'This content cannot be made public on the network. Your file remains private. Upload a new file to retry.',
-                });
-              }
-              if (safety.forceNsfw) {
+              if (respondPublishModeration(res, moderation)) return;
+              if (moderation.status === 'ok' && moderation.forceNsfw) {
                 (initialMetadata as any).isNSFW = true;
               }
-              if (!alreadyApproved && !skipDmca) {
-                const { runDMCACheck } = await import('./dmcaGate');
-                const dmcaResult = await runDMCACheck(
-                  googleDriveProxyService,
-                  userIdentifier,
-                  fileId,
-                  mimeForSafety,
-                  accountId
-                );
-                if (!dmcaResult.passed) {
-                  const queueItemId = await addToPrismQueue({
-                    fileId,
-                    ownerPnIdentifier: userIdentifier,
-                    flagSource: 'bot',
-                    reporterPnIdentifier: null,
-                    reportType: 'dmca_bot',
-                  });
-                  const { addContentNotice } = await import('./contentNoticesService');
-                  await addContentNotice({
-                    ownerPnIdentifier: userIdentifier,
-                    fileId,
-                    type: 'pending_review',
-                    source: 'bot',
-                  });
-                  return res.status(202).json({
-                    status: 'pending_review',
-                    error: 'Content flagged for DMCA review',
-                    message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
-                    queueItemId: queueItemId || undefined,
-                  });
-                }
-                dmcaCheckedThisRequest = true;
-              } else {
-                dmcaCheckedThisRequest = true;
-              }
+              dmcaCheckedThisRequest = true;
               // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
               await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
               aggregatorSubmittedThisRequest = true;
@@ -1865,67 +1753,17 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                   message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
                 });
               }
-              const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
-              const alreadyApproved = await isFileApprovedByPrism(fileId);
-              const { shouldSkipDmcaGate } = await import('./dmcaGate');
-              const skipDmca = shouldSkipDmcaGate({ isNoteThumbnail, thought, textPost });
-              const { googleDriveProxyService } = await import('./googleDriveProxy');
-              const {
-                applyPublishSafetyGate,
-                isMetadataProhibited,
-                shouldSkipPublishSafetyGate,
-              } = await import('./publishSafetyGate');
-              const safety = await applyPublishSafetyGate({
-                googleDriveProxy: googleDriveProxyService,
+              const { runPublishModeration, respondPublishModeration } = await import('./publishModeration');
+              const moderation = await runPublishModeration({
                 ownerPnIdentifier: userIdentifier,
                 fileId,
-                driveFileId: fileId,
-                mimeType: 'application/octet-stream',
-                accountId: (req.query.accountId as string) || undefined,
-                skip: shouldSkipPublishSafetyGate({ isNoteThumbnail, thought, textPost }),
-                existingIsProhibited: isMetadataProhibited(minimalMetadata as any),
+                metadata: minimalMetadata,
               });
-              if (safety.status === 'prohibited') {
-                return res.status(422).json({
-                  status: 'prohibited',
-                  error: 'Content prohibited',
-                  message:
-                    safety.reason ||
-                    'This content cannot be made public on the network. Your file remains private. Upload a new file to retry.',
-                });
-              }
-              if (safety.forceNsfw) {
+              if (respondPublishModeration(res, moderation)) return;
+              if (moderation.status === 'ok' && moderation.forceNsfw) {
                 (minimalMetadata as any).isNSFW = true;
               }
-              if (!alreadyApproved && !skipDmca) {
-                const { runDMCACheck } = await import('./dmcaGate');
-                const dmcaResult = await runDMCACheck(googleDriveProxyService, userIdentifier, fileId, 'application/octet-stream', (req.query.accountId as string) || undefined);
-                if (!dmcaResult.passed) {
-                  const queueItemId = await addToPrismQueue({
-                    fileId,
-                    ownerPnIdentifier: userIdentifier,
-                    flagSource: 'bot',
-                    reporterPnIdentifier: null,
-                    reportType: 'dmca_bot',
-                  });
-                  const { addContentNotice } = await import('./contentNoticesService');
-                  await addContentNotice({
-                    ownerPnIdentifier: userIdentifier,
-                    fileId,
-                    type: 'pending_review',
-                    source: 'bot',
-                  });
-                  return res.status(202).json({
-                    status: 'pending_review',
-                    error: 'Content flagged for DMCA review',
-                    message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
-                    queueItemId: queueItemId || undefined,
-                  });
-                }
-                dmcaCheckedThisRequest = true;
-              } else {
-                dmcaCheckedThisRequest = true;
-              }
+              dmcaCheckedThisRequest = true;
               // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
               await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
               aggregatorSubmittedThisRequest = true;
@@ -2881,74 +2719,15 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                   message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
                 });
               }
-              // Publish safety then DMCA (skip DMCA if Prism already approved)
-              const driveFileId = String((current.metadata as any)?.backendFileId ?? actualFileId ?? '');
-              const mimeType = String((current.metadata as any)?.mimeType ?? 'application/octet-stream');
-              const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
-              const alreadyApproved = await isFileApprovedByPrism(fileId);
-              const { shouldSkipDmcaGate } = await import('./dmcaGate');
-              const skipDmca = shouldSkipDmcaGate({
-                isNoteThumbnail: (current.metadata as any)?.isNoteThumbnail,
-                thought: (current.metadata as any)?.thought,
-                textPost: (current.metadata as any)?.textPost,
-              });
-              const { googleDriveProxyService: driveProxy } = await import('./googleDriveProxy');
-              const {
-                applyPublishSafetyGate,
-                isMetadataProhibited,
-                shouldSkipPublishSafetyGate,
-              } = await import('./publishSafetyGate');
-              const safety = await applyPublishSafetyGate({
-                googleDriveProxy: driveProxy,
+              const { runPublishModeration, respondPublishModeration } = await import('./publishModeration');
+              const moderation = await runPublishModeration({
                 ownerPnIdentifier: ownerPn,
                 fileId,
-                driveFileId,
-                mimeType,
-                accountId: (req.query.accountId as string) || undefined,
-                skip: shouldSkipPublishSafetyGate({
-                  isNoteThumbnail: (current.metadata as any)?.isNoteThumbnail,
-                  thought: (current.metadata as any)?.thought,
-                  textPost: (current.metadata as any)?.textPost,
-                }),
-                existingIsProhibited: isMetadataProhibited(current.metadata as any),
+                metadata: publicMetadata as any,
               });
-              if (safety.status === 'prohibited') {
-                return res.status(422).json({
-                  status: 'prohibited',
-                  error: 'Content prohibited',
-                  message:
-                    safety.reason ||
-                    'This content cannot be made public on the network. Your file remains private. Upload a new file to retry.',
-                });
-              }
-              if (safety.forceNsfw) {
+              if (respondPublishModeration(res, moderation)) return;
+              if (moderation.status === 'ok' && moderation.forceNsfw) {
                 (publicMetadata as any).isNSFW = true;
-              }
-              if (!alreadyApproved && !skipDmca) {
-                const { runDMCACheck } = await import('./dmcaGate');
-                const dmcaResult = await runDMCACheck(driveProxy, ownerPn, driveFileId, mimeType, (req.query.accountId as string) || undefined);
-                if (!dmcaResult.passed) {
-                  const queueItemId = await addToPrismQueue({
-                    fileId,
-                    ownerPnIdentifier: ownerPn,
-                    flagSource: 'bot',
-                    reporterPnIdentifier: null,
-                    reportType: 'dmca_bot',
-                  });
-                  const { addContentNotice } = await import('./contentNoticesService');
-                  await addContentNotice({
-                    ownerPnIdentifier: ownerPn,
-                    fileId,
-                    type: 'pending_review',
-                    source: 'bot',
-                  });
-                  return res.status(202).json({
-                    status: 'pending_review',
-                    error: 'Content flagged for DMCA review',
-                    message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
-                    queueItemId: queueItemId || undefined,
-                  });
-                }
               }
               await service.submitMetadata(
                 publicMetadata as any,

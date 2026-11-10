@@ -1,8 +1,8 @@
 /**
  * DMCA Gate
- * Runs DMCA check before content is indexed (private→indexed)
- * Fetches file via Google Drive proxy, runs Gemini check.
- * Video/audio: samples clips for cost-effective check. Images: full check.
+ * Runs DMCA check on the public feed preview before content is indexed (private→indexed).
+ * Video: samples clips from the SD preview. Images: full poster check.
+ * Audio has no visual preview, so it always goes to Prism human review.
  *
  * Fail policy: DMCA_GATE_FAIL_MODE=open|closed (default: open).
  * - open: On error or sampling failure, allow content (availability over strictness).
@@ -11,23 +11,18 @@
 
 import { getGeminiModerationService } from './geminiModerationService';
 import { getMediaDuration, extractRandomClips } from './mediaSamplingService';
+import type { ModerationPreview } from './moderationPreview';
 
 export interface DMCAGateResult {
   passed: boolean;
   reason?: string;
 }
 
-interface DriveProxyLike {
-  downloadFile(userPnIdentifier: string, fileId: string, accountId?: string): Promise<Blob>;
-}
-
 const FALLBACK_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const FAIL_MODE = (process.env.DMCA_GATE_FAIL_MODE || 'open').toLowerCase();
 
-function isVideoOrAudio(mimeType: string): boolean {
-  const base = (mimeType || '').split(';')[0].trim().toLowerCase();
-  return base.startsWith('video/') || base.startsWith('audio/');
-}
+export const AUDIO_REVIEW_REASON =
+  'Audio posts are reviewed by a person before they go public. You will be notified when review is done.';
 
 /** Encrypted notes/thumbnails cannot be meaningfully moderated before publish. */
 export function shouldSkipDmcaGate(params: {
@@ -50,60 +45,56 @@ export function shouldDeferCompanionMetadata(params: {
   return shouldSkipDmcaGate(params);
 }
 
+function failResult(): DMCAGateResult {
+  if (FAIL_MODE === 'closed') {
+    return { passed: false, reason: 'Check failed; content pending human review.' };
+  }
+  return { passed: true };
+}
+
 /**
- * Run DMCA check on file before allowing it to be indexed.
- * Video/audio: samples random clips. Images: full file. Other: full file.
+ * Run DMCA check on the public preview before allowing it to be indexed.
  */
-export async function runDMCACheck(
-  googleDriveProxy: DriveProxyLike,
-  ownerPnIdentifier: string,
-  driveFileId: string,
-  mimeType: string,
-  accountId?: string
-): Promise<DMCAGateResult> {
+export async function runDMCACheck(loadPreview: () => Promise<ModerationPreview>): Promise<DMCAGateResult> {
   try {
-    const blob = await googleDriveProxy.downloadFile(ownerPnIdentifier, driveFileId, accountId);
-    const buffer = Buffer.from(await blob.arrayBuffer());
-    const effectiveMime = mimeType || blob.type || 'application/octet-stream';
+    const preview = await loadPreview();
+    if (preview.kind === 'audio') {
+      return { passed: false, reason: AUDIO_REVIEW_REASON };
+    }
+    if (preview.kind === 'none') {
+      return { passed: true };
+    }
     const gemini = getGeminiModerationService();
 
-    if (isVideoOrAudio(effectiveMime)) {
-      const duration = await getMediaDuration(buffer, effectiveMime);
-      const clipBuffers = await extractRandomClips(buffer, effectiveMime, duration);
+    if (preview.kind === 'video') {
+      const duration = await getMediaDuration(preview.buffer, preview.mimeType);
+      const clipBuffers = await extractRandomClips(preview.buffer, preview.mimeType, duration);
       if (clipBuffers.length > 0) {
-        const clipMime = effectiveMime.startsWith('audio/') ? 'audio/mpeg' : 'video/mp4';
-        const clips = clipBuffers.map((buf) => ({ buffer: buf, mimeType: clipMime }));
+        const clips = clipBuffers.map((buf) => ({ buffer: buf, mimeType: 'video/mp4' }));
         const result = await gemini.checkDMCASampled(clips);
         if (result.flagged) {
           return { passed: false, reason: result.reason || 'Content flagged for DMCA review' };
         }
         return { passed: true };
       }
-      if (buffer.length <= FALLBACK_MAX_BYTES) {
-        const result = await gemini.checkDMCA(buffer, effectiveMime);
+      if (preview.buffer.length <= FALLBACK_MAX_BYTES) {
+        const result = await gemini.checkDMCA(preview.buffer, preview.mimeType);
         if (result.flagged) {
           return { passed: false, reason: result.reason || 'Content flagged for DMCA review' };
         }
         return { passed: true };
       }
-      console.warn('[DMCA Gate] Sampling failed for large video/audio;', FAIL_MODE === 'closed' ? 'fail closed (pending review)' : 'allowing (fail open)');
-      if (FAIL_MODE === 'closed') {
-        return { passed: false, reason: 'Check failed; content pending human review.' };
-      }
-      return { passed: true };
+      console.warn('[DMCA Gate] Sampling failed for large video preview;', FAIL_MODE === 'closed' ? 'fail closed (pending review)' : 'allowing (fail open)');
+      return failResult();
     }
 
-    const result = await gemini.checkDMCA(buffer, effectiveMime);
+    const result = await gemini.checkDMCA(preview.buffer, preview.mimeType);
     if (result.flagged) {
       return { passed: false, reason: result.reason || 'Content flagged for DMCA review' };
     }
     return { passed: true };
   } catch (err) {
     console.warn('[DMCA Gate] Check failed:', (err as Error)?.message, FAIL_MODE === 'closed' ? '(fail closed)' : '(allowing)');
-    if (FAIL_MODE === 'closed') {
-      return { passed: false, reason: 'Check failed; content pending human review.' };
-    }
-    return { passed: true };
+    return failResult();
   }
-  return { passed: true };
 }

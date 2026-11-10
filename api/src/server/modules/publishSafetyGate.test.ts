@@ -5,6 +5,7 @@
  * Gate-order and classify tests for publish safety (prohibited / nsfw).
  */
 import { applyPublishSafetyGate, isMetadataProhibited } from './publishSafetyGate';
+import type { ModerationPreview } from './moderationPreview';
 
 jest.mock('./geminiModerationService', () => {
   const actual = jest.requireActual('./geminiModerationService');
@@ -38,6 +39,9 @@ jest.mock('../utils/database', () => ({
   }),
 }));
 
+const imagePreview = (): Promise<ModerationPreview> =>
+  Promise.resolve({ kind: 'image', buffer: Buffer.from('fake'), mimeType: 'image/jpeg' });
+
 describe('isMetadataProhibited', () => {
   it('detects boolean and string true', () => {
     expect(isMetadataProhibited({ isProhibited: true })).toBe(true);
@@ -48,32 +52,28 @@ describe('isMetadataProhibited', () => {
 });
 
 describe('applyPublishSafetyGate short-circuit', () => {
-  it('short-circuits when existingIsProhibited without calling Drive', async () => {
-    const downloadFile = jest.fn();
+  it('short-circuits when existingIsProhibited without loading the preview', async () => {
+    const loadPreview = jest.fn(imagePreview);
     const outcome = await applyPublishSafetyGate({
-      googleDriveProxy: { downloadFile },
+      loadPreview,
       ownerPnIdentifier: 'pn-test',
       fileId: 'file-1',
-      driveFileId: 'file-1',
-      mimeType: 'image/jpeg',
       existingIsProhibited: true,
     });
     expect(outcome.status).toBe('prohibited');
-    expect(downloadFile).not.toHaveBeenCalled();
+    expect(loadPreview).not.toHaveBeenCalled();
   });
 
   it('skips classify when skip=true', async () => {
-    const downloadFile = jest.fn();
+    const loadPreview = jest.fn(imagePreview);
     const outcome = await applyPublishSafetyGate({
-      googleDriveProxy: { downloadFile },
+      loadPreview,
       ownerPnIdentifier: 'pn-test',
       fileId: 'file-2',
-      driveFileId: 'file-2',
-      mimeType: 'image/jpeg',
       skip: true,
     });
     expect(outcome).toEqual({ status: 'ok', forceNsfw: false });
-    expect(downloadFile).not.toHaveBeenCalled();
+    expect(loadPreview).not.toHaveBeenCalled();
   });
 });
 
@@ -90,52 +90,43 @@ describe('publishSafetyGate classify outcomes', () => {
   });
 
   it('forceNsfw when lane is nsfw and does not mark prohibited', async () => {
-    getGeminiModerationService.mockReturnValue({
-      classifyPublishLane: jest.fn(async () => ({
-        lane: 'nsfw',
-        reason: 'adult',
-        confidence: 0.9,
-      })),
-      classifyPublishLaneSampled: jest.fn(),
-    });
-    const blob = new Blob([Buffer.from('fake')], { type: 'image/jpeg' });
-    const downloadFile = jest.fn(async () => blob);
+    const classifyPublishLane = jest.fn(async () => ({ lane: 'nsfw', reason: 'adult', confidence: 0.9 }));
+    getGeminiModerationService.mockReturnValue({ classifyPublishLane, classifyPublishLaneSampled: jest.fn() });
     const outcome = await applyPublishSafetyGate({
-      googleDriveProxy: { downloadFile },
+      loadPreview: imagePreview,
       ownerPnIdentifier: 'pn-a',
       fileId: 'f1',
-      driveFileId: 'f1',
-      mimeType: 'image/jpeg',
     });
     expect(outcome).toEqual({ status: 'ok', forceNsfw: true });
+    expect(classifyPublishLane).toHaveBeenCalledWith(Buffer.from('fake'), 'image/jpeg');
     expect(addContentNotice).not.toHaveBeenCalled();
   });
 
   it('marks prohibited and does not call Prism (caller responsibility)', async () => {
     getGeminiModerationService.mockReturnValue({
-      classifyPublishLane: jest.fn(async () => ({
-        lane: 'prohibited',
-        reason: 'illegal',
-        confidence: 0.95,
-      })),
+      classifyPublishLane: jest.fn(async () => ({ lane: 'prohibited', reason: 'illegal', confidence: 0.95 })),
       classifyPublishLaneSampled: jest.fn(),
     });
-    const blob = new Blob([Buffer.from('fake')], { type: 'image/jpeg' });
-    const downloadFile = jest.fn(async () => blob);
     const outcome = await applyPublishSafetyGate({
-      googleDriveProxy: { downloadFile },
+      loadPreview: imagePreview,
       ownerPnIdentifier: 'pn-a',
       fileId: 'f2',
-      driveFileId: 'f2',
-      mimeType: 'image/jpeg',
     });
     expect(outcome.status).toBe('prohibited');
     expect(addContentNotice).toHaveBeenCalledWith(
-      expect.objectContaining({
-        fileId: 'f2',
-        type: 'prohibited',
-        source: 'bot',
-      })
+      expect.objectContaining({ fileId: 'f2', type: 'prohibited', source: 'bot' })
     );
+  });
+
+  it('does not classify audio (no visual preview)', async () => {
+    const classifyPublishLane = jest.fn();
+    getGeminiModerationService.mockReturnValue({ classifyPublishLane, classifyPublishLaneSampled: jest.fn() });
+    const outcome = await applyPublishSafetyGate({
+      loadPreview: async () => ({ kind: 'audio' }),
+      ownerPnIdentifier: 'pn-a',
+      fileId: 'f3',
+    });
+    expect(outcome).toEqual({ status: 'ok', forceNsfw: false });
+    expect(classifyPublishLane).not.toHaveBeenCalled();
   });
 });

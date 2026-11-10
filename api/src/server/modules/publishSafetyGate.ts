@@ -1,13 +1,15 @@
 /**
  * Publish safety gate (before DMCA)
- * Classifies content as public | nsfw | prohibited via Gemini.
+ * Classifies the public feed preview as public | nsfw | prohibited via Gemini.
  * Prohibited → hard fail (no Prism). NSFW → force isNSFW. Public → continue.
- * Video/audio: samples clips (same as DMCA). Encrypted notes/text: skip.
+ * Video: samples clips from the SD preview (same as DMCA). Encrypted notes/text: skip.
+ * Audio and preview-less content: nothing to classify here; DMCA routes audio to Prism.
  */
 
 import { getGeminiModerationService, type PublishLane } from './geminiModerationService';
 import { getMediaDuration, extractRandomClips } from './mediaSamplingService';
 import { shouldSkipDmcaGate } from './dmcaGate';
+import type { ModerationPreview } from './moderationPreview';
 
 export interface PublishSafetyGateResult {
   passed: boolean;
@@ -17,16 +19,9 @@ export interface PublishSafetyGateResult {
   forceNsfw: boolean;
 }
 
-interface DriveProxyLike {
-  downloadFile(userPnIdentifier: string, fileId: string, accountId?: string): Promise<Blob>;
-}
+export type LoadModerationPreview = () => Promise<ModerationPreview>;
 
 const FALLBACK_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
-
-function isVideoOrAudio(mimeType: string): boolean {
-  const base = (mimeType || '').split(';')[0].trim().toLowerCase();
-  return base.startsWith('video/') || base.startsWith('audio/');
-}
 
 export function shouldSkipPublishSafetyGate(params: {
   isNoteThumbnail?: boolean;
@@ -42,34 +37,30 @@ export function shouldSkipPublishSafetyGate(params: {
  * Already-prohibited metadata should be checked by the caller (no AI re-run).
  */
 export async function runPublishSafetyCheck(
-  googleDriveProxy: DriveProxyLike,
-  ownerPnIdentifier: string,
-  driveFileId: string,
-  mimeType: string,
-  accountId?: string
+  loadPreview: LoadModerationPreview
 ): Promise<PublishSafetyGateResult> {
   try {
-    const blob = await googleDriveProxy.downloadFile(ownerPnIdentifier, driveFileId, accountId);
-    const buffer = Buffer.from(await blob.arrayBuffer());
-    const effectiveMime = mimeType || blob.type || 'application/octet-stream';
+    const preview = await loadPreview();
+    if (preview.kind === 'audio' || preview.kind === 'none') {
+      return { passed: true, lane: 'public', forceNsfw: false };
+    }
     const gemini = getGeminiModerationService();
 
     let result;
-    if (isVideoOrAudio(effectiveMime)) {
-      const duration = await getMediaDuration(buffer, effectiveMime);
-      const clipBuffers = await extractRandomClips(buffer, effectiveMime, duration);
+    if (preview.kind === 'video') {
+      const duration = await getMediaDuration(preview.buffer, preview.mimeType);
+      const clipBuffers = await extractRandomClips(preview.buffer, preview.mimeType, duration);
       if (clipBuffers.length > 0) {
-        const clipMime = effectiveMime.startsWith('audio/') ? 'audio/mpeg' : 'video/mp4';
-        const clips = clipBuffers.map((buf) => ({ buffer: buf, mimeType: clipMime }));
+        const clips = clipBuffers.map((buf) => ({ buffer: buf, mimeType: 'video/mp4' }));
         result = await gemini.classifyPublishLaneSampled(clips);
-      } else if (buffer.length <= FALLBACK_MAX_BYTES) {
-        result = await gemini.classifyPublishLane(buffer, effectiveMime);
+      } else if (preview.buffer.length <= FALLBACK_MAX_BYTES) {
+        result = await gemini.classifyPublishLane(preview.buffer, preview.mimeType);
       } else {
-        console.warn('[Publish Safety Gate] Sampling failed for large video/audio; fail open to public');
+        console.warn('[Publish Safety Gate] Sampling failed for large video preview; fail open to public');
         return { passed: true, lane: 'public', forceNsfw: false };
       }
     } else {
-      result = await gemini.classifyPublishLane(buffer, effectiveMime);
+      result = await gemini.classifyPublishLane(preview.buffer, preview.mimeType);
     }
 
     if (result.lane === 'prohibited') {
@@ -178,12 +169,9 @@ export type PublishSafetyOutcome =
  * Gemini classify, mark+notice on prohibited (no Prism).
  */
 export async function applyPublishSafetyGate(opts: {
-  googleDriveProxy: DriveProxyLike;
+  loadPreview: LoadModerationPreview;
   ownerPnIdentifier: string;
   fileId: string;
-  driveFileId: string;
-  mimeType: string;
-  accountId?: string;
   skip?: boolean;
   existingIsProhibited?: boolean;
 }): Promise<PublishSafetyOutcome> {
@@ -200,13 +188,7 @@ export async function applyPublishSafetyGate(opts: {
     return { status: 'ok', forceNsfw: false };
   }
 
-  const result = await runPublishSafetyCheck(
-    opts.googleDriveProxy,
-    opts.ownerPnIdentifier,
-    opts.driveFileId,
-    opts.mimeType,
-    opts.accountId
-  );
+  const result = await runPublishSafetyCheck(opts.loadPreview);
 
   if (!result.passed || result.lane === 'prohibited') {
     await markContentProhibited({
