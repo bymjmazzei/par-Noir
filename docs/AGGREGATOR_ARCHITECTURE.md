@@ -89,6 +89,4 @@ Routes act only on the authenticated pn's cloud. Cross-user `ownerPnIdentifier` 
 
 ## Safety
 
-- One Drive token resolver: `resolveOwnerDriveToken` ([diagnostic-discipline](../.cursor/rules/diagnostic-discipline.mdc))
-- No silent peer credential builds (`check-token-resolver-boundary.sh`)
-- Revoked OAuth / missing cloud token: owner routes return `cloud_token_required` (409), do not invent tokens
+- The server never touches a user's cloud: owner cloud I/O runs on the device, peer writes go through the mailbox ([diagnostic-discipline](../.cursor/rules/diagnostic-discipline.mdc), `check-no-server-user-cloud.sh`)

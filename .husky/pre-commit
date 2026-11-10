@@ -17,8 +17,8 @@ if [ -f scripts/check-app-import-boundary.sh ]; then
   bash scripts/check-app-import-boundary.sh || { echo "❌ check-app-import-boundary: apps must not import each other; use packages/core/sdk."; exit 1; }
 fi
 
-if [ -f scripts/check-token-resolver-boundary.sh ]; then
-  bash scripts/check-token-resolver-boundary.sh || { echo "❌ check-token-resolver-boundary: resolve Drive tokens via resolveOwnerDriveToken (ownerDriveToken.ts)."; exit 1; }
+if [ -f scripts/check-no-server-user-cloud.sh ]; then
+  bash scripts/check-no-server-user-cloud.sh || { echo "❌ check-no-server-user-cloud: the API must never call a user's cloud or accept a cloud token; do it on the device."; exit 1; }
 fi
 
 if [ -f scripts/check-drive-token-freshness-boundary.sh ]; then
@@ -27,10 +27,6 @@ fi
 
 if [ -f scripts/check-owner-fetch-boundary.sh ]; then
   bash scripts/check-owner-fetch-boundary.sh || { echo "❌ check-owner-fetch-boundary: build Drive-backed requests with ownerFetch/ownerGet; no sync cloud-header builders."; exit 1; }
-fi
-
-if [ -f scripts/check-dual-drive-helper-boundary.sh ]; then
-  bash scripts/check-dual-drive-helper-boundary.sh || { echo "❌ check-dual-drive-helper-boundary: no getOwnerDriveContext dual helpers; use resolveOwnerDriveToken."; exit 1; }
 fi
 
 if [ -f scripts/check-drive-create-boundary.sh ]; then

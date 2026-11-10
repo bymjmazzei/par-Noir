@@ -46,7 +46,7 @@ Canonical shared owners. Apps may only **import and wire**; they must not reimpl
 |---|---|
 | `scripts/check-no-identity-core-in-apps.sh` | Apps must not import `@identity-protocol/identity-core` |
 | `scripts/check-legacy-identity-crypto.sh` | No RSA / app-local IdentityManager reintroduction |
-| `scripts/check-token-resolver-boundary.sh` | Drive AT via `resolveOwnerDriveToken` (burn-down allowlist) |
+| `scripts/check-no-server-user-cloud.sh` | `api/src` never calls a user's cloud or reads a forwarded cloud token (no allowlist) |
 | `scripts/check-oauth-unlock-proof-boundary.sh` | Unlock proof on OAuth mint |
 | `scripts/check-no-passcode-on-oauth-wire.sh` | No passcode on authenticate wire |
 | `scripts/check-l5-product-route-boundary.sh` | L5 cannot hit messages/mailbox/connections/groups product routes |

@@ -449,8 +449,6 @@ class ProductionServer {
           'X-PN-Device-Signature',
           'X-PN-Device-Timestamp',
           'X-PN-Device-Nonce',
-          // Allowed through CORS only so old clients get the explicit 400 cloud_token_rejected below.
-          'X-PN-Cloud-Access-Token',
           // Anonymous feed view metering (browse public-media)
           'X-PN-Anon-Id',
           // Remote MCP (Streamable HTTP) from connector web origins
@@ -575,18 +573,6 @@ class ProductionServer {
       return express.json({ limit })(req, res, next);
     });
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-    this.app.use((req, res, next) => {
-      const cloudToken = req.headers['x-pn-cloud-access-token'];
-      if (typeof cloudToken === 'string' && cloudToken.trim()) {
-        res.status(400).json({
-          error: 'cloud_token_rejected',
-          error_description: 'Drive access tokens stay on the device and are not accepted by this API.',
-        });
-        return;
-      }
-      next();
-    });
 
     // Request logging
     // Request logging (development only)

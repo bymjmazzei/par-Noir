@@ -18,27 +18,27 @@
 6. **Public engagement** (likes/comments) uses aggregator/API public counts only — **not** mailbox jobs. Actor preference/engagement silo writes are actor-device → own cloud only.
 7. **Peer-inbox is not the universal DM transport** (cross-cloud requires recipient credentials on materialize). See blind-routing ADR.
 
-**Default:** device cloud custody is **on** unless `DEVICE_CLOUD_CUSTODY=0|false|no`. Legacy server dual-write for messaging/engagement is removed.
+Device cloud custody is always on; there is no opt-out. Legacy server dual-write for messaging/engagement is removed.
 
 ---
 
-## Owner Drive path (source of truth)
+## Owner cloud path (source of truth)
 
-How owner Google Drive I/O moves under custody — non-negotiable:
+The server never touches a user's cloud. Non-negotiable:
 
 | Rule | Meaning |
 |------|---------|
-| Secrets on device | AT/RT only in the local vault; DB holds layout shells (`pnDriveIndex`), never OAuth secrets |
-| Forward, don’t mint on server | Every Drive-backed call carries `X-PN-Cloud-Access-Token` |
-| One server resolver | Only `resolveOwnerDriveToken` (req-scoped layout: `requireOwnerDriveContextFromReq`) |
-| One client gate per app | Browser: `ownerFetch` / `ownerGet` (+ thin `messageFetch`). Dashboard: `ownerApiService` |
-| Incomplete index → ensure | With a resolved token, `ensureCompletePnDriveIndex` runs the init spine; do not abort grant/consent as `cloud_token_required` |
-| No silent peer Drive | Peer half = mailbox job → peer device `apply-inbound` with **their** forwarded AT |
-| Soft null = probes only | Capability probes may soft-null; grant/write paths that soft-no-op without AT are bugs |
+| Secrets on device | Tokens, keys, SAS tokens and relay tokens live only in the device vault. `storage_credentials` holds layout shells (`pnDriveIndex`, account ids, prefixes). The provider route refuses secrets with `secrets_not_accepted`. |
+| No server cloud I/O | No code in `api/src` calls Drive/Sheets, Dropbox, OneDrive, S3, Azure Blob or FTP for a user, or imports a client for them. |
+| No forwarded tokens | Devices never send a cloud token to the API. `X-PN-Cloud-Access-Token` is not an allowed CORS header and nothing reads it. |
+| Owner writes on the device | The device writes its own cloud (`@par-noir/device-cloud-credentials`) and posts a `deviceCloudResult` receipt; the API updates Postgres only. |
+| Peer writes by mailbox | Anything another user's cloud needs is a mailbox job that their device applies to its own cloud. |
+| FTP via the user's relay | Browsers reach FTPS/SFTP through `apps/pn-storage-relay`, which the user hosts. See [STORAGE_FTP_SETUP.md](../developer/STORAGE_FTP_SETUP.md). |
+| One client gate per app | Browser: `ownerFetch` / `ownerGet` (+ thin `messageFetch`). Dashboard: `ownerApiService`. |
 
-**Distinct grant persist errors:** `cloud_token_required` (missing/failed header) vs `drive_index_incomplete` (ensure still failed).
+**Fixed exceptions:** anonymous reads of files the user made public (`publicBlobAccess`, by public URL or the platform API key, never a bearer token), and platform infrastructure (R2 in `feedPreviewR2`, GCP KMS).
 
-**Ratchets:** `scripts/check-token-resolver-boundary.sh`, `scripts/check-owner-fetch-boundary.sh`. Do not grow allowlists.
+**Ratchets:** `scripts/check-no-server-user-cloud.sh` (no allowlist; exceptions are fixed in the script), `scripts/check-owner-fetch-boundary.sh`.
 
 ---
 
@@ -74,3 +74,4 @@ Recipient silo (recipient credentials)
 | **Decision** | **go** — device custody + outbox SoT + opaque throughway |
 | **Date** | 2026-07-23 |
 | **Notes** | Sender mailbox jobs removed. `delivery: throughway` for DMs. Public likes/comments: `delivery: public`. |
+| **Amended** | 2026-11-10: the server no longer touches any user cloud (no forwarded tokens, no server resolver, no stored S3/Azure keys, FTP via user-hosted relay). |

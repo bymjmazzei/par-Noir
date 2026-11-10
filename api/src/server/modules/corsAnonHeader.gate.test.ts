@@ -21,8 +21,8 @@ describe('CORS allowedHeaders for feed metering', () => {
 });
 
 describe('CORS allowedHeaders for device cloud custody', () => {
-  it('allows X-PN-Cloud-Access-Token (dashboard/browse POST storage/initialize)', () => {
+  it('does not let browsers send a cloud access token to the API', () => {
     const block = corsAllowedHeadersBlock();
-    expect(block).toMatch(/['"]X-PN-Cloud-Access-Token['"]/);
+    expect(block).not.toMatch(/Cloud-Access-Token/i);
   });
 });

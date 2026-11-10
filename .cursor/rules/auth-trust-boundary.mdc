@@ -10,9 +10,8 @@ Prose rules are not enough. These scripts refuse new violations on commit/CI:
 
 - `scripts/check-oauth-unlock-proof-boundary.sh` + `scripts/oauth-unlock-proof-allowlist.txt`
 - `scripts/check-no-passcode-on-oauth-wire.sh` + `scripts/passcode-oauth-wire-allowlist.txt`
-- `scripts/check-token-resolver-boundary.sh` + `scripts/token-resolver-allowlist.txt` + `scripts/peer-credential-allowlist.txt` (Drive token via `resolveOwnerDriveToken`; peer raw `access_token` burn-down)
+- `scripts/check-no-server-user-cloud.sh` (no allowlist: `api/src` never calls a user's cloud, imports a cloud client, or reads a forwarded cloud token; fixed exceptions live in the script)
 - `scripts/check-owner-fetch-boundary.sh` + `scripts/owner-api-headers-allowlist.txt` (client ownerFetch gate; no sync builders; no new ownerApiHeadersAsync duals)
-- `scripts/check-dual-drive-helper-boundary.sh` + `scripts/dual-drive-helper-allowlist.txt` (no `getOwnerDriveContext` duals)
 - `scripts/check-l5-product-route-boundary.sh` (first-party only for messages/mailbox/connections/groups/engagement/notifications)
 - `scripts/check-legacy-identity-crypto.sh` (no RSA / app-local IdentityManager reintroduction)
 - `scripts/check-no-identity-core-in-apps.sh` (apps must not import `@identity-protocol/identity-core`; use `@par-noir/identity-crypto`)
@@ -22,7 +21,7 @@ Prose rules are not enough. These scripts refuse new violations on commit/CI:
 1. Do **not** add trust-the-client session mint (`generateAuthorizationCode` from body identity without unlock proof).
 2. Do **not** add `"In production, decrypt and verify"` (or similar verify-later) stubs on auth mint paths.
 3. Do **not** send **passcode** or **pn name** to `/oauth/authorize/authenticate`.
-4. Do **not** add allowlist entries — only remove them after a real fix. That includes unlock-proof, passcode-wire, token-resolver, peer-credential, and legacy-identity allowlists.
+4. Do **not** add allowlist entries — only remove them after a real fix. That includes unlock-proof, passcode-wire, owner-api-headers, and legacy-identity allowlists. Do not add exceptions to `check-no-server-user-cloud.sh`.
 5. Do **not** delete, skip, or weaken these scripts or their CI/pre-commit wiring.
 6. Do **not** reintroduce demo JWT / mock `decryptIdentity` in `@par-noir/identity-crypto`.
 7. Do **not** expose `/api/messages`, `/api/mailbox`, `/api/connections`, `/api/groups`, `/api/engagement`, or `/api/notifications` to third-party OAuth clients — use `requireFirstPartyOAuthClient` / `mountL5ProductFirstPartyBoundary`.

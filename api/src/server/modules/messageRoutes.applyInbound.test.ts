@@ -55,11 +55,6 @@ const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock
 
 const USER = 'pn-recipient';
 const PEER = 'pn-sender';
-const CLOUD_TOKEN = 'fwd-cloud-token';
-
-function withCloudToken(req: request.Test): request.Test {
-  return req.set('X-PN-Cloud-Access-Token', CLOUD_TOKEN);
-}
 
 function buildApp() {
   const deps: MessageRouteDeps = {
@@ -98,14 +93,14 @@ describe('POST /api/messages/apply-inbound', () => {
   });
 
   it('requires connectionId', async () => {
-    const res = await withCloudToken(request(buildApp()).post('/api/messages/apply-inbound'))
+    const res = await request(buildApp()).post('/api/messages/apply-inbound')
       .send(opaqueBody({ connectionId: '' }))
       .expect(400);
     expect(res.body.error).toMatch(/connectionId/i);
   });
 
   it('rejects unsupported jobType', async () => {
-    const res = await withCloudToken(request(buildApp()).post('/api/messages/apply-inbound'))
+    const res = await request(buildApp()).post('/api/messages/apply-inbound')
       .send(opaqueBody({ jobType: 'notification_row' }))
       .expect(400);
     expect(res.body.error).toBe('Unsupported jobType');

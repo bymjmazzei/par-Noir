@@ -115,7 +115,7 @@ PN_STRICT_GUARDRAILS=1 bash scripts/check-secrets.sh
 bash scripts/check-no-backup-files.sh
 bash scripts/check-app-import-boundary.sh
 bash scripts/check-quantum-imports.sh
-PN_CHECK_ALL=1 bash scripts/check-token-resolver-boundary.sh
+PN_CHECK_ALL=1 bash scripts/check-no-server-user-cloud.sh
 PN_CHECK_ALL=1 bash scripts/check-drive-token-freshness-boundary.sh
 PN_CHECK_ALL=1 bash scripts/check-owner-fetch-boundary.sh
 PN_CHECK_ALL=1 bash scripts/check-googleapis-resolver-import.sh

@@ -1,9 +1,0 @@
-# Burn-down: API modules that still assemble Drive token/layout outside
-# resolveOwnerDriveToken / requireOwnerDriveContextFromReq for write paths.
-# Entries are only ever REMOVED, never added.
-#
-# EMPTY. Soft layout probes live in recoveryDriveContext.ts + ownerStorageContext.ts
-# and are marked canonical in check-dual-drive-helper-boundary.sh (is_soft_probe_canonical).
-# Writes must use requireOwnerDriveContextFromReq / resolveOwnerDriveToken.
-#
-# One path per line, relative to repo root. Blank lines and # comments ignored.

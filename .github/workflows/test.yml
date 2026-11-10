@@ -37,17 +37,14 @@ jobs:
       - name: Quantum imports
         run: bash scripts/check-quantum-imports.sh
 
-      - name: Drive token resolver boundary
-        run: PN_CHECK_ALL=1 bash scripts/check-token-resolver-boundary.sh
+      - name: Server never touches a user's cloud
+        run: PN_CHECK_ALL=1 bash scripts/check-no-server-user-cloud.sh
 
       - name: Drive token freshness boundary
         run: PN_CHECK_ALL=1 bash scripts/check-drive-token-freshness-boundary.sh
 
       - name: Owner fetch boundary
         run: PN_CHECK_ALL=1 bash scripts/check-owner-fetch-boundary.sh
-
-      - name: Dual Drive helper boundary
-        run: PN_CHECK_ALL=1 bash scripts/check-dual-drive-helper-boundary.sh
 
       - name: Drive create boundary
         run: bash scripts/check-drive-create-boundary.sh
