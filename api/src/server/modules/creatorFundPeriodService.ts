@@ -1,6 +1,7 @@
 /**
  * Creator fund rolling period close — G/E/R from DB only (no Stripe API).
- * Policy: CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md (waterfall, 90/10 on fund slice).
+ * Policy: CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md (waterfall, 25/75; the whole fund slice goes
+ * to verified members, since fund-eligible engagement already requires verification + membership).
  *
  * Micro: per-post weights via `@par-noir/pen-protocol` `allocatePostBounty` (engager /
  * content_rights / music / publisher). Implied licensing only contributes claims;
@@ -205,8 +206,7 @@ async function allocateCreatorBountyShares(
   periodId: string,
   periodStartIso: string,
   periodEndIso: string,
-  bountyVerifiedCents: number,
-  bountyUnverifiedCents: number
+  bountyCents: number
 ): Promise<void> {
   let aliasMap = await loadPayeeAliasMap(client);
   const aggRes = await client.query(
@@ -214,7 +214,6 @@ async function allocateCreatorBountyShares(
        SELECT e.file_id,
               e.type AS engagement_type,
               e.user_did AS actor_id,
-              COALESCE(e.is_verified, FALSE) AS is_verified,
               COALESCE(e.content_owner_fund_monetizable, FALSE) AS owner_m,
               COALESCE(m.pn_identifier, t.pn_identifier, c.pn_identifier) AS owner_pn,
               COALESCE(m.metadata, t.metadata, c.metadata) AS post_metadata,
@@ -248,7 +247,6 @@ async function allocateCreatorBountyShares(
        SELECT file_id,
               engagement_type,
               actor_id,
-              is_verified,
               owner_pn,
               post_metadata,
               registry_track_id,
@@ -268,27 +266,14 @@ async function allocateCreatorBountyShares(
      per_file AS (
        SELECT file_id,
               SUM(
-                CASE WHEN is_verified THEN
-                  CASE engagement_type
-                    WHEN 'comment' THEN 1.0
-                    WHEN 'share' THEN 0.25
-                    WHEN 'save' THEN 0.25
-                    WHEN 'like' THEN 0.1
-                    ELSE 0
-                  END
-                ELSE 0 END
-              )::double precision AS cnt_verified,
-              SUM(
-                CASE WHEN NOT is_verified THEN
-                  CASE engagement_type
-                    WHEN 'comment' THEN 1.0
-                    WHEN 'share' THEN 0.25
-                    WHEN 'save' THEN 0.25
-                    WHEN 'like' THEN 0.1
-                    ELSE 0
-                  END
-                ELSE 0 END
-              )::double precision AS cnt_unverified,
+                CASE engagement_type
+                  WHEN 'comment' THEN 1.0
+                  WHEN 'share' THEN 0.25
+                  WHEN 'save' THEN 0.25
+                  WHEN 'like' THEN 0.1
+                  ELSE 0
+                END
+              )::double precision AS cnt,
               bool_or(dual_monetizable) AS dual_monetizable,
               bool_or(orphan_library) AS orphan_library,
               MAX(NULLIF(TRIM(owner_pn), '')) AS owner_pn,
@@ -336,8 +321,7 @@ async function allocateCreatorBountyShares(
     aliasMap = buildPayeeAliasMap([...aliasMap.values(), ...extraPn]);
   }
 
-  const verifiedWeights = new Map<string, number>();
-  const unverifiedWeights = new Map<string, number>();
+  const weights = new Map<string, number>();
 
   for (const row of aggRes.rows) {
     const fileId = String(row.file_id ?? '');
@@ -347,8 +331,7 @@ async function allocateCreatorBountyShares(
     const orphan = Boolean(row.orphan_library);
     const dual = Boolean(row.dual_monetizable);
     const usesMusic = Boolean(row.registry_track_id) || Boolean(musicPenDoc);
-    const cv = Number(row.cnt_verified ?? 0);
-    const cu = Number(row.cnt_unverified ?? 0);
+    const cnt = Number(row.cnt ?? 0);
 
     const postLicensing = licensingFromMetadata(row.post_metadata, ownerPn || trackOwnerPn);
     let musicLicensing = null as ReturnType<typeof legacySplitsToMusicLicensing> | null;
@@ -374,67 +357,47 @@ async function allocateCreatorBountyShares(
         : ownerPn.trim() || trackOwnerPn.trim();
     if (!foldPublisher) continue;
 
-    const apply = (global: Map<string, number>, cnt: number) => {
-      const local = new Map<string, number>();
-      if (dual && ownerPn) {
-        addMicroWeights({
-          target: local,
-          cnt,
-          contentOwnerPn: ownerPn,
-          orphan: false,
-          trackOwnerPn,
-          postLicensing,
-          musicLicensing,
-          musicAttached: usesMusic,
-          commentAuthorPns: commentAuthors
-        });
-      } else if (orphan && (trackOwnerPn || musicPenDoc)) {
-        addMicroWeights({
-          target: local,
-          cnt,
-          contentOwnerPn: ownerPn || trackOwnerPn,
-          orphan: true,
-          trackOwnerPn: trackOwnerPn || ownerPn,
-          postLicensing,
-          musicLicensing,
-          musicAttached: usesMusic,
-          commentAuthorPns: commentAuthors
-        });
-      }
-      mergeResolvedWeights(global, local, aliasMap, foldPublisher);
-    };
-    apply(verifiedWeights, cv);
-    apply(unverifiedWeights, cu);
+    const local = new Map<string, number>();
+    if (dual && ownerPn) {
+      addMicroWeights({
+        target: local,
+        cnt,
+        contentOwnerPn: ownerPn,
+        orphan: false,
+        trackOwnerPn,
+        postLicensing,
+        musicLicensing,
+        musicAttached: usesMusic,
+        commentAuthorPns: commentAuthors
+      });
+    } else if (orphan && (trackOwnerPn || musicPenDoc)) {
+      addMicroWeights({
+        target: local,
+        cnt,
+        contentOwnerPn: ownerPn || trackOwnerPn,
+        orphan: true,
+        trackOwnerPn: trackOwnerPn || ownerPn,
+        postLicensing,
+        musicLicensing,
+        musicAttached: usesMusic,
+        commentAuthorPns: commentAuthors
+      });
+    }
+    mergeResolvedWeights(weights, local, aliasMap, foldPublisher);
   }
 
-  const toRecipients = (m: Map<string, number>) =>
-    [...m.entries()].map(([id, weight]) => ({ id, weight }));
+  const shares = allocateProportional(
+    bountyCents,
+    [...weights.entries()].map(([id, weight]) => ({ id, weight }))
+  );
 
-  const vMap = allocateProportional(bountyVerifiedCents, toRecipients(verifiedWeights));
-  const uMap = allocateProportional(bountyUnverifiedCents, toRecipients(unverifiedWeights));
-
-  for (const [key, cents] of vMap) {
+  for (const [key, cents] of shares) {
     if (cents <= 0) continue;
-    const recipientId = recipientIdFromKey(key);
-    const bucket = bucketForKey(key, true);
-    const w = verifiedWeights.get(key) ?? 0;
     await client.query(
       `INSERT INTO creator_fund_period_creator_allocations (
          period_id, recipient_identity_id, bucket, engagement_units, allocation_cents
        ) VALUES ($1::uuid, $2, $3::varchar, $4, $5)`,
-      [periodId, recipientId, bucket, w, cents]
-    );
-  }
-  for (const [key, cents] of uMap) {
-    if (cents <= 0) continue;
-    const recipientId = recipientIdFromKey(key);
-    const bucket = bucketForKey(key, false);
-    const w = unverifiedWeights.get(key) ?? 0;
-    await client.query(
-      `INSERT INTO creator_fund_period_creator_allocations (
-         period_id, recipient_identity_id, bucket, engagement_units, allocation_cents
-       ) VALUES ($1::uuid, $2, $3::varchar, $4, $5)`,
-      [periodId, recipientId, bucket, w, cents]
+      [periodId, recipientIdFromKey(key), bucketForKey(key), weights.get(key) ?? 0, cents]
     );
   }
 }
@@ -516,8 +479,9 @@ export class CreatorFundPeriodService {
       const rCents = Math.max(0, gCents - eCents);
       const platform25Cents = Math.floor((rCents * 25) / 100);
       const fund75Cents = rCents - platform25Cents;
-      const bountyVerifiedCents = Math.floor((fund75Cents * 90) / 100);
-      const bountyUnverifiedCents = fund75Cents - bountyVerifiedCents;
+      const bountyVerifiedCents = fund75Cents;
+      /** Kept in the canonical chain payload and row for history; always 0 now. */
+      const bountyUnverifiedCents = 0;
 
       const prevHashRes = await client.query(
         `SELECT chain_hash FROM creator_fund_periods
@@ -585,8 +549,7 @@ export class CreatorFundPeriodService {
         periodId,
         periodStart.toISOString(),
         periodEnd.toISOString(),
-        bountyVerifiedCents,
-        bountyUnverifiedCents
+        bountyVerifiedCents
       );
 
       await client.query('COMMIT');

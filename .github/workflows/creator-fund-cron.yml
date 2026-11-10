@@ -1,0 +1,41 @@
+name: Creator fund cron
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: creator-fund-cron
+  cancel-in-progress: false
+
+jobs:
+  close-and-pay:
+    name: Close period, send payouts
+    runs-on: ubuntu-latest
+    env:
+      CREATOR_FUND_CRON_SECRET: ${{ secrets.CREATOR_FUND_CRON_SECRET }}
+      API_BASE_URL: ${{ vars.API_BASE_URL || 'https://api.parnoir.com' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip until CREATOR_FUND_CRON_SECRET is set
+        id: gate
+        run: |
+          if [ -z "$CREATOR_FUND_CRON_SECRET" ]; then
+            echo "CREATOR_FUND_CRON_SECRET repo secret not set; skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Close period if due
+        if: steps.gate.outputs.run == 'true'
+        run: bash scripts/creator-fund-period-close.sh
+
+      - name: Send queued payouts
+        if: steps.gate.outputs.run == 'true'
+        run: bash scripts/creator-fund-payouts-run.sh

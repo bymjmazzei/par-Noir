@@ -14,7 +14,6 @@ export interface FundPeriodSummary {
   platform25Cents: number;
   fund75Cents: number;
   bountyVerifiedCents: number;
-  bountyUnverifiedCents: number;
   chainHash: string | null;
   periodAttestationHmac?: string | null;
 }
@@ -26,6 +25,7 @@ export interface MonetizationStatusResponse {
   renewalPriceCents: number | null;
   eligibleForFundAccrual: boolean;
   stripeConfigured: boolean;
+  veriffConfigured: boolean;
   stripeCustomerId: string | null;
   connectOnboarded: boolean;
   payoutCadenceNote: string;
@@ -33,6 +33,20 @@ export interface MonetizationStatusResponse {
   creatorFundPayoutAvailableCents?: number;
   creatorFundPayoutInHoldCents?: number;
   creatorFundPaidOutCents?: number;
+}
+
+export interface VeriffDecisionResponse {
+  /** none | created | started | submitted | approved | declined | resubmission_requested | expired | abandoned | review | duplicate */
+  status: string;
+  sessionId: string | null;
+  person?: { firstName: string | null; lastName: string | null; dateOfBirth: string | null };
+  document?: {
+    number: string | null;
+    type: string | null;
+    country: string | null;
+    state: string | null;
+    validUntil: string | null;
+  };
 }
 
 function authHeaders(accessToken: string): HeadersInit {
@@ -163,5 +177,31 @@ export class MonetizationService {
       amountCents: Number(data.amountCents ?? amountCents),
       status: String(data.status ?? 'queued')
     };
+  }
+
+  /** Veriff hosted-flow URL for the token's pN (membership required). */
+  static async createVeriffSession(accessToken: string, returnUrl: string): Promise<string> {
+    const res = await fetch(`${API_ENDPOINT}/api/verification/veriff/session`, {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ return_url: returnUrl })
+    });
+    const data = (await res.json().catch(() => ({}))) as { url?: string; error_description?: string };
+    if (!res.ok) {
+      throw new Error(data.error_description || `Veriff session failed (${res.status})`);
+    }
+    if (!data.url) throw new Error('Veriff session missing redirect URL');
+    return data.url;
+  }
+
+  static async getVeriffDecision(accessToken: string): Promise<VeriffDecisionResponse> {
+    const res = await fetch(`${API_ENDPOINT}/api/verification/veriff/decision`, {
+      headers: authHeaders(accessToken)
+    });
+    const data = (await res.json().catch(() => ({}))) as VeriffDecisionResponse & { error_description?: string };
+    if (!res.ok) {
+      throw new Error(data.error_description || `Veriff decision failed (${res.status})`);
+    }
+    return data;
   }
 }

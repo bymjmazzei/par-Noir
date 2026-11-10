@@ -1,18 +1,9 @@
-import { pnMatchesVerifiedAllowlist, parseVerifiedAllowlistEnv } from '@par-noir/pen-protocol';
-import { API_ENDPOINT } from '../config/api';
 import { apiGet } from './penOwnerFetch';
 import type { PenSession } from './penSession';
 
-/** Build-time allowlist (local dev). */
-export function clientVerifiedAllowlist(): string[] {
-  return parseVerifiedAllowlistEnv(import.meta.env.VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST);
-}
-
-export function isClientVerifiedAuthor(pnIdentifier: string | null | undefined): boolean {
-  return pnMatchesVerifiedAllowlist(pnIdentifier, clientVerifiedAllowlist());
-}
-
-export async function fetchApiVerifiedAuthor(session: PenSession): Promise<boolean> {
+/** Verified author = active identity verification on the API (Veriff, included in membership). */
+export async function resolveVerifiedAuthor(session: PenSession | null | undefined): Promise<boolean> {
+  if (!session?.pnIdentifier || !session.accessToken) return false;
   try {
     const res = await apiGet('/api/pen/author-verification', {
       authToken: session.accessToken,
@@ -24,10 +15,4 @@ export async function fetchApiVerifiedAuthor(session: PenSession): Promise<boole
   } catch {
     return false;
   }
-}
-
-export async function resolveVerifiedAuthor(session: PenSession | null | undefined): Promise<boolean> {
-  if (!session?.pnIdentifier) return false;
-  if (isClientVerifiedAuthor(session.pnIdentifier)) return true;
-  return fetchApiVerifiedAuthor(session);
 }

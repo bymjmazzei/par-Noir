@@ -35,7 +35,7 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 | Rule | Definition |
 |------|------------|
 | **Who may earn from the fund** | **Identity verification** SKU **current** **and** **monetization maintenance** SKU **active** (see [SKUs](#skus-and-identity-locked)). If either lapses, **no new accrual** until restored. |
-| **Engagement** | **All** engagement counts for product/analytics. **Bounty** (fund allocation) weight: **90%** from engagement **by verified** accounts, **10%** from engagement **by unverified** accounts. |
+| **Engagement** | **All** engagement counts for product/analytics. **Bounty** (fund allocation) weight comes only from fund-monetizable (verified + member) engagement; **100%** of the fund slice goes to verified members. |
 | **Cash waterfall** | Collect **`G`** (definition under **Symbols**) → pay **`E`** (platform OPEX—see [OPEX](#opex-categories-policy-draft)) → **`R = max(0, G - E)`** → **25%** of **`R`** to platform / **75%** of **`R`** to the **creator fund**. On each piece of content, **library music** applies **75% creator / 25% music pool** to the **creator’s** share of that reward, except when there is **no fund-monetizable creator**—then the **75% creator leg** follows the **orphan creator leg** rule (see [Music](#music) and [Engagement and bounty weighting](#engagement-and-bounty-weighting)). |
 | **Creator payouts** | **45-day** hold after the **relevant rolling accrual period is finalized**; **payee-initiated** Stripe Connect payouts on **1st and 15th** (US **Eastern**); **$10 USD** minimum; balances **carry forward** (details under [Payouts](#payouts-and-tax-compliance-stripe-connect)). **Escheatment** is **law-driven** only—see [Dormancy and escheatment](#dormancy-and-escheatment). |
 | **Payments rail (creator fund)** | **Stripe only** for **monetization maintenance** (money **in** via card/bank payers) and for **all** creator-fund **payouts** (money **out** via **Stripe Connect**). Other non–creator-fund surfaces (e.g. one-time Coinbase checkouts where still used) stay **out of this `G`** per [Scope](#scope-creator-fund-vs-other-paid-surfaces). |
@@ -77,7 +77,7 @@ Symbols:
 ## Engagement and bounty weighting
 
 - **All engagement counts** for tallies (UX, analytics, health metrics).
-- **Bounty allocation** for a period: **90%** of the weighted bounty pool attributed to actions by **verified** accounts; **10%** attributed to actions by **unverified** accounts (same events, different **weight buckets** for fund math).
+- **Bounty allocation** for a period: **100%** of the fund slice is allocated by weight from fund-monetizable engagement. Fund-monetizable already requires **verified + member**, so there is no separate unverified pool.
 
 ### Fund-monetizable engagement (two paths)
 
@@ -88,7 +88,7 @@ Symbols:
 
 **Standard bounty path**
 
-A row supplies **bounty weight** (into the **90% / 10%** dollar pools by `engagement.is_verified`) when:
+A row supplies **bounty weight** when:
 
 1. **`actor_fund_monetizable`** is true, **and**
 2. **`content_owner_fund_monetizable`** is true.
@@ -106,7 +106,7 @@ Then:
 
 **No orphan path** when there is **no** qualifying registry attach: engagement on **non-library** content with a **non-monetizable** owner continues to supply **no** bounty weight (there is no verified payee for the creator leg).
 
-**Implementation (code):** The **90/10 split of dollars** is applied **once** when closing a period: **`fund_75_cents`** is divided into **`bounty_verified_cents`** (90%) and **`bounty_unverified_cents`** (10%) — two **cash pools**. Engagement aggregates supply **weights** into the verified vs unverified pools using **`engagement.is_verified` at the time the action was recorded** (not “verified at period close”). Period close includes **both** the **standard** path (actor + content owner monetizable) and the **orphan creator leg** path (actor monetizable, owner not monetizable, active registry track with owner). Rows where the **actor** is not monetizable supply **no** fund weight. Edge cases (appeals, automation) remain ops/product policy.
+**Implementation (code):** At period close **`bounty_verified_cents` = `fund_75_cents`** and **`bounty_unverified_cents` = 0** (column kept for history). Engagement aggregates supply **weights** using the fund flags **at the time the action was recorded** (not “verified at period close”). Period close includes **both** the **standard** path (actor + content owner monetizable) and the **orphan creator leg** path (actor monetizable, owner not monetizable, active registry track with owner). Rows where the **actor** is not monetizable supply **no** fund weight. Edge cases (appeals, automation) remain ops/product policy.
 
 ---
 
@@ -163,7 +163,7 @@ Example: content-rights bucket = 1500; creator claims **7500** (75%) → content
 
 **Bounty weight multipliers (period close):** `comment` = **1.0**, `share` = **0.25**, `save` = **0.25**, `like` = **0.1** (constants in `@par-noir/pen-protocol` `ENGAGEMENT_BOUNTY_WEIGHTS`). Bare views and bare repost-without-comment supply **no** weight today.
 
-**Eligibility to receive** engager payouts (when wired): same fund-monetizable rules as other fund disbursements. Unverified actors may still contribute weight into the **10%** unverified bounty dollar pool per existing 90/10 rules.
+**Eligibility to receive** engager payouts (when wired): same fund-monetizable rules as other fund disbursements. Unverified actors supply no bounty weight.
 
 ### Relationship to legacy “75/25 music”
 
@@ -351,7 +351,7 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 | Area | par Noir (product + API + ledger) | Stripe (Connect + Tax as applicable) |
 |------|-----------------------------------|----------------------------------------|
-| Who earned what | Accrual, **rolling** period close (**America/New_York**), **90/10** bounty math, music splits, eligibility rules | Executes **Transfer / Payout** when the **payee initiates** a payout (after hold, minimum, and **US-only** Connect rules at launch) |
+| Who earned what | Accrual, **rolling** period close (**America/New_York**), bounty math, music splits, eligibility rules | Executes **Transfer / Payout** when the **payee initiates** a payout (after hold, minimum, and **US-only** Connect rules at launch) |
 | User trust / identity gate | Verification + subscription policy aligned with this doc | Connected account onboarding, **bank / wallet**, **tax** collection per Stripe capabilities |
 | Tax forms & withholding | **Does not** reimplement IRS logic; use **Stripe-hosted** or **Stripe Tax / reporting** products where applicable | **W‑9 / W‑8** flows, withholding, **1099 / 1042‑S** per Stripe support for your setup |
 | Ledger of record | Append-only **accrual and payout status** (`payout_queued`, `payout_settled`, Stripe transfer/payout ids) | Stripe’s settlement records as source for **rails** |
@@ -419,7 +419,7 @@ Not a forecast or commitment:
 
 ## Relationship to codebase
 
-As of this document, the repo ships a **dashboard Monetization tab**, **Stripe** paths when keys are set (Checkout, Customer Portal, Connect onboarding link, signed webhooks, balance-first renewal), **`creator_fund_*`** tables, a **DB-only rolling period close** (`POST /api/creator-fund/periods/close` with `X-Cron-Secret` or admin key) that computes **`G`**, **`E`**, **`R`**, **25/75**, and **90/10** on the fund slice, then **allocates** bounty lines to **content owners** and **music rights holders** using engagement **witnessed at write time**. **Weighting rules:** (1) **Standard** — **`actor_fund_monetizable`** and **`content_owner_fund_monetizable`**; **`is_verified`** selects the **90% vs 10%** dollar pools; **75/25** creator vs music-pool **weights** when `music_registry_post_uses` links an **active** registry track (creator leg to **content owner**). (2) **Orphan creator leg** — actor monetizable, content owner **not** monetizable, same **active** registry attach → **75%** weights accrue to **registry track owner** (`owner_pn_identifier`), **25%** via **`splits_metadata`** (same **`m:`** allocation bucket family as music pool lines). Optional **HMAC** and optional **GCP KMS** (`CREATOR_FUND_PERIOD_KMS_KEY_VERSION`) signatures on closed period rows; **Connect transfer** payout request for accrued lines after hold. **Aggregator-browser** **Edit** modal (audio) and **upload** flow can **attach/clear** post→track via API (`/api/v1/music/registry/catalog`, `post-uses`); track **splits_metadata.payees** (basis_points summing to 10_000) splits the **music-pool** share of bounty weights among **pn_identifier**s. **Still product/legal:** counsel/CPA sign-off—run counsel/CPA before treating numbers as production-official. Verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future). The **licensing portal** ships **intake + track registry CRUD** ([`apps/licensing-portal`](../../apps/licensing-portal)).
+As of this document, the repo ships a **dashboard Monetization tab**, **Stripe** paths when keys are set (Checkout, Customer Portal, Connect onboarding link, signed webhooks, balance-first renewal), **`creator_fund_*`** tables, a **DB-only rolling period close** (`POST /api/creator-fund/periods/close` with `X-Cron-Secret` or admin key) that computes **`G`**, **`E`**, **`R`**, **25/75** (the whole fund slice to verified members), then **allocates** bounty lines to **content owners** and **music rights holders** using engagement **witnessed at write time**. **Weighting rules:** (1) **Standard** — **`actor_fund_monetizable`** and **`content_owner_fund_monetizable`**; **75/25** creator vs music-pool **weights** when `music_registry_post_uses` links an **active** registry track (creator leg to **content owner**). (2) **Orphan creator leg** — actor monetizable, content owner **not** monetizable, same **active** registry attach → **75%** weights accrue to **registry track owner** (`owner_pn_identifier`), **25%** via **`splits_metadata`** (same **`m:`** allocation bucket family as music pool lines). Optional **HMAC** and optional **GCP KMS** (`CREATOR_FUND_PERIOD_KMS_KEY_VERSION`) signatures on closed period rows; **Connect transfer** payout request for accrued lines after hold. **Aggregator-browser** **Edit** modal (audio) and **upload** flow can **attach/clear** post→track via API (`/api/v1/music/registry/catalog`, `post-uses`); track **splits_metadata.payees** (basis_points summing to 10_000) splits the **music-pool** share of bounty weights among **pn_identifier**s. **Still product/legal:** counsel/CPA sign-off—run counsel/CPA before treating numbers as production-official. Identity verification (Veriff) is **included in the membership**: a session requires active maintenance, the signed decision webhook marks the pN verified, and each billed Veriff session is recorded as **`E`** (opex category `veriff`, `VERIFF_COST_CENTS`). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future). The **licensing portal** ships **intake + track registry CRUD** ([`apps/licensing-portal`](../../apps/licensing-portal)).
 
 Engineering should treat this file as the **policy target**: **Stripe** for **inbound** maintenance **shortfall/full** cash and **Stripe Connect** as the **only** creator-fund **payout** rail; ledger per [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain); go-live per [Production readiness checklist](#production-readiness-checklist-before-launch).
 

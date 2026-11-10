@@ -83,7 +83,7 @@ export class EngagementService {
   }
 
   /** Monetization maintenance SKU active (same rule as dashboard fund eligibility). */
-  private static async isMonetizationMaintenanceActive(pnIdentifier: string): Promise<boolean> {
+  static async isMonetizationMaintenanceActive(pnIdentifier: string): Promise<boolean> {
     const db = getDatabasePool();
     const pn = pnIdentifier.trim();
     if (!pn) return false;

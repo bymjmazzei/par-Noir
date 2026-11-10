@@ -9,6 +9,7 @@ import { getDatabasePool } from '../utils/database';
 import { EngagementService } from './engagementService';
 import { CreatorFundPeriodService, type ClosedFundPeriodRow } from './creatorFundPeriodService';
 import { isCreatorFundPayoutCadenceDayET } from './creatorFundPayoutCadence';
+import { veriffConfig } from './veriffService';
 
 type DbQueryable = Pick<Pool, 'query'>;
 
@@ -136,6 +137,26 @@ export function creatorFundAvailableCents(snap: {
   );
 }
 
+/** Stripe refused the request itself; retrying the same request cannot succeed. */
+function isDefinitiveStripeRejection(e: unknown): boolean {
+  const type = (e as { type?: string } | null)?.type;
+  return type === 'StripeInvalidRequestError' || type === 'StripePermissionError' || type === 'StripeCardError';
+}
+
+async function pnForStripeCustomer(
+  db: DbQueryable,
+  customer: string | { id: string } | null | undefined
+): Promise<string | null> {
+  const id = typeof customer === 'string' ? customer : customer?.id;
+  if (!id) return null;
+  const r = await db.query(
+    `SELECT pn_identifier FROM monetization_subscriptions WHERE stripe_customer_id = $1 LIMIT 1`,
+    [id]
+  );
+  const pn = r.rows[0]?.pn_identifier;
+  return pn ? String(pn).trim() : null;
+}
+
 function getStripe(): Stripe | null {
   const k = process.env.STRIPE_SECRET_KEY?.trim();
   if (!k) return null;
@@ -144,6 +165,33 @@ function getStripe(): Stripe | null {
 
 export function isStripeMonetizationConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY?.trim() && process.env.STRIPE_MONETIZATION_PRICE_ID?.trim());
+}
+
+const READINESS_ENV_KEYS = [
+  'STRIPE_SECRET_KEY',
+  'STRIPE_MONETIZATION_PRICE_ID',
+  'STRIPE_WEBHOOK_SECRET',
+  'STRIPE_CONNECT_WEBHOOK_SECRET',
+  'VERIFF_API_KEY',
+  'VERIFF_SHARED_SECRET',
+  'VERIFF_COST_CENTS',
+  'VERIFICATION_DEDUPE_SECRET',
+  'LEGAL_NAME_HMAC_KEY',
+  'CREATOR_FUND_CRON_SECRET'
+] as const;
+
+export interface MonetizationReadinessDto {
+  ready: boolean;
+  env: Record<(typeof READINESS_ENV_KEYS)[number], boolean>;
+  missing: string[];
+}
+
+/** Presence-only check (never values) for the keys the full loop needs. */
+export function monetizationReadiness(): MonetizationReadinessDto {
+  const env = {} as MonetizationReadinessDto['env'];
+  for (const k of READINESS_ENV_KEYS) env[k] = Boolean(process.env[k]?.trim());
+  const missing = READINESS_ENV_KEYS.filter((k) => !env[k]);
+  return { ready: missing.length === 0, env, missing };
 }
 
 function renewalPriceCentsFromEnv(): number {
@@ -171,6 +219,8 @@ export interface MonetizationStatusDto {
   renewalPriceCents: number | null;
   eligibleForFundAccrual: boolean;
   stripeConfigured: boolean;
+  /** Veriff keys present; verification is included in the membership. */
+  veriffConfigured: boolean;
   stripeCustomerId: string | null;
   connectOnboarded: boolean;
   /** UX copy only — not a legal guarantee */
@@ -254,6 +304,7 @@ export class MonetizationService {
       renewalPriceCents,
       eligibleForFundAccrual,
       stripeConfigured: isStripeMonetizationConfigured(),
+      veriffConfigured: veriffConfig() != null,
       stripeCustomerId: row?.stripe_customer_id ?? null,
       connectOnboarded,
       payoutCadenceNote:
@@ -568,8 +619,8 @@ export class MonetizationService {
   }
 
   /**
-   * Stripe Connect transfer to the user’s connected account (creator-fund bounty balance).
-   * Uses a single DB transaction including the Stripe call and `pg_advisory_xact_lock` per identity.
+   * Queue a Stripe Connect transfer of creator-fund bounty balance; `runQueuedCreatorFundPayouts` sends it.
+   * Balance check and insert share one transaction under `pg_advisory_xact_lock` per identity.
    */
   static async requestCreatorFundPayout(
     pnIdentifier: string,
@@ -622,7 +673,12 @@ export class MonetizationService {
     }
   }
 
-  /** Cron: execute queued Connect transfers on 1st/15th Eastern (or `force` for ops). */
+  /**
+   * Cron: execute queued Connect transfers on 1st/15th Eastern (or `force` for ops).
+   * A row is committed as `processing` before the Stripe call. The transfer carries an idempotency
+   * key and a `transfer_group` per payout row, so a `processing` row left by a network error is
+   * retried without paying twice. Only a definitive Stripe rejection marks the row `failed`.
+   */
   static async runQueuedCreatorFundPayouts(opts?: {
     force?: boolean;
   }): Promise<{ processed: number; skipped?: string; errors: string[] }> {
@@ -632,19 +688,20 @@ export class MonetizationService {
       return { processed: 0, skipped: 'not_payout_cadence_day', errors: [] };
     }
     const pool = getDatabasePool();
-    const queued = await pool.query(
-      `SELECT id, pn_identifier, amount_cents
+    const pending = await pool.query(
+      `SELECT id, pn_identifier, amount_cents, status
        FROM creator_fund_payout_requests
-       WHERE status = 'queued'
+       WHERE status IN ('queued', 'processing')
        ORDER BY created_at ASC
        LIMIT 200`
     );
     let processed = 0;
     const errors: string[] = [];
-    for (const row of queued.rows) {
+    for (const row of pending.rows) {
       const payoutRowId = String(row.id);
       const pn = String(row.pn_identifier).trim();
       const amt = Number(row.amount_cents);
+      const transferGroup = `cf_payout_${payoutRowId}`;
       try {
         await this.syncConnectStatus(pn);
         const destRes = await pool.query(
@@ -656,50 +713,55 @@ export class MonetizationService {
           errors.push(`${payoutRowId}:connect_not_ready`);
           continue;
         }
-        const client = await pool.connect();
-        try {
-          await client.query('BEGIN');
-          await client.query(`SELECT pg_advisory_xact_lock(hashtext('cf_payout:' || $1::text))`, [pn]);
-          const locked = await client.query(
-            `SELECT id, amount_cents FROM creator_fund_payout_requests
-             WHERE id = $1::uuid AND status = 'queued' FOR UPDATE`,
-            [payoutRowId]
-          );
-          if (locked.rows.length === 0) {
-            await client.query('ROLLBACK');
+
+        const claimed = await pool.query(
+          `UPDATE creator_fund_payout_requests SET status = 'processing', updated_at = NOW()
+           WHERE id = $1::uuid AND status IN ('queued', 'processing')
+           RETURNING id`,
+          [payoutRowId]
+        );
+        if (claimed.rows.length === 0) continue;
+
+        let transferId: string | null = null;
+        if (row.status === 'processing') {
+          const existing = await stripe.transfers.list({ transfer_group: transferGroup, limit: 1 });
+          transferId = existing.data[0]?.id ?? null;
+        }
+        if (!transferId) {
+          try {
+            const transfer = await stripe.transfers.create(
+              {
+                amount: amt,
+                currency: 'usd',
+                destination,
+                transfer_group: transferGroup,
+                metadata: { payout_request_id: payoutRowId, purpose: 'creator_fund_bounty' }
+              },
+              { idempotencyKey: transferGroup }
+            );
+            transferId = transfer.id;
+          } catch (e) {
+            if (isDefinitiveStripeRejection(e)) {
+              await pool.query(
+                `UPDATE creator_fund_payout_requests SET status = 'failed', updated_at = NOW()
+                 WHERE id = $1::uuid AND status = 'processing'`,
+                [payoutRowId]
+              );
+            }
+            errors.push(`${payoutRowId}:${e instanceof Error ? e.message : 'transfer_failed'}`);
             continue;
           }
-          await client.query(
-            `UPDATE creator_fund_payout_requests SET status = 'processing', updated_at = NOW()
-             WHERE id = $1::uuid`,
-            [payoutRowId]
-          );
-          const transfer = await stripe.transfers.create({
-            amount: amt,
-            currency: 'usd',
-            destination,
-            metadata: { payout_request_id: payoutRowId, purpose: 'creator_fund_bounty' }
-          });
-          await client.query(
-            `UPDATE creator_fund_payout_requests SET
-               status = 'paid',
-               stripe_transfer_id = $2,
-               updated_at = NOW()
-             WHERE id = $1::uuid`,
-            [payoutRowId, transfer.id]
-          );
-          await client.query('COMMIT');
-          processed += 1;
-        } catch (e) {
-          await client.query('ROLLBACK');
-          await pool.query(
-            `UPDATE creator_fund_payout_requests SET status = 'failed', updated_at = NOW() WHERE id = $1::uuid`,
-            [payoutRowId]
-          );
-          errors.push(`${payoutRowId}:${e instanceof Error ? e.message : 'transfer_failed'}`);
-        } finally {
-          client.release();
         }
+
+        await pool.query(
+          `UPDATE creator_fund_payout_requests SET
+             status = 'paid',
+             stripe_transfer_id = $2,
+             updated_at = NOW()
+           WHERE id = $1::uuid AND status = 'processing'`,
+          [payoutRowId, transferId]
+        );
+        processed += 1;
       } catch (e) {
         errors.push(`${payoutRowId}:${e instanceof Error ? e.message : 'outer_failed'}`);
       }
@@ -959,22 +1021,69 @@ export class MonetizationService {
         }
         break;
       }
-      default: {
-        const evType = event.type as string;
-        if (evType === 'transfer.failed' || evType === 'transfer.reversed') {
-          const tr = event.data.object as Stripe.Transfer;
-          const tid = tr.id;
-          if (tid) {
-            const st = evType === 'transfer.reversed' ? 'reversed' : 'failed';
-            await pool.query(
-              `UPDATE creator_fund_payout_requests SET status = $2::varchar, updated_at = NOW()
-               WHERE stripe_transfer_id = $1 AND status = 'paid'`,
-              [tid, st]
-            );
-          }
+      case 'charge.refunded': {
+        const ch = event.data.object as Stripe.Charge;
+        const pn = await pnForStripeCustomer(pool, ch.customer);
+        if (!pn) break;
+        const prior = await pool.query(
+          `SELECT COALESCE(SUM(-amount_cents), 0)::bigint AS s
+           FROM creator_fund_revenue_events
+           WHERE event_type = 'refund' AND metadata->>'charge_id' = $1`,
+          [ch.id]
+        );
+        const delta = (ch.amount_refunded ?? 0) - Number(prior.rows[0]?.s ?? 0);
+        if (delta <= 0) break;
+        await pool.query(
+          `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, stripe_event_id, metadata)
+           VALUES ($1, 'stripe', 'refund', $2, $3, $4, $5::jsonb)
+           ON CONFLICT (stripe_event_id) DO NOTHING`,
+          [
+            pn,
+            -delta,
+            (ch.currency || 'usd').toUpperCase(),
+            event.id,
+            JSON.stringify({ charge_id: ch.id, amount_refunded: ch.amount_refunded })
+          ]
+        );
+        break;
+      }
+      case 'charge.dispute.created':
+      case 'charge.dispute.closed': {
+        const d = event.data.object as Stripe.Dispute;
+        const won = event.type === 'charge.dispute.closed';
+        if (won && d.status !== 'won') break;
+        const chargeId = typeof d.charge === 'string' ? d.charge : d.charge.id;
+        const ch = await stripe.charges.retrieve(chargeId);
+        const pn = await pnForStripeCustomer(pool, ch.customer);
+        if (!pn) break;
+        await pool.query(
+          `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, stripe_event_id, metadata)
+           VALUES ($1, 'stripe', $2, $3, $4, $5, $6::jsonb)
+           ON CONFLICT (stripe_event_id) DO NOTHING`,
+          [
+            pn,
+            won ? 'dispute_won' : 'dispute',
+            won ? d.amount : -d.amount,
+            (d.currency || 'usd').toUpperCase(),
+            event.id,
+            JSON.stringify({ charge_id: chargeId, dispute_id: d.id })
+          ]
+        );
+        break;
+      }
+      case 'transfer.reversed': {
+        const tr = event.data.object as Stripe.Transfer;
+        if (tr.id) {
+          await pool.query(
+            `UPDATE creator_fund_payout_requests SET status = 'reversed', updated_at = NOW()
+             WHERE stripe_transfer_id = $1 AND status = 'paid'`,
+            [tr.id]
+          );
         }
         break;
       }
+      default:
+        break;
     }
   }
 }

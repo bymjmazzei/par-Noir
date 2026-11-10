@@ -4,7 +4,8 @@
 
 import type { Application, Request, Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware';
-import { MonetizationService, isStripeMonetizationConfigured } from './monetizationService';
+import { MonetizationService, isStripeMonetizationConfigured, monetizationReadiness } from './monetizationService';
+import { requireAdminApiKey } from './adminDeveloperRoutes';
 import { safeClientErrorMessage } from '../utils/safeError';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -31,6 +32,11 @@ function returnBaseFromBody(req: Request): string {
 
 export function registerStripeMonetizationRoutes(app: Application): void {
   const auth = [requireAuth];
+
+  app.get('/api/monetization/readiness', requireAdminApiKey, (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(monetizationReadiness());
+  });
 
   app.get('/api/monetization/status', ...auth, async (req: AuthenticatedRequest, res: Response) => {
     try {

@@ -10,11 +10,18 @@ export interface MonetizationTabProps {
   accessToken: string;
   showErrorMessage: (message: string) => void;
   showSuccessMessage: (message: string) => void;
+  /** Opens the identity verification modal (Veriff, included in membership). */
+  onVerifyIdentity: () => void;
 }
 
 const MIN_PAYOUT_CENTS = 1000;
 
-export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMessage }: MonetizationTabProps) {
+export function MonetizationTab({
+  accessToken,
+  showErrorMessage,
+  showSuccessMessage,
+  onVerifyIdentity
+}: MonetizationTabProps) {
   const [status, setStatus] = useState<MonetizationStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -178,6 +185,18 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
             <div className="rounded-lg border border-border bg-secondary p-4">
               <div className="text-xs text-text-secondary uppercase tracking-wide">Verification</div>
               <div className="mt-1 font-medium">{status?.verified ? 'Verified' : 'Not verified'}</div>
+              {!status?.verified && status?.maintenanceActive && status.veriffConfigured && (
+                <button
+                  type="button"
+                  onClick={onVerifyIdentity}
+                  className="mt-2 px-3 py-1.5 rounded-lg bg-primary text-bg-primary text-xs font-medium hover:opacity-90"
+                >
+                  Verify identity (included)
+                </button>
+              )}
+              {!status?.verified && !status?.maintenanceActive && (
+                <div className="text-xs text-text-secondary mt-1">Subscribe first; verification is included.</div>
+              )}
             </div>
             <div className="rounded-lg border border-border bg-secondary p-4">
               <div className="text-xs text-text-secondary uppercase tracking-wide">Maintenance</div>
@@ -328,7 +347,6 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
                       <th className="p-2">R</th>
                       <th className="p-2">25%</th>
                       <th className="p-2">75% fund</th>
-                      <th className="p-2">90% / 10%</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -347,9 +365,6 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
                         <td className="p-2">${(p.rCents / 100).toFixed(2)}</td>
                         <td className="p-2">${(p.platform25Cents / 100).toFixed(2)}</td>
                         <td className="p-2">${(p.fund75Cents / 100).toFixed(2)}</td>
-                        <td className="p-2 text-text-secondary">
-                          ${(p.bountyVerifiedCents / 100).toFixed(2)} / ${(p.bountyUnverifiedCents / 100).toFixed(2)}
-                        </td>
                       </tr>
                     ))}
                   </tbody>

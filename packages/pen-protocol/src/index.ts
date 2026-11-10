@@ -27,7 +27,6 @@ export * from './layerParts.js';
 export * from './agent.js';
 export * from './agentDraft.js';
 export * from './licensing.js';
-export * from './verifiedAuthor.js';
 export * from './table.js';
 export * from './pollSheet.js';
 export * from './widgetView.js';

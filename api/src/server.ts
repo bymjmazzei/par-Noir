@@ -506,6 +506,7 @@ class ProductionServer {
       '/favicon.ico',
       '/api/monetization/stripe-webhook',
       '/api/monetization/stripe-connect-webhook',
+      '/api/verification/veriff/webhook',
     ];
     const publicNoOriginGetOnlyPrefixes = [
       '/api/aggregator/metadata-index',
@@ -727,7 +728,8 @@ class ProductionServer {
       if (
         req.method === 'POST' &&
         (p === '/api/monetization/stripe-webhook' ||
-          p === '/api/monetization/stripe-connect-webhook')
+          p === '/api/monetization/stripe-connect-webhook' ||
+          p === '/api/verification/veriff/webhook')
       ) {
         return express.raw({ type: 'application/json', limit: '1mb' })(req, res, next);
       }

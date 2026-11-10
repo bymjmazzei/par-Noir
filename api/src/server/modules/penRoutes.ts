@@ -547,14 +547,14 @@ export function setupPenRoutes(
     }
   });
 
-  /** Verified author for public templates + monetized licensing (env allowlist until Veriff). */
+  /** Verified author for public templates + monetized licensing (active `verified_identities` row). */
   app.get('/api/pen/author-verification', async (req: Request, res: Response) => {
     try {
       const payload = requireFirstPartyOAuthClient(req, res);
       if (!payload) return;
-      const { isPenVerifiedAuthor } = await import('./penVerifiedAuthor');
+      const { VerificationIntegrationService } = await import('./verificationIntegrationService');
       const pn = String(payload.pnIdentifier || '').trim();
-      return res.json({ verified: isPenVerifiedAuthor(pn) });
+      return res.json({ verified: pn ? await VerificationIntegrationService.isVerified(pn) : false });
     } catch (e) {
       return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
     }

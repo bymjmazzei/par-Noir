@@ -8,6 +8,7 @@ jest.mock('../../utils/logger', () => ({
 }));
 
 const validateAccessToken = jest.fn();
+const isVerified = jest.fn();
 
 jest.mock('./pnOAuthService', () => ({
   PNOAuthService: {
@@ -22,20 +23,21 @@ jest.mock('./integratorStoragePaths', () => {
   };
 });
 
+jest.mock('./verificationIntegrationService', () => ({
+  VerificationIntegrationService: {
+    isVerified: (...args: unknown[]) => isVerified(...args)
+  }
+}));
+
 import express from 'express';
 import request from 'supertest';
 import { setupPenRoutes } from './penRoutes';
 
 describe('pen author-verification', () => {
-  const prev = process.env.PEN_VERIFIED_AUTHOR_PN_IDS;
-
   beforeEach(() => {
     validateAccessToken.mockReset();
-    process.env.PEN_VERIFIED_AUTHOR_PN_IDS = 'pn-verified-qa';
-  });
-
-  afterAll(() => {
-    process.env.PEN_VERIFIED_AUTHOR_PN_IDS = prev;
+    isVerified.mockReset();
+    isVerified.mockImplementation(async (pn: string) => pn === 'pn-verified-qa');
   });
 
   function buildApp() {
@@ -48,7 +50,7 @@ describe('pen author-verification', () => {
     return app;
   }
 
-  it('returns verified for allowlisted bearer pn', async () => {
+  it('returns verified when the bearer pn has an active verified_identities row', async () => {
     validateAccessToken.mockReturnValue({
       pnIdentifier: 'pn-verified-qa',
       clientId: 'pen-app'
@@ -58,9 +60,10 @@ describe('pen author-verification', () => {
       .set('Authorization', 'Bearer test');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ verified: true });
+    expect(isVerified).toHaveBeenCalledWith('pn-verified-qa');
   });
 
-  it('returns false when not on allowlist', async () => {
+  it('returns false when the pn is not verified', async () => {
     validateAccessToken.mockReturnValue({
       pnIdentifier: 'pn-other',
       clientId: 'pen-app'

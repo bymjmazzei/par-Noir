@@ -879,6 +879,7 @@ export function AppModals(props: AppModalsProps) {
           setShowVerificationModal(false);
         }}
         identityId={authenticatedUser?.id ?? selectedStoredIdentity?.id ?? 'default'}
+        accessToken={apiToken}
         encryptedIdentity={
           selectedStoredIdentity?.encryptedData &&
           selectedStoredIdentity?.publicKey &&

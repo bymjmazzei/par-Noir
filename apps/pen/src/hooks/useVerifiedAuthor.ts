@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
-import { resolveVerifiedAuthor, isClientVerifiedAuthor } from '../services/penAuthorVerification';
+import { resolveVerifiedAuthor } from '../services/penAuthorVerification';
 import type { PenSession } from '../services/penSession';
 
 export function useVerifiedAuthor(session: PenSession | null | undefined): boolean {
-  const [verified, setVerified] = useState(() =>
-    session?.pnIdentifier ? isClientVerifiedAuthor(session.pnIdentifier) : false
-  );
+  const [verified, setVerified] = useState(false);
 
   useEffect(() => {
     if (!session?.accessToken || !session.pnIdentifier) {

@@ -1370,6 +1370,19 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const fs = await import('fs');
       const path = await import('path');
+      const veriffPath = path.join(__dirname, '../../migrations/add_veriff_sessions.sql');
+      await db.query(fs.readFileSync(veriffPath, 'utf-8'));
+      console.log('✅ veriff_sessions migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ veriff_sessions migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
       const licenseGrantsPath = path.join(__dirname, '../../migrations/add_license_grants.sql');
       await db.query(fs.readFileSync(licenseGrantsPath, 'utf-8'));
       console.log('✅ license_grants migration executed');

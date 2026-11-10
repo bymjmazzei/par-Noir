@@ -6,7 +6,6 @@ import { OwnerRecoveryRequestsBanner } from '../components/recovery/OwnerRecover
 import { ThemeAwareProfileImage } from '../components/ThemeAwareProfileImage';
 import { MonetizationTab } from '../components/monetization/MonetizationTab';
 import { SubPnTab } from '../components/subpn/SubPnTab';
-import { isIdentityVerificationAvailable } from '../config/verification';
 import { FileStorageAggregator } from '../components/storage/FileStorageAggregator';
 import { SectionInfo } from '../components/common/SectionInfo';
 import { PrivacyDataPointsPanel } from '../components/privacy/PrivacyDataPointsPanel';
@@ -439,19 +438,13 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                         <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
                           <h3 className="text-lg font-semibold text-text-primary">Privacy & Sharing Settings</h3>
                           {canProfileRead && (
-                            isIdentityVerificationAvailable() ? (
-                              <button
-                                type="button"
-                                onClick={() => setShowVerificationModal(true)}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 shrink-0"
-                              >
-                                Verify
-                              </button>
-                            ) : (
-                              <span className="text-xs text-text-secondary shrink-0">
-                                Identity Verify (Veriff) not enabled
-                              </span>
-                            )
+                            <button
+                              type="button"
+                              onClick={() => setShowVerificationModal(true)}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 shrink-0"
+                            >
+                              Verify
+                            </button>
                           )}
                         </div>
 
@@ -757,6 +750,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                       accessToken={apiToken || ''}
                       showErrorMessage={showErrorMessage}
                       showSuccessMessage={showSuccessMessage}
+                      onVerifyIdentity={() => setShowVerificationModal(true)}
                     />
                   </div>
 

@@ -26,20 +26,6 @@ export const integrationsEnv = {
   // Coinbase
   COINBASE_COMMERCE_API_KEY: (env.VITE_COINBASE_COMMERCE_API_KEY as string) ?? '',
   COINBASE_WEBHOOK_SECRET: (env.VITE_COINBASE_WEBHOOK_SECRET as string) ?? '',
-  // Veriff / verification
-  VERIFF_API_KEY: (env.VITE_VERIFF_API_KEY as string) ?? '',
-  VERIFF_API_SECRET: (env.VITE_VERIFF_API_SECRET as string) ?? '',
-  VERIFF_WEBHOOK_URL: (env.VITE_VERIFF_WEBHOOK_URL as string) ?? '',
-  VERIFF_WEBHOOK_SECRET: (env.VITE_VERIFF_WEBHOOK_SECRET as string) ?? '',
-  JUMIO_API_KEY: (env.VITE_JUMIO_API_KEY as string) ?? '',
-  JUMIO_API_SECRET: (env.VITE_JUMIO_API_SECRET as string) ?? '',
-  JUMIO_WEBHOOK_URL: (env.VITE_JUMIO_WEBHOOK_URL as string) ?? '',
-  ONFIDO_API_KEY: (env.VITE_ONFIDO_API_KEY as string) ?? '',
-  ONFIDO_API_SECRET: (env.VITE_ONFIDO_API_SECRET as string) ?? '',
-  ONFIDO_WEBHOOK_URL: (env.VITE_ONFIDO_WEBHOOK_URL as string) ?? '',
-  VERIFICATION_PROVIDER: (env.VITE_VERIFICATION_PROVIDER as string) ?? '',
-  VERIFICATION_FRAUD_THRESHOLD: (env.VITE_VERIFICATION_FRAUD_THRESHOLD as string) ?? '',
-  VERIFICATION_CONFIDENCE_THRESHOLD: (env.VITE_VERIFICATION_CONFIDENCE_THRESHOLD as string) ?? '',
   // API URL (decentralized auth)
   API_URL: (env.VITE_API_URL as string) ?? (env.VITE_API_ENDPOINT as string) ?? '',
   // Google Drive (optional)

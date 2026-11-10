@@ -18,14 +18,13 @@ export type WeightKey =
   | `m:${string}`
   | `c:${string}`;
 
-export function bucketForKey(key: string, verified: boolean): string {
-  const suffix = verified ? 'verified' : 'unverified';
-  if (key.startsWith('e:')) return `engager_${suffix}`;
-  if (key.startsWith('r:')) return `content_rights_${suffix}`;
-  if (key.startsWith('m:')) return `music_${suffix}`;
-  if (key.startsWith('c:')) return `publisher_${suffix}`;
-  // Legacy
-  return key.startsWith('m:') ? `music_${suffix}` : suffix === 'verified' ? 'verified' : 'unverified';
+/** Fund recipients are always verified (engagement only counts verified, member actors). */
+export function bucketForKey(key: string): string {
+  if (key.startsWith('e:')) return 'engager_verified';
+  if (key.startsWith('r:')) return 'content_rights_verified';
+  if (key.startsWith('m:')) return 'music_verified';
+  if (key.startsWith('c:')) return 'publisher_verified';
+  return 'verified';
 }
 
 export function recipientIdFromKey(key: string): string {

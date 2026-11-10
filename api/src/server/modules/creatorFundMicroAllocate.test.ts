@@ -10,10 +10,10 @@ import {
 
 describe('creatorFundMicroAllocate', () => {
   it('maps keys to micro buckets', () => {
-    expect(bucketForKey('e:alice', true)).toBe('engager_verified');
-    expect(bucketForKey('r:bob', false)).toBe('content_rights_unverified');
-    expect(bucketForKey('m:artist', true)).toBe('music_verified');
-    expect(bucketForKey('c:pub', false)).toBe('publisher_unverified');
+    expect(bucketForKey('e:alice')).toBe('engager_verified');
+    expect(bucketForKey('r:bob')).toBe('content_rights_verified');
+    expect(bucketForKey('m:artist')).toBe('music_verified');
+    expect(bucketForKey('c:pub')).toBe('publisher_verified');
     expect(recipientIdFromKey('c:pub')).toBe('pub');
   });
 

@@ -3,6 +3,7 @@
  * Syncs verification status from identity verification to engagement system
  */
 
+import type { Pool } from 'pg';
 import { getDatabasePool } from '../utils/database';
 import { legalNameHmac } from './verifiedNameService';
 
@@ -15,23 +16,25 @@ export class VerificationIntegrationService {
     identityId: string,
     verificationId: string,
     verifiedAt: string,
-    legalName?: string
+    legalName?: string,
+    opts?: { documentHmac?: string | null; db?: Pick<Pool, 'query'> }
   ): Promise<void> {
-    const db = getDatabasePool();
+    const db = opts?.db ?? getDatabasePool();
     const nameHmac = legalName && legalName.trim() ? legalNameHmac(legalName) : null;
     
     try {
       await db.query(`
-        INSERT INTO verified_identities (identity_id, verification_id, verified_at, is_active, verification_level, legal_name_hmac)
-        VALUES ($1, $2, $3, TRUE, 'verified', $4)
+        INSERT INTO verified_identities (identity_id, verification_id, verified_at, is_active, verification_level, legal_name_hmac, document_hmac)
+        VALUES ($1, $2, $3, TRUE, 'verified', $4, $5)
         ON CONFLICT (identity_id) 
         DO UPDATE SET 
           verification_id = $2,
           verified_at = $3,
           is_active = TRUE,
           verification_level = 'verified',
-          legal_name_hmac = COALESCE($4, verified_identities.legal_name_hmac)
-      `, [identityId, verificationId, verifiedAt, nameHmac]);
+          legal_name_hmac = COALESCE($4, verified_identities.legal_name_hmac),
+          document_hmac = COALESCE($5, verified_identities.document_hmac)
+      `, [identityId, verificationId, verifiedAt, nameHmac, opts?.documentHmac ?? null]);
       
       console.log(`✅ Synced verification status for identity: ${identityId}`);
     } catch (error) {

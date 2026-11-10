@@ -15,18 +15,12 @@ import {
   requireLicensingOnHandoff,
   PUBLIC_TEMPLATE_REQUIRES_VERIFICATION
 } from './services/penPublishGates';
-import { canPublishPublicTemplate, isVerifiedAuthor } from './services/penVerified';
+import { resolveVerifiedAuthor } from './services/penAuthorVerification';
 
 describe('Pen publish verification gates', () => {
-  it('isVerifiedAuthor fails closed when allowlist unset', () => {
-    expect(isVerifiedAuthor(null)).toBe(false);
-    expect(canPublishPublicTemplate(null)).toBe(false);
-    expect(
-      canPublishPublicTemplate({
-        accessToken: 't',
-        pnIdentifier: 'did:key:not-on-list'
-      })
-    ).toBe(false);
+  it('verified author fails closed without a session', async () => {
+    await expect(resolveVerifiedAuthor(null)).resolves.toBe(false);
+    await expect(resolveVerifiedAuthor({ accessToken: '', pnIdentifier: 'pn-x' })).resolves.toBe(false);
   });
 
   it('unverified may target browse only; pen-templates rejected', () => {

@@ -299,6 +299,7 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
         isOpen={showLicenseModal}
         onClose={() => setShowLicenseModal(false)}
         authenticatedUser={authenticatedUser}
+        accessToken={apiToken}
       />
     </div>
   );

@@ -20,6 +20,7 @@ interface LicenseModalProps {
   authenticatedUser: { id: string } | null;
   onApiKeyActivated?: (apiKey: ApiKey) => void;
   encryptedIdentity?: EncryptedIdentity;
+  accessToken?: string | null;
 }
 
 export const LicenseModal: React.FC<LicenseModalProps> = ({
@@ -27,7 +28,8 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
   onClose,
   authenticatedUser,
   onApiKeyActivated,
-  encryptedIdentity
+  encryptedIdentity,
+  accessToken
 }) => {
   const [apiKey, setApiKey] = useState<ApiKey | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -299,6 +301,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
           onVerificationComplete={handleVerificationComplete}
           identityId={authenticatedUser?.id}
           encryptedIdentity={encryptedIdentity}
+          accessToken={accessToken}
         />
       )}
     </>
