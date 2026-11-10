@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const isNativePlatform = vi.fn(() => false);
-const nativeShare = vi.fn(async () => undefined);
-const copyToClipboard = vi.fn(async () => true);
+const nativeShare = vi.fn(async (_options: unknown): Promise<void> => undefined);
+const copyToClipboard = vi.fn(async (_text: string): Promise<boolean> => true);
 
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => isNativePlatform() } }));
 vi.mock('@capacitor/share', () => ({ Share: { share: (o: unknown) => nativeShare(o) } }));
