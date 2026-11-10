@@ -1,16 +1,18 @@
 /**
- * Multi-cloud storage connect UI (Dropbox, S3, Azure, OneDrive, FTP).
+ * Multi-cloud storage connect UI (Dropbox, S3, Azure, OneDrive, FTP via a user-hosted relay).
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Cloud, ExternalLink, Loader2 } from 'lucide-react';
 import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
+import type { StorageCredentialsEnvelope, StorageProviderId } from '@par-noir/user-owned-storage';
+import { RelaySetupFlow } from './RelaySetupFlow';
 import { ownerFetch } from '../../services/ownerApiService';
 import { API_ENDPOINT } from '../../config/api';
 import { SocialCloudMigrationWizard } from './SocialCloudMigrationWizard';
 import { CloudLayoutUpdateBanner } from './CloudLayoutUpdateBanner';
 import { SectionInfo } from '../common/SectionInfo';
 
-type ProviderId = 'google_drive' | 'dropbox' | 'aws_s3' | 'azure_blob' | 'onedrive' | 'ftp';
+type ProviderId = 'google_drive' | 'dropbox' | 'aws_s3' | 'azure_blob' | 'onedrive' | 'relay';
 
 interface StorageAccount {
   provider: string;
@@ -53,7 +55,7 @@ const DOC_LINKS: Record<Exclude<ProviderId, 'google_drive'>, string> = {
   aws_s3: '/docs/developer/STORAGE_AWS_S3_SETUP.md',
   azure_blob: '/docs/developer/STORAGE_AZURE_BLOB_SETUP.md',
   onedrive: '/docs/developer/STORAGE_ONEDRIVE_SETUP.md',
-  ftp: '/docs/developer/STORAGE_FTP_SETUP.md'
+  relay: '/docs/developer/STORAGE_FTP_SETUP.md'
 };
 
 export function MultiCloudStoragePanel({
@@ -92,16 +94,6 @@ export function MultiCloudStoragePanel({
     sasToken: '',
     prefix: ''
   });
-  const [ftpForm, setFtpForm] = useState({
-    host: '',
-    port: 21,
-    username: '',
-    password: '',
-    basePath: '/parnoir/',
-    useTls: true,
-    passiveMode: true
-  });
-
   const refreshAccountsInFlightRef = useRef<Promise<void> | null>(null);
   const lastAccountsSnapshotRef = useRef<string>('');
 
@@ -317,6 +309,52 @@ export function MultiCloudStoragePanel({
     }
   };
 
+  /** Keys live only in this device's vault; the API gets the layout shell. */
+  const sealToVault = async (envelope: StorageCredentialsEnvelope) => {
+    if (!pnIdentifier || !authToken || !sessionId) {
+      throw new Error('Unlock on this device before connecting storage.');
+    }
+    const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
+    const { persistCloudCredentials, resolveCloudPersistMode, publishCloudDriveReady } = await import(
+      '@par-noir/device-cloud-credentials'
+    );
+    const creds = SecureCredentialManager.getCredentials(sessionId);
+    if (!creds) throw new Error('Unlock on this device before connecting storage.');
+    await persistCloudCredentials({
+      identityId: pnIdentifier,
+      credentials: envelope,
+      session: { sessionId, key1: creds.key1, key2: creds.key2 },
+      mode: resolveCloudPersistMode({ hasKeyedDevices: false })
+    });
+    // Drive READY only if a Google access token can be minted (non-Google connect alone is not Drive-ready).
+    await publishCloudDriveReady({ authToken, pnIdentifier, apiEndpoint: API_ENDPOINT }).catch(() => undefined);
+  };
+
+  const putProviderLayout = async (body: object) => {
+    if (!pnIdentifier || !authToken) throw new Error('Unlock your identity before connecting storage.');
+    const res = await ownerFetch(
+      authToken,
+      'PUT',
+      `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider`,
+      body,
+      { pnIdentifier }
+    );
+    const saved = (await res.json()) as {
+      message?: string;
+      provider?: string;
+      accountId?: string;
+      socialCloudProvider?: string;
+    };
+    if (!res.ok) throw new Error(saved.message || 'Failed to save credentials');
+    return saved;
+  };
+
+  const initializeSocialLayout = async (envelope: StorageCredentialsEnvelope) => {
+    if (!pnIdentifier || !authToken) return;
+    const { initializePortableSocialLayout } = await import('../../services/storage/portableSocialLayout');
+    await initializePortableSocialLayout(authToken, pnIdentifier, envelope);
+  };
+
   const connectFormProvider = async () => {
     if (!pnIdentifier || !authToken) {
       setError('Unlock your identity before connecting storage.');
@@ -352,68 +390,19 @@ export function MultiCloudStoragePanel({
           socialCloudProvider: 'azure_blob',
           azureBlobAccounts: [azureBlob]
         };
-      } else if (selected === 'ftp') {
-        const slug = ftpForm.host.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 32);
-        const accountId = buildAccountId('ftp', pnIdentifier, slug);
-        body = { provider: 'ftp', ftp: { ...ftpForm, accountId } };
-        localEnvelope = {
-          socialCloudProvider: 'ftp',
-          ftpAccounts: [{ ...ftpForm, accountId }]
-        };
       } else {
         throw new Error('Use OAuth for this provider');
       }
-      // Keys live only in this device's vault; the API gets the layout shell.
-      if (!sessionId) throw new Error('Unlock on this device before connecting storage.');
-      const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
-      const {
-        persistCloudCredentials,
-        providerAccountLayout,
-        resolveCloudPersistMode,
-        publishCloudDriveReady
-      } = await import('@par-noir/device-cloud-credentials');
-      const creds = SecureCredentialManager.getCredentials(sessionId);
-      if (!creds) throw new Error('Unlock on this device before connecting storage.');
-      await persistCloudCredentials({
-        identityId: pnIdentifier,
-        credentials: localEnvelope as import('@par-noir/user-owned-storage').StorageCredentialsEnvelope,
-        session: {
-          sessionId,
-          key1: creds.key1,
-          key2: creds.key2
-        },
-        mode: resolveCloudPersistMode({ hasKeyedDevices: false })
-      });
-      // Drive READY only if a Google access token can be minted (non-Google connect alone is not Drive-ready).
-      await publishCloudDriveReady({
-        authToken,
-        pnIdentifier,
-        apiEndpoint: API_ENDPOINT
-      }).catch(() => undefined);
-      for (const key of ['awsS3', 'azureBlob', 'ftp'] as const) {
+      const { providerAccountLayout } = await import('@par-noir/device-cloud-credentials');
+      await sealToVault(localEnvelope as StorageCredentialsEnvelope);
+      for (const key of ['awsS3', 'azureBlob'] as const) {
         if (body[key]) body[key] = providerAccountLayout(body[key] as object);
       }
-      const res = await ownerFetch(
-        authToken,
-        'PUT',
-        `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider`,
-        body,
-        { pnIdentifier }
-      );
-      const saved = (await res.json()) as {
-        message?: string;
-        provider?: string;
-        accountId?: string;
-        socialCloudProvider?: string;
-      };
-      if (!res.ok) {
-        throw new Error(saved.message || 'Failed to save credentials');
-      }
+      const saved = await putProviderLayout(body);
       if (saved.socialCloudProvider && saved.socialCloudProvider === saved.provider) {
-        const { initializePortableSocialLayout } = await import('../../services/storage/portableSocialLayout');
-        await initializePortableSocialLayout(authToken, pnIdentifier, {
-          ...(localEnvelope as import('@par-noir/user-owned-storage').StorageCredentialsEnvelope),
-          socialCloudProvider: saved.socialCloudProvider as import('@par-noir/user-owned-storage').StorageProviderId,
+        await initializeSocialLayout({
+          ...(localEnvelope as StorageCredentialsEnvelope),
+          socialCloudProvider: saved.socialCloudProvider as StorageProviderId,
           socialCloudAccountId: saved.accountId
         });
       }
@@ -466,11 +455,13 @@ export function MultiCloudStoragePanel({
           allowUpgrade
           refreshKey={`${connectedStorageCount}-${socialCloudProvider ?? ''}`}
           className="mb-4"
+          socialCloudProvider={socialCloudProvider}
+          onSetUpRelay={() => setSelected('relay')}
         />
       ) : null}
 
       <div className="flex flex-wrap gap-2 mb-4">
-        {(['google_drive', 'dropbox', 'aws_s3', 'azure_blob', 'onedrive', 'ftp'] as ProviderId[]).map((p) => (
+        {(['google_drive', 'dropbox', 'aws_s3', 'azure_blob', 'onedrive', 'relay'] as ProviderId[]).map((p) => (
           <button
             key={p}
             type="button"
@@ -481,7 +472,7 @@ export function MultiCloudStoragePanel({
                 : 'border-border text-text-secondary hover:border-text-secondary'
             }`}
           >
-            {p === 'google_drive' ? 'Google Drive' : p.replace('_', ' ')}
+            {p === 'google_drive' ? 'Google Drive' : p === 'relay' ? 'FTP' : p.replace('_', ' ')}
           </button>
         ))}
       </div>
@@ -554,21 +545,18 @@ export function MultiCloudStoragePanel({
         </div>
       )}
 
-      {selected === 'ftp' && (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <input className="input-dark" placeholder="Host" value={ftpForm.host} onChange={(e) => setFtpForm({ ...ftpForm, host: e.target.value })} />
-          <input className="input-dark" type="number" placeholder="Port" value={ftpForm.port} onChange={(e) => setFtpForm({ ...ftpForm, port: Number(e.target.value) })} />
-          <input className="input-dark" placeholder="Username" value={ftpForm.username} onChange={(e) => setFtpForm({ ...ftpForm, username: e.target.value })} />
-          <input className="input-dark" type="password" placeholder="Password" value={ftpForm.password} onChange={(e) => setFtpForm({ ...ftpForm, password: e.target.value })} />
-          <input className="input-dark sm:col-span-2" placeholder="Base path" value={ftpForm.basePath} onChange={(e) => setFtpForm({ ...ftpForm, basePath: e.target.value })} />
-          <label className="text-sm text-text-secondary flex items-center gap-2">
-            <input type="checkbox" checked={ftpForm.useTls} onChange={(e) => setFtpForm({ ...ftpForm, useTls: e.target.checked })} /> Use FTPS
-          </label>
-          <label className="text-sm text-text-secondary flex items-center gap-2">
-            <input type="checkbox" checked={ftpForm.passiveMode} onChange={(e) => setFtpForm({ ...ftpForm, passiveMode: e.target.checked })} /> Passive mode
-          </label>
-          <button type="button" disabled={loading} onClick={connectFormProvider} className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm sm:col-span-2">Connect FTP</button>
-        </div>
+      {selected === 'relay' && pnIdentifier && authToken && (
+        <RelaySetupFlow
+          pnIdentifier={pnIdentifier}
+          sealToVault={sealToVault}
+          putLayout={putProviderLayout}
+          initializeLayout={initializeSocialLayout}
+          onSaved={async () => {
+            setMessage('FTP relay connected.');
+            await refreshAccounts({ force: true });
+            onConnected?.();
+          }}
+        />
       )}
 
       <div className="flex flex-wrap gap-2 mt-4">

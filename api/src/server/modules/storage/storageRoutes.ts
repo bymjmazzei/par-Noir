@@ -15,7 +15,7 @@ import {
 import {
   disconnectProviderAccount,
   upsertAzureAccount,
-  upsertFtpAccount,
+  upsertRelayAccount,
   upsertS3Account
 } from './accountConnectHelpers';
 import { getBearerTokenPayload } from '../../middleware/authMiddleware';
@@ -93,9 +93,9 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         provider?: string;
         awsS3?: NonNullable<StorageCredentialsEnvelope['awsS3Accounts']>[number];
         azureBlob?: NonNullable<StorageCredentialsEnvelope['azureBlobAccounts']>[number];
-        ftp?: NonNullable<StorageCredentialsEnvelope['ftpAccounts']>[number];
+        relay?: { accountId?: string; prefix?: string };
       };
-      if (credentialsContainCloudSecrets({ awsS3Accounts: [body.awsS3], azureBlobAccounts: [body.azureBlob], ftpAccounts: [body.ftp] })) {
+      if (credentialsContainCloudSecrets({ awsS3Accounts: [body.awsS3], azureBlobAccounts: [body.azureBlob], relayAccounts: [body.relay] })) {
         return res.status(400).json({
           error: 'secrets_not_accepted',
           message: 'Provider keys stay sealed on your device. Send the account layout only.'
@@ -125,11 +125,14 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
           body.azureBlob.accountId || buildAccountId('azure_blob', pnIdentifier, body.azureBlob.container);
         credentials = upsertAzureAccount(credentials, pnIdentifier, { ...body.azureBlob, prefix, accountId: newAccountId });
         newProvider = 'azure_blob';
-      } else if (body.provider === 'ftp' && body.ftp?.host) {
-        const slug = body.ftp.host.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 32);
-        newAccountId = body.ftp.accountId || buildAccountId('ftp', pnIdentifier, slug);
-        credentials = upsertFtpAccount(credentials, pnIdentifier, { ...body.ftp, accountId: newAccountId });
-        newProvider = 'ftp';
+      } else if (body.provider === 'relay' && body.relay) {
+        const prefix = (body.relay.prefix || defaultPrefix).replace(/\/$/, '');
+        if (!prefix.startsWith('par-noir-')) {
+          return res.status(400).json({ error: 'Relay prefix required', message: 'prefix must start with par-noir-' });
+        }
+        newAccountId = body.relay.accountId || buildAccountId('relay', pnIdentifier, 'relay');
+        credentials = upsertRelayAccount(credentials, { accountId: newAccountId, prefix });
+        newProvider = 'relay';
       } else {
         return res.status(400).json({ error: 'Invalid provider payload' });
       }

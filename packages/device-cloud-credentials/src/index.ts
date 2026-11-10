@@ -53,6 +53,7 @@ export {
 export {
   createDeviceBlobStore,
   deviceBlobStoreForSession,
+  RelayRequestError,
   DeviceCloudLockedError,
   type DeviceBlobStore,
   type DeviceBlobProvider
@@ -97,6 +98,7 @@ export {
 } from './social/migrateSocialCloud.js';
 export { openSocialCloudMove, type SocialCloudMove } from './social/socialCloudMove.js';
 export { moveOwnedFilesOnDevice, type FileMoveResult } from './social/moveOwnedFiles.js';
+export { probeRelay, type RelayProbeResult, type RelayProbeCause } from './relayProbe.js';
 export {
   listTablesFollowers,
   tablesEngagement,

@@ -176,6 +176,46 @@ describe('conditional writes', () => {
   });
 });
 
+describe('relay store', () => {
+  const relay = {
+    socialCloudProvider: 'relay',
+    relayAccounts: [{ accountId: 'r1', url: 'https://relay.example/', token: 'tok', prefix: `par-noir-${PN}` }],
+  } as unknown as StorageCredentialsEnvelope;
+
+  it('sends the bearer token and keys relative to the relay prefix', async () => {
+    const { f, calls } = fakeFetch(() => new Response(null, { status: 200, headers: { etag: '"e1"' } }));
+    const result = await createDeviceBlobStore(PN, relay, { fetchImpl: f }).put('_metadata/a.json', '{}', {
+      ifMatch: '"e0"',
+    });
+    expect(calls[0]!.url).toBe(`https://relay.example/v1/blob?key=${encodeURIComponent(`${ROOT}/_metadata/a.json`)}`);
+    expect(calls[0]!.init.headers).toMatchObject({ Authorization: 'Bearer tok', 'If-Match': '"e0"' });
+    expect(result.etag).toBe('"e1"');
+  });
+
+  it('maps 412 to a precondition error and keeps the relay error code otherwise', async () => {
+    const { f: conflict } = fakeFetch(() => new Response(null, { status: 412 }));
+    await expect(createDeviceBlobStore(PN, relay, { fetchImpl: conflict }).put('a', 'x')).rejects.toBeInstanceOf(
+      BlobPreconditionError
+    );
+    const { f: denied } = fakeFetch(
+      () => new Response(JSON.stringify({ error: 'backend_permission_denied', message: 'no write' }), { status: 502 })
+    );
+    await expect(createDeviceBlobStore(PN, relay, { fetchImpl: denied }).put('a', 'x')).rejects.toMatchObject({
+      name: 'RelayRequestError',
+      code: 'backend_permission_denied',
+    });
+  });
+
+  it('lists keys relative to the layout root', async () => {
+    const { f } = fakeFetch(
+      () => new Response(JSON.stringify({ entries: [{ key: `${ROOT}/_metadata/a.db`, size: 3 }] }), { status: 200 })
+    );
+    expect(await createDeviceBlobStore(PN, relay, { fetchImpl: f }).list('_metadata/')).toEqual([
+      { key: '_metadata/a.db', size: 3 },
+    ]);
+  });
+});
+
 describe('portable tables on the device', () => {
   it('reads and writes SQLite tables in S3 and detects a concurrent writer', async () => {
     const { f, calls } = fakeS3();

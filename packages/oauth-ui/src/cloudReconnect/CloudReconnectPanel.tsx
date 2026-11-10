@@ -3,7 +3,7 @@ import {
   buildAccountId,
   type StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
-import { providerAccountLayout } from '@par-noir/device-cloud-credentials';
+import { probeRelay, providerAccountLayout } from '@par-noir/device-cloud-credentials';
 import {
   isCloudProviderId,
   isOAuthCloudProvider,
@@ -86,7 +86,7 @@ const PROVIDERS: { id: CloudProviderId; label: string }[] = [
   { id: 'onedrive', label: 'OneDrive' },
   { id: 'aws_s3', label: 'AWS S3' },
   { id: 'azure_blob', label: 'Azure Blob' },
-  { id: 'ftp', label: 'FTP' }
+  { id: 'relay', label: 'FTP' }
 ];
 
 const emptyForms = (): PortableConnectForms => ({
@@ -103,14 +103,9 @@ const emptyForms = (): PortableConnectForms => ({
     sasToken: '',
     prefix: ''
   },
-  ftp: {
-    host: '',
-    port: '21',
-    username: '',
-    password: '',
-    basePath: '/',
-    useTls: true,
-    passiveMode: true
+  relay: {
+    url: '',
+    token: ''
   }
 });
 
@@ -133,7 +128,8 @@ export function CloudReconnectPanel({
   onConnected,
   className = ''
 }: CloudReconnectPanelProps) {
-  const preferredId = isCloudProviderId(preferredProvider) ? preferredProvider : null;
+  const preferred = preferredProvider === 'ftp' ? 'relay' : preferredProvider;
+  const preferredId = isCloudProviderId(preferred) ? preferred : null;
   const [selected, setSelected] = useState<CloudProviderId>(preferredId ?? 'google_drive');
   const [allowSwitchProvider, setAllowSwitchProvider] = useState(!preferredId);
   const [forms, setForms] = useState<PortableConnectForms>(emptyForms);
@@ -218,38 +214,36 @@ export function CloudReconnectPanel({
       });
       return;
     }
-    if (selected === 'ftp') {
-      const f = forms.ftp;
-      if (!f.host || !f.username || !f.password) {
-        throw new Error('Host, username, and password are required.');
+    if (selected === 'relay') {
+      const f = forms.relay;
+      if (!f.url.trim() || !f.token.trim()) {
+        throw new Error('Relay address and token are required.');
       }
-      const slug = f.host.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 32);
-      const accountId = buildAccountId('ftp', pnIdentifier, slug);
-      const ftp = {
-        accountId,
-        host: f.host,
-        port: Number(f.port) || 21,
-        username: f.username,
-        password: f.password,
-        basePath: f.basePath || '/',
-        useTls: f.useTls,
-        passiveMode: f.passiveMode
+      const relay = {
+        accountId: buildAccountId('relay', pnIdentifier, 'relay'),
+        url: f.url.trim().replace(/\/+$/, ''),
+        token: f.token.trim(),
+        prefix: defaultPrefix
       };
+      const probe = await probeRelay({ url: relay.url, token: relay.token, prefix: relay.prefix });
+      if (!probe.ok) {
+        throw new Error(`Relay check failed (${probe.cause}): ${probe.message}`);
+      }
       const res = await ownerFetch(
         apiEndpoint,
         authToken,
         'PUT',
         `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider`,
-        { provider: 'ftp', ftp: providerAccountLayout(ftp) }
+        { provider: 'relay', relay: providerAccountLayout(relay) }
       );
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { message?: string };
-        throw new Error(err.message || 'Failed to save FTP credentials');
+        throw new Error(err.message || 'Failed to save FTP relay');
       }
       await onConnected({
-        socialCloudProvider: 'ftp',
-        socialCloudAccountId: accountId,
-        ftpAccounts: [ftp]
+        socialCloudProvider: 'relay',
+        socialCloudAccountId: relay.accountId,
+        relayAccounts: [relay]
       });
     }
   };
@@ -425,36 +419,31 @@ export function CloudReconnectPanel({
               </label>
             </>
           )}
-          {selected === 'ftp' && (
+          {selected === 'relay' && (
             <>
+              <p style={{ fontSize: 12, color: '#d4d4d4' }}>
+                Enter the address of your FTP relay and its RELAY_TOKEN. New relays are set up in the dashboard under
+                Storage.
+              </p>
               <label style={{ fontSize: 12 }}>
-                Host
+                Relay address
                 <input
                   style={inputStyle}
-                  value={forms.ftp.host}
+                  placeholder="https://your-relay.up.railway.app"
+                  value={forms.relay.url}
                   onChange={(e) =>
-                    setForms((f) => ({ ...f, ftp: { ...f.ftp, host: e.target.value } }))
+                    setForms((f) => ({ ...f, relay: { ...f.relay, url: e.target.value } }))
                   }
                 />
               </label>
               <label style={{ fontSize: 12 }}>
-                Username
-                <input
-                  style={inputStyle}
-                  value={forms.ftp.username}
-                  onChange={(e) =>
-                    setForms((f) => ({ ...f, ftp: { ...f.ftp, username: e.target.value } }))
-                  }
-                />
-              </label>
-              <label style={{ fontSize: 12 }}>
-                Password
+                Relay token
                 <input
                   style={inputStyle}
                   type="password"
-                  value={forms.ftp.password}
+                  value={forms.relay.token}
                   onChange={(e) =>
-                    setForms((f) => ({ ...f, ftp: { ...f.ftp, password: e.target.value } }))
+                    setForms((f) => ({ ...f, relay: { ...f.relay, token: e.target.value } }))
                   }
                 />
               </label>

@@ -36,6 +36,8 @@ const CLOUD_SECRET_FIELDS = [
   'password',
   'sasToken',
   'connectionString',
+  'token',
+  'url',
 ] as const;
 
 const CLOUD_ACCOUNT_ARRAY_KEYS = [
@@ -44,7 +46,7 @@ const CLOUD_ACCOUNT_ARRAY_KEYS = [
   'awsS3Accounts',
   'azureBlobAccounts',
   'onedriveAccounts',
-  'ftpAccounts',
+  'relayAccounts',
 ] as const;
 
 function accountHasCloudSecret(acct: unknown): boolean {
@@ -503,7 +505,7 @@ export class StorageCredentialsService {
       'awsS3Accounts',
       'azureBlobAccounts',
       'onedriveAccounts',
-      'ftpAccounts'
+      'relayAccounts'
     ] as const) {
       if (Array.isArray(out[key])) {
         out[key] = (out[key] as Record<string, unknown>[]).map((a) => stripAccount(a)).filter(Boolean);

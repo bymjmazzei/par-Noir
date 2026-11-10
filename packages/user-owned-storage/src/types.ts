@@ -5,7 +5,7 @@ export type StorageProviderId =
   | 'aws_s3'
   | 'azure_blob'
   | 'onedrive'
-  | 'ftp';
+  | 'relay';
 
 export interface BlobHead {
   etag?: string;

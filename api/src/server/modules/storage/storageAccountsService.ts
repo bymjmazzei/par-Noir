@@ -18,7 +18,7 @@ function accountLabel(provider: string, index: number): string {
     aws_s3: 'AWS S3',
     azure_blob: 'Azure Blob',
     onedrive: 'OneDrive',
-    ftp: 'FTP'
+    relay: 'FTP relay'
   };
   return `${names[provider] ?? provider} ${index + 1}`;
 }
@@ -91,7 +91,7 @@ export function listStorageAccounts(
     `Azure: ${a.accountName}/${a.container}`
   );
   pushSimple('onedrive', credentials.onedriveAccounts);
-  pushSimple('ftp', credentials.ftpAccounts, 'accountId', (a) => `FTP: ${a.host}`);
+  pushSimple('relay', credentials.relayAccounts, 'accountId', (a) => `FTP relay: ${a.prefix}`);
 
   return accounts;
 }

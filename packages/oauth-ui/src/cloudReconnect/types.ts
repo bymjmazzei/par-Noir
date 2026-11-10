@@ -6,7 +6,7 @@ export type CloudProviderId =
   | 'aws_s3'
   | 'azure_blob'
   | 'onedrive'
-  | 'ftp';
+  | 'relay';
 
 export interface CloudReconnectGateConfig {
   enabled: boolean;
@@ -59,13 +59,8 @@ export interface PortableConnectForms {
     sasToken: string;
     prefix: string;
   };
-  ftp: {
-    host: string;
-    port: string;
-    username: string;
-    password: string;
-    basePath: string;
-    useTls: boolean;
-    passiveMode: boolean;
+  relay: {
+    url: string;
+    token: string;
   };
 }

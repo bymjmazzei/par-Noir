@@ -1,5 +1,6 @@
 export * from './types.js';
 export * from './credentials.js';
+export * from './relay.js';
 export * from './pnLayout.js';
 export * from './blob/BlobStore.js';
 export * from './blob/MemoryBlobStore.js';

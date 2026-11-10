@@ -84,7 +84,7 @@ export type StorageProviderType =
   | 'aws_s3'
   | 'azure_blob'
   | 'onedrive'
-  | 'ftp';
+  | 'relay';
 
 export interface StorageProvider {
   id: string;

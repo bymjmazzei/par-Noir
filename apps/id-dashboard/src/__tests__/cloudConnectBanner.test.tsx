@@ -51,6 +51,18 @@ describe('CloudLayoutUpdateBanner', () => {
     expect(screen.queryByText('Cloud layout update required')).toBeNull();
   });
 
+  it('prompts a legacy FTP social cloud to set up its relay', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(statusResponse(200, complete));
+    const onSetUpRelay = jest.fn();
+    render(
+      <CloudLayoutUpdateBanner apiToken="tok" pnIdentifier={PN} socialCloudProvider="ftp" onSetUpRelay={onSetUpRelay} />
+    );
+    act(() => {
+      screen.getByText('Set up relay').click();
+    });
+    expect(onSetUpRelay).toHaveBeenCalled();
+  });
+
   it('re-checks and hides once the cloud registration completes', async () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce(statusResponse(200, pending));
     render(<CloudLayoutUpdateBanner apiToken="tok" pnIdentifier={PN} />);

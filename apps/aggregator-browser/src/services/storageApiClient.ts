@@ -34,7 +34,7 @@ export type StorageProviderId =
   | 'aws_s3'
   | 'azure_blob'
   | 'onedrive'
-  | 'ftp';
+  | 'relay';
 
 function normalizeBackend(backend?: string): StorageProviderId {
   return (backend || 'google_drive') as StorageProviderId;

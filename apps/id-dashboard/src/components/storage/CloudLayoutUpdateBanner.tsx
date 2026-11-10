@@ -42,6 +42,9 @@ export interface CloudLayoutUpdateBannerProps {
   /** Re-check when this changes (e.g. after connect). */
   refreshKey?: string | number;
   className?: string;
+  /** Legacy `ftp` social cloud: the API no longer reaches FTP, so prompt for a relay. */
+  socialCloudProvider?: string | null;
+  onSetUpRelay?: () => void;
 }
 
 export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = ({
@@ -51,6 +54,8 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
   onOpenStorage,
   refreshKey,
   className = '',
+  socialCloudProvider,
+  onSetUpRelay,
 }) => {
   const [status, setStatus] = useState<CloudLayoutStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -119,6 +124,30 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
       setBusy(false);
     }
   };
+
+  if (socialCloudProvider === 'ftp') {
+    return (
+      <div
+        className={`rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 ${className}`}
+        role="status"
+      >
+        <p className="font-medium text-amber-600">Set up your FTP relay</p>
+        <p className="mt-1 text-text-secondary">
+          par Noir no longer connects to FTP servers. Host the small storage relay with your FTP login, then point this
+          pN at it to keep using your FTP storage.
+        </p>
+        {onSetUpRelay ? (
+          <button
+            type="button"
+            onClick={onSetUpRelay}
+            className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm"
+          >
+            Set up relay
+          </button>
+        ) : null}
+      </div>
+    );
+  }
 
   if (!status || status.complete || dismissed) return null;
 

@@ -25,7 +25,7 @@ export function isCloudProviderId(value: string | null | undefined): value is Cl
     value === 'onedrive' ||
     value === 'aws_s3' ||
     value === 'azure_blob' ||
-    value === 'ftp'
+    value === 'relay'
   );
 }
 

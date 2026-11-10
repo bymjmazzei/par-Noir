@@ -15,11 +15,15 @@ import type {
   OnedriveAccount,
   PutOptions,
   PutResult,
+  RelayAccount,
+  RelayListResponse,
   StorageCredentialsEnvelope,
   StorageProviderId,
 } from '@par-noir/user-owned-storage';
 import {
   BlobPreconditionError,
+  RELAY_PATHS,
+  isRelayErrorBody,
   pnRootFolderName,
   readCachedLayout,
   resolveAccount,
@@ -28,7 +32,7 @@ import {
 import { accountAccessToken } from './driveTokenResolver.js';
 import { getSessionCloudCredentials } from './sessionMemory.js';
 
-export type DeviceBlobProvider = 'dropbox' | 'onedrive' | 'aws_s3' | 'azure_blob';
+export type DeviceBlobProvider = 'dropbox' | 'onedrive' | 'aws_s3' | 'azure_blob' | 'relay';
 
 /**
  * BlobStore on the owner's cloud. `put` honours `ifMatch` with the provider's
@@ -145,6 +149,11 @@ export function createDeviceBlobStore(
       }
       if (!account.prefix) throw new Error('Azure prefix required (par-noir-{pn}).');
       return azureStore(account, pathScheme(account.prefix, layoutRoot, pnRoot), f);
+    }
+    case 'relay': {
+      const account = resolveAccount<RelayAccount>(credentials, 'relay', opts.accountId);
+      if (!account.url || !account.token) throw new Error('Relay URL and token missing. Set up your relay again.');
+      return relayStore(account, pathScheme('', layoutRoot, pnRoot), f);
     }
     default:
       throw new Error(`No device blob store for provider: ${provider}`);
@@ -379,6 +388,75 @@ function azureStore(account: AzureBlobAccount, paths: PathScheme, f: Fetch): Dev
       const res = await f(blobUrl(key), { method: 'DELETE' });
       if (res.status === 404) return;
       if (!res.ok) await failed(res, 'Azure delete');
+    },
+  };
+}
+
+/** A relay answered with its JSON error body; `code` says which side failed. */
+export class RelayRequestError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = 'RelayRequestError';
+  }
+}
+
+async function relayFailed(res: Response, what: string): Promise<never> {
+  const body = await res.json().catch(() => null);
+  if (isRelayErrorBody(body)) throw new RelayRequestError(body.error, res.status, `${what}: ${body.message}`);
+  throw new RelayRequestError('relay_http_error', res.status, `${what} failed: ${res.status}`);
+}
+
+function relayStore(account: RelayAccount, paths: PathScheme, f: Fetch): DeviceBlobStore {
+  const base = account.url.replace(/\/+$/, '');
+  const auth = { Authorization: `Bearer ${account.token}` };
+  const blobUrl = (key: string) => `${base}${RELAY_PATHS.blob}?key=${encodeURIComponent(paths.objectPath(key))}`;
+
+  return {
+    providerId: 'relay',
+    mkdir: noMkdir,
+    async get(key) {
+      const res = await f(blobUrl(key), { headers: auth });
+      if (res.status === 404) return null;
+      if (!res.ok) await relayFailed(res, 'Relay download');
+      return new Uint8Array(await res.arrayBuffer());
+    },
+    async head(key) {
+      const res = await f(blobUrl(key), { method: 'HEAD', headers: auth });
+      if (res.status === 404) return null;
+      if (!res.ok) await relayFailed(res, 'Relay metadata');
+      return headFromResponse(res);
+    },
+    async put(key, data, options) {
+      const res = await f(blobUrl(key), {
+        method: 'PUT',
+        headers: {
+          ...auth,
+          'Content-Type': options?.contentType ?? 'application/octet-stream',
+          ...(options?.ifMatch ? { 'If-Match': options.ifMatch } : {}),
+        },
+        body: bodyOf(toBytes(data)),
+      });
+      if (res.status === 412) preconditionFailed(key);
+      if (!res.ok) await relayFailed(res, 'Relay upload');
+      const etag = res.headers.get('etag') || undefined;
+      return { etag, version: etag };
+    },
+    async list(prefix = '') {
+      const res = await f(`${base}${RELAY_PATHS.list}?prefix=${encodeURIComponent(paths.objectPath(prefix))}`, {
+        headers: auth,
+      });
+      if (!res.ok) await relayFailed(res, 'Relay list');
+      const page = (await res.json()) as RelayListResponse;
+      return (page.entries ?? []).map((e) => ({ ...e, key: paths.relative(e.key) }));
+    },
+    async delete(key) {
+      const res = await f(blobUrl(key), { method: 'DELETE', headers: auth });
+      if (res.status === 404) return;
+      if (!res.ok) await relayFailed(res, 'Relay delete');
     },
   };
 }

@@ -1,0 +1,27 @@
+{
+  "name": "pn-storage-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Storage relay a par Noir user hosts in front of their own FTPS or SFTP server",
+  "type": "module",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "basic-ftp": "^5.0.5",
+    "ssh2-sftp-client": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ssh2-sftp-client": "^9.0.4",
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.4"
+  }
+}

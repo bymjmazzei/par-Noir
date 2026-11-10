@@ -57,6 +57,30 @@ describe('PUT /api/storage/credentials/:id/provider', () => {
     const [account] = stored.credentials!.awsS3Accounts as Array<Record<string, unknown>>;
     expect(account).toMatchObject({ bucket: 'b', region: 'us-east-1', prefix: 'par-noir-pn-test' });
   });
+
+  it('refuses a relay URL or token and stores only the relay prefix', async () => {
+    for (const relay of [{ prefix: 'par-noir-pn-test', token: 't' }, { prefix: 'par-noir-pn-test', url: 'https://r' }]) {
+      const res = await request(app()).put('/api/storage/credentials/pn-test/provider').send({ provider: 'relay', relay });
+      expect(res.body.error).toBe('secrets_not_accepted');
+    }
+    expect(stored.credentials).toBeNull();
+
+    const res = await request(app())
+      .put('/api/storage/credentials/pn-test/provider')
+      .send({ provider: 'relay', relay: { prefix: 'par-noir-pn-test' } });
+    expect(res.body).toMatchObject({ provider: 'relay', socialCloudProvider: 'relay' });
+    expect(stored.credentials!.relayAccounts).toEqual([
+      { accountId: 'relay::pn-test::relay', prefix: 'par-noir-pn-test' },
+    ]);
+  });
+
+  it('no longer accepts an FTP login', async () => {
+    const res = await request(app())
+      .put('/api/storage/credentials/pn-test/provider')
+      .send({ provider: 'ftp', ftp: { host: 'h', username: 'u' } });
+    expect(res.status).toBe(400);
+    expect(stored.credentials).toBeNull();
+  });
 });
 
 describe('PUT /api/storage/credentials/:id/social-cloud', () => {

@@ -44,16 +44,17 @@ export function upsertAzureAccount(
   };
 }
 
-export function upsertFtpAccount(
+/** Relay layout shell: account id and prefix. The URL and token stay in the device vault. */
+export function upsertRelayAccount(
   credentials: StorageCredentialsEnvelope,
-  pnIdentifier: string,
-  entry: NonNullable<StorageCredentialsEnvelope['ftpAccounts']>[number]
+  entry: { accountId: string; prefix: string }
 ): StorageCredentialsEnvelope {
-  const slug = entry.host.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 32);
-  const accountId = entry.accountId || buildAccountId('ftp', pnIdentifier, slug);
   return {
     ...credentials,
-    ftpAccounts: upsertProviderAccount(credentials.ftpAccounts, { ...entry, accountId })
+    relayAccounts: upsertProviderAccount(
+      credentials.relayAccounts,
+      entry as NonNullable<StorageCredentialsEnvelope['relayAccounts']>[number]
+    )
   };
 }
 
@@ -108,8 +109,8 @@ export function disconnectProviderAccount(
     case 'onedrive':
       updated.onedriveAccounts = removeProviderAccount(updated.onedriveAccounts, accountId);
       break;
-    case 'ftp':
-      updated.ftpAccounts = removeProviderAccount(updated.ftpAccounts, accountId);
+    case 'relay':
+      updated.relayAccounts = removeProviderAccount(updated.relayAccounts, accountId);
       break;
     default:
       throw new Error(`Disconnect not supported for provider: ${provider}`);

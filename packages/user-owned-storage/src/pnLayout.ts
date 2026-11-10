@@ -13,7 +13,7 @@ export const ATTACHMENTS_DIR = 'attachments';
 export const CONTENT_CLASSES = ['media', 'notes', 'collections'] as const;
 export type ContentClass = (typeof CONTENT_CLASSES)[number];
 
-/** Root key prefix for portable providers (S3, Azure, FTP): `par-noir-{pnIdentifier}` */
+/** Root key prefix for portable providers (S3, Azure, relay): `par-noir-{pnIdentifier}` */
 export function pnRootFolderName(pnIdentifier: string): string {
   const id = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
   return `par-noir-${id}`;

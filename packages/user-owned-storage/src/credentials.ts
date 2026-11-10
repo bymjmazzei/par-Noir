@@ -12,7 +12,7 @@ export interface StorageCredentialsEnvelope {
   awsS3Accounts?: AwsS3Account[];
   azureBlobAccounts?: AzureBlobAccount[];
   onedriveAccounts?: OnedriveAccount[];
-  ftpAccounts?: FtpAccount[];
+  relayAccounts?: RelayAccount[];
   cachedLayout?: CachedLayout;
   /** @deprecated use cachedLayout.nodeIds */
   cachedFolderIds?: CachedLayout['nodeIds'];
@@ -83,15 +83,15 @@ export interface OnedriveAccount {
   expires_at?: number;
 }
 
-export interface FtpAccount {
+/** A storage relay the user hosts in front of their FTPS/SFTP server. */
+export interface RelayAccount {
   accountId: string;
-  host: string;
-  port: number;
-  username: string;
-  password: string;
-  basePath: string;
-  useTls: boolean;
-  passiveMode: boolean;
+  /** HTTPS origin of the relay. Device vault only; never sent to the API. */
+  url: string;
+  /** Bearer token the relay checks. Device vault only; never sent to the API. */
+  token: string;
+  /** Same value as the relay's RELAY_PREFIX. */
+  prefix: string;
 }
 
 export function listConnectedProviders(credentials: StorageCredentialsEnvelope): StorageProviderId[] {
@@ -102,7 +102,7 @@ export function listConnectedProviders(credentials: StorageCredentialsEnvelope):
   if (credentials.awsS3Accounts?.length) out.push('aws_s3');
   if (credentials.azureBlobAccounts?.length) out.push('azure_blob');
   if (credentials.onedriveAccounts?.length) out.push('onedrive');
-  if (credentials.ftpAccounts?.length) out.push('ftp');
+  if (credentials.relayAccounts?.length) out.push('relay');
   return out;
 }
 
@@ -118,7 +118,9 @@ export const CLOUD_SECRET_FIELDS = [
   'secretAccessKey',
   'password',
   'sasToken',
-  'connectionString'
+  'connectionString',
+  'token',
+  'url'
 ] as const;
 
 export type CloudSessionReadiness = 'ready' | 'linkedInactive' | 'unlinked';
@@ -159,8 +161,8 @@ function accountsForProvider(
       return (envelope.azureBlobAccounts ?? []) as unknown as Record<string, unknown>[];
     case 'onedrive':
       return (envelope.onedriveAccounts ?? []) as unknown as Record<string, unknown>[];
-    case 'ftp':
-      return (envelope.ftpAccounts ?? []) as unknown as Record<string, unknown>[];
+    case 'relay':
+      return (envelope.relayAccounts ?? []) as unknown as Record<string, unknown>[];
     default:
       return [];
   }
@@ -320,8 +322,8 @@ export function resolveAccount<T extends { accountId: string }>(
     case 'onedrive':
       list = (credentials.onedriveAccounts ?? []) as unknown as T[];
       break;
-    case 'ftp':
-      list = (credentials.ftpAccounts ?? []) as unknown as T[];
+    case 'relay':
+      list = (credentials.relayAccounts ?? []) as unknown as T[];
       break;
     default:
       throw new Error(`resolveAccount not supported for provider: ${provider}`);
@@ -366,6 +368,6 @@ export function normalizeLegacyAccountIds(
     azureBlobAccounts: patch(credentials.azureBlobAccounts, 'azure_blob'),
     dropboxAccounts: patch(credentials.dropboxAccounts, 'dropbox'),
     onedriveAccounts: patch(credentials.onedriveAccounts, 'onedrive'),
-    ftpAccounts: patch(credentials.ftpAccounts, 'ftp')
+    relayAccounts: patch(credentials.relayAccounts, 'relay')
   };
 }
