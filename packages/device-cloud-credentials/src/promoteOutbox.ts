@@ -19,6 +19,8 @@ import { omitCloudAccessHeader } from './cloudVault.js';
 import { appendDeviceCloudRow } from './deviceCloudRow.js';
 import { appendDeviceMessage, resolveOwnConversationSheet } from './deviceSocial.js';
 import { layoutSheetId } from './layoutSheet.js';
+import { resolveTablesSocialContext } from './social/socialContext.js';
+import { applyOwnOutboxToTables } from './social/applyTablesJob.js';
 import { sealSocialEnvelope } from '@par-noir/dm-crypto';
 
 export interface PromoteOutboxOptions {
@@ -108,8 +110,18 @@ async function postOwnSheetApply(
     path,
     body
   }));
-  const cloudToken = await opts.getCloudAccessToken?.();
-  if (cloudToken && record.kind === 'message_append') {
+  const tables = await resolveTablesSocialContext(opts.identityId);
+  const cloudToken = tables ? undefined : await opts.getCloudAccessToken?.();
+  if (tables) {
+    const receipt = await applyOwnOutboxToTables(tables, opts.identityId, record.kind, {
+      ...body,
+      toPnIdentifier: record.payload.toPnIdentifier,
+      messageId: typeof body.messageId === 'string' ? body.messageId : record.outboxId,
+    });
+    if (!receipt) throw new Error(`${record.kind} needs Google Drive as the social cloud`);
+    if (typeof receipt.spreadsheetId === 'string') body.spreadsheetId = receipt.spreadsheetId;
+    body.deviceCloudResult = receipt;
+  } else if (cloudToken && record.kind === 'message_append') {
     const peer = typeof record.payload.toPnIdentifier === 'string' ? record.payload.toPnIdentifier : '';
     if (!peer) throw new Error('message_append outbox record has no recipient');
     const spreadsheetId = await resolveOwnConversationSheet({

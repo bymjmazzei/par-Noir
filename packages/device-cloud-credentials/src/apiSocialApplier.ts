@@ -30,6 +30,8 @@ import {
 } from './deviceSocial.js';
 import { layoutSheetId } from './layoutSheet.js';
 import { getSessionDriveIndex } from './sessionMemory.js';
+import { resolveTablesSocialContext } from './social/socialContext.js';
+import { applyInboundJobToTables } from './social/applyTablesJob.js';
 
 export interface ApiSocialApplierOptions {
   apiBaseUrl: string;
@@ -135,16 +137,22 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
       path,
       body
     }));
-    const cloudToken = await opts.getCloudAccessToken?.();
     if (job.jobType === 'message_append') {
       // The sender's spreadsheetId points into their Drive; land the row in ours.
       delete body.spreadsheetId;
     }
+    const tables = await resolveTablesSocialContext(opts.identityId);
+    const cloudToken = tables ? undefined : await opts.getCloudAccessToken?.();
     const spreadsheetId =
       (typeof body.spreadsheetId === 'string' && body.spreadsheetId) ||
       layoutSheetId(opts.identityId, job.jobType) ||
       '';
-    if (cloudToken && job.jobType === 'message_append') {
+    if (tables) {
+      const receipt = await applyInboundJobToTables(tables, opts.identityId, job.jobType, body);
+      if (!receipt) return false;
+      if (typeof receipt.spreadsheetId === 'string') body.spreadsheetId = receipt.spreadsheetId;
+      body.deviceCloudResult = receipt;
+    } else if (cloudToken && job.jobType === 'message_append') {
       const peer = typeof body.fromPnIdentifier === 'string' ? body.fromPnIdentifier : '';
       const messageSheet = await resolveOwnConversationSheet({
         accessToken: cloudToken,

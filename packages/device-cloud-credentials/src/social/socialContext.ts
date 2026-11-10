@@ -22,24 +22,35 @@ export type DeviceSocialContext =
 
 export type GoogleDriveSession = () => Promise<{ accessToken: string; index: DeviceDriveLayout }>;
 
-/** The Google session opener is app-specific (it reads the stored layout through the app's API client). */
-export async function resolveDeviceSocialContext(
+export type TablesSocialContext = Extract<DeviceSocialContext, { kind: 'tables' }>;
+
+/** Null when the social cloud is Google Drive (or nothing is unlocked yet). */
+export async function resolveTablesSocialContext(
   pnIdentifier: string,
-  googleDrive: GoogleDriveSession,
   opts: { fetchImpl?: typeof fetch } = {}
-): Promise<DeviceSocialContext> {
+): Promise<TablesSocialContext | null> {
   const credentials = getSessionCloudCredentials(pnIdentifier);
-  const provider = credentials ? resolveSocialCloudProvider(credentials) : 'google_drive';
-  if (!credentials || provider === 'google_drive') {
-    const drive = await googleDrive();
-    return { kind: 'google_drive', accessToken: drive.accessToken, index: drive.index };
-  }
+  if (!credentials) return null;
+  const provider = resolveSocialCloudProvider(credentials);
+  if (provider === 'google_drive') return null;
   const blobs = createDeviceBlobStore(pnIdentifier, credentials, {
     accountId: credentials.socialCloudAccountId,
     fetchImpl: opts.fetchImpl,
   });
   const tables = await createDeviceTableStore(pnIdentifier, credentials, { fetchImpl: opts.fetchImpl });
   return { kind: 'tables', provider, tables, blobs, layoutRoot: layoutRootFor(pnIdentifier, credentials) };
+}
+
+/** The Google session opener is app-specific (it reads the stored layout through the app's API client). */
+export async function resolveDeviceSocialContext(
+  pnIdentifier: string,
+  googleDrive: GoogleDriveSession,
+  opts: { fetchImpl?: typeof fetch } = {}
+): Promise<DeviceSocialContext> {
+  const tables = await resolveTablesSocialContext(pnIdentifier, opts);
+  if (tables) return tables;
+  const drive = await googleDrive();
+  return { kind: 'google_drive', accessToken: drive.accessToken, index: drive.index };
 }
 
 /** deviceCloudResult for an API route that records a write this device already made. */

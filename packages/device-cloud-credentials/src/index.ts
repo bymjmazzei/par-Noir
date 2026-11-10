@@ -63,8 +63,10 @@ export type { DeviceTableStore } from './deviceTables.js';
 export { initializeDevicePortableLayout } from './social/portableLayout.js';
 export {
   resolveDeviceSocialContext,
+  resolveTablesSocialContext,
   socialReceipt,
   type DeviceSocialContext,
+  type TablesSocialContext,
   type GoogleDriveSession,
 } from './social/socialContext.js';
 export { deviceConnections, type DeviceConnectionStore } from './social/connections.js';
