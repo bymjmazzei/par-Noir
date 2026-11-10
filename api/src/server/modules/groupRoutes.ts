@@ -67,7 +67,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
 
         const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
         const submitted = readDeviceCloudResult(req.body);
-        if (!submitted?.spreadsheetId) {
+        if (!submitted) {
           respondCloudOnDevice(res);
           return;
         }
@@ -128,7 +128,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
 
         const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
         const submitted = readDeviceCloudResult(req.body);
-        if (!submitted?.spreadsheetId) {
+        if (!submitted) {
           respondCloudOnDevice(res);
           return;
         }
@@ -214,7 +214,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
 
         const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
         const submitted = readDeviceCloudResult(req.body);
-        if (!submitted?.spreadsheetId) {
+        if (!submitted) {
           respondCloudOnDevice(res);
           return;
         }
@@ -286,7 +286,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         const { enqueueSocialJob } = await import('./socialRail');
         const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
         const submitted = readDeviceCloudResult(req.body);
-        if (!submitted?.spreadsheetId) {
+        if (!submitted) {
           respondCloudOnDevice(res);
           return;
         }

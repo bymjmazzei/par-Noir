@@ -79,7 +79,7 @@ async function applyGroupInboxUpdate(ctx: TablesSocialContext, body: Body) {
   const createdAt = existing[0]?.createdAt || text(body, 'createdAt') || new Date().toISOString();
   const members = Array.isArray(body.members) ? (body.members as GroupKeyRotation) : [];
   for (const m of members) {
-    await groups.upsert({
+    await groups.append({
       groupId,
       ownerPnIdentifier: owner,
       title,

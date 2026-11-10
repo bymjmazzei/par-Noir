@@ -37,7 +37,7 @@ function definedFields(row: DeviceConnection): Record<string, unknown> {
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined));
 }
 
-/** Connections index: Google `Connections` sheet, or the connections table (server row shape). */
+/** Connections index: Google `Connections` sheet (writes need it), or the connections table (server row shape). */
 export function deviceConnections(ctx: DeviceSocialContext, fetchImpl?: typeof fetch): DeviceConnectionStore {
   if (ctx.kind === 'google_drive') {
     const sheetId = ctx.index.sheetIds.connections;
@@ -46,7 +46,8 @@ export function deviceConnections(ctx: DeviceSocialContext, fetchImpl?: typeof f
       list,
       get: async (connectionId) => (await list()).find((row) => row.connectionId === connectionId),
       upsert: async (row) => {
-        if (sheetId) await upsertDeviceConnection(ctx.accessToken, sheetId, row, fetchImpl);
+        if (!sheetId) throw new Error('Connections are not ready. Reconnect cloud storage.');
+        await upsertDeviceConnection(ctx.accessToken, sheetId, row, fetchImpl);
       },
       receipt: (extra) => socialReceipt(ctx, { spreadsheetId: sheetId, ...extra }),
     };

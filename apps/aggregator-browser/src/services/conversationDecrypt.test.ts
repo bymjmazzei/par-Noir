@@ -1,12 +1,14 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 
-const listDeviceMessages = vi.fn();
-const resolveOwnConversationSheet = vi.fn();
+const listConversation = vi.fn();
+const deviceConversation = vi.fn();
+const resolveDmConversation = vi.fn();
 const decryptIncomingMessage = vi.fn();
+const socialCtx = { kind: 'google_drive', accessToken: 'google-token', index: {} };
 
 vi.mock('@par-noir/device-cloud-credentials', () => ({
-  listDeviceMessages: (...args: unknown[]) => listDeviceMessages(...args),
-  resolveOwnConversationSheet: (...args: unknown[]) => resolveOwnConversationSheet(...args),
+  deviceConversation: (...args: unknown[]) => deviceConversation(...args),
+  resolveDmConversation: (...args: unknown[]) => resolveDmConversation(...args),
   createOutboxRecord: vi.fn(),
   messageSendFanout: vi.fn(),
   promoteLocalOutbox: vi.fn(),
@@ -15,8 +17,8 @@ vi.mock('@par-noir/device-cloud-credentials', () => ({
   requireOnlineCloudForSend: vi.fn(),
 }));
 
-vi.mock('./sessionDrive', () => ({
-  sessionDriveFor: async () => ({ accessToken: 'google-token', index: {} }),
+vi.mock('./sessionSocial', () => ({
+  sessionSocialFor: async () => socialCtx,
 }));
 
 vi.mock('./dmCryptoClient', () => ({
@@ -32,11 +34,11 @@ vi.mock('./connectionService', () => ({
 import { getConversationMessages } from './messageService';
 
 beforeEach(() => {
-  listDeviceMessages.mockReset();
-  resolveOwnConversationSheet.mockReset();
-  resolveOwnConversationSheet.mockResolvedValue('own-sheet');
+  listConversation.mockReset();
+  deviceConversation.mockReset().mockImplementation(() => ({ list: listConversation }));
+  resolveDmConversation.mockReset().mockResolvedValue('own-sheet');
   decryptIncomingMessage.mockReset();
-  listDeviceMessages.mockResolvedValue([
+  listConversation.mockResolvedValue([
     {
       fromPnIdentifier: 'pn-peer',
       content: 'ciphertext-body',
@@ -50,7 +52,7 @@ beforeEach(() => {
   decryptIncomingMessage.mockResolvedValue('hello');
 });
 
-test('a thread reads from its own resolved dm sheet, not the inbox-supplied id, and decrypts the rows', async () => {
+test('a thread reads from its own resolved dm conversation, not the inbox-supplied id, and decrypts the rows', async () => {
   const result = await getConversationMessages(
     'pn-self',
     'pn-peer',
@@ -60,10 +62,11 @@ test('a thread reads from its own resolved dm sheet, not the inbox-supplied id, 
     'kem',
     'peer-sheet'
   );
-  expect(resolveOwnConversationSheet).toHaveBeenCalledWith(
+  expect(resolveDmConversation).toHaveBeenCalledWith(
+    socialCtx,
     expect.objectContaining({ identityId: 'pn-self', peerPnIdentifier: 'pn-peer', connectionId: 'conn-1' })
   );
-  expect(listDeviceMessages).toHaveBeenCalledWith('google-token', 'own-sheet');
+  expect(deviceConversation).toHaveBeenCalledWith(socialCtx, 'own-sheet');
   expect(decryptIncomingMessage).toHaveBeenCalled();
   expect(result.messages[0]?.content).toBe('hello');
 });

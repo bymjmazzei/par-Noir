@@ -157,7 +157,7 @@ export function setupConnectionRoutes(app: express.Application) {
         const otherUserPnIdentifier = String(
           submitted?.peerPnIdentifier || req.body?.peerPnIdentifier || ''
         );
-        if (!submitted?.spreadsheetId || !otherUserPnIdentifier) {
+        if (!submitted || !otherUserPnIdentifier) {
           respondCloudOnDevice(res);
           return;
         }
@@ -222,7 +222,7 @@ export function setupConnectionRoutes(app: express.Application) {
         const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
         const submitted = readDeviceCloudResult(req.body);
         const peer = String(submitted?.peerPnIdentifier || peerPnIdentifier || '');
-        if (!submitted?.spreadsheetId || !peer) {
+        if (!submitted || !peer) {
           respondCloudOnDevice(res);
           return;
         }
@@ -257,7 +257,7 @@ export function setupConnectionRoutes(app: express.Application) {
         }
         const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
         const submitted = readDeviceCloudResult(req.body);
-        if (!submitted?.spreadsheetId) {
+        if (!submitted) {
           respondCloudOnDevice(res);
           return;
         }
@@ -283,7 +283,7 @@ export function setupConnectionRoutes(app: express.Application) {
         }
         const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
         const submitted = readDeviceCloudResult(req.body);
-        if (!submitted?.spreadsheetId) {
+        if (!submitted) {
           respondCloudOnDevice(res);
           return;
         }
@@ -340,7 +340,7 @@ export function setupConnectionRoutes(app: express.Application) {
         const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
         const submitted = readDeviceCloudResult(req.body);
         const peer = String(submitted?.peerPnIdentifier || peerPnIdentifier || '');
-        if (!submitted?.spreadsheetId || !peer) {
+        if (!submitted || !peer) {
           respondCloudOnDevice(res);
           return;
         }

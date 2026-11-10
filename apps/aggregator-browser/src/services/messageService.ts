@@ -54,6 +54,11 @@ export function channelLabelForClientId(channelClientId?: string): string {
   return id;
 }
 
+async function sessionSocialFor(userPnIdentifier: string) {
+  const { sessionSocialFor: open } = await import('./sessionSocial');
+  return open(userPnIdentifier);
+}
+
 const inboxThreadsInflight = new Map<string, Promise<MessageThread[]>>();
 const conversationMessagesInflight = new Map<
   string,
@@ -300,14 +305,12 @@ export interface MessageThread {
 export async function getMessages(userPnIdentifier: string): Promise<Message[]> {
   try {
     const threads = await getMessageThreads(userPnIdentifier);
+    const { deviceConversation } = await import('@par-noir/device-cloud-credentials');
+    const ctx = await sessionSocialFor(userPnIdentifier);
     const out: Message[] = [];
     for (const thread of threads) {
       if (!thread.spreadsheetId) continue;
-      const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
-      const { sessionDriveFor } = await import('./sessionDrive');
-      const drive = await sessionDriveFor(userPnIdentifier);
-      const rows = await listDeviceMessages(drive.accessToken, thread.spreadsheetId);
-      out.push(...(rows as Message[]));
+      out.push(...((await deviceConversation(ctx, thread.spreadsheetId).list()) as Message[]));
     }
     return out;
   } catch (error) {
@@ -445,10 +448,8 @@ export async function getMessageThreads(
   channelClientId?: string
 ): Promise<MessageThread[]> {
   const channel = defaultChannelListFilter(channelClientId);
-  const { listDeviceInbox } = await import('@par-noir/device-cloud-credentials');
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(userPnIdentifier);
-  const inbox = await listDeviceInbox(drive.accessToken, drive.index.inboxSheetId);
+  const { deviceInbox } = await import('@par-noir/device-cloud-credentials');
+  const inbox = await deviceInbox(await sessionSocialFor(userPnIdentifier)).list();
   const conversations = inbox.filter((row) => {
     if (channel === '*') return true;
     if (row.threadType === 'group') return true;
@@ -519,13 +520,9 @@ export async function getConversationMessages(
         (thread) => thread.participantPnIdentifier === participantPnIdentifier
       );
     if (hasThread) {
-      const { listDeviceMessages, resolveOwnConversationSheet } = await import(
-        '@par-noir/device-cloud-credentials'
-      );
-      const { sessionDriveFor } = await import('./sessionDrive');
-      const drive = await sessionDriveFor(userPnIdentifier);
-      const sheet = await resolveOwnConversationSheet({
-        accessToken: drive.accessToken,
+      const { deviceConversation, resolveDmConversation } = await import('@par-noir/device-cloud-credentials');
+      const ctx = await sessionSocialFor(userPnIdentifier);
+      const conversationId = await resolveDmConversation(ctx, {
         identityId: userPnIdentifier,
         peerPnIdentifier: participantPnIdentifier,
         connectionId,
@@ -533,7 +530,7 @@ export async function getConversationMessages(
         wrappedMessageRootKey,
         channelClientId
       });
-      raw = (await listDeviceMessages(drive.accessToken, sheet)) as Message[];
+      raw = (await deviceConversation(ctx, conversationId).list()) as Message[];
     }
 
     const recovery = await resolveRecoveryForDecrypt(
@@ -822,23 +819,19 @@ export async function sendMessageRequest(
     const recipientKey = await fetchRecipientMlKemPublicKey(toPnIdentifier);
     const { encryptedContent, kemCiphertext } = await encryptMessageRequest(content, recipientKey);
 
-    const { appendSheetValues } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(fromPnIdentifier);
-    const sheetId = drive.index.sheetIds['message_requests'];
-    if (!sheetId) throw new Error('cloud_on_device');
+    const { deviceMessageRequests } = await import('@par-noir/device-cloud-credentials');
     const requestId = `req_${Date.now().toString(36)}`;
     const timestamp = new Date().toISOString();
-    await appendSheetValues(drive.accessToken, sheetId, 'Requests!A:H', [[
+    await deviceMessageRequests(await sessionSocialFor(fromPnIdentifier)).append({
       requestId,
       fromPnIdentifier,
       toPnIdentifier,
-      encryptedContent,
-      'pending',
+      content: encryptedContent,
+      status: 'pending',
       timestamp,
       kemCiphertext,
-      '2',
-    ]]);
+      cryptoVersion: 2,
+    });
     return {
       requestId,
       fromPnIdentifier,
@@ -860,13 +853,8 @@ export async function sendMessageRequest(
  */
 export async function getMessageRequests(userPnIdentifier: string): Promise<MessageRequest[]> {
   try {
-    const { listDeviceMessageRequests } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheetId = drive.index.sheetIds['message_requests'];
-    const rows: MessageRequest[] = sheetId
-      ? ((await listDeviceMessageRequests(drive.accessToken, sheetId)) as MessageRequest[])
-      : [];
+    const { deviceMessageRequests } = await import('@par-noir/device-cloud-credentials');
+    const rows = (await deviceMessageRequests(await sessionSocialFor(userPnIdentifier)).list()) as MessageRequest[];
     if (!isDmIdentityReady()) {
       return rows.map((r) => ({ ...r, content: r.cryptoVersion === 2 ? '[Encrypted message request]' : r.content }));
     }
@@ -899,19 +887,11 @@ export async function respondToRequest(
   accept: boolean
 ): Promise<void> {
   try {
-    const { readSheetValues, writeSheetValues } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheetId = drive.index.sheetIds['message_requests'];
-    if (!sheetId) throw new Error('cloud_on_device');
-    const rows = await readSheetValues(drive.accessToken, sheetId, 'Requests!A2:H');
-    const next = rows.map((row) => {
-      if (row[0] !== requestId) return row;
-      const copy = [...row];
-      copy[4] = accept ? 'accepted' : 'declined';
-      return copy;
-    });
-    await writeSheetValues(drive.accessToken, sheetId, 'Requests!A2:H', next);
+    const { deviceMessageRequests } = await import('@par-noir/device-cloud-credentials');
+    await deviceMessageRequests(await sessionSocialFor(userPnIdentifier)).setStatus(
+      requestId,
+      accept ? 'accepted' : 'declined'
+    );
   } catch (error) {
     console.error('Failed to respond to request:', error);
     throw error;
@@ -931,20 +911,16 @@ export async function markAsRead(
     return;
   }
   try {
-    const { markDeviceMessageRead, resolveOwnConversationSheet } = await import(
-      '@par-noir/device-cloud-credentials'
-    );
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheet = participantPnIdentifier
-      ? await resolveOwnConversationSheet({
-          accessToken: drive.accessToken,
+    const { deviceConversation, resolveDmConversation } = await import('@par-noir/device-cloud-credentials');
+    const ctx = await sessionSocialFor(userPnIdentifier);
+    const conversationId = participantPnIdentifier
+      ? await resolveDmConversation(ctx, {
           identityId: userPnIdentifier,
           peerPnIdentifier: participantPnIdentifier
         })
       : spreadsheetId;
-    if (!sheet) return;
-    await markDeviceMessageRead(drive.accessToken, sheet, messageId);
+    if (!conversationId) return;
+    await deviceConversation(ctx, conversationId).markRead(messageId);
   } catch (error) {
     console.error('Failed to mark as read:', error);
     throw error;
@@ -956,13 +932,12 @@ export async function markAsRead(
  */
 export async function deleteMessage(messageId: string, userPnIdentifier: string): Promise<void> {
   try {
-    const { deleteDeviceMessageRow } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
+    const { deviceConversation } = await import('@par-noir/device-cloud-credentials');
+    const ctx = await sessionSocialFor(userPnIdentifier);
     const threads = await getMessageThreads(userPnIdentifier);
     for (const thread of threads) {
       if (!thread.spreadsheetId) continue;
-      await deleteDeviceMessageRow(drive.accessToken, thread.spreadsheetId, messageId);
+      await deviceConversation(ctx, thread.spreadsheetId).remove(messageId);
     }
   } catch (error) {
     console.error('Failed to delete message:', error);
@@ -977,18 +952,9 @@ export async function deleteConversation(
   userPnIdentifier: string,
   participantPnIdentifier: string
 ): Promise<void> {
-  const { readSheetValues, writeSheetValues } = await import('@par-noir/device-cloud-credentials');
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(userPnIdentifier);
-  const inboxId = drive.index.inboxSheetId;
-  if (!inboxId) throw new Error('cloud_on_device');
-  const rows = await readSheetValues(drive.accessToken, inboxId, 'Inbox!A2:I');
-  const next = rows.filter((row) => row[0] !== participantPnIdentifier);
-  await writeSheetValues(
-    drive.accessToken,
-    inboxId,
-    'Inbox!A2:I',
-    next.length ? next : [['', '', '', '', '', '', '', '', '']]
+  const { deviceInbox } = await import('@par-noir/device-cloud-credentials');
+  await deviceInbox(await sessionSocialFor(userPnIdentifier)).remove(
+    (thread) => thread.participantPnIdentifier === participantPnIdentifier
   );
 }
 

@@ -52,13 +52,25 @@ export interface CreateGroupMemberInput {
   accessRole?: GroupAccessRole;
 }
 
+/** This pN's groups table, plus the receipt API routes record for a group write. */
+async function ownGroups(userPnIdentifier: string) {
+  const { deviceGroups, socialReceipt } = await import('@par-noir/device-cloud-credentials');
+  const { sessionSocialFor } = await import('./sessionSocial');
+  const ctx = await sessionSocialFor(userPnIdentifier);
+  const groupsSheet = ctx.kind === 'google_drive' ? ctx.index.sheetIds.groups : undefined;
+  return {
+    ctx,
+    groups: deviceGroups(ctx),
+    receipt: (spreadsheetId?: string) => {
+      const sheet = spreadsheetId || groupsSheet;
+      if (ctx.kind === 'google_drive' && !sheet) throw new Error('cloud_on_device');
+      return socialReceipt(ctx, sheet ? { spreadsheetId: sheet } : {});
+    },
+  };
+}
+
 export async function listGroups(userPnIdentifier: string): Promise<GroupRecord[]> {
-  const { listDeviceGroups } = await import('@par-noir/device-cloud-credentials');
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(userPnIdentifier);
-  const sheetId = drive.index.sheetIds.groups;
-  if (!sheetId) return [];
-  const rows = await listDeviceGroups(drive.accessToken, sheetId);
+  const rows = await (await ownGroups(userPnIdentifier)).groups.list();
   return rows.map((row) => ({
     ...row,
     accessRole: row.accessRole === 'readOnly' ? 'readOnly' : 'readWrite',
@@ -136,14 +148,11 @@ export async function createGroup(
     });
   }
 
-  const { appendDeviceGroupRow } = await import('@par-noir/device-cloud-credentials');
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(ownerPnIdentifier);
-  const sheetId = drive.index.sheetIds.groups;
-  if (!sheetId) throw new Error('cloud_on_device');
+  const own = await ownGroups(ownerPnIdentifier);
+  const deviceCloudResult = own.receipt();
   const createdAt = new Date().toISOString();
   for (const member of members) {
-    await appendDeviceGroupRow(drive.accessToken, sheetId, {
+    await own.groups.append({
       groupId,
       ownerPnIdentifier,
       title,
@@ -161,7 +170,7 @@ export async function createGroup(
       title,
       groupId,
       members,
-      deviceCloudResult: { spreadsheetId: sheetId },
+      deviceCloudResult,
     },
     { pnIdentifier: ownerPnIdentifier }
   );
@@ -180,14 +189,11 @@ export async function updateMemberAccessRole(
   memberPnIdentifier: string,
   accessRole: GroupAccessRole
 ): Promise<void> {
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(ownerPnIdentifier);
-  const sheetId = drive.index.sheetIds.groups;
-  if (!sheetId) throw new Error('cloud_on_device');
+  const deviceCloudResult = (await ownGroups(ownerPnIdentifier)).receipt();
   const res = await ownerFetch(
     'PATCH',
     `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
-    { ownerPnIdentifier, accessRole, deviceCloudResult: { spreadsheetId: sheetId } },
+    { ownerPnIdentifier, accessRole, deviceCloudResult },
     { pnIdentifier: ownerPnIdentifier }
   );
   if (!res.ok) {
@@ -200,14 +206,11 @@ export async function updateGroupTitle(
   groupId: string,
   title: string
 ): Promise<void> {
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(ownerPnIdentifier);
-  const sheetId = drive.index.sheetIds.groups;
-  if (!sheetId) throw new Error('cloud_on_device');
+  const deviceCloudResult = (await ownGroups(ownerPnIdentifier)).receipt();
   const res = await ownerFetch(
     'PATCH',
     `/api/groups/${encodeURIComponent(groupId)}`,
-    { ownerPnIdentifier, title, deviceCloudResult: { spreadsheetId: sheetId } },
+    { ownerPnIdentifier, title, deviceCloudResult },
     { pnIdentifier: ownerPnIdentifier }
   );
   if (!res.ok) {
@@ -263,14 +266,11 @@ export async function removeGroupMember(
     });
   }
 
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(ownerPnIdentifier);
-  const sheetId = drive.index.sheetIds.groups;
-  if (!sheetId) throw new Error('cloud_on_device');
+  const deviceCloudResult = (await ownGroups(ownerPnIdentifier)).receipt();
   const res = await ownerFetch(
     'DELETE',
     `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
-    { ownerPnIdentifier, keyRotation, deviceCloudResult: { spreadsheetId: sheetId } },
+    { ownerPnIdentifier, keyRotation, deviceCloudResult },
     { pnIdentifier: ownerPnIdentifier }
   );
   if (!res.ok) {
@@ -346,15 +346,13 @@ export async function getGroupMessages(
   limit = 50,
   offset = 0
 ): Promise<{ messages: Message[]; total: number }> {
-  const sheet = spreadsheetId || record.conversationSpreadsheetId;
-  const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(userPn);
-  const rows = sheet ? await listDeviceMessages(drive.accessToken, sheet) : [];
+  const { deviceConversation, groupConversationIdFor } = await import('@par-noir/device-cloud-credentials');
+  const { ctx } = await ownGroups(userPn);
+  const conversationId = groupConversationIdFor(ctx, groupId, spreadsheetId || record.conversationSpreadsheetId);
+  const rows = conversationId ? await deviceConversation(ctx, conversationId).list() : [];
   const data = { messages: rows, total: rows.length };
   void limit;
   void offset;
-  void groupId;
   const chatKey = await getGroupChatKey(userPn, record);
   const messages: Message[] = await Promise.all(
     (data.messages || []).map(async (row) => {
@@ -457,12 +455,11 @@ export async function sendGroupMessage(
   });
   await upsertLocalOutboxRecord(userPn, sealSession, outbox);
 
-  const { appendDeviceMessage } = await import('@par-noir/device-cloud-credentials');
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(userPn);
-  const conversationSheet = record.conversationSpreadsheetId;
-  if (conversationSheet) {
-    await appendDeviceMessage(drive.accessToken, conversationSheet, {
+  const { deviceConversation, groupConversationIdFor } = await import('@par-noir/device-cloud-credentials');
+  const own = await ownGroups(userPn);
+  const conversationId = groupConversationIdFor(own.ctx, groupId, record.conversationSpreadsheetId);
+  if (conversationId) {
+    await deviceConversation(own.ctx, conversationId).append({
       fromPnIdentifier: userPn,
       content: encryptedContent,
       encryptedContent,
@@ -472,8 +469,7 @@ export async function sendGroupMessage(
       cryptoVersion: 2,
     });
   }
-  const receiptSheet = conversationSheet || drive.index.sheetIds.groups;
-  if (!receiptSheet) throw new Error('cloud_on_device');
+  const deviceCloudResult = own.receipt(conversationId);
   const res = await ownerFetch(
     'POST',
     `/api/groups/${encodeURIComponent(groupId)}/messages`,
@@ -485,7 +481,7 @@ export async function sendGroupMessage(
       messageId,
       timestamp,
       recipientPnIdentifiers,
-      deviceCloudResult: { spreadsheetId: receiptSheet },
+      deviceCloudResult,
       ...(mediaFileId
         ? {
             mediaFileId,
@@ -552,12 +548,9 @@ export async function addGroupMember(
     dmSessionFromThread(thread),
     groupId
   );
-  const { appendDeviceGroupRow } = await import('@par-noir/device-cloud-credentials');
-  const { sessionDriveFor } = await import('./sessionDrive');
-  const drive = await sessionDriveFor(ownerPnIdentifier);
-  const sheetId = drive.index.sheetIds.groups;
-  if (!sheetId) throw new Error('cloud_on_device');
-  await appendDeviceGroupRow(drive.accessToken, sheetId, {
+  const own = await ownGroups(ownerPnIdentifier);
+  const deviceCloudResult = own.receipt();
+  await own.groups.append({
     groupId,
     ownerPnIdentifier,
     title: groupRow.title,
@@ -575,7 +568,7 @@ export async function addGroupMember(
       memberPnIdentifier,
       wrappedChatKey,
       accessRole,
-      deviceCloudResult: { spreadsheetId: sheetId },
+      deviceCloudResult,
     },
     { pnIdentifier: ownerPnIdentifier }
   );

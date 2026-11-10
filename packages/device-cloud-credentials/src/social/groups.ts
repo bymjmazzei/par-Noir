@@ -7,8 +7,8 @@ export type GroupKeyRotation = Array<{ memberPnIdentifier: string; wrappedChatKe
 
 export interface DeviceGroupStore {
   list(): Promise<DeviceGroupRow[]>;
-  /** Insert or replace one member row. */
-  upsert(row: DeviceGroupRow): Promise<void>;
+  /** Add one member row; tables replace an existing row for the same member. */
+  append(row: DeviceGroupRow): Promise<void>;
   /** Replace a group's member rows with re-wrapped keys under a successor owner. */
   rewrap(groupId: string, successorOwnerPnIdentifier: string, rotation: GroupKeyRotation): Promise<boolean>;
 }
@@ -28,19 +28,6 @@ function groupRowFromTable(row: Record<string, unknown>): DeviceGroupRow {
   };
 }
 
-function groupSheetRow(row: DeviceGroupRow): string[] {
-  return [
-    row.groupId,
-    row.ownerPnIdentifier,
-    row.title,
-    row.createdAt,
-    row.memberPnIdentifier,
-    row.accessRole,
-    row.wrappedChatKey,
-    row.conversationSpreadsheetId || '',
-  ];
-}
-
 export function deviceGroups(ctx: DeviceSocialContext, fetchImpl?: typeof fetch): DeviceGroupStore {
   if (ctx.kind === 'google_drive') {
     const token = ctx.accessToken;
@@ -51,16 +38,7 @@ export function deviceGroups(ctx: DeviceSocialContext, fetchImpl?: typeof fetch)
     };
     return {
       list: async () => (sheetId ? listDeviceGroups(token, sheetId, fetchImpl) : []),
-      upsert: async (row) => {
-        const id = requireSheet();
-        const rows = await readSheetValues(token, id, 'Groups!A2:H', fetchImpl);
-        const index = rows.findIndex((r) => r[0] === row.groupId && r[4] === row.memberPnIdentifier);
-        if (index === -1) {
-          await appendDeviceGroupRow(token, id, row, fetchImpl);
-          return;
-        }
-        await writeSheetValues(token, id, `Groups!A${index + 2}:H${index + 2}`, [groupSheetRow(row)], fetchImpl);
-      },
+      append: (row) => appendDeviceGroupRow(token, requireSheet(), row, fetchImpl),
       rewrap: async (groupId, successor, rotation) => {
         const id = requireSheet();
         const rows = await readSheetValues(token, id, 'Groups!A2:H', fetchImpl);
@@ -87,7 +65,7 @@ export function deviceGroups(ctx: DeviceSocialContext, fetchImpl?: typeof fetch)
   const table = () => ctx.tables.openTable(GROUPS_SCHEMA);
   return {
     list: async () => ((await (await table()).scan()) as Record<string, unknown>[]).map(groupRowFromTable),
-    upsert: async (row) => {
+    append: async (row) => {
       await (await table()).append({ ...row, memberKey: memberKey(row.groupId, row.memberPnIdentifier) });
     },
     rewrap: async (groupId, successor, rotation) => {

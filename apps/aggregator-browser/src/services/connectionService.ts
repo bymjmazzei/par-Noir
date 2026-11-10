@@ -30,16 +30,17 @@ import {
 export type { Connection, ConnectionStatus, PendingRequests };
 export { LEGACY_CONNECTION_REQUEST_KEY_MESSAGE };
 
+async function ownConnections(userPnIdentifier: string) {
+  const { deviceConnections } = await import('@par-noir/device-cloud-credentials');
+  const { sessionSocialFor } = await import('./sessionSocial');
+  const ctx = await sessionSocialFor(userPnIdentifier);
+  return { ctx, connections: deviceConnections(ctx) };
+}
+
 const connectionsClient = createConnectionsClient({
   waitForCloud: waitForOwnerCloudAccess,
-  listConnectionRows: async (userPnIdentifier) => {
-    const { listDeviceConnections } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheetId = drive.index.sheetIds.connections;
-    if (!sheetId) return [];
-    return (await listDeviceConnections(drive.accessToken, sheetId)) as Connection[];
-  },
+  listConnectionRows: async (userPnIdentifier) =>
+    (await (await ownConnections(userPnIdentifier)).connections.list()) as Connection[],
   onAcceptedRowsLoaded: (connections) => {
     for (const row of connections) {
       if (row.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
@@ -115,19 +116,14 @@ export async function sendConnectionRequest(
   );
 
   try {
-    const { upsertDeviceConnection } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(requesterPnIdentifier);
-    const sheetId = drive.index.sheetIds.connections;
-    if (sheetId) {
-      await upsertDeviceConnection(drive.accessToken, sheetId, {
-        connectionId,
-        userPnIdentifier: recipientPnIdentifier,
-        status: 'pending_sent',
-        createdAt,
-        peerMailboxRouteKey: mailboxRouteKey,
-      });
-    }
+    const { connections } = await ownConnections(requesterPnIdentifier);
+    await connections.upsert({
+      connectionId,
+      userPnIdentifier: recipientPnIdentifier,
+      status: 'pending_sent',
+      createdAt,
+      peerMailboxRouteKey: mailboxRouteKey,
+    });
     const requestBody: Record<string, unknown> = {
       requesterPnIdentifier,
       recipientPnIdentifier,
@@ -135,12 +131,7 @@ export async function sendConnectionRequest(
       requesterMailboxRouteKey: mailboxRouteKey,
       recipientEnvelope,
       envelopeContext,
-      deviceCloudResult: {
-        spreadsheetId: sheetId,
-        provider: 'google',
-        connectionId,
-        peerPnIdentifier: recipientPnIdentifier,
-      },
+      deviceCloudResult: connections.receipt({ connectionId, peerPnIdentifier: recipientPnIdentifier }),
     };
     const response = await ownerFetch(
       'POST',
@@ -233,49 +224,53 @@ export async function acceptConnectionRequest(
   );
 
   try {
-    const { listDeviceConnections, upsertDeviceConnection } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheetId = drive.index.sheetIds.connections;
-    const existing = sheetId
-      ? (await listDeviceConnections(drive.accessToken, sheetId)).find((row) => row.connectionId === connectionId)
-      : undefined;
+    const { ctx, connections } = await ownConnections(userPnIdentifier);
+    const existing = await connections.get(connectionId);
     const peerPn = requesterPnIdentifier.startsWith('pn-')
       ? requesterPnIdentifier
       : `pn-${requesterPnIdentifier}`;
-    if (sheetId) {
-      await upsertDeviceConnection(drive.accessToken, sheetId, {
-        connectionId,
-        userPnIdentifier: existing?.userPnIdentifier || peerPn,
-        status: 'accepted',
-        createdAt: existing?.createdAt || new Date().toISOString(),
-        acceptedAt: new Date().toISOString(),
-        peerMlKemPublicKey: kemPk,
-        kemCiphertext,
-        peerMailboxRouteKey: existing?.peerMailboxRouteKey,
-      });
-    }
-    if (!drive.index.inboxSheetId) {
-      throw new Error('Messaging inbox is not ready. Reconnect cloud storage and try Accept again.');
-    }
-    const { ensureDeviceConversationSheet, upsertDeviceInboxThread } = await import(
+    await connections.upsert({
+      connectionId,
+      userPnIdentifier: existing?.userPnIdentifier || peerPn,
+      status: 'accepted',
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      acceptedAt: new Date().toISOString(),
+      peerMlKemPublicKey: kemPk,
+      kemCiphertext,
+      peerMailboxRouteKey: existing?.peerMailboxRouteKey,
+    });
+    const { deviceInbox, ensureDeviceConversationSheet, resolveDmConversation } = await import(
       '@par-noir/device-cloud-credentials'
     );
-    const conversationSpreadsheetId = await ensureDeviceConversationSheet(
-      drive.accessToken,
-      drive.index.messagesFolderId,
-      connectionId
-    );
-    await upsertDeviceInboxThread(drive.accessToken, drive.index.inboxSheetId, {
-      threadType: 'dm',
-      participantPnIdentifier: peerPn,
-      spreadsheetId: conversationSpreadsheetId,
-      connectionId,
-      lastMessageAt: new Date().toISOString(),
-      kemCiphertext,
-      wrappedMessageRootKey,
-      channelClientId,
-    });
+    if (ctx.kind === 'google_drive') {
+      if (!ctx.index.inboxSheetId) {
+        throw new Error('Messaging inbox is not ready. Reconnect cloud storage and try Accept again.');
+      }
+      const conversationSpreadsheetId = await ensureDeviceConversationSheet(
+        ctx.accessToken,
+        ctx.index.messagesFolderId,
+        connectionId
+      );
+      await deviceInbox(ctx).upsert({
+        threadType: 'dm',
+        participantPnIdentifier: peerPn,
+        spreadsheetId: conversationSpreadsheetId,
+        connectionId,
+        lastMessageAt: new Date().toISOString(),
+        kemCiphertext,
+        wrappedMessageRootKey,
+        channelClientId,
+      });
+    } else {
+      await resolveDmConversation(ctx, {
+        identityId: userPnIdentifier,
+        peerPnIdentifier: peerPn,
+        connectionId,
+        kemCiphertext,
+        wrappedMessageRootKey,
+        channelClientId,
+      });
+    }
     const response = await ownerFetch(
       'POST',
       `/api/connections/${connectionId}/accept`,
@@ -287,11 +282,7 @@ export async function acceptConnectionRequest(
         acceptorMailboxRouteKey: mailboxRouteKey,
         channelClientId,
         peerPnIdentifier: peerPn,
-        deviceCloudResult: {
-          spreadsheetId: sheetId,
-          provider: 'google',
-          peerPnIdentifier: peerPn,
-        },
+        deviceCloudResult: connections.receipt({ peerPnIdentifier: peerPn }),
       },
       { pnIdentifier: userPnIdentifier }
     );
@@ -335,15 +326,10 @@ export async function rejectConnectionRequest(
   userPnIdentifier: string
 ): Promise<void> {
   try {
-    const { listDeviceConnections, upsertDeviceConnection } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheetId = drive.index.sheetIds.connections;
-    const existing = sheetId
-      ? (await listDeviceConnections(drive.accessToken, sheetId)).find((row) => row.connectionId === connectionId)
-      : undefined;
-    if (sheetId && existing) {
-      await upsertDeviceConnection(drive.accessToken, sheetId, { ...existing, status: 'blocked' });
+    const { connections } = await ownConnections(userPnIdentifier);
+    const existing = await connections.get(connectionId);
+    if (existing) {
+      await connections.upsert({ ...existing, status: 'blocked' });
     }
     const response = await ownerFetch(
       'POST',
@@ -351,11 +337,7 @@ export async function rejectConnectionRequest(
       {
         userPnIdentifier,
         peerPnIdentifier: existing?.userPnIdentifier,
-        deviceCloudResult: {
-          spreadsheetId: sheetId,
-          provider: 'google',
-          peerPnIdentifier: existing?.userPnIdentifier,
-        },
+        deviceCloudResult: connections.receipt({ peerPnIdentifier: existing?.userPnIdentifier }),
       },
       { pnIdentifier: userPnIdentifier }
     );
@@ -435,12 +417,7 @@ export async function getPendingRequests(userPnIdentifier: string): Promise<Pend
 
   const work = (async (): Promise<PendingRequests> => {
     try {
-      const { listDeviceConnections } = await import('@par-noir/device-cloud-credentials');
-      const { sessionDriveFor } = await import('./sessionDrive');
-      const drive = await sessionDriveFor(userPnIdentifier);
-      const sheetId = drive.index.sheetIds.connections;
-      if (!sheetId) return { sent: [], received: [] };
-      const rows = await listDeviceConnections(drive.accessToken, sheetId);
+      const rows = await (await ownConnections(userPnIdentifier)).connections.list();
       return {
         sent: rows.filter((row) => row.status === 'pending_sent'),
         received: rows.filter((row) => row.status === 'pending_received'),
@@ -478,13 +455,8 @@ export async function getConnectionStatus(
       return { status: 'not_connected' };
     }
 
-    const { listDeviceConnections } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheetId = drive.index.sheetIds.connections;
-    if (!sheetId) return { status: 'not_connected' };
     const other = normalizePnId(otherUserPnIdentifier);
-    const row = (await listDeviceConnections(drive.accessToken, sheetId)).find(
+    const row = (await (await ownConnections(userPnIdentifier)).connections.list()).find(
       (item) => normalizePnId(item.userPnIdentifier) === other
     );
     if (!row) return { status: 'not_connected' };
@@ -504,15 +476,10 @@ export async function removeConnection(
   userPnIdentifier: string
 ): Promise<void> {
   try {
-    const { listDeviceConnections, upsertDeviceConnection } = await import('@par-noir/device-cloud-credentials');
-    const { sessionDriveFor } = await import('./sessionDrive');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheetId = drive.index.sheetIds.connections;
-    const existing = sheetId
-      ? (await listDeviceConnections(drive.accessToken, sheetId)).find((row) => row.connectionId === connectionId)
-      : undefined;
-    if (sheetId && existing) {
-      await upsertDeviceConnection(drive.accessToken, sheetId, { ...existing, status: 'blocked' });
+    const { connections } = await ownConnections(userPnIdentifier);
+    const existing = await connections.get(connectionId);
+    if (existing) {
+      await connections.upsert({ ...existing, status: 'blocked' });
     }
     const response = await ownerFetch(
       'DELETE',
@@ -520,11 +487,7 @@ export async function removeConnection(
       {
         userPnIdentifier,
         peerPnIdentifier: existing?.userPnIdentifier,
-        deviceCloudResult: {
-          spreadsheetId: sheetId,
-          provider: 'google',
-          peerPnIdentifier: existing?.userPnIdentifier,
-        },
+        deviceCloudResult: connections.receipt({ peerPnIdentifier: existing?.userPnIdentifier }),
       },
       { pnIdentifier: userPnIdentifier }
     );

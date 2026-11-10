@@ -113,8 +113,8 @@ describe('device social helpers on table storage', () => {
     const { ctx } = tablesContext();
     const groups = deviceGroups(ctx);
     const base = { groupId: 'g1', ownerPnIdentifier: 'pn-me', title: 'T', createdAt: 'c', accessRole: 'admin' };
-    await groups.upsert({ ...base, memberPnIdentifier: 'pn-me', wrappedChatKey: 'k1' });
-    await groups.upsert({ ...base, memberPnIdentifier: 'pn-old', wrappedChatKey: 'k2', accessRole: 'readWrite' });
+    await groups.append({ ...base, memberPnIdentifier: 'pn-me', wrappedChatKey: 'k1' });
+    await groups.append({ ...base, memberPnIdentifier: 'pn-old', wrappedChatKey: 'k2', accessRole: 'readWrite' });
     expect(await groups.rewrap('g1', 'pn-me2', [{ memberPnIdentifier: 'pn-me2', wrappedChatKey: 'k3', accessRole: 'admin' }])).toBe(true);
     expect(await groups.list()).toEqual([
       expect.objectContaining({ groupId: 'g1', ownerPnIdentifier: 'pn-me2', memberPnIdentifier: 'pn-me2', wrappedChatKey: 'k3', title: 'T' }),
