@@ -254,7 +254,7 @@ export function MonetizationTab({
           </div>
 
           {!status?.stripeConfigured && (
-            <div className="rounded-lg border border-amber-600/40 bg-amber-950/20 p-4 text-sm text-amber-100">
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-600">
               Monetization billing is not configured on this API deployment (Stripe keys / price id). Status reflects
               verification and ledger only.
             </div>

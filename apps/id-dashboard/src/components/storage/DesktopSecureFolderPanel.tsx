@@ -259,19 +259,19 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   }, [resolveSecureVolume]);
 
   return (
-    <section className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+    <section className="bg-secondary border border-border rounded-xl p-6">
       <div className="flex items-start justify-between">
         <div className="flex items-start space-x-3">
           <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/10 border border-blue-500/40">
             <FolderOpen className="h-5 w-5 text-blue-400" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+            <h3 className="text-lg font-semibold text-text-primary">Secure Folder</h3>
             <p className="text-text-secondary text-sm max-w-xl">
               Encrypted device storage only available on this device.
             </p>
             {error && (
-              <p className="text-sm text-red-400 pt-1">
+              <p className="text-sm text-red-500 pt-1">
                 {error}
               </p>
             )}

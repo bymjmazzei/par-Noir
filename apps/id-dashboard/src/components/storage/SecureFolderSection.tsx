@@ -19,14 +19,14 @@ export function SecureFolderSection({
   }
 
   return (
-    <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 sm:p-6">
+    <div className="bg-secondary border border-border rounded-xl p-4 sm:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-3 mb-4">
             <Lock className="h-5 w-5 text-blue-400 shrink-0" />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+                <h3 className="text-lg font-semibold text-text-primary">Secure Folder</h3>
                 <SectionInfo title="About the Desktop App">
                   <p>
                     The par Noir Desktop App provides secure, local access to your encrypted files stored in Google

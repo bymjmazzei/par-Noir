@@ -136,16 +136,16 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
 
   return (
     <div
-      className={`rounded-xl border border-amber-600/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-100 ${className}`}
+      className={`rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 ${className}`}
       role="status"
     >
-      <p className="font-medium text-amber-50">Cloud layout update required</p>
-      <p className="mt-1 text-amber-200/90">
+      <p className="font-medium text-amber-600">Cloud layout update required</p>
+      <p className="mt-1 text-text-secondary">
         Your secure cloud needs a one-time update
         {pendingLabels.length > 0 ? ` (${pendingLabels.join('; ')})` : ''}. Complete this in Storage
         under Secure Cloud.
       </p>
-      {error && <p className="mt-2 text-red-300 text-xs">{error}</p>}
+      {error && <p className="mt-2 text-red-500 text-xs">{error}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
         {allowUpgrade ? (
           <button
@@ -162,7 +162,7 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
           <button
             type="button"
             onClick={onOpenStorage}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/60 text-amber-100 hover:bg-amber-900/40 text-sm"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/60 text-amber-600 hover:bg-amber-500/10 text-sm"
           >
             Open Storage
           </button>
@@ -171,7 +171,7 @@ export const CloudLayoutUpdateBanner: React.FC<CloudLayoutUpdateBannerProps> = (
           type="button"
           onClick={onDismiss}
           disabled={busy}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-transparent text-amber-200/80 hover:text-amber-50 text-sm"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-transparent text-text-secondary hover:text-text-primary hover:bg-amber-500/10 text-sm"
         >
           Remind me later
         </button>

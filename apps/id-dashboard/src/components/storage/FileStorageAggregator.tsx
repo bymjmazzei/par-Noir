@@ -746,7 +746,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         <>
           {opts.extraLabel}
           {opts.canDisconnect && connectedBackends.has(backendId) && (
-            <button onClick={() => handleDisconnect(backendId)} className="text-red-400 hover:text-red-300 text-sm">
+            <button onClick={() => handleDisconnect(backendId)} className="text-red-500 hover:text-red-600 text-sm">
               Disconnect
             </button>
           )}
@@ -801,7 +801,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         </>
       ),
       banner: quota ? (
-        <div className="flex items-center justify-between text-xs text-text-secondary bg-neutral-900 rounded-lg px-3 py-2">
+        <div className="flex items-center justify-between text-xs text-text-secondary bg-hover rounded-lg px-3 py-2">
           <span>
             Used {(quota.usedBytes / (1024 * 1024)).toFixed(1)} MB of {(quota.totalBytes / (1024 * 1024)).toFixed(1)} MB
           </span>
@@ -813,7 +813,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           <DriveLayoutSetupProgress progress={driveSetupProgress} />
         ) : undefined,
       footer: isBulkDeleteMode ? (
-        <div className="mt-4 pt-4 border-t border-neutral-700 flex items-center justify-between">
+        <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -827,7 +827,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   selectAllFiles(backendId);
                 }
               }}
-              className="px-3 py-1.5 text-sm text-white hover:bg-neutral-700 rounded transition-colors"
+              className="px-3 py-1.5 text-sm text-text-primary hover:bg-hover rounded transition-colors"
             >
               {allSelected ? 'Deselect All' : 'Select All'}
             </button>
@@ -839,7 +839,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             <select
               value={moveDestKey}
               onChange={(e) => setMoveDestKey(e.target.value)}
-              className="text-sm bg-neutral-800 border border-neutral-600 rounded px-2 py-1.5 text-white"
+              className="text-sm bg-input-bg border border-input-border rounded px-2 py-1.5 text-text-primary"
               disabled={selectedCount === 0 || isLoading}
             >
               <option value="">Move to cloud…</option>
@@ -896,7 +896,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         {
           canDisconnect: false,
           extraLabel: acct.isSocialCloud ? (
-            <span className="text-xs px-2 py-0.5 rounded bg-blue-900/50 text-blue-300">Social cloud</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-blue-500/15 text-blue-500">Social cloud</span>
           ) : undefined,
         }
       )
@@ -1007,7 +1007,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       />
 
       {!hasConnectedBackends && (
-        <div className="bg-neutral-900/40 border border-neutral-700/60 border-dashed rounded-xl p-6 text-center">
+        <div className="bg-secondary border border-border border-dashed rounded-xl p-6 text-center">
           <Cloud className="h-10 w-10 text-text-secondary mx-auto mb-3" />
           <p className="text-text-primary font-medium mb-1">
             {apiLayoutLinked
@@ -1026,11 +1026,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       {successMessage && (
         <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
           <div className="flex items-center space-x-2">
-            <span className="text-green-400 text-sm">{successMessage}</span>
+            <span className="text-green-600 text-sm">{successMessage}</span>
           </div>
           <button
             onClick={() => setSuccessMessage(null)}
-            className="mt-2 text-xs text-green-400 hover:text-green-300 underline"
+            className="mt-2 text-xs text-green-600 hover:text-green-700 underline"
           >
             Dismiss
           </button>
@@ -1041,12 +1041,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
           <div className="flex items-center space-x-2">
-            <AlertCircle className="h-4 w-4 text-red-400" />
-            <span className="text-red-400 text-sm">{error}</span>
+            <AlertCircle className="h-4 w-4 text-red-500" />
+            <span className="text-red-500 text-sm">{error}</span>
           </div>
           <button
             onClick={() => setError(null)}
-            className="mt-2 text-xs text-red-400 hover:text-red-300 underline"
+            className="mt-2 text-xs text-red-500 hover:text-red-600 underline"
           >
             Dismiss
           </button>
@@ -1056,8 +1056,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       {driveReadBlocked && (
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 mb-4">
           <div className="flex items-center space-x-2">
-            <Lock className="h-4 w-4 text-amber-400 shrink-0" />
-            <span className="text-amber-200 text-sm">{deviceGate?.blockedMessage}</span>
+            <Lock className="h-4 w-4 text-amber-600 shrink-0" />
+            <span className="text-amber-600 text-sm">{deviceGate?.blockedMessage}</span>
           </div>
         </div>
       )}
@@ -1066,9 +1066,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       {!resolvedAuth && !error && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
           <div className="flex items-center space-x-2">
-            <AlertCircle className="h-4 w-4 text-yellow-400 shrink-0" />
+            <AlertCircle className="h-4 w-4 text-yellow-600 shrink-0" />
             <div className="flex-1 min-w-0">
-              <span className="text-yellow-400 text-sm">
+              <span className="text-yellow-600 text-sm">
                 Please unlock your pN first to encrypt files
               </span>
               {import.meta.env.DEV && (
@@ -1089,7 +1089,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         alert(`Error: ${e}`);
                       }
                     }}
-                    className="mt-2 text-xs text-yellow-400 hover:text-yellow-300 underline"
+                    className="mt-2 text-xs text-yellow-600 hover:text-yellow-700 underline"
                   >
                     Debug: Check Session
                   </button>

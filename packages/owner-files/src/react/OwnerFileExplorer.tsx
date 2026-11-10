@@ -8,6 +8,14 @@ import { OwnerFileViewer } from './OwnerFileViewer';
 
 export type OwnerExplorerViewMode = 'grid' | 'list';
 
+/** Host theme variables (id-dashboard light/dark); fallbacks keep dark-only hosts unchanged. */
+const TEXT_PRIMARY = 'text-[color:var(--text-primary,#fff)]';
+const TEXT_MUTED = 'text-[color:var(--text-secondary,#a3a3a3)]';
+const HOVER_TEXT_PRIMARY = 'hover:text-[color:var(--text-primary,#fff)]';
+const HOVER_SURFACE = 'hover:bg-[color:var(--hover,#262626)]';
+const ROW_SURFACE = `bg-[color:var(--modal-bg,rgb(38_38_38/0.5))] ${HOVER_SURFACE} border border-[color:var(--border,transparent)]`;
+const THUMB_SURFACE = 'bg-[color:var(--hover,rgb(64_64_64/0.5))]';
+
 export interface OwnerExplorerSection {
   account: OwnerAccount;
   rows: OwnerFileRow[];
@@ -71,8 +79,8 @@ export function OwnerFileMenuItem({
         e.stopPropagation();
         onClick();
       }}
-      className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors disabled:opacity-50 hover:bg-neutral-800 ${
-        danger ? 'text-red-400 hover:text-red-300' : 'text-neutral-300 hover:text-white'
+      className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors disabled:opacity-50 ${HOVER_SURFACE} ${
+        danger ? 'text-red-500 hover:text-red-600' : `${TEXT_MUTED} ${HOVER_TEXT_PRIMARY}`
       }`}
     >
       {icon}
@@ -128,7 +136,7 @@ function RowMenuPortal({
   return createPortal(
     <div
       ref={ref}
-      className="fixed w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
+      className="fixed w-44 bg-[color:var(--modal-bg,#171717)] border border-[color:var(--border,#404040)] rounded-lg shadow-xl z-[100] py-1"
       style={{ top: menu.top, left: menu.left }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -196,7 +204,7 @@ export function OwnerFileExplorer({
             type="checkbox"
             checked={selection!.selectedIds.has(row.id)}
             onChange={() => selection!.onToggle(row)}
-            className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600"
+            className="w-5 h-5 rounded border-[color:var(--input-border,#525252)] bg-[color:var(--input-bg,#262626)] text-blue-600"
           />
         )}
       </div>
@@ -227,13 +235,13 @@ export function OwnerFileExplorer({
           <div
             key={row.key}
             data-owner-file={row.key}
-            className={`relative bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group ${
+            className={`relative ${ROW_SURFACE} rounded-lg overflow-hidden transition-colors group ${
               selecting ? 'cursor-default' : 'cursor-pointer'
             } ${selected ? 'ring-2 ring-blue-500' : ''}`}
             onClick={() => openRow(row)}
           >
             {selectionBadge(row, 'absolute top-2 left-2 z-30')}
-            <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
+            <div className={`relative aspect-square ${THUMB_SURFACE} overflow-hidden`}>
               <OwnerFileThumb transport={transport} row={row} />
               {row.pending && (
                 <>
@@ -263,10 +271,10 @@ export function OwnerFileExplorer({
               )}
             </div>
             <div className="p-3">
-              <p className="text-white text-xs truncate mb-1" title={row.displayName}>
+              <p className={`${TEXT_PRIMARY} text-xs truncate mb-1`} title={row.displayName}>
                 {row.displayName}
               </p>
-              <p className="text-neutral-400 text-xs">{formatSize(row.size) || '\u00a0'}</p>
+              <p className={`${TEXT_MUTED} text-xs`}>{formatSize(row.size) || '\u00a0'}</p>
             </div>
           </div>
         );
@@ -282,28 +290,28 @@ export function OwnerFileExplorer({
           <div
             key={row.key}
             data-owner-file={row.key}
-            className={`flex items-center gap-3 p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors ${
+            className={`flex items-center gap-3 p-3 ${ROW_SURFACE} rounded-lg transition-colors ${
               selecting ? 'cursor-default' : 'cursor-pointer'
             } ${selected ? 'ring-2 ring-blue-500' : ''}`}
             onClick={() => openRow(row)}
           >
             {selectionBadge(row, 'flex-shrink-0')}
-            <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
+            <div className={`w-12 h-12 flex-shrink-0 rounded overflow-hidden ${THUMB_SURFACE}`}>
               <OwnerFileThumb transport={transport} row={row} compact />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="text-white text-sm truncate">{row.displayName}</p>
-                {row.pending && <RefreshCw className="h-3 w-3 text-blue-400 animate-spin flex-shrink-0" />}
+                <p className={`${TEXT_PRIMARY} text-sm truncate`}>{row.displayName}</p>
+                {row.pending && <RefreshCw className="h-3 w-3 text-blue-500 animate-spin flex-shrink-0" />}
                 {row.visibility === 'public' && !row.pending && (
-                  <Globe className="h-3 w-3 text-green-400 flex-shrink-0" aria-label="Public" />
+                  <Globe className="h-3 w-3 text-green-500 flex-shrink-0" aria-label="Public" />
                 )}
               </div>
-              <p className="text-neutral-400 text-xs">
+              <p className={`${TEXT_MUTED} text-xs`}>
                 {row.pending ? `Uploading ${row.pending.progress}%` : formatSize(row.size)}
               </p>
             </div>
-            {menuButton(row, 'p-1.5 rounded-lg bg-neutral-700/50 hover:bg-neutral-700 text-neutral-300')}
+            {menuButton(row, `p-1.5 rounded-lg ${THUMB_SURFACE} ${HOVER_SURFACE} ${TEXT_MUTED} ${HOVER_TEXT_PRIMARY}`)}
           </div>
         );
       })}
@@ -316,12 +324,12 @@ export function OwnerFileExplorer({
         <div
           key={section.account.accountKey}
           data-owner-account={section.account.accountKey}
-          className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6"
+          className="bg-[color:var(--secondary,rgb(23_23_23/0.6))] border border-[color:var(--border,#404040)] rounded-xl p-6"
         >
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {section.icon}
-              <span className="text-white font-semibold truncate">{section.account.label}</span>
+              <span className={`${TEXT_PRIMARY} font-semibold truncate`}>{section.account.label}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto">
               {section.headerActions}
@@ -329,7 +337,7 @@ export function OwnerFileExplorer({
                 type="button"
                 onClick={() => onViewModeChange('list')}
                 className={`p-2 rounded transition-colors ${
-                  viewMode === 'list' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
+                  viewMode === 'list' ? 'bg-blue-600 text-white' : `${TEXT_MUTED} ${HOVER_TEXT_PRIMARY}`
                 }`}
                 title="List View"
               >
@@ -339,7 +347,7 @@ export function OwnerFileExplorer({
                 type="button"
                 onClick={() => onViewModeChange('grid')}
                 className={`p-2 rounded transition-colors ${
-                  viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
+                  viewMode === 'grid' ? 'bg-blue-600 text-white' : `${TEXT_MUTED} ${HOVER_TEXT_PRIMARY}`
                 }`}
                 title="Grid View"
               >
@@ -348,17 +356,17 @@ export function OwnerFileExplorer({
             </div>
           </div>
           {section.banner}
-          {section.error && <p className="text-red-400 text-sm mb-3">{section.error}</p>}
+          {section.error && <p className="text-red-500 text-sm mb-3">{section.error}</p>}
           {section.body ??
             (section.loading && section.rows.length === 0 ? (
               <div className="text-center py-12">
-                <RefreshCw className="h-8 w-8 text-neutral-400 animate-spin mx-auto mb-4" />
-                <p className="text-neutral-400">Loading files...</p>
+                <RefreshCw className={`h-8 w-8 ${TEXT_MUTED} animate-spin mx-auto mb-4`} />
+                <p className={TEXT_MUTED}>Loading files...</p>
               </div>
             ) : section.rows.length === 0 ? (
               <div className="text-center py-12">
-                <File className="h-12 w-12 text-neutral-400 mx-auto mb-4" />
-                <p className="text-neutral-400">{section.emptyMessage || 'No files found for this account'}</p>
+                <File className={`h-12 w-12 ${TEXT_MUTED} mx-auto mb-4`} />
+                <p className={TEXT_MUTED}>{section.emptyMessage || 'No files found for this account'}</p>
               </div>
             ) : viewMode === 'grid' ? (
               renderGrid(section.rows)

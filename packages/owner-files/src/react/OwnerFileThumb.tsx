@@ -20,8 +20,8 @@ const ICONS: Record<OwnerFileIcon, React.ComponentType<{ className?: string }>> 
 export function OwnerFileIconTile({ icon, compact }: { icon: OwnerFileIcon; compact?: boolean }) {
   const Icon = ICONS[icon];
   return (
-    <div className="w-full h-full flex items-center justify-center bg-neutral-800/70">
-      <Icon className={`${compact ? 'h-5 w-5' : 'h-8 w-8'} text-blue-400`} />
+    <div className="w-full h-full flex items-center justify-center bg-[color:var(--hover,rgb(38_38_38/0.7))]">
+      <Icon className={`${compact ? 'h-5 w-5' : 'h-8 w-8'} text-blue-500`} />
     </div>
   );
 }
@@ -49,6 +49,6 @@ export function OwnerFileThumb({ transport, row, compact }: OwnerFileThumbProps)
     }
     return <img src={opened.url} alt={row.displayName} className="w-full h-full object-cover" loading="lazy" />;
   }
-  if (loading) return <div className="w-full h-full animate-pulse bg-neutral-800/70" />;
+  if (loading) return <div className="w-full h-full animate-pulse bg-[color:var(--hover,rgb(38_38_38/0.7))]" />;
   return <OwnerFileIconTile icon={iconForRow(row)} compact={compact} />;
 }

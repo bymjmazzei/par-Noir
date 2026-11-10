@@ -410,12 +410,12 @@ export function MultiCloudStoragePanel({
   };
 
   return (
-    <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 sm:p-6 mt-4">
+    <div className="bg-secondary border border-border rounded-xl p-4 sm:p-6 mt-4">
       <div className="flex items-start gap-3 mb-4">
-        <Cloud className="h-5 w-5 text-violet-400 shrink-0 mt-0.5" />
+        <Cloud className="h-5 w-5 text-violet-500 shrink-0 mt-0.5" />
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
+            <h3 className="text-lg font-semibold text-text-primary">Secure Cloud</h3>
             <SectionInfo title="Secure Cloud">
               <p>
                 Connect encrypted cloud storage. Dropbox uses App folder; OneDrive uses AppFolder;
@@ -425,18 +425,18 @@ export function MultiCloudStoragePanel({
             </SectionInfo>
           </div>
           {connectedStorageCount > 0 && (
-            <p className="text-green-400 text-sm mt-2">
+            <p className="text-green-600 text-sm mt-2">
               {connectedStorageCount} storage provider{connectedStorageCount !== 1 ? 's' : ''} connected on this device
               {googleDriveConnectedCount > 0 ? ` (${googleDriveConnectedCount} Google Drive)` : ''}
             </p>
           )}
           {socialCloudProvider && connectedStorageCount === 0 && (
-            <p className="text-amber-400 text-sm mt-2">
+            <p className="text-amber-600 text-sm mt-2">
               Social cloud linked on this pN ({socialCloudProvider.replace('_', ' ')}) — reconnect above to use it on this device
             </p>
           )}
           {socialCloudProvider && connectedStorageCount > 0 && (
-            <p className="text-green-400 text-sm mt-2">Social cloud: {socialCloudProvider.replace('_', ' ')}</p>
+            <p className="text-green-600 text-sm mt-2">Social cloud: {socialCloudProvider.replace('_', ' ')}</p>
           )}
         </div>
       </div>
@@ -459,8 +459,8 @@ export function MultiCloudStoragePanel({
             onClick={() => setSelected(p)}
             className={`px-3 py-1.5 rounded-lg text-sm border ${
               selected === p
-                ? 'border-violet-500 bg-violet-600/20 text-white'
-                : 'border-neutral-600 text-text-secondary hover:border-neutral-500'
+                ? 'border-violet-500 bg-violet-600/20 text-text-primary'
+                : 'border-border text-text-secondary hover:border-text-secondary'
             }`}
           >
             {p === 'google_drive' ? 'Google Drive' : p.replace('_', ' ')}
@@ -485,7 +485,7 @@ export function MultiCloudStoragePanel({
               type="button"
               disabled={loading || !pnIdentifier}
               onClick={disconnectGoogleDrive}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/60 text-red-300 text-sm disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/60 text-red-500 text-sm disabled:opacity-50"
             >
               Disconnect Google Drive
             </button>
@@ -499,7 +499,7 @@ export function MultiCloudStoragePanel({
         href={DOC_LINKS[selected]}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 mb-4"
+        className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 mb-4"
       >
         Setup instructions <ExternalLink className="h-3 w-3" />
       </a>
@@ -558,7 +558,7 @@ export function MultiCloudStoragePanel({
           type="button"
           disabled={loading || !pnIdentifier || !authToken}
           onClick={testConnection}
-          className="px-3 py-1.5 rounded-lg border border-neutral-600 text-sm text-text-secondary hover:text-white"
+          className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary"
         >
           Test connection
         </button>
@@ -573,7 +573,7 @@ export function MultiCloudStoragePanel({
               <span>
                 {a.displayName ?? a.provider}
                 {a.isSocialCloud || a.isPrimary ? (
-                  <span className="text-violet-400 ml-1">(social cloud)</span>
+                  <span className="text-violet-500 ml-1">(social cloud)</span>
                 ) : null}
               </span>
               {!(a.isSocialCloud || a.isPrimary) && (
@@ -581,7 +581,7 @@ export function MultiCloudStoragePanel({
                   type="button"
                   disabled={loading}
                   onClick={() => setSocialCloud(a.provider, a.accountId)}
-                  className="text-xs text-blue-400 hover:text-blue-300 underline"
+                  className="text-xs text-blue-500 hover:text-blue-600 underline"
                 >
                   Set as social cloud
                 </button>
@@ -591,7 +591,7 @@ export function MultiCloudStoragePanel({
                   type="button"
                   disabled={loading}
                   onClick={disconnectGoogleDrive}
-                  className="text-xs text-red-400 hover:text-red-300 underline"
+                  className="text-xs text-red-500 hover:text-red-600 underline"
                 >
                   Disconnect
                 </button>
@@ -601,7 +601,7 @@ export function MultiCloudStoragePanel({
                   type="button"
                   disabled={loading}
                   onClick={() => disconnectAccount(a.provider, a.accountId)}
-                  className="text-xs text-red-400 hover:text-red-300 underline"
+                  className="text-xs text-red-500 hover:text-red-600 underline"
                 >
                   Disconnect
                 </button>
@@ -628,17 +628,17 @@ export function MultiCloudStoragePanel({
         />
       )}
 
-      {message && <p className="mt-3 text-green-400 text-sm">{message}</p>}
-      {error && <p className="mt-3 text-red-400 text-sm">{error}</p>}
+      {message && <p className="mt-3 text-green-600 text-sm">{message}</p>}
+      {error && <p className="mt-3 text-red-500 text-sm">{error}</p>}
 
       <style>{`
         .input-dark {
           width: 100%;
           padding: 0.5rem 0.75rem;
           border-radius: 0.5rem;
-          border: 1px solid rgb(64 64 64);
-          background: rgb(23 23 23);
-          color: white;
+          border: 1px solid var(--input-border);
+          background: var(--input-bg);
+          color: var(--text-primary);
           font-size: 0.875rem;
         }
       `}</style>

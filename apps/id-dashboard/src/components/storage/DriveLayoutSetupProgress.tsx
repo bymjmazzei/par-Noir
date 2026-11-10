@@ -14,7 +14,7 @@ export function DriveLayoutSetupProgress({ progress }: { progress: DriveSetupPro
     <div className="text-center py-12 px-4">
       <p className="text-text-primary font-medium mb-1">Setting up your storage</p>
       <p className="text-text-secondary text-sm mb-4">{progress.stepLabel}</p>
-      <div className="w-full max-w-md mx-auto h-2.5 bg-neutral-800 rounded-full overflow-hidden relative overflow-hidden">
+      <div className="w-full max-w-md mx-auto h-2.5 bg-hover rounded-full overflow-hidden relative overflow-hidden">
         <div
           className="h-full bg-blue-600 transition-all duration-500 ease-out rounded-full relative"
           style={{ width: `${Math.max(4, progress.percent)}%` }}

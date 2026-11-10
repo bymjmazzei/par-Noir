@@ -354,10 +354,10 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
               <div className="bg-modal-bg rounded-lg shadow p-4 sm:p-6 lg:p-8 text-text-primary w-full max-w-4xl min-w-0">
                 {/* Tab Navigation - scrollable on narrow viewports; Sub-pN is 3rd tab */}
                 <div className="border-b border-border mb-4 sm:mb-6 relative">
-                  <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto overflow-y-hidden px-1 sm:px-4 justify-start lg:justify-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <nav className="-mb-px flex gap-4 sm:gap-8 overflow-x-auto overflow-y-hidden px-1 sm:px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <button
                       onClick={() => setActiveTab('privacy')}
-                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 first:ml-auto last:mr-auto ${
                         activeTab === 'privacy'
                           ? 'border-primary text-primary'
                           : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
@@ -368,7 +368,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
 
                       <button
                         onClick={() => setActiveTab('subpn')}
-                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 flex items-center gap-1 ${
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 first:ml-auto last:mr-auto flex items-center gap-1 ${
                           activeTab === 'subpn'
                             ? 'border-primary text-primary'
                             : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
@@ -380,7 +380,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
 
                       <button
                         onClick={() => setActiveTab('delegation')}
-                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 first:ml-auto last:mr-auto ${
                           activeTab === 'delegation'
                             ? 'border-primary text-primary'
                             : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
@@ -391,7 +391,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
 
                     <button
                       onClick={() => setActiveTab('recovery')}
-                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 first:ml-auto last:mr-auto ${
                         activeTab === 'recovery'
                           ? 'border-primary text-primary'
                           : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
@@ -402,7 +402,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
 
                     <button
                       onClick={() => setActiveTab('storage')}
-                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 first:ml-auto last:mr-auto ${
                         activeTab === 'storage'
                           ? 'border-primary text-primary'
                           : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
@@ -413,7 +413,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
 
                       <button
                         onClick={() => setActiveTab('monetization')}
-                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 flex items-center gap-1 ${
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 first:ml-auto last:mr-auto flex items-center gap-1 ${
                           activeTab === 'monetization'
                             ? 'border-primary text-primary'
                             : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
