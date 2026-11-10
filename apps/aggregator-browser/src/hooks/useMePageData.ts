@@ -37,10 +37,7 @@ export interface UseMePageDataParams {
   notesFiles: IndexedFile[];
   collectionsFiles: IndexedFile[];
   indexedFiles: IndexedFile[];
-  visibleFileId: string | null;
-  currentFeedIndex: number;
   setCurrentFeedIndex: (n: number | ((prev: number) => number)) => void;
-  setVisibleFileId: (id: string | null) => void;
 }
 
 export function useMePageData({
@@ -51,10 +48,7 @@ export function useMePageData({
   notesFiles,
   collectionsFiles,
   indexedFiles,
-  visibleFileId,
-  currentFeedIndex,
   setCurrentFeedIndex,
-  setVisibleFileId,
 }: UseMePageDataParams) {
   // --- state ---
   const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
@@ -73,6 +67,7 @@ export function useMePageData({
   const [, setIsLoadingSavedFiles] = useState(false);
   const [, setIsLoadingUserEngagement] = useState(false);
   const [creatorOverrideFiles, setCreatorOverrideFiles] = useState<IndexedFile[]>([]);
+  const [pendingCreatorFileId, setPendingCreatorFileId] = useState<string | null>(null);
 
   // --- refs ---
   const savedFeedLoadingRef = useRef(false);
@@ -88,12 +83,7 @@ export function useMePageData({
   const userCommentedFilesLengthRef = useRef<number>(0);
   const savedFilesLengthRef = useRef<number>(0);
   const filteredMeFilesLengthRef = useRef<number>(0);
-  const filesStabilizedRef = useRef<boolean>(false);
-  const prevFilteredMeFilesLengthRef = useRef<number>(0);
   const prevLengthForIndexResetRef = useRef<number>(0);
-  const isNavigatingToFileRef = useRef<boolean>(false);
-  const lastNavigatedFileIdRef = useRef<string | null>(null);
-  const lastNavigatedFileIndexRef = useRef<number | null>(null);
 
   // --- computed keys and map ---
   const indexedFilesKey = useMemo(() => indexedFiles.map((f) => f.metadata.fileId).sort().join(','), [indexedFiles]);
@@ -537,17 +527,6 @@ export function useMePageData({
 
   const filteredMeFiles = filteredMeFilesMemo;
 
-  // --- filesStabilizedRef + prevLengthForIndexReset ---
-  useEffect(() => {
-    if (filteredMeFilesMemo.length !== prevFilteredMeFilesLengthRef.current) {
-      filesStabilizedRef.current = false;
-      prevFilteredMeFilesLengthRef.current = filteredMeFilesMemo.length;
-      const t = setTimeout(() => { filesStabilizedRef.current = true; }, 500);
-      return () => clearTimeout(t);
-    }
-    filesStabilizedRef.current = true;
-  }, [filteredMeFilesMemo.length]);
-
   // --- reset currentFeedIndex when filteredMeFiles length changes ---
   useEffect(() => {
     const pl = prevLengthForIndexResetRef.current;
@@ -562,135 +541,35 @@ export function useMePageData({
     }
   }, [filteredMeFiles.length, setCurrentFeedIndex]);
 
-  // --- find-file effect ---
+  // --- open a specific post on the creator feed ---
+  // Resolved against filteredMeFiles (the rendered list) so the index matches what FullScreenFeed shows.
   useEffect(() => {
-    if (!visibleFileId || !viewingCreatorId) {
-      isNavigatingToFileRef.current = false;
-      if (viewingCreatorId && filesStabilizedRef.current && currentFeedIndex !== 0 && filteredMeFiles.length > 0)
-        setCurrentFeedIndex(0);
+    if (!pendingCreatorFileId) return;
+    if (!viewingCreatorId) {
+      setPendingCreatorFileId(null);
       return;
     }
-    if (!isNavigatingToFileRef.current && mePageTab !== prevMePageTabRef.current) return;
-    isNavigatingToFileRef.current = true;
-
-    const findAndSetFileIndex = (): boolean => {
-      if (!isNavigatingToFileRef.current && !visibleFileId) return false;
-      const curCreator = creatorFiles;
-      const curOwn = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
-      let cur: IndexedFile[] = [];
-      if (curOwn) {
-        switch (mePageTab) {
-          case 'all':
-            cur = Array.from(new Map([...curCreator, ...userLikedFiles, ...userCommentedFiles].map((f) => [f.metadata.fileId, f])).values());
-            break;
-          case 'media': cur = curCreator.filter(isMedia); break;
-          case 'notes': cur = curCreator.filter(isNote); break;
-          case 'likes': cur = userLikedFiles.filter((f) => normalizeId(getCreatorIdentifier(f) ?? '') !== normalizeId(viewingCreatorId!)); break;
-          case 'comments': cur = userCommentedFiles.filter((f) => normalizeId(getCreatorIdentifier(f) ?? '') !== normalizeId(viewingCreatorId!)); break;
-          case 'saved': cur = savedFiles; break;
-          case 'connections': cur = connectionTopPosts; break;
-          default: break;
-        }
-      } else if (viewingCreatorId) {
-        switch (mePageTab) {
-          case 'all': cur = Array.from(new Map([...curCreator, ...viewedUserLikedFiles, ...viewedUserCommentedFiles].map((f) => [f.metadata.fileId, f])).values()); break;
-          case 'media': cur = curCreator.filter(isMedia); break;
-          case 'notes': cur = curCreator.filter(isNote); break;
-          case 'likes': cur = viewedUserLikedFiles; break;
-          case 'comments': cur = viewedUserCommentedFiles; break;
-          default: cur = curCreator;
-        }
-      }
-      if (['all', 'media', 'notes'].includes(mePageTab) && cur.length > 0) {
-        const i = cur.findIndex((f) => f.metadata.isTopPost === true);
-        if (i > 0) { const [tp] = cur.splice(i, 1); cur = [tp, ...cur]; }
-      }
-      const idx = cur.findIndex((f) => f.metadata.fileId === visibleFileId);
-      if (idx !== -1) {
-        if (currentFeedIndex !== idx) setCurrentFeedIndex(idx);
-        lastNavigatedFileIdRef.current = visibleFileId;
-        lastNavigatedFileIndexRef.current = idx;
-        setTimeout(() => {
-          isNavigatingToFileRef.current = false;
-          setVisibleFileId(null);
-          setTimeout(() => { lastNavigatedFileIdRef.current = null; lastNavigatedFileIndexRef.current = null; }, 1000);
-        }, 1000);
-        return true;
-      }
-      if (!isNavigatingToFileRef.current || !visibleFileId) return false;
-      if (mePageTab !== 'collections' && curCreator.length > 0) {
-        const cf = curCreator.filter(isCollection);
-        const i = cf.findIndex((f) => f.metadata.fileId === visibleFileId);
-        if (i !== -1) {
-          setMePageTab('collections');
-          if (currentFeedIndex !== i) setCurrentFeedIndex(i);
-          lastNavigatedFileIdRef.current = visibleFileId;
-          lastNavigatedFileIndexRef.current = i;
-          setTimeout(() => { isNavigatingToFileRef.current = false; setVisibleFileId(null); setTimeout(() => { lastNavigatedFileIdRef.current = null; lastNavigatedFileIndexRef.current = null; }, 1000); }, 1000);
-          return true;
-        }
-      }
-      if (mePageTab !== 'notes' && curCreator.length > 0) {
-        const tf = curCreator.filter(isNote);
-        const i = tf.findIndex((f) => f.metadata.fileId === visibleFileId);
-        if (i !== -1) {
-          setMePageTab('notes');
-          if (currentFeedIndex !== i) setCurrentFeedIndex(i);
-          lastNavigatedFileIdRef.current = visibleFileId;
-          lastNavigatedFileIndexRef.current = i;
-          setTimeout(() => { isNavigatingToFileRef.current = false; setVisibleFileId(null); setTimeout(() => { lastNavigatedFileIdRef.current = null; lastNavigatedFileIndexRef.current = null; }, 1000); }, 1000);
-          return true;
-        }
-      }
-      if (curCreator.length > 0) {
-        let mf = [...curCreator];
-        const ti = mf.findIndex((f) => f.metadata.isTopPost === true);
-        if (ti > 0) { const [tp] = mf.splice(ti, 1); mf = [tp, ...mf]; }
-        const i = mf.findIndex((f) => f.metadata.fileId === visibleFileId);
-        if (i !== -1) {
-          setMePageTab('media');
-          if (currentFeedIndex !== i) setCurrentFeedIndex(i);
-          lastNavigatedFileIdRef.current = visibleFileId;
-          lastNavigatedFileIndexRef.current = i;
-          setTimeout(() => { isNavigatingToFileRef.current = false; setVisibleFileId(null); setTimeout(() => { lastNavigatedFileIdRef.current = null; lastNavigatedFileIndexRef.current = null; }, 1000); }, 1000);
-          return true;
-        }
-      }
-      const all = curOwn
-        ? Array.from(new Map([...curCreator, ...userLikedFiles, ...userCommentedFiles].map((f) => [f.metadata.fileId, f])).values())
-        : Array.from(new Map([...curCreator, ...viewedUserLikedFiles, ...viewedUserCommentedFiles].map((f) => [f.metadata.fileId, f])).values());
-      let ap = [...all];
-      const tai = ap.findIndex((f) => f.metadata.isTopPost === true);
-      if (tai > 0) { const [tp] = ap.splice(tai, 1); ap = [tp, ...ap]; }
-      const ai = ap.findIndex((f) => f.metadata.fileId === visibleFileId);
-      if (ai !== -1) {
-        setMePageTab('all');
-        if (currentFeedIndex !== ai) setCurrentFeedIndex(ai);
-        lastNavigatedFileIdRef.current = visibleFileId;
-        lastNavigatedFileIndexRef.current = ai;
-        setTimeout(() => { isNavigatingToFileRef.current = false; setVisibleFileId(null); setTimeout(() => { lastNavigatedFileIdRef.current = null; lastNavigatedFileIndexRef.current = null; }, 1000); }, 1000);
-        return true;
-      }
-      return false;
-    };
-
-    if (findAndSetFileIndex()) return;
-    let retries = 0;
-    const max = 10;
-    const iv = 200;
-    const t = setInterval(() => {
-      retries++;
-      if (findAndSetFileIndex() || retries >= max) {
-        clearInterval(t);
-        if (retries >= max) {
-          isNavigatingToFileRef.current = false;
-          setTimeout(() => setVisibleFileId(null), 100);
-        }
-      }
-    }, iv);
-    return () => { clearInterval(t); isNavigatingToFileRef.current = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- currentFeedIndex intentionally omitted
-  }, [visibleFileId, viewingCreatorId, mePageTab, mediaFiles, notesFiles, collectionsFiles, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles, connectionTopPosts, creatorFiles]);
+    const idx = filteredMeFiles.findIndex((f) => f.metadata.fileId === pendingCreatorFileId);
+    if (idx !== -1) {
+      setCurrentFeedIndex(idx);
+      setPendingCreatorFileId(null);
+      return;
+    }
+    const target = creatorFiles.find((f) => f.metadata.fileId === pendingCreatorFileId);
+    if (!target) return; // creator files still loading
+    const tab: MePageTab | null = isMedia(target)
+      ? 'media'
+      : isNote(target)
+        ? 'notes'
+        : isCollection(target)
+          ? 'collections'
+          : null;
+    if (tab && tab !== mePageTab) {
+      setMePageTab(tab);
+    } else {
+      setPendingCreatorFileId(null);
+    }
+  }, [pendingCreatorFileId, viewingCreatorId, filteredMeFiles, creatorFiles, mePageTab, setCurrentFeedIndex]);
 
   // --- refreshSavedFeed for onSave onComplete ---
   const refreshSavedFeed = async () => {
@@ -722,9 +601,8 @@ export function useMePageData({
     mePageTab,
     setMePageTab,
     prevViewingCreatorIdRef,
-    isNavigatingToFileRef,
-    lastNavigatedFileIdRef,
-    lastNavigatedFileIndexRef,
+    pendingCreatorFileId,
+    setPendingCreatorFileId,
     refreshSavedFeed,
     savedFeedErrorRef,
     lastSavedFeedFetchRef,

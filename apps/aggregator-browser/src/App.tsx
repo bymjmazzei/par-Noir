@@ -180,10 +180,7 @@ function App() {
     notesFiles,
     collectionsFiles,
     indexedFiles,
-    visibleFileId,
-    currentFeedIndex,
     setCurrentFeedIndex,
-    setVisibleFileId,
   });
 
   const feedScrollRef = React.useRef<HTMLDivElement>(null);
@@ -480,7 +477,7 @@ function App() {
 
   // Reset feed index and pagination when feed changes (unless navigating to a specific file)
   useEffect(() => {
-    if (visibleFileId || mePageData.isNavigatingToFileRef.current || mePageData.lastNavigatedFileIdRef.current) return;
+    if (visibleFileId || mePageData.pendingCreatorFileId) return;
     setCurrentFeedIndex(0);
     // SCALABILITY: Reset pagination when feed changes
     setCurrentPage(0);
@@ -490,7 +487,7 @@ function App() {
 
   // Reset feed index and tab when opening own profile (unless navigating to a specific file)
   useEffect(() => {
-    if (visibleFileId || mePageData.isNavigatingToFileRef.current || mePageData.lastNavigatedFileIdRef.current) return;
+    if (visibleFileId || mePageData.pendingCreatorFileId) return;
     const isProfileOpening = mePageData.prevViewingCreatorIdRef.current !== viewingCreatorId && viewingCreatorId;
     if (isProfileOpening) {
       if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
@@ -1026,8 +1023,7 @@ function App() {
       if (import.meta.env.DEV) console.error('No creator ID found for file:', file.metadata.fileId);
       return;
     }
-    mePageData.isNavigatingToFileRef.current = true;
-    setVisibleFileId(file.metadata.fileId);
+    mePageData.setPendingCreatorFileId(file.metadata.fileId);
     setViewingCreatorId(creatorId);
     setViewMode('feed');
     mePageData.setMePageTab('all');
