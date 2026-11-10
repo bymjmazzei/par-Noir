@@ -3,7 +3,10 @@
  */
 
 import {
+  MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
   getCloudAccessTokenFromSession,
+  normalizeInboxKeysOnTables,
+  resolveTablesSocialContext,
   runDeviceCloudLayoutMigration,
   type DeviceDriveLayout,
 } from '@par-noir/device-cloud-credentials';
@@ -123,6 +126,18 @@ export async function upgradeCloudLayout(
         appliedMigrations: [],
       }
     );
+  }
+
+  const tables = await resolveTablesSocialContext(pnIdentifier);
+  if (tables) {
+    let latest = status;
+    for (const pending of status.pending) {
+      if (pending.id === MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1) {
+        await normalizeInboxKeysOnTables(tables);
+      }
+      latest = await commitCloudLayoutMigration(authToken, pnIdentifier, pending.id);
+    }
+    return latest;
   }
 
   if (!getCloudAccessTokenFromSession(pnIdentifier)) {

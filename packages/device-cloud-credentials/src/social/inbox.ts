@@ -133,6 +133,24 @@ export function deviceInbox(ctx: DeviceSocialContext, fetchImpl?: typeof fetch):
   };
 }
 
+/** Layout v1 on portable clouds: re-key legacy inbox rows to peer|channel / groupId. Returns rows moved. */
+export async function normalizeInboxKeysOnTables(ctx: Extract<DeviceSocialContext, { kind: 'tables' }>): Promise<number> {
+  const handle = await ctx.tables.openTable(INBOX_SCHEMA);
+  const rows = (await handle.scan()) as unknown as InboxRow[];
+  let moved = 0;
+  for (const row of rows) {
+    const complete =
+      !!row.inboxRowKey && !!row.threadType && (row.threadType === 'group' || !!row.channelClientId);
+    if (complete) continue;
+    const normalized = normalizeInboxRow(row);
+    const key = rowKey(row);
+    if (key !== normalized.inboxRowKey) await handle.delete(key);
+    await handle.append({ ...stripUndefined(row), ...stripUndefined(normalized) });
+    moved += 1;
+  }
+  return moved;
+}
+
 function stripUndefined<T extends object>(row: T): Record<string, unknown> {
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined));
 }

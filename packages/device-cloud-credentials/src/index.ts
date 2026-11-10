@@ -70,7 +70,12 @@ export {
   type GoogleDriveSession,
 } from './social/socialContext.js';
 export { deviceConnections, type DeviceConnectionStore } from './social/connections.js';
-export { deviceInbox, type DeviceInboxEntry, type DeviceInboxStore } from './social/inbox.js';
+export {
+  deviceInbox,
+  normalizeInboxKeysOnTables,
+  type DeviceInboxEntry,
+  type DeviceInboxStore,
+} from './social/inbox.js';
 export {
   deviceConversation,
   resolveDmConversation,

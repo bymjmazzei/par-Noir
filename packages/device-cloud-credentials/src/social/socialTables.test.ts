@@ -9,7 +9,7 @@ import { SqliteBlobTableAdapter } from '@par-noir/user-owned-storage/sqlite';
 import type { DeviceBlobStore } from '../deviceBlobStore.js';
 import type { DeviceSocialContext } from './socialContext.js';
 import { deviceConnections } from './connections.js';
-import { deviceInbox } from './inbox.js';
+import { deviceInbox, normalizeInboxKeysOnTables } from './inbox.js';
 import { deviceConversation, groupConversationIdFor, resolveDmConversation } from './conversations.js';
 import { deviceGroups } from './groups.js';
 import { deviceMessageRequests } from './requests.js';
@@ -78,6 +78,19 @@ describe('device social helpers on table storage', () => {
     );
     expect(await inbox.remove((t) => t.participantPnIdentifier === 'pn-peer')).toBe(1);
     expect(await inbox.list()).toEqual([]);
+  });
+
+  it('layout v1 fills thread type and channel on legacy inbox rows', async () => {
+    const { ctx } = tablesContext();
+    if (ctx.kind !== 'tables') throw new Error('unreachable');
+    const table = await ctx.tables.openTable(INBOX_SCHEMA);
+    await table.append({ inboxRowKey: 'pn-peer', participantPnIdentifier: 'pn-peer', spreadsheetId: 's', connectionId: 'c1', lastMessageAt: 't' });
+    await table.append({ inboxRowKey: 'g1', threadType: 'group', groupId: 'g1', participantPnIdentifier: 'g1', spreadsheetId: 'x', connectionId: '', lastMessageAt: 't' });
+    expect(await normalizeInboxKeysOnTables(ctx)).toBe(1);
+    expect(await (await ctx.tables.openTable(INBOX_SCHEMA)).getByKey('pn-peer')).toEqual(
+      expect.objectContaining({ inboxRowKey: 'pn-peer', threadType: 'dm', channelClientId: 'platform', connectionId: 'c1' })
+    );
+    expect(await normalizeInboxKeysOnTables(ctx)).toBe(0);
   });
 
   it('DM conversation is created once, stored newest first, and edited in place', async () => {
