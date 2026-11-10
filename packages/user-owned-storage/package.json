@@ -23,7 +23,9 @@
       "default": "./dist/sqlite.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
@@ -34,10 +36,10 @@
     "access": "public"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0"
+    "sql.js": "^1.16.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/sql.js": "^1.4.11",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   }

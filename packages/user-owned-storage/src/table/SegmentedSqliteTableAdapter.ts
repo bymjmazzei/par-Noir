@@ -104,7 +104,7 @@ export class SegmentedSqliteTableAdapter implements UserOwnedTableStore {
   constructor(
     blobStore: BlobStore,
     rootPrefix: string,
-    private readonly segmentedSchemaIds: Set<string>,
+    private readonly segmentedSchemaIds: ReadonlySet<string>,
     private readonly lookbackDays = 90
   ) {
     this.inner = new SqliteBlobTableAdapter(blobStore, rootPrefix);

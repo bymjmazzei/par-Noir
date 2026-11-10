@@ -5,7 +5,7 @@ import {
   portableTableDelete,
   portableTableScan
 } from './portableTableService';
-import { CONNECTIONS_SCHEMA } from './tableSchemas';
+import { CONNECTIONS_SCHEMA } from '@par-noir/user-owned-storage';
 import { readPortableJsonBlob, writePortableJsonBlob } from './portableJsonBlob';
 
 const CONNECTIONS_META_REL = `${METADATA_DIR}/connections-meta.json`;

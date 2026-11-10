@@ -4,7 +4,7 @@ import {
   portableTableDelete,
   portableTableScan
 } from './portableTableService';
-import { FOLLOWERS_SCHEMA, FOLLOWING_SCHEMA } from './tableSchemas';
+import { FOLLOWERS_SCHEMA, FOLLOWING_SCHEMA } from '@par-noir/user-owned-storage';
 
 function followingKey(f: Following): string {
   return `${f.targetType}:${f.targetPnIdentifier}`;

@@ -31,7 +31,9 @@ export async function createDeviceCloudWriter(
         const bytes = await store.get(key);
         return bytes ? new TextDecoder().decode(bytes) : null;
       },
-      putText: (key, text, contentType = 'application/json') => store.put(key, text, contentType),
+      async putText(key, text, contentType = 'application/json') {
+        await store.put(key, text, { contentType });
+      },
     };
   }
 

@@ -23,7 +23,7 @@ jest.mock('./portableTableService', () => ({
 
 import { RecoverySheetsService } from '../recoverySheetsService';
 import { migrateRecoveryGoogleToPortable, migrateRecoveryPortableToGoogle } from './migrationTransformers';
-import { RECOVERY_CUSTODIANS_SCHEMA, RECOVERY_PENDING_SCHEMA, RECOVERY_REQUESTS_SCHEMA } from './tableSchemas';
+import { RECOVERY_CUSTODIANS_SCHEMA, RECOVERY_PENDING_SCHEMA, RECOVERY_REQUESTS_SCHEMA } from '@par-noir/user-owned-storage';
 
 const ctx = { token: {} as never, metadataFolderId: 'meta', accountId: 'acct' } as never;
 const CREDENTIAL = 'c'.repeat(40);

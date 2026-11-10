@@ -5,7 +5,7 @@ import {
   portableTableGetByKey,
   portableTableScan
 } from './portableTableService';
-import { DATA_POINT_REQUESTS_SCHEMA, MESSAGE_REQUESTS_SCHEMA } from './tableSchemas';
+import { DATA_POINT_REQUESTS_SCHEMA, MESSAGE_REQUESTS_SCHEMA } from '@par-noir/user-owned-storage';
 
 export const PORTABLE_MESSAGE_REQUESTS_SHEET = 'pn-portable-message-requests';
 export const PORTABLE_DATA_POINT_REQUESTS_SHEET = 'pn-portable-data-point-requests';

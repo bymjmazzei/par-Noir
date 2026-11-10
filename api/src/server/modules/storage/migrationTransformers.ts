@@ -27,7 +27,7 @@ import {
   RECOVERY_PENDING_SCHEMA,
   RECOVERY_REQUESTS_SCHEMA,
   PREFERENCES_INTERACTIONS_SCHEMA
-} from './tableSchemas';
+} from '@par-noir/user-owned-storage';
 import { readPortableJsonBlob, writePortableJsonBlob } from './portableJsonBlob';
 import { saveEngagementPortable, getEngagementPortable } from './engagementPortableService';
 import type { UserEngagement } from './engagementPortableService';

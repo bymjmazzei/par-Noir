@@ -64,11 +64,9 @@ export class PortableBlobBackend extends AbstractStorageBackend {
         ? metadata.contentClass as ContentClass
         : 'media';
     const key = encryptedMediaPath(contentClass, fileId);
-    await this.store().put(
-      key,
-      new Uint8Array(await file.arrayBuffer()),
-      file.type || 'application/octet-stream'
-    );
+    await this.store().put(key, new Uint8Array(await file.arrayBuffer()), {
+      contentType: file.type || 'application/octet-stream'
+    });
     return {
       id: fileId,
       name: file.name,

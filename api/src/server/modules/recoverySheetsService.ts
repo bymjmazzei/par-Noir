@@ -8,7 +8,7 @@ import { normalizeCustodianStatus, parseUnrevokableFlag } from '@par-noir/recove
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import { portableTableScan } from './storage/portableTableService';
-import { RECOVERY_CUSTODIANS_SCHEMA } from './storage/tableSchemas';
+import { RECOVERY_CUSTODIANS_SCHEMA } from '@par-noir/user-owned-storage';
 
 export interface RecoveryCustodianRow {
   custodianId: string;

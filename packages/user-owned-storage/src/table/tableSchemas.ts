@@ -1,4 +1,6 @@
-import { TABLE_PATHS, messagesPath, metadataPath, type TableSchema } from '@par-noir/user-owned-storage';
+/** Portable table schemas shared by the device and the API. */
+import { TABLE_PATHS, messagesPath, metadataPath } from '../pnLayout.js';
+import type { TableSchema } from '../types.js';
 
 export const THIRD_PARTY_PERMISSIONS_SCHEMA: TableSchema = {
   id: 'third-party-permissions',
@@ -120,3 +122,10 @@ export const PRISM_LEDGER_SCHEMA: TableSchema = {
   keyColumn: 'activity_id',
   path: TABLE_PATHS.prismLedger
 };
+
+/** Append-heavy ledgers written as daily segment files. */
+export const SEGMENTED_LEDGER_IDS: ReadonlySet<string> = new Set([
+  ACTIVITY_LEDGER_SCHEMA.id,
+  MESSAGING_LEDGER_SCHEMA.id,
+  PRISM_LEDGER_SCHEMA.id
+]);

@@ -3,7 +3,7 @@ import type { PrismLedgerEntry } from './prismLedgerSheetsService';
 import { PrismLedgerSheetsService } from './prismLedgerSheetsService';
 import { isPortableSocialCloud } from './storage/storageProviderUtils';
 import { portableTableAppend, portableTableScan } from './storage/portableTableService';
-import { PRISM_LEDGER_SCHEMA } from './storage/tableSchemas';
+import { PRISM_LEDGER_SCHEMA } from '@par-noir/user-owned-storage';
 import type { GoogleDriveToken } from './googleOAuth2Helper';
 
 function normalizePn(pn: string): string {

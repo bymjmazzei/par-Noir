@@ -5,7 +5,7 @@ import {
   portableTableGetByKey,
   portableTableScan
 } from './portableTableService';
-import { GROUPS_SCHEMA } from './tableSchemas';
+import { GROUPS_SCHEMA } from '@par-noir/user-owned-storage';
 
 export const PORTABLE_GROUPS_SHEET = 'pn-portable-groups';
 

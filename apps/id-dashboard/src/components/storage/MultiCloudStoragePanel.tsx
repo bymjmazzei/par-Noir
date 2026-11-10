@@ -260,7 +260,7 @@ export function MultiCloudStoragePanel({
           provider: socialCloudProvider as import('@par-noir/user-owned-storage').StorageProviderId
         });
         const probe = '.connection-probe';
-        await store.put(probe, JSON.stringify({ ts: new Date().toISOString() }), 'application/json');
+        await store.put(probe, JSON.stringify({ ts: new Date().toISOString() }), { contentType: 'application/json' });
         await store.delete(probe);
       }
       setMessage('Connection test succeeded.');

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
+import { BlobPreconditionError, CONNECTIONS_SCHEMA, TableConcurrencyError } from '@par-noir/user-owned-storage';
 import {
   createDeviceBlobStore,
   DeviceCloudLockedError,
@@ -7,6 +8,7 @@ import {
   s3SignedHeaders,
 } from './deviceBlobStore.js';
 import { clearAllSessionCloudCredentials } from './sessionMemory.js';
+import { createDeviceTableStore } from './deviceTables.js';
 
 const PN = 'pn-abc';
 const ROOT = 'par-noir-pn-abc';
@@ -127,6 +129,64 @@ describe('createDeviceBlobStore', () => {
     expect(() => createDeviceBlobStore(PN, { socialCloudProvider: 'google_drive' } as StorageCredentialsEnvelope)).toThrow(
       /No device blob store/
     );
+  });
+});
+
+/** Minimal S3 object store honouring If-Match, for end-to-end table tests. */
+function fakeS3() {
+  const objects = new Map<string, { body: Uint8Array; etag: string }>();
+  let n = 0;
+  return fakeFetch((url, init) => {
+    const path = new URL(url).pathname;
+    const method = init.method ?? 'GET';
+    const obj = objects.get(path);
+    if (method === 'PUT') {
+      const ifMatch = (init.headers as Record<string, string>)['If-Match'];
+      if (ifMatch && obj?.etag !== ifMatch) return new Response(null, { status: 412 });
+      const etag = `"e${++n}"`;
+      objects.set(path, { body: new Uint8Array(init.body as Uint8Array), etag });
+      return new Response(null, { status: 200, headers: { etag } });
+    }
+    if (!obj) return new Response(null, { status: 404 });
+    if (method === 'HEAD') return new Response(null, { status: 200, headers: { etag: obj.etag, 'content-length': String(obj.body.length) } });
+    return new Response(obj.body as unknown as BodyInit, { status: 200, headers: { etag: obj.etag } });
+  });
+}
+
+describe('conditional writes', () => {
+  it('maps an S3 412 to BlobPreconditionError', async () => {
+    const { f } = fakeFetch(() => new Response(null, { status: 412 }));
+    await expect(
+      createDeviceBlobStore(PN, s3, { fetchImpl: f }).put('a', 'x', { ifMatch: '"old"' })
+    ).rejects.toBeInstanceOf(BlobPreconditionError);
+  });
+
+  it('sends Dropbox update-by-rev when ifMatch is set', async () => {
+    const dropbox = {
+      socialCloudProvider: 'dropbox',
+      dropboxAccounts: [{ accountId: 'db', accessToken: 'tok' }],
+    } as unknown as StorageCredentialsEnvelope;
+    const { f, calls } = fakeFetch(() => new Response(JSON.stringify({ rev: 'r2' }), { status: 200 }));
+    const result = await createDeviceBlobStore(PN, dropbox, { fetchImpl: f }).put('a', 'x', { ifMatch: 'r1' });
+    expect(JSON.parse((calls[0]!.init.headers as Record<string, string>)['Dropbox-API-Arg']!).mode).toEqual({
+      '.tag': 'update',
+      update: 'r1',
+    });
+    expect(result.etag).toBe('r2');
+  });
+});
+
+describe('portable tables on the device', () => {
+  it('reads and writes SQLite tables in S3 and detects a concurrent writer', async () => {
+    const { f, calls } = fakeS3();
+    const a = await (await createDeviceTableStore(PN, s3, { fetchImpl: f })).openTable(CONNECTIONS_SCHEMA);
+    await a.append({ connectionId: 'c1', status: 'accepted' });
+    expect(calls.some((c) => c.url.includes(`/par-noir-${PN}/${ROOT}/`) && c.init.method === 'PUT')).toBe(true);
+    const b = await (await createDeviceTableStore(PN, s3, { fetchImpl: f })).openTable(CONNECTIONS_SCHEMA);
+    expect(await b.getByKey('c1')).toEqual({ connectionId: 'c1', status: 'accepted' });
+
+    await b.append({ connectionId: 'c2', status: 'pending_sent' });
+    await expect(a.append({ connectionId: 'c3', status: 'pending_sent' })).rejects.toBeInstanceOf(TableConcurrencyError);
   });
 });
 

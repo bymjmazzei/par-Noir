@@ -58,6 +58,7 @@ export {
   type DeviceBlobStore,
   type DeviceBlobProvider
 } from './deviceBlobStore.js';
+export { createDeviceTableStore, deviceTableStoreForSession, setSqlJsWasmUrl } from './deviceTables.js';
 export {
   createApiSocialApplier,
   createApiOnlyApplyJob,

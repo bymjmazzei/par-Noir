@@ -159,11 +159,9 @@ export async function uploadStorageFile(
       ? Uint8Array.from(atob(opts.fileData), (c) => c.charCodeAt(0))
       : opts.fileData;
   const key = opts.key ?? opts.fileName;
-  await blobStore(pnIdentifier, provider, opts.accountId).put(
-    key,
-    bytes,
-    opts.mimeType || 'application/octet-stream'
-  );
+  await blobStore(pnIdentifier, provider, opts.accountId).put(key, bytes, {
+    contentType: opts.mimeType || 'application/octet-stream'
+  });
   return { id: key, backend: provider };
 }
 

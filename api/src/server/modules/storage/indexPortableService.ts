@@ -8,7 +8,7 @@ import {
   portableTableReplaceAll,
   portableTableScan
 } from './portableTableService';
-import { OWNER_FILE_INDEX_SCHEMA, PUBLIC_FILE_INDEX_SCHEMA } from './tableSchemas';
+import { OWNER_FILE_INDEX_SCHEMA, PUBLIC_FILE_INDEX_SCHEMA } from '@par-noir/user-owned-storage';
 import { readPortableJsonBlob, writePortableJsonBlob } from './portableJsonBlob';
 import { METADATA_DIR } from '@par-noir/user-owned-storage';
 

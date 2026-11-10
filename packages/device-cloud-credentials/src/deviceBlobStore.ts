@@ -9,12 +9,17 @@ import type {
   AwsS3Account,
   AzureBlobAccount,
   BlobEntry,
+  BlobHead,
+  BlobStore,
   DropboxAccount,
   OnedriveAccount,
+  PutOptions,
+  PutResult,
   StorageCredentialsEnvelope,
   StorageProviderId,
 } from '@par-noir/user-owned-storage';
 import {
+  BlobPreconditionError,
   pnRootFolderName,
   readCachedLayout,
   resolveAccount,
@@ -25,13 +30,22 @@ import { getSessionCloudCredentials } from './sessionMemory.js';
 
 export type DeviceBlobProvider = 'dropbox' | 'onedrive' | 'aws_s3' | 'azure_blob';
 
-export interface DeviceBlobStore {
-  readonly provider: DeviceBlobProvider;
-  get(key: string): Promise<Uint8Array | null>;
-  put(key: string, data: Uint8Array | string, contentType?: string): Promise<void>;
+/**
+ * BlobStore on the owner's cloud. `put` honours `ifMatch` with the provider's
+ * own conditional write; providers whose CORS hides the etag fall back to
+ * last-write-wins. Folders are implicit, so `mkdir` is a no-op.
+ */
+export interface DeviceBlobStore extends BlobStore {
+  readonly providerId: DeviceBlobProvider;
+  put(key: string, data: Uint8Array | string, options?: PutOptions): Promise<PutResult>;
   list(prefix?: string): Promise<BlobEntry[]>;
-  delete(key: string): Promise<void>;
 }
+
+function preconditionFailed(key: string): never {
+  throw new BlobPreconditionError(`Changed since read: ${key}`);
+}
+
+async function noMkdir(): Promise<void> {}
 
 export class DeviceCloudLockedError extends Error {
   constructor() {
@@ -77,7 +91,8 @@ function bodyOf(bytes: Uint8Array): BodyInit {
   return bytes as unknown as BodyInit;
 }
 
-function layoutRootFor(pnIdentifier: string, credentials: StorageCredentialsEnvelope): string {
+/** Same root the API used for the layout, so existing files are found in place. */
+export function layoutRootFor(pnIdentifier: string, credentials: StorageCredentialsEnvelope): string {
   const pathPrefix = readCachedLayout(credentials).pathPrefix;
   return withSlash(pathPrefix || pnRootFolderName(pnIdentifier));
 }
@@ -162,10 +177,11 @@ function dropboxStore(token: string, paths: PathScheme, f: Fetch): DeviceBlobSto
       body: JSON.stringify(body),
     });
   const path = (key: string) => `/${paths.objectPath(key)}`;
-  type Entry = { '.tag': string; path_display: string; size?: number; server_modified?: string };
+  type Entry = { '.tag': string; path_display: string; size?: number; server_modified?: string; rev?: string };
 
   return {
-    provider: 'dropbox',
+    providerId: 'dropbox',
+    mkdir: noMkdir,
     async get(key) {
       const res = await f(`${CONTENT}/files/download`, {
         method: 'POST',
@@ -175,17 +191,28 @@ function dropboxStore(token: string, paths: PathScheme, f: Fetch): DeviceBlobSto
       if (!res.ok) await failed(res, 'Dropbox download');
       return new Uint8Array(await res.arrayBuffer());
     },
-    async put(key, data) {
+    async head(key) {
+      const res = await rpc('/files/get_metadata', { path: path(key) });
+      if (res.status === 409) return null;
+      if (!res.ok) await failed(res, 'Dropbox metadata');
+      const meta = (await res.json()) as Entry;
+      return { etag: meta.rev, version: meta.rev, size: meta.size ?? 0, lastModified: meta.server_modified };
+    },
+    async put(key, data, options) {
+      const mode = options?.ifMatch ? { '.tag': 'update', update: options.ifMatch } : 'overwrite';
       const res = await f(`${CONTENT}/files/upload`, {
         method: 'POST',
         headers: {
           ...auth,
           'Content-Type': 'application/octet-stream',
-          'Dropbox-API-Arg': JSON.stringify({ path: path(key), mode: 'overwrite' }),
+          'Dropbox-API-Arg': JSON.stringify({ path: path(key), mode, autorename: false }),
         },
         body: bodyOf(toBytes(data)),
       });
+      if (res.status === 409 && options?.ifMatch) preconditionFailed(key);
       if (!res.ok) await failed(res, 'Dropbox upload');
+      const meta = (await res.json().catch(() => ({}))) as { rev?: string };
+      return { etag: meta.rev, version: meta.rev };
     },
     async list(prefix = '') {
       const out: BlobEntry[] = [];
@@ -217,23 +244,38 @@ function onedriveStore(token: string, paths: PathScheme, f: Fetch): DeviceBlobSt
   const item = (p: string) =>
     `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${p.split('/').map(encodeURIComponent).join('/')}`;
   const auth = { Authorization: `Bearer ${token}` };
-  type Child = { name: string; size?: number; lastModifiedDateTime?: string; file?: unknown };
+  type Child = { name: string; size?: number; lastModifiedDateTime?: string; file?: unknown; eTag?: string };
 
   return {
-    provider: 'onedrive',
+    providerId: 'onedrive',
+    mkdir: noMkdir,
     async get(key) {
       const res = await f(`${item(paths.objectPath(key))}:/content`, { headers: auth });
       if (res.status === 404) return null;
       if (!res.ok) await failed(res, 'OneDrive download');
       return new Uint8Array(await res.arrayBuffer());
     },
-    async put(key, data, contentType = 'application/octet-stream') {
+    async head(key) {
+      const res = await f(item(paths.objectPath(key)), { headers: auth });
+      if (res.status === 404) return null;
+      if (!res.ok) await failed(res, 'OneDrive metadata');
+      const meta = (await res.json()) as Child;
+      return { etag: meta.eTag, version: meta.eTag, size: meta.size ?? 0, lastModified: meta.lastModifiedDateTime };
+    },
+    async put(key, data, options) {
       const res = await f(`${item(paths.objectPath(key))}:/content`, {
         method: 'PUT',
-        headers: { ...auth, 'Content-Type': contentType },
+        headers: {
+          ...auth,
+          'Content-Type': options?.contentType ?? 'application/octet-stream',
+          ...(options?.ifMatch ? { 'If-Match': options.ifMatch } : {}),
+        },
         body: bodyOf(toBytes(data)),
       });
+      if (res.status === 412) preconditionFailed(key);
       if (!res.ok) await failed(res, 'OneDrive upload');
+      const meta = (await res.json().catch(() => ({}))) as { eTag?: string };
+      return { etag: meta.eTag, version: meta.eTag };
     },
     async list(prefix = '') {
       const folder = paths.objectPath(prefix).replace(/\/$/, '');
@@ -264,6 +306,17 @@ function onedriveStore(token: string, paths: PathScheme, f: Fetch): DeviceBlobSt
   };
 }
 
+/** Etag and size from a HEAD/GET response; null etag when CORS hides it. */
+function headFromResponse(res: Response): BlobHead {
+  const etag = res.headers.get('etag') || undefined;
+  return {
+    etag,
+    version: etag,
+    size: Number(res.headers.get('content-length') || 0),
+    lastModified: res.headers.get('last-modified') || undefined,
+  };
+}
+
 function azureStore(account: AzureBlobAccount, paths: PathScheme, f: Fetch): DeviceBlobStore {
   const sas = account.sasToken!.replace(/^\?/, '');
   const base = `https://${account.accountName}.blob.core.windows.net/${account.container}`;
@@ -271,20 +324,34 @@ function azureStore(account: AzureBlobAccount, paths: PathScheme, f: Fetch): Dev
     `${base}/${paths.objectPath(key).split('/').map(encodeURIComponent).join('/')}?${sas}`;
 
   return {
-    provider: 'azure_blob',
+    providerId: 'azure_blob',
+    mkdir: noMkdir,
     async get(key) {
       const res = await f(blobUrl(key));
       if (res.status === 404) return null;
       if (!res.ok) await failed(res, 'Azure download');
       return new Uint8Array(await res.arrayBuffer());
     },
-    async put(key, data, contentType = 'application/octet-stream') {
+    async head(key) {
+      const res = await f(blobUrl(key), { method: 'HEAD' });
+      if (res.status === 404) return null;
+      if (!res.ok) await failed(res, 'Azure metadata');
+      return headFromResponse(res);
+    },
+    async put(key, data, options) {
       const res = await f(blobUrl(key), {
         method: 'PUT',
-        headers: { 'x-ms-blob-type': 'BlockBlob', 'Content-Type': contentType },
+        headers: {
+          'x-ms-blob-type': 'BlockBlob',
+          'Content-Type': options?.contentType ?? 'application/octet-stream',
+          ...(options?.ifMatch ? { 'If-Match': options.ifMatch } : {}),
+        },
         body: bodyOf(toBytes(data)),
       });
+      if (res.status === 412) preconditionFailed(key);
       if (!res.ok) await failed(res, 'Azure upload');
+      const etag = res.headers.get('etag') || undefined;
+      return { etag, version: etag };
     },
     async list(prefix = '') {
       const out: BlobEntry[] = [];
@@ -396,7 +463,8 @@ function s3Store(account: AwsS3Account, paths: PathScheme, f: Fetch): DeviceBlob
     objectPath: string,
     query: Record<string, string>,
     body: Uint8Array,
-    contentType?: string
+    contentType?: string,
+    extraHeaders: Record<string, string> = {}
   ): Promise<Response> {
     const uri = `/${objectPath.split('/').map(awsEncode).join('/')}`.replace(/\/+/g, '/');
     const canonicalQuery = Object.keys(query)
@@ -417,7 +485,7 @@ function s3Store(account: AwsS3Account, paths: PathScheme, f: Fetch): DeviceBlob
     });
     return f(`https://${host}${uri}${canonicalQuery ? `?${canonicalQuery}` : ''}`, {
       method,
-      headers,
+      headers: { ...headers, ...extraHeaders },
       body: method === 'PUT' ? bodyOf(body) : undefined,
     });
   }
@@ -425,16 +493,33 @@ function s3Store(account: AwsS3Account, paths: PathScheme, f: Fetch): DeviceBlob
   const empty = new Uint8Array();
 
   return {
-    provider: 'aws_s3',
+    providerId: 'aws_s3',
+    mkdir: noMkdir,
+    async head(key) {
+      const res = await signed('HEAD', paths.objectPath(key), {}, empty);
+      if (res.status === 404 || res.status === 403) return null;
+      if (!res.ok) await failed(res, 'S3 metadata');
+      return headFromResponse(res);
+    },
     async get(key) {
       const res = await signed('GET', paths.objectPath(key), {}, empty);
       if (res.status === 404) return null;
       if (!res.ok) await failed(res, 'S3 download');
       return new Uint8Array(await res.arrayBuffer());
     },
-    async put(key, data, contentType = 'application/octet-stream') {
-      const res = await signed('PUT', paths.objectPath(key), {}, toBytes(data), contentType);
+    async put(key, data, options) {
+      const res = await signed(
+        'PUT',
+        paths.objectPath(key),
+        {},
+        toBytes(data),
+        options?.contentType ?? 'application/octet-stream',
+        options?.ifMatch ? { 'If-Match': options.ifMatch } : {}
+      );
+      if (res.status === 412) preconditionFailed(key);
       if (!res.ok) await failed(res, 'S3 upload');
+      const etag = res.headers.get('etag') || undefined;
+      return { etag, version: etag };
     },
     async list(prefix = '') {
       const out: BlobEntry[] = [];

@@ -11,7 +11,7 @@ import {
   portableTableGetByKey,
   portableTableScan
 } from './portableTableService';
-import { INBOX_SCHEMA } from './tableSchemas';
+import { INBOX_SCHEMA } from '@par-noir/user-owned-storage';
 import {
   PLATFORM_CHANNEL_CLIENT_ID,
   dmInboxRowKey,
