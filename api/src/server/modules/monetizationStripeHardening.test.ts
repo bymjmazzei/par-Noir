@@ -12,7 +12,7 @@ const mockState = {
 
 const mockQuery = jest.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.replace(/\s+/g, ' ').trim();
-  if (s.startsWith('SELECT id, pn_identifier, amount_cents, status FROM creator_fund_payout_requests')) {
+  if (s.startsWith('SELECT id, pn_identifier, amount_cents, status, payout_rail')) {
     return { rows: mockState.payouts.filter((p) => p.status === 'queued' || p.status === 'processing').map((p) => ({ ...p })) };
   }
   if (s.includes('FROM creator_fund_connect_accounts')) {

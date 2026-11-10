@@ -36,6 +36,8 @@ Optional (defaults are fine):
 
 **Each pN verifies and pays separately.** The same real-world ID can verify any number of pNs; each one pays its own Stripe Identity check and membership. The creator fund ignores engagement on your own content and caps how much one pN can send to one owner per period.
 
+Crypto payouts are a second, optional rail; their variables are in [Crypto payouts (optional)](#crypto-payouts-optional).
+
 ---
 
 ## 2. Stripe
@@ -69,6 +71,22 @@ Optional (defaults are fine):
    Copy it → `STRIPE_IDENTITY_RESTRICTED_KEY`. Stripe only serves the sensitive fields for a limited time after a session is verified, so users should finalize soon after Stripe approves.
 3. No separate webhook: the bootstrap script subscribes the platform webhook to `identity.verification_session.verified` and `identity.verification_session.requires_input`. Re-run it if your endpoint predates this.
 4. Set `STRIPE_IDENTITY_COST_CENTS` to what Stripe charges per verification (e.g. `150` for $1.50). Each billed check is recorded once as a fund expense, so it comes out of the subscriber's first month before the fund split. If unset, verification still works but the cost isn't recorded.
+
+### Crypto payouts (optional)
+
+Creators can take payouts as **USDC on Base** to a wallet they save in the dashboard, instead of (or alongside) Stripe Connect. It's sent from the platform's Coinbase account through the Coinbase App API; this is separate from Coinbase Commerce, which handles incoming payments. The rail is off unless all four variables are set.
+
+| Variable | Where it comes from |
+| --- | --- |
+| `COINBASE_PAYOUT_API_KEY_NAME` | [CDP portal](https://portal.cdp.coinbase.com) → API keys → create a key (ECDSA / ES256) with the **transfer** permission; the `organizations/.../apiKeys/...` name |
+| `COINBASE_PAYOUT_API_KEY_SECRET` | That key's PEM private key, newlines escaped as `\n` |
+| `COINBASE_PAYOUT_ACCOUNT_ID` | UUID of the funded USDC account (`GET /v2/accounts`) |
+| `CRYPTO_PAYOUT_SANCTIONS_LIST_PATH` | Path on the API host to a sanctioned-address list: one address per line, `#` comments allowed (e.g. the OFAC SDN digital currency addresses) |
+
+- Crypto payouts need a **verified identity**; a self-custody wallet has no identity check of its own.
+- Every wallet is checked against the sanctions list when it's saved, when a payout is requested, and again before sending. If the file can't be read, saves and requests are refused and queued payouts wait. Keep the list current.
+- Fund the USDC account before each payout day. A send that fails on the network stays queued and retries on the next run with the same Coinbase idempotency key (the payout row id), so it can't pay twice.
+- The readiness check reports this rail separately under `cryptoPayouts`; it doesn't affect `"ready"`.
 
 ---
 

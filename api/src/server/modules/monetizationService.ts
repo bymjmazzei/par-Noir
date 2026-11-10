@@ -10,8 +10,17 @@ import { EngagementService } from './engagementService';
 import { CreatorFundPeriodService, type ClosedFundPeriodRow } from './creatorFundPeriodService';
 import { isCreatorFundPayoutCadenceDayET } from './creatorFundPayoutCadence';
 import { StripeIdentityService, stripeIdentityConfigured } from './stripeIdentityService';
+import {
+  CoinbasePayoutService,
+  CRYPTO_PAYOUT_NETWORK,
+  coinbasePayoutConfig,
+  isSanctionedAddress,
+  type CryptoDestination
+} from './coinbasePayoutService';
 
 type DbQueryable = Pick<Pool, 'query'>;
+
+export type PayoutRail = 'stripe_connect' | 'coinbase';
 
 const MIN_CREATOR_PAYOUT_CENTS = 1000;
 
@@ -177,10 +186,19 @@ const READINESS_ENV_KEYS = [
   'CREATOR_FUND_CRON_SECRET'
 ] as const;
 
+/** Crypto payouts are an optional second rail; all four turn it on. */
+const CRYPTO_PAYOUT_ENV_KEYS = [
+  'COINBASE_PAYOUT_API_KEY_NAME',
+  'COINBASE_PAYOUT_API_KEY_SECRET',
+  'COINBASE_PAYOUT_ACCOUNT_ID',
+  'CRYPTO_PAYOUT_SANCTIONS_LIST_PATH'
+] as const;
+
 export interface MonetizationReadinessDto {
   ready: boolean;
   env: Record<(typeof READINESS_ENV_KEYS)[number], boolean>;
   missing: string[];
+  cryptoPayouts: { ready: boolean; env: Record<(typeof CRYPTO_PAYOUT_ENV_KEYS)[number], boolean> };
 }
 
 /** Presence-only check (never values) for the keys the full loop needs. */
@@ -188,7 +206,14 @@ export function monetizationReadiness(): MonetizationReadinessDto {
   const env = {} as MonetizationReadinessDto['env'];
   for (const k of READINESS_ENV_KEYS) env[k] = Boolean(process.env[k]?.trim());
   const missing = READINESS_ENV_KEYS.filter((k) => !env[k]);
-  return { ready: missing.length === 0, env, missing };
+  const cryptoEnv = {} as MonetizationReadinessDto['cryptoPayouts']['env'];
+  for (const k of CRYPTO_PAYOUT_ENV_KEYS) cryptoEnv[k] = Boolean(process.env[k]?.trim());
+  return {
+    ready: missing.length === 0,
+    env,
+    missing,
+    cryptoPayouts: { ready: Object.values(cryptoEnv).every(Boolean), env: cryptoEnv }
+  };
 }
 
 function renewalPriceCentsFromEnv(): number {
@@ -220,6 +245,10 @@ export interface MonetizationStatusDto {
   identityVerificationConfigured: boolean;
   stripeCustomerId: string | null;
   connectOnboarded: boolean;
+  /** Coinbase USDC payouts are available on this deployment. */
+  cryptoPayoutConfigured: boolean;
+  /** Saved wallet for crypto payouts. */
+  cryptoPayoutDestination: CryptoDestination | null;
   /** UX copy only — not a legal guarantee */
   payoutCadenceNote: string;
   /** Last closed fund windows (G/E/R from DB; no Stripe). */
@@ -293,6 +322,10 @@ export class MonetizationService {
       /* tables may be absent until migration on older deployments */
     }
     const creatorFundPayoutAvailableCents = creatorFundAvailableCents(ledgerSnap);
+    const cryptoPayoutConfigured = coinbasePayoutConfig() != null;
+    const cryptoPayoutDestination = cryptoPayoutConfigured
+      ? await CoinbasePayoutService.getDestination(pn, pool)
+      : null;
 
     return {
       verified,
@@ -304,8 +337,10 @@ export class MonetizationService {
       identityVerificationConfigured: stripeIdentityConfigured(),
       stripeCustomerId: row?.stripe_customer_id ?? null,
       connectOnboarded,
+      cryptoPayoutConfigured,
+      cryptoPayoutDestination,
       payoutCadenceNote:
-        'Payouts are payee-initiated on typical schedule 1st and 15th Eastern; 45-day hold, $10 minimum, US-only Connect v1 — see creator fund policy.',
+        'Payouts are payee-initiated on typical schedule 1st and 15th Eastern; 45-day hold, $10 minimum. Bank payouts use Stripe Connect (US-only v1); USDC on Base via Coinbase needs a verified identity — see creator fund policy.',
       recentClosedPeriods,
       creatorFundPayoutAvailableCents,
       creatorFundPayoutInHoldCents: ledgerSnap.inHoldEarnedCents,
@@ -616,29 +651,43 @@ export class MonetizationService {
   }
 
   /**
-   * Queue a Stripe Connect transfer of creator-fund bounty balance; `runQueuedCreatorFundPayouts` sends it.
-   * Balance check and insert share one transaction under `pg_advisory_xact_lock` per identity.
+   * Queue a payout of creator-fund bounty balance on the chosen rail (Stripe Connect transfer or
+   * Coinbase USDC send); `runQueuedCreatorFundPayouts` sends it. A crypto payout snapshots the saved
+   * wallet. Balance check and insert share one transaction under `pg_advisory_xact_lock` per identity.
    */
   static async requestCreatorFundPayout(
     pnIdentifier: string,
-    amountCents: number
-  ): Promise<{ payoutRequestId: string; amountCents: number; status: 'queued' }> {
-    const stripe = getStripe();
-    if (!stripe) throw new Error('stripe_not_configured');
+    amountCents: number,
+    rail: PayoutRail = 'stripe_connect'
+  ): Promise<{ payoutRequestId: string; amountCents: number; status: 'queued'; rail: PayoutRail }> {
     const pn = pnIdentifier.trim();
     const amt = Math.floor(Number(amountCents));
     if (!Number.isFinite(amt) || amt < MIN_CREATOR_PAYOUT_CENTS) {
       throw new Error('payout_amount_invalid');
     }
 
-    await this.syncConnectStatus(pn);
     const pool = getDatabasePool();
-    const destRes = await pool.query(
-      `SELECT stripe_account_id, payouts_enabled FROM creator_fund_connect_accounts WHERE pn_identifier = $1`,
-      [pn]
-    );
-    if (!destRes.rows[0]?.stripe_account_id || !destRes.rows[0]?.payouts_enabled) {
-      throw new Error('connect_payouts_not_ready');
+    let cryptoDestination: CryptoDestination | null = null;
+    if (rail === 'coinbase') {
+      if (!coinbasePayoutConfig()) throw new Error('crypto_payouts_not_configured');
+      if (!(await EngagementService.isIdentityVerifiedForMonetization(pn))) {
+        throw new Error('identity_verification_required');
+      }
+      cryptoDestination = await CoinbasePayoutService.getDestination(pn, pool);
+      if (!cryptoDestination || cryptoDestination.network !== CRYPTO_PAYOUT_NETWORK) {
+        throw new Error('crypto_destination_missing');
+      }
+      if (isSanctionedAddress(cryptoDestination.address)) throw new Error('crypto_destination_blocked');
+    } else {
+      if (!getStripe()) throw new Error('stripe_not_configured');
+      await this.syncConnectStatus(pn);
+      const destRes = await pool.query(
+        `SELECT stripe_account_id, payouts_enabled FROM creator_fund_connect_accounts WHERE pn_identifier = $1`,
+        [pn]
+      );
+      if (!destRes.rows[0]?.stripe_account_id || !destRes.rows[0]?.payouts_enabled) {
+        throw new Error('connect_payouts_not_ready');
+      }
     }
 
     const client = await pool.connect();
@@ -653,15 +702,16 @@ export class MonetizationService {
       }
 
       const insertRes = await client.query(
-        `INSERT INTO creator_fund_payout_requests (pn_identifier, amount_cents, status)
-         VALUES ($1, $2, 'queued')
+        `INSERT INTO creator_fund_payout_requests
+           (pn_identifier, amount_cents, status, payout_rail, crypto_network, crypto_destination_address)
+         VALUES ($1, $2, 'queued', $3, $4, $5)
          RETURNING id`,
-        [pn, amt]
+        [pn, amt, rail, cryptoDestination?.network ?? null, cryptoDestination?.address ?? null]
       );
       const payoutRowId = String(insertRes.rows[0].id);
 
       await client.query('COMMIT');
-      return { payoutRequestId: payoutRowId, amountCents: amt, status: 'queued' };
+      return { payoutRequestId: payoutRowId, amountCents: amt, status: 'queued', rail };
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
@@ -671,22 +721,23 @@ export class MonetizationService {
   }
 
   /**
-   * Cron: execute queued Connect transfers on 1st/15th Eastern (or `force` for ops).
+   * Cron: execute queued payouts on 1st/15th Eastern (or `force` for ops).
    * A row is committed as `processing` before the Stripe call. The transfer carries an idempotency
    * key and a `transfer_group` per payout row, so a `processing` row left by a network error is
    * retried without paying twice. Only a definitive Stripe rejection marks the row `failed`.
+   * Coinbase rows follow the same contract in `CoinbasePayoutService.payQueuedRow`.
    */
   static async runQueuedCreatorFundPayouts(opts?: {
     force?: boolean;
   }): Promise<{ processed: number; skipped?: string; errors: string[] }> {
     const stripe = getStripe();
-    if (!stripe) throw new Error('stripe_not_configured');
+    if (!stripe && !coinbasePayoutConfig()) throw new Error('payouts_not_configured');
     if (!opts?.force && !isCreatorFundPayoutCadenceDayET()) {
       return { processed: 0, skipped: 'not_payout_cadence_day', errors: [] };
     }
     const pool = getDatabasePool();
     const pending = await pool.query(
-      `SELECT id, pn_identifier, amount_cents, status
+      `SELECT id, pn_identifier, amount_cents, status, payout_rail, crypto_network, crypto_destination_address
        FROM creator_fund_payout_requests
        WHERE status IN ('queued', 'processing')
        ORDER BY created_at ASC
@@ -699,6 +750,20 @@ export class MonetizationService {
       const pn = String(row.pn_identifier).trim();
       const amt = Number(row.amount_cents);
       const transferGroup = `cf_payout_${payoutRowId}`;
+      if (row.payout_rail === 'coinbase') {
+        try {
+          const out = await CoinbasePayoutService.payQueuedRow(row, pool);
+          if (out.paid) processed += 1;
+          if (out.error) errors.push(`${payoutRowId}:${out.error}`);
+        } catch (e) {
+          errors.push(`${payoutRowId}:${e instanceof Error ? e.message : 'outer_failed'}`);
+        }
+        continue;
+      }
+      if (!stripe) {
+        errors.push(`${payoutRowId}:stripe_not_configured`);
+        continue;
+      }
       try {
         await this.syncConnectStatus(pn);
         const destRes = await pool.query(

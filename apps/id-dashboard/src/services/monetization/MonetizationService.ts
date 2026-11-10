@@ -28,11 +28,22 @@ export interface MonetizationStatusResponse {
   identityVerificationConfigured: boolean;
   stripeCustomerId: string | null;
   connectOnboarded: boolean;
+  /** Coinbase USDC payout rail is available on this server. */
+  cryptoPayoutConfigured: boolean;
+  cryptoPayoutDestination: CryptoPayoutDestination | null;
   payoutCadenceNote: string;
   recentClosedPeriods: FundPeriodSummary[];
   creatorFundPayoutAvailableCents?: number;
   creatorFundPayoutInHoldCents?: number;
   creatorFundPaidOutCents?: number;
+}
+
+export type PayoutRail = 'stripe_connect' | 'coinbase';
+
+export interface CryptoPayoutDestination {
+  /** Always `base` (USDC on Base). */
+  network: string;
+  address: string;
 }
 
 export interface IdentitySessionResponse {
@@ -168,12 +179,13 @@ export class MonetizationService {
 
   static async requestCreatorFundPayout(
     accessToken: string,
-    amountCents: number
+    amountCents: number,
+    rail: PayoutRail = 'stripe_connect'
   ): Promise<{ payoutRequestId: string; amountCents: number; status: string }> {
     const res = await fetch(`${API_ENDPOINT}/api/monetization/request-payout`, {
       method: 'POST',
       headers: authHeaders(accessToken),
-      body: JSON.stringify({ amount_cents: amountCents })
+      body: JSON.stringify({ amount_cents: amountCents, rail })
     });
     const data = (await res.json().catch(() => ({}))) as {
       payoutRequestId?: string;
@@ -189,6 +201,22 @@ export class MonetizationService {
       amountCents: Number(data.amountCents ?? amountCents),
       status: String(data.status ?? 'queued')
     };
+  }
+
+  /** Save the wallet (EVM address, USDC on Base) that crypto payouts are sent to. */
+  static async setCryptoPayoutDestination(accessToken: string, address: string): Promise<CryptoPayoutDestination> {
+    const res = await fetch(`${API_ENDPOINT}/api/monetization/crypto-destination`, {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ address })
+    });
+    const data = (await res.json().catch(() => ({}))) as Partial<CryptoPayoutDestination> & {
+      error_description?: string;
+    };
+    if (!res.ok) {
+      throw new Error(data.error_description || `Saving wallet failed (${res.status})`);
+    }
+    return { network: String(data.network ?? 'base'), address: String(data.address ?? address) };
   }
 
   /** Stripe Identity hosted flow for the token's pN (membership required). Keep `state` to finalize. */

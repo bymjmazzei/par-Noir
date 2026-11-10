@@ -3,7 +3,7 @@ import { SectionInfo } from '../common/SectionInfo';
 import {
   getMonetizationStatusCached,
 } from '../../services/dashboardSessionCache';
-import { type MonetizationStatusResponse } from '../../services/monetization/MonetizationService';
+import { type MonetizationStatusResponse, type PayoutRail } from '../../services/monetization/MonetizationService';
 import { MonetizationService } from '../../services/monetization/MonetizationService';
 
 export interface MonetizationTabProps {
@@ -26,6 +26,23 @@ export function MonetizationTab({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [payoutAmountUsd, setPayoutAmountUsd] = useState('10');
+  const [walletAddress, setWalletAddress] = useState('');
+  const [payoutRail, setPayoutRail] = useState<PayoutRail>('stripe_connect');
+
+  const bankPayoutReady = Boolean(status?.stripeConfigured && status.connectOnboarded);
+  const cryptoPayoutReady = Boolean(status?.cryptoPayoutConfigured && status.verified && status.cryptoPayoutDestination);
+  const selectedRail: PayoutRail | null =
+    payoutRail === 'coinbase' && cryptoPayoutReady
+      ? 'coinbase'
+      : bankPayoutReady
+        ? 'stripe_connect'
+        : cryptoPayoutReady
+          ? 'coinbase'
+          : null;
+
+  useEffect(() => {
+    setWalletAddress(status?.cryptoPayoutDestination?.address ?? '');
+  }, [status?.cryptoPayoutDestination?.address]);
 
   const returnBase = typeof window !== 'undefined' ? window.location.origin : 'https://pn.parnoir.com';
 
@@ -117,8 +134,22 @@ export function MonetizationTab({
     }
   };
 
-  const onRequestPayout = async () => {
+  const onSaveWallet = async () => {
     if (!accessToken) return;
+    setBusy(true);
+    try {
+      await MonetizationService.setCryptoPayoutDestination(accessToken, walletAddress.trim());
+      showSuccessMessage('Payout wallet saved.');
+      await load({ force: true });
+    } catch (e) {
+      showErrorMessage(e instanceof Error ? e.message : 'Saving wallet failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRequestPayout = async () => {
+    if (!accessToken || !selectedRail) return;
     const parsed = parseFloat(payoutAmountUsd);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       showErrorMessage('Enter a valid payout amount in USD.');
@@ -131,8 +162,10 @@ export function MonetizationTab({
     }
     setBusy(true);
     try {
-      const out = await MonetizationService.requestCreatorFundPayout(accessToken, amountCents);
-      showSuccessMessage(`Transfer initiated (${(out.amountCents / 100).toFixed(2)} USD).`);
+      const out = await MonetizationService.requestCreatorFundPayout(accessToken, amountCents, selectedRail);
+      showSuccessMessage(
+        `Payout queued (${(out.amountCents / 100).toFixed(2)} USD${selectedRail === 'coinbase' ? ' as USDC' : ''}).`
+      );
       await load({ force: true });
     } catch (e) {
       showErrorMessage(e instanceof Error ? e.message : 'Payout request failed');
@@ -157,8 +190,9 @@ export function MonetizationTab({
           <SectionInfo title="Creator fund · Monetization">
             <p>
               Verified identity plus active <strong>monetization maintenance</strong> unlock creator-fund
-              participation. Payouts use <strong>Stripe Connect</strong> (US-only v1). This tab talks only to the
-              par Noir API — no card data in the dashboard.
+              participation. Payouts go to your bank through <strong>Stripe Connect</strong> (US-only v1) or, when
+              this server offers it, as <strong>USDC on Base</strong> to a wallet you save here (verified identity
+              required). This tab talks only to the par Noir API — no card data in the dashboard.
             </p>
             <p>
               Maintenance renewals may settle from your <strong>creator-fund balance</strong> first when sufficient;
@@ -303,8 +337,21 @@ export function MonetizationTab({
                 {status.connectOnboarded ? 'Refresh Connect status' : 'Stripe Connect onboarding'}
               </button>
             )}
-            {status?.stripeConfigured && status.connectOnboarded && (status.creatorFundPayoutAvailableCents ?? 0) >= MIN_PAYOUT_CENTS && (
+            {selectedRail && (status?.creatorFundPayoutAvailableCents ?? 0) >= MIN_PAYOUT_CENTS && (
               <div className="flex flex-wrap items-end gap-2 w-full sm:w-auto">
+                {bankPayoutReady && cryptoPayoutReady && (
+                  <label className="flex flex-col text-xs text-text-secondary">
+                    Pay out to
+                    <select
+                      value={selectedRail}
+                      onChange={(ev) => setPayoutRail(ev.target.value as PayoutRail)}
+                      className="mt-1 rounded border border-border bg-secondary px-2 py-1 text-sm text-text-primary"
+                    >
+                      <option value="stripe_connect">Bank (Stripe Connect)</option>
+                      <option value="coinbase">USDC wallet (Base)</option>
+                    </select>
+                  </label>
+                )}
                 <label className="flex flex-col text-xs text-text-secondary">
                   Payout (USD)
                   <input
@@ -327,6 +374,41 @@ export function MonetizationTab({
               </div>
             )}
           </div>
+
+          {status?.cryptoPayoutConfigured && (
+            <div className="rounded-lg border border-border bg-secondary p-4 space-y-2">
+              <div className="text-xs text-text-secondary uppercase tracking-wide">Crypto payout wallet (USDC on Base)</div>
+              {!status.verified && (
+                <div className="text-xs text-text-secondary">Verify your identity to receive crypto payouts.</div>
+              )}
+              <div className="flex flex-wrap items-end gap-2">
+                <input
+                  type="text"
+                  value={walletAddress}
+                  onChange={(ev) => setWalletAddress(ev.target.value)}
+                  placeholder="0x…"
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="flex-1 min-w-[16rem] rounded border border-border bg-modal-bg px-2 py-1 font-mono text-xs text-text-primary"
+                />
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    !walletAddress.trim() ||
+                    walletAddress.trim().toLowerCase() === status.cryptoPayoutDestination?.address
+                  }
+                  onClick={() => void onSaveWallet()}
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-border/40 disabled:opacity-50"
+                >
+                  Save wallet
+                </button>
+              </div>
+              <div className="text-xs text-text-secondary">
+                Send only to a wallet that accepts USDC on the Base network; crypto transfers cannot be reversed.
+              </div>
+            </div>
+          )}
 
           <div className="rounded-lg border border-border bg-modal-bg p-4 text-sm text-text-secondary">
             <p>

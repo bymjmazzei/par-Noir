@@ -1,14 +1,30 @@
 /**
- * Creator fund monetization — Stripe Checkout / Portal / webhooks / Connect onboarding.
+ * Creator fund monetization — Stripe Checkout / Portal / webhooks / Connect onboarding, plus the
+ * Coinbase USDC payout rail (wallet destination + rail choice on payout requests).
  */
 
 import type { Application, Request, Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware';
-import { MonetizationService, isStripeMonetizationConfigured, monetizationReadiness } from './monetizationService';
+import {
+  MonetizationService,
+  isStripeMonetizationConfigured,
+  monetizationReadiness,
+  type PayoutRail
+} from './monetizationService';
+import { CoinbasePayoutService } from './coinbasePayoutService';
 import { requireAdminApiKey } from './adminDeveloperRoutes';
 import { safeClientErrorMessage } from '../utils/safeError';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+const CRYPTO_PAYOUT_ERRORS: Record<string, { status: number; description: string }> = {
+  crypto_payouts_not_configured: { status: 503, description: 'Crypto payouts are not configured on this server.' },
+  sanctions_list_unavailable: { status: 503, description: 'Crypto payouts are temporarily unavailable.' },
+  identity_verification_required: { status: 403, description: 'Verify your identity before requesting a crypto payout.' },
+  crypto_address_invalid: { status: 400, description: 'Enter a valid Base (EVM) wallet address starting with 0x.' },
+  crypto_destination_missing: { status: 400, description: 'Save a USDC wallet address on Base before requesting a crypto payout.' },
+  crypto_destination_blocked: { status: 403, description: 'This wallet address cannot receive payouts.' }
+};
 
 function pnFromReq(req: AuthenticatedRequest): string | null {
   const raw = req.user?.pnIdentifier?.trim();
@@ -171,7 +187,8 @@ export function registerStripeMonetizationRoutes(app: Application): void {
           error_description: 'Missing pn identifier on token'
         });
       }
-      if (!isStripeMonetizationConfigured()) {
+      const rail: PayoutRail = (req.body as { rail?: unknown })?.rail === 'coinbase' ? 'coinbase' : 'stripe_connect';
+      if (rail === 'stripe_connect' && !isStripeMonetizationConfigured()) {
         return res.status(503).json({
           error: 'service_unavailable',
           error_description: 'Monetization billing is not configured on this server.'
@@ -179,10 +196,12 @@ export function registerStripeMonetizationRoutes(app: Application): void {
       }
       const raw = (req.body as { amount_cents?: unknown })?.amount_cents;
       const amountCents = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
-      const out = await MonetizationService.requestCreatorFundPayout(pn, amountCents);
+      const out = await MonetizationService.requestCreatorFundPayout(pn, amountCents, rail);
       return res.json(out);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '';
+      const crypto = CRYPTO_PAYOUT_ERRORS[msg];
+      if (crypto) return res.status(crypto.status).json({ error: msg, error_description: crypto.description });
       if (msg === 'payout_amount_invalid') {
         return res.status(400).json({
           error: 'invalid_request',
@@ -202,6 +221,26 @@ export function registerStripeMonetizationRoutes(app: Application): void {
         });
       }
       console.error('[monetization] request-payout:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
+  app.post('/api/monetization/crypto-destination', ...auth, async (req: AuthenticatedRequest, res: Response) => {
+    const pn = pnFromReq(req);
+    if (!pn) {
+      return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
+    }
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json(await CoinbasePayoutService.setDestination(pn, req.body?.address));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      const crypto = CRYPTO_PAYOUT_ERRORS[msg];
+      if (crypto) return res.status(crypto.status).json({ error: msg, error_description: crypto.description });
+      console.error('[monetization] crypto destination:', e);
       return res.status(500).json({
         error: 'server_error',
         error_description: safeClientErrorMessage(e, NODE_ENV === 'production')

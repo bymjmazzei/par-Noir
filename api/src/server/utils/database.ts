@@ -1370,6 +1370,19 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const fs = await import('fs');
       const path = await import('path');
+      const cryptoPayoutsPath = path.join(__dirname, '../../migrations/add_creator_fund_crypto_payouts.sql');
+      await db.query(fs.readFileSync(cryptoPayoutsPath, 'utf-8'));
+      console.log('✅ creator_fund_crypto_payouts migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ creator_fund_crypto_payouts migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
       const identityPath = path.join(__dirname, '../../migrations/add_stripe_identity_billing.sql');
       await db.query(fs.readFileSync(identityPath, 'utf-8'));
       console.log('✅ stripe identity verification migration executed');
