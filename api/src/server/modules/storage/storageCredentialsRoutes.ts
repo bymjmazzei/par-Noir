@@ -1,8 +1,8 @@
 /**
- * Storage credentials + Google Drive layout initialization routes.
+ * Storage credential layout + cloud layout bookkeeping routes.
  *
- * Save/read the server-encrypted storage credential envelope, kick off (and poll)
- * the Drive layout build, and migrate a legacy volume identifier to the canonical one.
+ * The API stores the layout shell (no provider secrets) and the layout version the
+ * device reports. Every cloud write, including the layout build, runs on the device.
  */
 
 import type { Application, Request, Response } from 'express';
@@ -18,12 +18,7 @@ import {
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-export interface StorageCredentialsRouteDeps {
-  extractAccountId: (account: any) => string | undefined;
-}
-
-export function setupStorageCredentialsRoutes(app: Application, deps: StorageCredentialsRouteDeps) {
-  const { extractAccountId } = deps;
+export function setupStorageCredentialsRoutes(app: Application) {
 
     // PUT /api/storage/credentials/:identityId - Save storage credentials (server encrypted)
     app.put('/api/storage/credentials/:identityId', async (req: Request, res: Response) => {
@@ -128,22 +123,6 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
 
         let directoryBuilt = true;
         let folderInitError: string | null = null;
-
-        try {
-          const {
-            inferPrimaryProviderFromCredentials,
-            shouldInitializePortable,
-            initializePortableStorage
-          } = await import('./storageInitService');
-          const inferred = inferPrimaryProviderFromCredentials(credentials);
-          if (shouldInitializePortable(inferred) && inferred.primaryProvider !== 'google_drive') {
-            await initializePortableStorage(pnIdentifier, inferred);
-            console.log(`[StorageCredentials PUT] Initialized portable storage for ${inferred.primaryProvider}`);
-          }
-        } catch (portableInitErr: any) {
-          console.warn(`[StorageCredentials PUT] Portable init warning:`, portableInitErr?.message || portableInitErr);
-          folderInitError = portableInitErr?.message || 'Portable storage init failed';
-        }
 
         // Initialize Google Drive folder structure if this is a new Google Drive connection
         const hasGoogleDrive = !!(credentials?.googleDriveAccounts?.length > 0 || credentials?.googleDrive);
@@ -509,126 +488,6 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
       }
     });
 
-    /** POST /api/storage/:identityId/layout/upgrade — portable only; Google uses device + commit-migration */
-    app.post('/api/storage/:identityId/layout/upgrade', async (req: Request, res: Response) => {
-      try {
-        const rawId = req.params.identityId;
-        if (!rawId) return res.status(400).json({ error: 'identityId required' });
-        const pnIdentifier = rawId.startsWith('pn-') ? rawId : `pn-${rawId}`;
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
-
-        const { isPnRevokedForNetwork } = await import('../identitySuccessionService');
-        if (isPnRevokedForNetwork(pnIdentifier)) {
-          return res.status(403).json({
-            error: 'identity_superseded',
-            error_description: 'This pN identifier is retired on the par Noir network.',
-          });
-        }
-
-        try {
-          const { upgradeCloudLayoutFromRequest } = await import('./cloudLayoutMigrations');
-          const status = await upgradeCloudLayoutFromRequest(req, pnIdentifier);
-          return res.json({ success: true, identityId: pnIdentifier, ...status });
-        } catch (upgradeErr: unknown) {
-          const { DriveIndexError } = await import('../pnDriveIndex');
-          const { respondDriveTokenError } = await import('../ownerDriveToken');
-          if (respondDriveTokenError(res, upgradeErr)) return;
-          if (upgradeErr instanceof DriveIndexError) {
-            const status =
-              upgradeErr.code === 'CLOUD_TOKEN_REQUIRED' || upgradeErr.code === 'CLOUD_TOKEN_EXPIRED'
-                ? 409
-                : upgradeErr.code === 'DRIVE_NOT_INITIALIZED' ||
-                    upgradeErr.code === 'DRIVE_INDEX_INCOMPLETE'
-                  ? 409
-                  : 500;
-            return res.status(status).json({
-              error: upgradeErr.code,
-              message: upgradeErr.message,
-            });
-          }
-          const code =
-            upgradeErr && typeof upgradeErr === 'object' && 'code' in upgradeErr
-              ? String((upgradeErr as { code: unknown }).code)
-              : '';
-          if (code === 'DRIVE_NOT_INITIALIZED') {
-            return res.status(409).json({
-              error: 'DRIVE_NOT_INITIALIZED',
-              message: 'Connect and initialize cloud storage before upgrading layout',
-            });
-          }
-          if (
-            upgradeErr instanceof Error &&
-            (upgradeErr.message === 'CLOUD_TOKEN_REQUIRED' ||
-              upgradeErr.message.includes('CLOUD_TOKEN'))
-          ) {
-            return res.status(409).json({
-              error: 'CLOUD_TOKEN_REQUIRED',
-              message: upgradeErr.message,
-            });
-          }
-          throw upgradeErr;
-        }
-      } catch (error: unknown) {
-        console.error('Error upgrading cloud layout:', error);
-        return res.status(500).json({
-          error: 'Failed to upgrade cloud layout',
-          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
-        });
-      }
-    });
-
-    /** Ensure private `_metadata/zkp-docs` folder exists; patch pnDriveIndex.zkpDocsFolderId */
-    app.post('/api/storage/:identityId/zkp-docs/ensure', async (req: Request, res: Response) => {
-      try {
-        const rawId = req.params.identityId;
-        if (!rawId) return res.status(400).json({ error: 'identityId required' });
-        const pnIdentifier = rawId.startsWith('pn-') ? rawId : `pn-${rawId}`;
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
-
-        const { extractCloudAccessToken } = await import('../cloudAccessToken');
-        const { storageCredentialsService } = await import('../storageCredentialsService');
-        const { readPnDriveIndex, patchPnDriveIndex } = await import('../pnDriveIndex');
-        const { findOrCreateFolderUnderParent } = await import('../pnDriveLayout');
-        const { googleDriveProxyService } = await import('../googleDriveProxy');
-
-        const record = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!record?.credentials) {
-          return res.status(409).json({ error: 'DRIVE_NOT_INITIALIZED', message: 'Connect Google Drive first' });
-        }
-        const index = readPnDriveIndex(record.credentials as Record<string, unknown>);
-        if (!index?.metadataFolderId) {
-          return res.status(409).json({ error: 'DRIVE_NOT_INITIALIZED', message: 'Drive layout incomplete' });
-        }
-        if (index.zkpDocsFolderId) {
-          return res.json({ folderId: index.zkpDocsFolderId });
-        }
-
-        let accessToken: string;
-        try {
-          const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
-          const resolved = await resolveOwnerDriveToken(req, pnIdentifier);
-          accessToken = resolved.token.access_token;
-        } catch (tokenErr) {
-          const { respondDriveTokenError } = await import('../ownerDriveToken');
-          if (respondDriveTokenError(res, tokenErr)) return;
-          throw tokenErr;
-        }
-
-        const folderId = await findOrCreateFolderUnderParent(
-          accessToken,
-          'zkp-docs',
-          index.metadataFolderId
-        );
-        await patchPnDriveIndex(pnIdentifier, { zkpDocsFolderId: folderId });
-        return res.json({ folderId });
-      } catch (error: unknown) {
-        console.error('Error ensuring zkp-docs folder:', error);
-        return res.status(500).json({
-          error: 'Failed to ensure zkp-docs folder',
-          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
-        });
-      }
-    });
 }
 
 export function setupStorageCloudVaultRoutes(app: Application) {

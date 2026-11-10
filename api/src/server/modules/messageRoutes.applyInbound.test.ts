@@ -103,14 +103,6 @@ function withCloudToken(req: request.Test): request.Test {
 
 function buildApp() {
   const deps: MessageRouteDeps = {
-    extractAccountId: (account: any) => account?.backendId || account?.keyPrefix,
-    getMetadataFolder: jest.fn(async () => ({
-      metadataFolderId: 'meta-folder',
-      pnFolderId: 'pn-folder',
-    })) as unknown as MessageRouteDeps['getMetadataFolder'],
-    driveNotInitialized: jest.fn((res: express.Response) =>
-      res.status(409).json({ error: 'drive_not_initialized' })
-    ) as unknown as MessageRouteDeps['driveNotInitialized'],
     emitRealtime: jest.fn(),
   };
   const app = express();

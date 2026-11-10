@@ -520,20 +520,33 @@ export class StorageCredentialsService {
       cachedLayout?: unknown;
       driveFolderId?: string;
       publicKey?: string;
+      /** The device built the full portable layout; record it as current. */
+      layoutCurrent?: boolean;
     }
   ): Promise<StoredCredentialsRecord> {
     const existing = await this.getCredentials(identityId);
     const base = existing?.credentials
       ? this.stripCloudSecrets(existing.credentials as Record<string, unknown>)
       : {};
-    const merged = {
+    const merged: Record<string, unknown> = {
       ...base,
       ...(layout.socialCloudProvider ? { socialCloudProvider: layout.socialCloudProvider } : {}),
       ...(layout.socialCloudAccountId ? { socialCloudAccountId: layout.socialCloudAccountId } : {}),
-      ...(layout.cachedLayout ? { cachedLayout: layout.cachedLayout } : {}),
+      ...(layout.cachedLayout && typeof layout.cachedLayout === 'object'
+        ? {
+            cachedLayout: {
+              ...((base as { cachedLayout?: Record<string, unknown> }).cachedLayout ?? {}),
+              ...(layout.cachedLayout as Record<string, unknown>)
+            }
+          }
+        : {}),
       ...(layout.driveFolderId ? { driveFolderId: layout.driveFolderId } : {}),
       ...(layout.publicKey ? { publicKey: layout.publicKey } : {})
     };
+    if (layout.layoutCurrent) {
+      const { stampCloudLayoutCurrent } = await import('./storage/cloudLayoutMigrations');
+      stampCloudLayoutCurrent(merged);
+    }
     return this.upsertCredentials(identityId, merged, existing?.cid ?? undefined);
   }
 

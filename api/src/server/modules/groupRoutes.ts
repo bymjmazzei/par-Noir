@@ -9,12 +9,6 @@ import { safeClientErrorMessage } from '../utils/safeError';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 export interface GroupRouteDeps {
-  extractAccountId: (account: any) => string | undefined;
-  getMetadataFolder: (
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    accountId?: string
-  ) => Promise<{ metadataFolderId: string; pnFolderId: string } | null>;
   emitRealtime: (pnIdentifier: string, event: string, payload: Record<string, unknown>) => void;
 }
 
@@ -22,7 +16,7 @@ export interface GroupRouteDeps {
  * Setup group routes
  */
 export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps) {
-  const { extractAccountId, getMetadataFolder, emitRealtime } = deps;
+  const { emitRealtime } = deps;
 
     app.get('/api/groups', async (req, res) => {
       try {

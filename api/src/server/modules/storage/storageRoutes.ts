@@ -236,14 +236,21 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       const pnIdentifier = ownerPn(req.params.identityId);
       if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
 
-      const { socialCloudProvider, socialCloudAccountId, cachedLayout, driveFolderId, publicKey } =
-        req.body || {};
+      const {
+        socialCloudProvider,
+        socialCloudAccountId,
+        cachedLayout,
+        driveFolderId,
+        publicKey,
+        portableLayoutInitialized
+      } = req.body || {};
       const record = await storageCredentialsService.upsertLayoutOnly(pnIdentifier, {
         socialCloudProvider,
         socialCloudAccountId,
         cachedLayout,
         driveFolderId,
-        publicKey
+        publicKey,
+        layoutCurrent: portableLayoutInitialized === true
       });
       return res.json({
         success: true,

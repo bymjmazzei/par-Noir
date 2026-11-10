@@ -15,16 +15,7 @@ import {
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-export interface ProfileRouteDeps {
-  extractAccountId: (account: any) => string | undefined;
-  getMetadataFolder: (
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    accountId?: string
-  ) => Promise<{ metadataFolderId: string; pnFolderId: string } | null>;
-}
-
-export function setupProfileRoutes(app: express.Application, _deps: ProfileRouteDeps) {
+export function setupProfileRoutes(app: express.Application) {
 
     // POST /api/profile/image - Set profile image fileId
     app.post('/api/profile/image', async (req, res) => {

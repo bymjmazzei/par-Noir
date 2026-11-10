@@ -317,159 +317,6 @@ class ProductionServer {
     this.setupWebSockets();
   }
 
-  /**
-   * Extract account ID from Google Drive account object
-   * Checks all possible property names in order of precedence
-   */
-  private extractAccountId(account: any): string | undefined {
-    return (account as any)?.backendId || 
-           (account as any)?.keyPrefix || 
-           (account as any)?.accountId || 
-           (account as any)?.id || 
-           undefined;
-  }
-
-  /**
-   * Helper function to get or create metadata folder for a user
-   * Creates pN folder if needed, then creates _metadata folder inside it
-   * Follows standard pattern: accepts accessToken as parameter
-   */
-  private async getOrCreateMetadataFolder(
-    accessToken: string,
-    pnIdentifier: string
-  ): Promise<string> {
-    const { pnFolderDisplayName, normalizePnIdentifier } = await import('./server/modules/integratorStoragePaths');
-    const normalizedPn = normalizePnIdentifier(pnIdentifier);
-    const pnFolderName = pnFolderDisplayName(normalizedPn);
-    const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
-    const pnFolderResponse = await fetch(pnFolderUrl, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-
-    let pnFolderId: string | null = null;
-    if (pnFolderResponse.ok) {
-      const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
-      if (pnFolderData.files && pnFolderData.files.length > 0) {
-        pnFolderId = pnFolderData.files[0].id;
-      }
-    }
-
-    // Create pN folder if it doesn't exist
-    if (!pnFolderId) {
-      console.log('[getOrCreateMetadataFolder] Creating pN folder:', pnFolderName);
-      const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: pnFolderName,
-          mimeType: 'application/vnd.google-apps.folder'
-        })
-      });
-
-      console.log('[getOrCreateMetadataFolder] Create pN folder response status:', createPnFolderResponse.status);
-
-      if (!createPnFolderResponse.ok) {
-        const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
-        let errorJson = null;
-        try {
-          errorJson = JSON.parse(errorText);
-        } catch (e) {
-          // Not JSON, use as text
-        }
-        console.error(`[getOrCreateMetadataFolder] Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`);
-        console.error(`[getOrCreateMetadataFolder] Full error response text:`, errorText);
-        console.error(`[getOrCreateMetadataFolder] Parsed error JSON:`, errorJson);
-        // Never log access token material (even a prefix) — credential leakage in logs
-        if (NODE_ENV === 'development') {
-          console.error(`[getOrCreateMetadataFolder] Bearer token present: ${accessToken ? 'yes' : 'no'} (length ${accessToken?.length ?? 0})`);
-        }
-        throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 500)}`);
-      }
-
-      const createdPnFolder = await createPnFolderResponse.json() as { id: string };
-      pnFolderId = createdPnFolder.id;
-    }
-
-    // Now search for _metadata folder inside pN folder
-    const metadataFolderQuery = `name='_metadata' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const metadataFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFolderQuery)}&fields=files(id)&pageSize=1`;
-    const metadataFolderResponse = await fetch(metadataFolderUrl, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-
-    if (metadataFolderResponse.ok) {
-      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-      if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-        return metadataFolderData.files[0].id;
-      }
-    }
-
-    // Create _metadata folder inside pN folder
-    const createMetadataResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: '_metadata',
-        mimeType: 'application/vnd.google-apps.folder',
-        parents: [pnFolderId]
-      })
-    });
-
-    if (!createMetadataResponse.ok) {
-      const errorText = await createMetadataResponse.text().catch(() => 'Unknown error');
-      console.error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText}`, errorText);
-      throw new Error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText} - ${errorText.substring(0, 200)}`);
-    }
-
-    const createdMetadata = await createMetadataResponse.json() as { id: string };
-    return createdMetadata.id;
-  }
-
-  /**
-   * Lookup-only: find pN folder and _metadata folder. Returns { metadataFolderId, pnFolderId } if both exist, else null.
-   * Do not create anything. Use in usage paths; if null, return 409 DRIVE_NOT_INITIALIZED.
-   */
-  private async getMetadataFolder(
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    _accountId?: string
-  ): Promise<{ metadataFolderId: string; pnFolderId: string } | null> {
-    const { loadPnDriveIndex, isPnDriveIndexComplete, pnDriveFoldersExistOnDrive, clearPnDriveIndex } =
-      await import('./server/modules/pnDriveIndex');
-    const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-    const index = await loadPnDriveIndex(normalizedPn);
-    if (!isPnDriveIndexComplete(index)) return null;
-    if (!token.access_token) return null;
-    const foldersExist = await pnDriveFoldersExistOnDrive(
-      token.access_token,
-      index.pnFolderId,
-      index.metadataFolderId
-    );
-    if (!foldersExist) {
-      await clearPnDriveIndex(normalizedPn);
-      return null;
-    }
-    return { metadataFolderId: index.metadataFolderId, pnFolderId: index.pnFolderId };
-  }
-
-  /**
-   * Helper for 409 DRIVE_NOT_INITIALIZED. Use when getMetadataFolder returns null or content folder not found.
-   */
-  private driveNotInitialized(res: express.Response): express.Response {
-    return res.status(409).json({
-      error: 'Google Drive storage not initialized',
-      code: 'DRIVE_NOT_INITIALIZED',
-      message: 'Please connect and initialize Google Drive in your dashboard first.'
-    });
-  }
-
   private setupMiddleware(): void {
     // OAuth consent page loads USB/NFC unlock helper from same origin
     this.app.use('/oauth-assets', express.static(path.join(__dirname, 'static', 'oauth')));
@@ -821,9 +668,7 @@ class ProductionServer {
     // Migration endpoint removed - feed system migration completed successfully
     // Tables created: feed_payments, feed_delegations
 
-    setupStorageCredentialsRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-    });
+    setupStorageCredentialsRoutes(this.app);
 
     setupStorageIndexRoutes(this.app);
 
@@ -1012,24 +857,16 @@ class ProductionServer {
    */
   private setupNotificationEndpoints(): void {
     setupMessageRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-      driveNotInitialized: (res) => this.driveNotInitialized(res),
       emitRealtime: (pnIdentifier, event, payload) => this.emitRealtime(pnIdentifier, event, payload),
     });
 
-    setupProfileRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-    });
+    setupProfileRoutes(this.app);
 
     registerPersonalSearchRoute(this.app);
 
     setupStorageCloudVaultRoutes(this.app);
 
     setupGroupRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
       emitRealtime: (pnIdentifier, event, payload) => this.emitRealtime(pnIdentifier, event, payload),
     });
 

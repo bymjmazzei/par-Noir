@@ -59,6 +59,8 @@ export {
   type DeviceBlobProvider
 } from './deviceBlobStore.js';
 export { createDeviceTableStore, deviceTableStoreForSession, setSqlJsWasmUrl } from './deviceTables.js';
+export type { DeviceTableStore } from './deviceTables.js';
+export { initializeDevicePortableLayout } from './social/portableLayout.js';
 export {
   resolveDeviceSocialContext,
   type DeviceSocialContext,

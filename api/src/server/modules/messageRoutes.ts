@@ -39,50 +39,14 @@ function filterConversationsByChannel<
 }
 
 export interface MessageRouteDeps {
-  extractAccountId: (account: any) => string | undefined;
-  getMetadataFolder: (
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    accountId?: string
-  ) => Promise<{ metadataFolderId: string; pnFolderId: string } | null>;
-  driveNotInitialized: (res: express.Response) => express.Response;
   emitRealtime: (pnIdentifier: string, event: string, payload: Record<string, unknown>) => void;
-}
-
-type OwnerDriveToken = {
-  access_token: string;
-  refresh_token?: string;
-  expires_at?: number;
-  expires_in?: number;
-};
-
-/**
- * Inbox ordering reads a group thread's mtime from the sheet, which lives on the
- * group OWNER's Drive. Under custody that token is on the owner's device, so the
- * server can only ever reach the caller's own Drive. Two earlier copies of this
- * loaded the peer's credentials row and built a token from it; one substituted
- * the caller's token when the owner was the caller, the other handed
- * access_token: undefined straight into a Sheets client.
- *
- * Ordering is not worth a cross-user read. Group threads simply fall back to
- * their inbox row's own timestamp.
- */
-function ownDriveOnlyContext(
-  callerPn: string,
-  callerToken: OwnerDriveToken,
-  callerAccountId: string | undefined
-) {
-  return async (ownerPnIdentifier: string) => {
-    if (ownerPnIdentifier !== callerPn) return null;
-    return { token: callerToken, accountId: callerAccountId };
-  };
 }
 
 /**
  * Setup message routes
  */
 export function setupMessageRoutes(app: express.Application, deps: MessageRouteDeps) {
-  const { extractAccountId, getMetadataFolder, driveNotInitialized, emitRealtime } = deps;
+  const { emitRealtime } = deps;
 
     // Message endpoints (placeholder - returns empty arrays for now)
     // GET /api/messages/conversations - Get all conversation threads

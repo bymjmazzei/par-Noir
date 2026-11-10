@@ -305,6 +305,8 @@ export function MultiCloudStoragePanel({
           });
         }
       }
+      const { initializePortableSocialLayout } = await import('../../services/storage/portableSocialLayout');
+      await initializePortableSocialLayout(authToken, pnIdentifier, envelope);
       setMessage(`${provider === 'dropbox' ? 'Dropbox' : 'OneDrive'} connected.`);
       await refreshAccounts({ force: true });
       onConnected?.();
@@ -398,9 +400,22 @@ export function MultiCloudStoragePanel({
         body,
         { pnIdentifier }
       );
+      const saved = (await res.json()) as {
+        message?: string;
+        provider?: string;
+        accountId?: string;
+        socialCloudProvider?: string;
+      };
       if (!res.ok) {
-        const err = (await res.json()) as { message?: string };
-        throw new Error(err.message || 'Failed to save credentials');
+        throw new Error(saved.message || 'Failed to save credentials');
+      }
+      if (saved.socialCloudProvider && saved.socialCloudProvider === saved.provider) {
+        const { initializePortableSocialLayout } = await import('../../services/storage/portableSocialLayout');
+        await initializePortableSocialLayout(authToken, pnIdentifier, {
+          ...(localEnvelope as import('@par-noir/user-owned-storage').StorageCredentialsEnvelope),
+          socialCloudProvider: saved.socialCloudProvider as import('@par-noir/user-owned-storage').StorageProviderId,
+          socialCloudAccountId: saved.accountId
+        });
       }
       setMessage('Storage provider connected.');
       await refreshAccounts({ force: true });

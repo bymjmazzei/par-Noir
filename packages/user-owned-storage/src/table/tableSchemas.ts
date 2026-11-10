@@ -129,3 +129,24 @@ export const SEGMENTED_LEDGER_IDS: ReadonlySet<string> = new Set([
   MESSAGING_LEDGER_SCHEMA.id,
   PRISM_LEDGER_SCHEMA.id
 ]);
+
+/**
+ * Single-file tables a new portable social cloud starts with. Device registry,
+ * third-party grants and data-point requests live in Postgres, not the user's cloud.
+ */
+export const PORTABLE_LAYOUT_TABLES: readonly TableSchema[] = [
+  CONNECTIONS_SCHEMA,
+  NOTIFICATIONS_SCHEMA,
+  PUBLIC_FILE_INDEX_SCHEMA,
+  OWNER_FILE_INDEX_SCHEMA,
+  OWNED_ASSETS_SCHEMA,
+  GROUPS_SCHEMA,
+  FOLLOWERS_SCHEMA,
+  FOLLOWING_SCHEMA,
+  MESSAGE_REQUESTS_SCHEMA,
+  INBOX_SCHEMA,
+  RECOVERY_CUSTODIANS_SCHEMA,
+  RECOVERY_PENDING_SCHEMA,
+  RECOVERY_REQUESTS_SCHEMA,
+  PREFERENCES_INTERACTIONS_SCHEMA
+];

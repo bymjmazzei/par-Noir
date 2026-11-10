@@ -1,8 +1,8 @@
 /**
  * @jest-environment node
  *
- * Status-code and payload branches for the storage credential + Drive init routes.
- * Every collaborator (credential store, Drive proxy, init coordinator) is mocked.
+ * Status-code and payload branches for the storage credential + layout routes.
+ * Every collaborator (credential store, init progress, cloud vault) is mocked.
  */
 
 /** Bearer identity under test — swapped to prove pn_mismatch / unauthorized. */
@@ -11,16 +11,6 @@ let currentBearer: string | null = 'pn-test';
 let gateIsKeyed = false;
 /** When set, Case B (firstDeviceKeyedAt present) — unkeyed overwrite must deny. */
 let gateFirstDeviceKeyedAt: string | undefined;
-
-jest.mock('./relocatePnRootBlobs', () => ({
-  relocatePnRootBlobs: jest.fn(async () => ({
-    filesFolderId: 'files',
-    contentFolderId: 'content',
-    contentNotesFolderId: 'notes',
-    contentMediaFolderId: 'media',
-    contentCollectionsFolderId: 'collections',
-  })),
-}));
 
 jest.mock('../deviceCapabilityService', () => {
   const DEVICE_CAPABILITIES = {
@@ -69,16 +59,6 @@ jest.mock('../socialMailboxService', () => ({
   isDeviceCloudCustodyEnabled: jest.fn(() => false),
 }));
 
-jest.mock('./storageInitService', () => ({
-  inferPrimaryProviderFromCredentials: jest.fn(() => ({ primaryProvider: 'google_drive' })),
-  shouldInitializePortable: jest.fn(() => false),
-  initializePortableStorage: jest.fn(async () => undefined),
-}));
-
-jest.mock('../googleDriveProxy', () => ({
-  googleDriveProxyService: { getAccessToken: jest.fn() },
-}));
-
 jest.mock('../driveInitCoordinator', () => ({
   runDriveInitOnce: jest.fn(async (_pn: string, fn: () => Promise<unknown>) => fn()),
   isDriveInitInFlight: jest.fn(() => false),
@@ -87,22 +67,6 @@ jest.mock('../driveInitCoordinator', () => ({
 jest.mock('../driveInitProgress', () => ({
   getDriveInitProgress: jest.fn(() => null),
   isDriveInitProgressActive: jest.fn(() => false),
-}));
-
-jest.mock('../googleApiRetry', () => ({
-  withGoogleRetry: jest.fn(async (_label: string, fn: () => Promise<unknown>) => fn()),
-  isRetryableGoogleError: jest.fn(() => false),
-}));
-
-jest.mock('./storageProviderUtils', () => ({
-  isPortableSocialCloud: jest.fn(async () => false),
-  isPortableStorageProvider: jest.fn(async () => false),
-}));
-
-jest.mock('../messageSheetsService', () => ({
-  MessageSheetsService: {
-    ensureInboxChannelColumn: jest.fn(async () => undefined),
-  },
 }));
 
 jest.mock('../cloudVaultService', () => ({
@@ -127,11 +91,8 @@ import {
 import { storageCredentialsService } from '../storageCredentialsService';
 import { isPnRevokedForNetwork } from '../identitySuccessionService';
 import { isDeviceCloudCustodyEnabled } from '../socialMailboxService';
-import { googleDriveProxyService } from '../googleDriveProxy';
-import { isRetryableGoogleError } from '../googleApiRetry';
 import { getDriveInitProgress, isDriveInitProgressActive } from '../driveInitProgress';
 import { cloudVaultService, looksLikePlaintextCloudSecrets } from '../cloudVaultService';
-import { MessageSheetsService } from '../messageSheetsService';
 import {
   CURRENT_CLOUD_LAYOUT_VERSION,
   MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
@@ -144,14 +105,11 @@ const mockUpsertCredentials = storageCredentialsService.upsertCredentials as jes
 const mockStripCloudSecrets = storageCredentialsService.stripCloudSecrets as jest.Mock;
 const mockIsRevoked = isPnRevokedForNetwork as jest.Mock;
 const mockCustodyEnabled = isDeviceCloudCustodyEnabled as jest.Mock;
-const mockGetAccessToken = googleDriveProxyService.getAccessToken as jest.Mock;
-const mockIsRetryable = isRetryableGoogleError as jest.Mock;
 const mockGetProgress = getDriveInitProgress as jest.Mock;
 const mockProgressActive = isDriveInitProgressActive as jest.Mock;
 const mockGetSealedVault = cloudVaultService.getSealedVault as jest.Mock;
 const mockPutSealedVault = cloudVaultService.putSealedVault as jest.Mock;
 const mockLooksLikePlaintext = looksLikePlaintextCloudSecrets as jest.Mock;
-const mockEnsureInboxChannel = MessageSheetsService.ensureInboxChannelColumn as jest.Mock;
 
 const PN = 'pn-test';
 
@@ -176,9 +134,7 @@ function completePnDriveIndex() {
 function buildApp() {
   const app = express();
   app.use(express.json());
-  setupStorageCredentialsRoutes(app, {
-    extractAccountId: (account: any) => account?.backendId || account?.keyPrefix,
-  });
+  setupStorageCredentialsRoutes(app);
   setupStorageCloudVaultRoutes(app);
   return app;
 }
@@ -204,8 +160,6 @@ describe('storage credentials routes', () => {
       .mockImplementation((c: Record<string, unknown>) => ({ ...c, stripped: true }));
     mockIsRevoked.mockReset().mockReturnValue(false);
     mockCustodyEnabled.mockReset().mockReturnValue(false);
-    mockGetAccessToken.mockReset();
-    mockIsRetryable.mockReset().mockReturnValue(false);
     mockGetProgress.mockReset().mockReturnValue(null);
     mockProgressActive.mockReset().mockReturnValue(false);
     mockGetSealedVault.mockReset().mockResolvedValue(null);
@@ -330,7 +284,7 @@ describe('storage credentials routes', () => {
       expect(res.body.error).toBe('No storage credentials found for identity');
     });
 
-    it('returns the record without attempting a server-side token refresh', async () => {
+    it('returns the stored layout record', async () => {
       const record = {
         identityId: PN,
         credentials: { googleDriveAccounts: [{ backendId: 'acct-1', refresh_token: 'r' }] },
@@ -342,9 +296,6 @@ describe('storage credentials routes', () => {
 
       const res = await request(buildApp()).get(`/api/storage/credentials/${PN}`).expect(200);
 
-      // Under device cloud custody the stored row has no refresh secret, so there is
-      // nothing for the server to refresh. The device refreshes and forwards its token.
-      expect(mockGetAccessToken).not.toHaveBeenCalled();
       expect(res.body.success).toBe(true);
       expect(res.body.cid).toBe('cid-1');
     });
@@ -599,21 +550,6 @@ describe('storage credentials routes', () => {
       const res = await request(buildApp()).get(`/api/storage/${PN}/layout/status`).expect(200);
       expect(res.body.complete).toBe(true);
       expect(res.body.pending).toEqual([]);
-    });
-  });
-
-  describe('POST /api/storage/:identityId/layout/upgrade', () => {
-    it('returns 409 cloud_on_device for Google Drive (migrations run on device)', async () => {
-      mockGetCredentials.mockResolvedValue({
-        credentials: {
-          googleDriveAccounts: [{ backendId: 'acct-1' }],
-          pnDriveIndex: completePnDriveIndex(),
-        },
-      });
-
-      const res = await request(buildApp()).post(`/api/storage/${PN}/layout/upgrade`).expect(409);
-      expect(res.body.error).toBe('cloud_on_device');
-      expect(mockEnsureInboxChannel).not.toHaveBeenCalled();
     });
   });
 
