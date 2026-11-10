@@ -8,21 +8,11 @@ import { safeClientErrorMessage } from '../utils/safeError';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-export interface EngagementRouteDeps {
-  extractAccountId: (account: any) => string | undefined;
-  getMetadataFolder: (
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    accountId?: string
-  ) => Promise<{ metadataFolderId: string; pnFolderId: string } | null>;
-  driveNotInitialized: (res: express.Response) => express.Response;
-}
 
 /**
  * Setup engagement routes
  */
-export function setupEngagementRoutes(app: any, deps: EngagementRouteDeps) {
-  const { extractAccountId, getMetadataFolder, driveNotInitialized } = deps;
+export function setupEngagementRoutes(app: any) {
 
 // Engagement APIs (Enhanced)
 // ============================================================================
@@ -31,13 +21,6 @@ export function setupEngagementRoutes(app: any, deps: EngagementRouteDeps) {
 app.post('/api/engagement/:fileId/like', async (req: Request, res: Response) => {
   try {
     const { EngagementService } = await import('./engagementService');
-    const { EngagementDriveService } = await import('./engagementDriveService');
-    const { PreferencesService } = await import('./preferencesService');
-    const { extractTagsFromMetadata } = await import('../utils/tagExtractor');
-    const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-    const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-    const { googleDriveProxyService } = await import('./googleDriveProxy');
-    const { storageCredentialsService } = await import('./storageCredentialsService');
     const { fileId } = req.params;
     const { userPnIdentifier } = req.body;
 
@@ -139,11 +122,7 @@ app.get('/api/engagement/:fileId/dislike', async (_req: Request, res: Response) 
 app.post('/api/engagement/:fileId/comment', async (req: Request, res: Response) => {
   try {
     const { EngagementService } = await import('./engagementService');
-    const { EngagementDriveService } = await import('./engagementDriveService');
     const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-    const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-    const { googleDriveProxyService } = await import('./googleDriveProxy');
-    const { storageCredentialsService } = await import('./storageCredentialsService');
     const { fileId } = req.params;
     const { userPnIdentifier, content, authorName, fileOwnerDid, parentCommentId, postReply } = req.body;
 
@@ -335,7 +314,6 @@ app.post('/api/engagement/:fileId/share', async (req: Request, res: Response) =>
   try {
     const { EngagementService } = await import('./engagementService');
     const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-    const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
     const { fileId } = req.params;
     const { userPnIdentifier } = req.body;
 
@@ -376,19 +354,6 @@ app.post('/api/engagement/:fileId/share', async (req: Request, res: Response) =>
     const fileMetadata = await aggregator.getFileMetadata(fileId);
     if (fileMetadata) {
       await aggregator.syncEngagementStats(fileId);
-
-      const ownerDid =
-        fileMetadata.pnIdentifier ||
-        fileMetadata.metadata.creator?.['@id'] ||
-        fileMetadata.metadata.author?.did;
-      if (ownerDid) {
-        const { appendOwnerCompanionEngagement } = await import('./engagementCompanionSync');
-        await appendOwnerCompanionEngagement(fileId, ownerDid, 'share', {
-            fileId,
-            pnIdentifier: userPnIdentifier,
-            timestamp: new Date().toISOString()
-          });
-      }
     }
 
     return res.json({
@@ -406,8 +371,6 @@ app.post('/api/engagement/:fileId/save', async (req: Request, res: Response) => 
   try {
     const { EngagementService } = await import('./engagementService');
     const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-    const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-    const { googleDriveProxyService } = await import('./googleDriveProxy');
     const { fileId } = req.params;
     const { userPnIdentifier } = req.body;
 
@@ -423,25 +386,6 @@ app.post('/api/engagement/:fileId/save', async (req: Request, res: Response) => 
 
     if (fileMetadata) {
       await aggregator.syncEngagementStats(fileId);
-
-      const ownerDid =
-        fileMetadata.pnIdentifier ||
-        fileMetadata.metadata.creator?.['@id'] ||
-        fileMetadata.metadata.author?.did;
-      if (ownerDid) {
-        const { appendOwnerCompanionEngagement } = await import('./engagementCompanionSync');
-        if (result.saved) {
-          await appendOwnerCompanionEngagement(fileId, ownerDid, 'save', {
-              fileId,
-              pnIdentifier: userPnIdentifier,
-              timestamp: new Date().toISOString()
-            });
-        } else {
-          await appendOwnerCompanionEngagement(fileId, ownerDid, 'unsave', {
-              pnIdentifier: userPnIdentifier
-            });
-        }
-      }
     }
 
     return res.json({

@@ -13,7 +13,6 @@ import {
   pnFolderDisplayName,
   scopesIncludeCloudApp
 } from '../modules/integratorStoragePaths';
-import { IntegratorStorageError } from '../modules/integratorFolderService';
 import {
   isPnDriveIndexComplete,
   PN_DRIVE_SHEET_KEYS,
@@ -71,13 +70,6 @@ describe('integratorStoragePaths', () => {
     expect(isFirstPartyClient('prism-app')).toBe(true);
     expect(isFirstPartyClient('developer-portal')).toBe(true);
     expect(isFirstPartyClient('my-startup-app')).toBe(false);
-  });
-});
-
-describe('IntegratorStorageError', () => {
-  it('carries error code', () => {
-    const e = new IntegratorStorageError('nope', 'FORBIDDEN_PARENT');
-    expect(e.code).toBe('FORBIDDEN_PARENT');
   });
 });
 

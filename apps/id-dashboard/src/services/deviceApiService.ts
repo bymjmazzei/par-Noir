@@ -324,7 +324,7 @@ async function buildPrivateDisplayBlob(params: {
   );
 }
 
-export async function fetchDeviceRegistry(
+async function readDeviceRegistry(
   userPnIdentifier: string,
   authToken: string
 ): Promise<DeviceRegistrySummary | null> {
@@ -334,6 +334,79 @@ export async function fetchDeviceRegistry(
   });
   if (!res.ok) return null;
   return res.json();
+}
+
+const LEGACY_REGISTRY_IMPORT_KEY = 'pn_device_registry_import_checked';
+
+/**
+ * Keyed devices used to be listed only in the owner's Drive (devices.xlsx + device-policy.json).
+ * The API now keeps the registry it verifies proofs against, so copy the Drive copy up once.
+ */
+async function importLegacyDeviceRegistry(userPnIdentifier: string, authToken: string): Promise<boolean> {
+  const { sessionDriveFor } = await import('./sessionDrive');
+  const { readSheetValues, findDriveChild, deviceDriveCall } = await import(
+    '@par-noir/device-cloud-credentials'
+  );
+  const drive = await sessionDriveFor(userPnIdentifier, authToken);
+  const sheetId = drive.index.sheetIds['devices'];
+  if (!sheetId) return false;
+  const rows = await readSheetValues(drive.accessToken, sheetId, 'Devices!A2:J');
+  const devices = rows
+    .filter((r) => r[0] && r[1])
+    .map((r) => ({
+      deviceId: r[0],
+      devicePublicKey: r[1],
+      label: r[2] || '',
+      deviceType: r[3] || 'other',
+      keyType: r[4] || 'software',
+      status: r[5] === 'revoked' ? 'revoked' : 'active',
+      isPrimary: r[6] === 'true',
+      createdAt: r[7] || '',
+      lastSeenAt: r[8] || '',
+      ...(r[9] ? { privateDisplay: r[9] } : {}),
+    }));
+  if (devices.length === 0) return false;
+
+  let policy: unknown = null;
+  const policyId = await findDriveChild(drive.accessToken, drive.index.metadataFolderId, 'device-policy.json');
+  if (policyId) {
+    const policyRes = await deviceDriveCall(
+      'GET',
+      `/api/drive/files/${encodeURIComponent(policyId)}?download=true`,
+      undefined,
+      { accessToken: drive.accessToken }
+    );
+    if (policyRes.ok) policy = await policyRes.json().catch(() => null);
+  }
+
+  const res = await fetch(
+    `${API_ENDPOINT}/api/devices/${encodeURIComponent(userPnIdentifier)}/registry/import`,
+    { method: 'POST', headers: authHeaders(authToken), body: JSON.stringify({ devices, policy }) }
+  );
+  return res.ok;
+}
+
+export async function fetchDeviceRegistry(
+  userPnIdentifier: string,
+  authToken: string
+): Promise<DeviceRegistrySummary | null> {
+  const summary = await readDeviceRegistry(userPnIdentifier, authToken);
+  if (!summary || summary.hasKeyedDevices || summary.policy?.firstDeviceKeyedAt) return summary;
+
+  const checkedKey = `${LEGACY_REGISTRY_IMPORT_KEY}:${userPnIdentifier}`;
+  try {
+    if (localStorage.getItem(checkedKey)) return summary;
+  } catch {
+    /* storage unavailable: try the import anyway */
+  }
+  const imported = await importLegacyDeviceRegistry(userPnIdentifier, authToken).catch(() => null);
+  if (imported === null) return summary;
+  try {
+    localStorage.setItem(checkedKey, '1');
+  } catch {
+    /* ignore */
+  }
+  return imported ? readDeviceRegistry(userPnIdentifier, authToken) : summary;
 }
 
 export async function fetchDevicePolicy(

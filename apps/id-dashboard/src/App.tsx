@@ -558,8 +558,7 @@ function App() {
     return () => window.removeEventListener('hashchange', applyHash);
   }, [authenticatedUser, setActiveTab]);
 
-  // Load third-party permissions after cloud secrets warm. Same unlock READY burst as ZKP —
-  // memoize 404/409 so we do not re-hit the API until layout init clears the memo.
+  // Load third-party grants (API-owned rows; no cloud read needed).
   const permissionsLoadedKeyRef = useRef<string | null>(null);
   const permissionsInFlightRef = useRef(false);
   useEffect(() => {
@@ -572,19 +571,11 @@ function App() {
       if (permissionsInFlightRef.current) return;
 
       try {
-        const { isMetadataSheetsUnavailable, markMetadataSheetsUnavailable } = await import(
-          './services/storage/metadataSheetsAvailability'
-        );
-        if (isMetadataSheetsUnavailable(recoveryVaultPnId)) return;
-
         const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
         if (!credentials) {
           console.warn('[App] Cannot load permissions - credentials not available');
           return;
         }
-
-        const cloudTok = await resolveLocalGoogleAccessTokenAsync(recoveryVaultPnId);
-        if (!cloudTok) return;
 
         const authToken = apiToken || (await ensureOwnerApiTokenForActiveUser());
         if (!authToken) {
@@ -631,10 +622,7 @@ function App() {
                 }
               };
             });
-            console.log('[App] Loaded third-party permissions from Google Drive:', Object.keys(permissions));
           }
-        } else if (response.status === 409) {
-          markMetadataSheetsUnavailable(recoveryVaultPnId);
         } else if (response.status !== 404) {
           console.warn('[App] Failed to load permissions:', response.status);
         }

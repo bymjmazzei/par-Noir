@@ -152,50 +152,8 @@ export function setupDataPointRoutes(app: any) {
         });
       }
 
-      const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-      let ownerToken: { token: { access_token: string } };
-      try {
-        ownerToken = await resolveOwnerDriveToken(req, identity_id);
-      } catch (err) {
-        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
-        safeLogger.warn('[DataPoints] poll: cloud token required', {
-          reason: 'cloud_token_required',
-          pnIdHash: hashIdentifier(identity_id),
-        });
-        if (respondDriveTokenError(res, err)) return;
-        throw err;
-      }
-      const ctx = await getUserDriveMetadataContext(identity_id, {
-        accessToken: ownerToken.token.access_token,
-      });
-      if (!ctx) {
-        return res.status(409).json({
-          error: 'cloud_token_required',
-          error_description: 'Google Drive access token required.'
-        });
-      }
-
-      const { DataPointRequestSheetsService } = await import('./dataPointRequestSheetsService');
-      const token = { access_token: ctx.accessToken };
-      const spreadsheetId = await DataPointRequestSheetsService.findSpreadsheetId(
-        token,
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-
-      if (!spreadsheetId) {
-        return res.status(404).json({ error: 'not_found', error_description: 'Request not found' });
-      }
-
-      const rows = await DataPointRequestSheetsService.listRequests(
-        token,
-        spreadsheetId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-      const row = rows.find((r) => r.requestId === requestId);
+      const { getDataPointRequest } = await import('./dataPointRequestStore');
+      const row = await getDataPointRequest(identity_id, requestId);
       if (!row) {
         return res.status(404).json({ error: 'not_found', error_description: 'Request not found' });
       }
@@ -238,24 +196,10 @@ export function setupDataPointRoutes(app: any) {
       }
 
       const { fetchGrantedZkpProofs } = await import('./integratorDataPointService');
-      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-      let ownerToken: { token: { access_token: string } } | null = null;
-      try {
-        ownerToken = await resolveOwnerDriveToken(req, identity_id);
-      } catch (err) {
-        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
-        safeLogger.warn('[DataPoints] GET: cloud token required', {
-          reason: 'cloud_token_required',
-          pnIdHash: hashIdentifier(String(identity_id)),
-        });
-        if (respondDriveTokenError(res, err)) return;
-        throw err;
-      }
       const proofs = await fetchGrantedZkpProofs({
         userPnIdentifier: identity_id,
         clientId: client_id,
         dataPointIds: [dataPointId],
-        accessToken: ownerToken.token.access_token,
       });
 
       const proof = proofs.find((p) => p.dataPointId === dataPointId);
@@ -281,7 +225,15 @@ export function setupDataPointRoutes(app: any) {
       const { identity_id, client_id, data_points, reason, tool_name } = req.body;
       const apiKey = (req as any).apiKey;
 
-      if (!identity_id || !client_id || !data_points || !Array.isArray(data_points)) {
+      if (
+        typeof identity_id !== 'string' ||
+        !identity_id ||
+        typeof client_id !== 'string' ||
+        !client_id ||
+        !Array.isArray(data_points) ||
+        data_points.length === 0 ||
+        !data_points.every((d: unknown) => typeof d === 'string' && d.length > 0)
+      ) {
         return res.status(400).json({
           error: 'invalid_request',
           error_description: 'identity_id, client_id, and data_points array are required'
@@ -295,83 +247,28 @@ export function setupDataPointRoutes(app: any) {
         });
       }
 
-      const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-      let ownerToken: { token: { access_token: string } };
-      try {
-        ownerToken = await resolveOwnerDriveToken(req, identity_id);
-      } catch (err) {
-        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
-        safeLogger.warn('[DataPoints] request: cloud token required', {
-          reason: 'cloud_token_required',
-          pnIdHash: hashIdentifier(identity_id),
-        });
-        if (respondDriveTokenError(res, err)) return;
-        throw err;
-      }
-      const ctx = await getUserDriveMetadataContext(identity_id, {
-        accessToken: ownerToken.token.access_token,
+      const { createDataPointRequest } = await import('./dataPointRequestStore');
+      const row = await createDataPointRequest({
+        pnIdentifier: identity_id,
+        clientId: client_id,
+        toolName: typeof tool_name === 'string' && tool_name ? tool_name : client_id,
+        dataPoints: data_points,
+        reason: typeof reason === 'string' ? reason : ''
       });
-      if (!ctx) {
-        return res.status(409).json({
-          error: 'cloud_token_required',
-          error_description: 'Google Drive access token required.'
-        });
-      }
 
-      const crypto = await import('crypto');
-      const requestId = `dpr_${crypto.randomBytes(12).toString('hex')}`;
-      const createdAt = new Date().toISOString();
-
-      const { DataPointRequestSheetsService } = await import('./dataPointRequestSheetsService');
-      const token = { access_token: ctx.accessToken };
-
-      const spreadsheetId = await DataPointRequestSheetsService.getOrCreateSpreadsheet(
-        token,
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-
-      await DataPointRequestSheetsService.appendRequest(
-        token,
-        spreadsheetId,
-        {
-          requestId,
-          clientId: client_id,
-          toolName: tool_name || client_id,
-          dataPoints: data_points.join(','),
-          reason: reason || '',
-          status: 'pending',
-          createdAt
-        },
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-
-      const { NotificationService } = await import('./notificationService');
-      await NotificationService.createNotification(
-        ctx.accessToken,
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        {
-          user_pn_identifier: ctx.normalizedPnIdentifier,
-          type: 'data_point_request',
-          title: 'Data sharing request',
-          message: 'An app requested access to your data points',
-          data: {
-            request_id: requestId,
-            client_id,
-            data_points: data_points.join(',')
-          }
-        }
-      ).catch((e: Error) => console.warn('[DataPoints] notification failed:', e.message));
+      const { enqueueSocialJob } = await import('./socialRail');
+      await enqueueSocialJob({
+        jobType: 'notification_row',
+        peerPn: identity_id.startsWith('pn-') ? identity_id : `pn-${identity_id}`,
+        requestId: row.requestId,
+        extra: { kind: 'data_point_request', requestId: row.requestId, clientId: client_id }
+      });
 
       return res.status(201).json({
         success: true,
-        requestId,
-        status: 'pending',
-        createdAt
+        requestId: row.requestId,
+        status: row.status,
+        createdAt: row.createdAt
       });
     } catch (error) {
       console.error('[DataPoints] Request creation error:', error);
@@ -383,67 +280,33 @@ export function setupDataPointRoutes(app: any) {
   });
 }
 
+function ownerPnFromBearer(req: Request, res: Response, getPayload: (req: Request) => any): string | null {
+  const tokenPayload = getPayload(req);
+  if (!tokenPayload?.pnIdentifier) {
+    res.status(401).json({ error: 'invalid_token' });
+    return null;
+  }
+  const normalize = (pn: string) => (pn.startsWith('pn-') ? pn : `pn-${pn}`);
+  const normalized = normalize(req.params.pnIdentifier);
+  if (normalized !== normalize(tokenPayload.pnIdentifier)) {
+    res.status(403).json({ error: 'forbidden' });
+    return null;
+  }
+  return normalized;
+}
+
 /** User-facing data point consent (Bearer token). */
 export function setupDataPointUserRoutes(app: any) {
   app.get('/api/users/:pnIdentifier/data-point-requests', async (req: Request, res: Response) => {
     try {
       const { getBearerTokenPayload } = await import('../middleware/authMiddleware');
-      const tokenPayload = getBearerTokenPayload(req);
-      if (!tokenPayload?.pnIdentifier) {
-        return res.status(401).json({ error: 'invalid_token' });
-      }
-
-      const normalized = req.params.pnIdentifier.startsWith('pn-')
-        ? req.params.pnIdentifier
-        : `pn-${req.params.pnIdentifier}`;
-      const tokenPn = tokenPayload.pnIdentifier.startsWith('pn-')
-        ? tokenPayload.pnIdentifier
-        : `pn-${tokenPayload.pnIdentifier}`;
-
-      if (normalized !== tokenPn) {
-        return res.status(403).json({ error: 'forbidden' });
-      }
-
-      const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-      let ownerToken: { token: { access_token: string } } | null = null;
-      try {
-        ownerToken = await resolveOwnerDriveToken(req, normalized);
-      } catch (err) {
-        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
-        safeLogger.warn('[ApiRoutes] data-point-requests list: cloud token required', {
-          reason: 'cloud_token_required',
-          pnIdHash: hashIdentifier(normalized),
-        });
-        if (respondDriveTokenError(res, err)) return;
-        throw err;
-      }
-      const ctx = await getUserDriveMetadataContext(normalized, {
-        accessToken: ownerToken?.token.access_token,
-      });
-      if (!ctx) {
-        return res.json({ success: true, requests: [] });
-      }
-
-      const { DataPointRequestSheetsService } = await import('./dataPointRequestSheetsService');
-      const token = { access_token: ctx.accessToken };
-      const spreadsheetId = await DataPointRequestSheetsService.findSpreadsheetId(
-        token,
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-
-      if (!spreadsheetId) {
-        return res.json({ success: true, requests: [] });
-      }
+      const normalized = ownerPnFromBearer(req, res, getBearerTokenPayload);
+      if (!normalized) return;
 
       const status = req.query.status as string | undefined;
-      const requests = await DataPointRequestSheetsService.listRequests(
-        token,
-        spreadsheetId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId,
+      const { listDataPointRequests } = await import('./dataPointRequestStore');
+      const requests = await listDataPointRequests(
+        normalized,
         status === 'pending' || status === 'approved' || status === 'declined' ? status : undefined
       );
 
@@ -457,10 +320,8 @@ export function setupDataPointUserRoutes(app: any) {
   app.post('/api/users/:pnIdentifier/data-point-requests/:requestId/respond', async (req: Request, res: Response) => {
     try {
       const { getBearerTokenPayload } = await import('../middleware/authMiddleware');
-      const tokenPayload = getBearerTokenPayload(req);
-      if (!tokenPayload?.pnIdentifier) {
-        return res.status(401).json({ error: 'invalid_token' });
-      }
+      const normalized = ownerPnFromBearer(req, res, getBearerTokenPayload);
+      if (!normalized) return;
 
       const { action } = req.body as { action?: 'approve' | 'decline' };
       if (action !== 'approve' && action !== 'decline') {
@@ -470,81 +331,21 @@ export function setupDataPointUserRoutes(app: any) {
         });
       }
 
-      const normalized = req.params.pnIdentifier.startsWith('pn-')
-        ? req.params.pnIdentifier
-        : `pn-${req.params.pnIdentifier}`;
-      const tokenPn = tokenPayload.pnIdentifier.startsWith('pn-')
-        ? tokenPayload.pnIdentifier
-        : `pn-${tokenPayload.pnIdentifier}`;
-
-      if (normalized !== tokenPn) {
-        return res.status(403).json({ error: 'forbidden' });
-      }
-
-      const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-      let ownerToken: { token: { access_token: string } } | null = null;
-      try {
-        ownerToken = await resolveOwnerDriveToken(req, normalized);
-      } catch (err) {
-        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
-        safeLogger.warn('[ApiRoutes] data-point-request action: cloud token required', {
-          reason: 'cloud_token_required',
-          pnIdHash: hashIdentifier(normalized),
-        });
-        if (respondDriveTokenError(res, err)) return;
-        throw err;
-      }
-      const ctx = await getUserDriveMetadataContext(normalized, {
-        accessToken: ownerToken?.token.access_token,
-      });
-      if (!ctx) {
-        return res.status(404).json({ error: 'not_found' });
-      }
-
-      const { DataPointRequestSheetsService } = await import('./dataPointRequestSheetsService');
-      const token = { access_token: ctx.accessToken };
-      const spreadsheetId = await DataPointRequestSheetsService.findSpreadsheetId(
-        token,
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-
-      if (!spreadsheetId) {
-        return res.status(404).json({ error: 'not_found' });
-      }
-
-      const rows = await DataPointRequestSheetsService.listRequests(
-        token,
-        spreadsheetId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-      const row = rows.find((r) => r.requestId === req.params.requestId);
-      if (!row || row.status !== 'pending') {
-        return res.status(404).json({ error: 'not_found' });
-      }
-
+      const { respondToDataPointRequest } = await import('./dataPointRequestStore');
       const newStatus = action === 'approve' ? 'approved' : 'declined';
-      await DataPointRequestSheetsService.updateRequestStatus(
-        token,
-        spreadsheetId,
-        req.params.requestId,
-        newStatus,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
+      const row = await respondToDataPointRequest(normalized, req.params.requestId, newStatus);
+      if (!row) {
+        return res.status(404).json({ error: 'not_found' });
+      }
 
+      const dataPointIds = row.dataPoints.split(',').map((s) => s.trim()).filter(Boolean);
       if (action === 'approve') {
-        const dataPointIds = row.dataPoints.split(',').map((s) => s.trim()).filter(Boolean);
         const { grantDataPointsToClient } = await import('./integratorDataPointService');
         await grantDataPointsToClient({
           userPnIdentifier: normalized,
           clientId: row.clientId,
           toolName: row.toolName,
-          dataPointIds,
-          accessToken: ctx.accessToken,
+          dataPointIds
         });
       }
 
@@ -558,12 +359,12 @@ export function setupDataPointUserRoutes(app: any) {
           ? INTEGRATOR_WEBHOOK_EVENTS.DATA_POINT_REQUEST_APPROVED
           : INTEGRATOR_WEBHOOK_EVENTS.DATA_POINT_REQUEST_DECLINED,
         {
-          requestId: req.params.requestId,
+          requestId: row.requestId,
           identityId: normalized,
           clientId: row.clientId,
-          dataPoints: row.dataPoints.split(',').map((s) => s.trim()).filter(Boolean),
-          status: action === 'approve' ? 'approved' : 'declined',
-          approvedAt: new Date().toISOString()
+          dataPoints: dataPointIds,
+          status: newStatus,
+          approvedAt: row.respondedAt || new Date().toISOString()
         }
       );
 

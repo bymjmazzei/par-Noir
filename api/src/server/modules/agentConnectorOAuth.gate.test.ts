@@ -81,7 +81,7 @@ function app() {
   a.use(express.urlencoded({ extended: true }));
   const pass: RequestHandler = (_req, _res, next) => next();
   registerAgentConnectorRoutes(a, { registerLimiter: pass });
-  setupPnOAuthRoutes(a, { extractAccountId: () => undefined, oauthTokenLimiter: pass, authLimiter: pass });
+  setupPnOAuthRoutes(a, { oauthTokenLimiter: pass, authLimiter: pass });
   return a;
 }
 

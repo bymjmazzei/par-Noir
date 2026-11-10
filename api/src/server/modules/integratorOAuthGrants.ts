@@ -1,74 +1,62 @@
 /**
- * Persist third-party permissions and integrator folders after OAuth token exchange.
+ * OAuth grants: what each client may read for a pN, and what the user was asked.
  */
 
 import { ClientRegistrationService } from './clientRegistration';
-import { IntegratorFolderService } from './integratorFolderService';
-import {
-  dataPointIdsFromScopes,
-  isFirstPartyClient,
-  normalizePnIdentifier,
-  scopesIncludeCloudApp
-} from './integratorStoragePaths';
+import { dataPointIdsFromScopes, normalizePnIdentifier } from './integratorStoragePaths';
 import {
   ThirdPartyPermission,
   ThirdPartyPermissionsService
 } from './thirdPartyPermissionsService';
-import { isPnDriveIndexComplete, loadPnDriveIndex } from './pnDriveIndex';
-import type { TokenPayload } from './pnOAuthService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { applyStaticContract, getClientContract, normalizePermissionManifest } from '@par-noir/standard-data-points';
-import { autoSubscribeCommunityOnIntegratorGrant } from './communityGrantHelper';
 
-export async function persistIntegratorGrantAfterTokenExchange(params: {
+export interface ExistingGrant {
+  /** Data points the user chose to share. */
+  dataPoints: string[];
+  /**
+   * Data points the user was shown at consent time, whether or not they shared
+   * them. Declining is a decision we remember; only a genuinely new request
+   * sends the user back to the consent screen.
+   */
+  consideredDataPoints: string[];
+}
+
+export async function getExistingGrant(
+  clientId: string,
+  pnIdentifier: string
+): Promise<ExistingGrant | null> {
+  const permission = await ThirdPartyPermissionsService.getPermission(
+    normalizePnIdentifier(pnIdentifier),
+    clientId
+  );
+  if (!permission || permission.status !== 'active') return null;
+  const dataPoints = [...(permission.dataPoints ?? [])];
+  return {
+    dataPoints,
+    consideredDataPoints: [
+      ...new Set([
+        ...(permission.requiredDataPoints ?? []),
+        ...(permission.optionalDataPoints ?? []),
+        ...dataPoints,
+      ]),
+    ],
+  };
+}
+
+export async function persistIntegratorGrant(params: {
   clientId: string;
   scopes: string[];
-  tokenPayload: TokenPayload;
-  userAccessToken: string;
-  accountId?: string;
+  pnIdentifier: string;
   /** User's per-data-point choices from consent; undefined when consent was skipped. */
   grantedDataPoints?: string[];
 }): Promise<void> {
-  const { clientId, scopes, tokenPayload, userAccessToken, accountId, grantedDataPoints } = params;
-  const pnIdentifier = tokenPayload.pnIdentifier;
-  if (!pnIdentifier) return;
-
-  const normalizedPn = normalizePnIdentifier(pnIdentifier);
-  const index = await loadPnDriveIndex(normalizedPn);
-  if (!isPnDriveIndexComplete(index)) {
-    safeLogger.warn('[OAuth] persistIntegratorGrant skipped — Drive index incomplete after resolve', {
-      reason: 'drive_index_incomplete',
-      pnIdHash: hashIdentifier(normalizedPn),
-      clientId,
-    });
-    throw new Error('drive_index_incomplete');
-  }
-
-  const { metadataFolderId } = index;
-  const existing = await ThirdPartyPermissionsService.getPermissions(
-    userAccessToken,
-    metadataFolderId,
-    normalizedPn,
-    accountId
-  );
-
-  let integratorFolderId: string | undefined =
-    existing[clientId]?.integratorFolderId;
-
-  if (scopesIncludeCloudApp(scopes) && !isFirstPartyClient(clientId)) {
-    const folder = await IntegratorFolderService.ensureIntegratorFolder(
-      userAccessToken,
-      normalizedPn,
-      clientId,
-      accountId,
-      index
-    );
-    integratorFolderId = folder.integratorFolderId;
-  }
+  const { clientId, scopes, grantedDataPoints } = params;
+  const normalizedPn = normalizePnIdentifier(params.pnIdentifier);
 
   const client = await ClientRegistrationService.getClient(clientId);
   const requestedDataPoints = dataPointIdsFromScopes(scopes);
-  const prev = existing[clientId];
+  const prev = await ThirdPartyPermissionsService.getPermission(normalizedPn, clientId);
   const contract = getClientContract(clientId);
 
   // Only the data points this authorization asked about are rewritten from the
@@ -102,39 +90,14 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
     ),
     grantedAt: prev?.grantedAt || new Date().toISOString(),
     status: 'active',
-    integratorFolderId
   };
 
   permission = applyStaticContract(clientId, permission);
+  await ThirdPartyPermissionsService.storePermission(normalizedPn, permission);
 
-  await ThirdPartyPermissionsService.storePermissions(
-    userAccessToken,
-    metadataFolderId,
-    normalizedPn,
-    { ...existing, [clientId]: permission },
-    normalizedPn,
-    accountId
-  );
-
-  try {
-    await autoSubscribeCommunityOnIntegratorGrant({
-      clientId,
-      userAccessToken,
-      metadataFolderId,
-      normalizedPn,
-      accountId
-    });
-  } catch (err) {
-    safeLogger.warn('[OAuth] Community auto-subscribe failed (non-fatal)', {
-      clientId,
-      pnIdHash: hashIdentifier(normalizedPn)
-    });
-  }
-
-  // storePermissions syncs the consent-skip hint for what it just wrote.
-  safeLogger.info('[OAuth] Persisted integrator grant to Drive third-party-permissions', {
+  safeLogger.info('[OAuth] Persisted integrator grant', {
     clientId,
     pnIdHash: hashIdentifier(normalizedPn),
-    status: permission.status,
+    dataPointCount: permission.dataPoints.length,
   });
 }

@@ -96,11 +96,6 @@ jest.mock('../middleware/authMiddleware', () => ({
     currentBearer ? { pnIdentifier: currentBearer, did: currentBearer } : null,
 }));
 
-jest.mock('./storage/storageRequestContext', () => ({
-  createStorageRequestContext: async () => null,
-  getDriveTokenFromContext: () => null,
-}));
-
 import express from 'express';
 import request from 'supertest';
 import { setupAggregatorRoutes } from './aggregatorRoutes';
@@ -113,13 +108,6 @@ function buildApp() {
   setupAggregatorRoutes(app, {
     aggregatorLimiter: passthroughLimiter,
     metadataIndexReadLimiter: passthroughLimiter,
-    extractAccountId: () => undefined,
-    getMetadataFolder: async () => null,
-    driveNotInitialized: (res: express.Response) => {
-      res.status(409).json({ error: 'drive_not_initialized' });
-      return res;
-    },
-    scheduleDriveIndexUpdates: () => undefined,
   });
   return app;
 }

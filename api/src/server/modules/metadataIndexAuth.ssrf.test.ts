@@ -122,13 +122,6 @@ function buildApp() {
   setupAggregatorRoutes(app, {
     aggregatorLimiter: passthroughLimiter,
     metadataIndexReadLimiter: passthroughLimiter,
-    extractAccountId: () => undefined,
-    getMetadataFolder: async () => null,
-    driveNotInitialized: (res: express.Response) => {
-      res.status(409).json({ error: 'drive_not_initialized' });
-      return res;
-    },
-    scheduleDriveIndexUpdates: () => undefined,
   });
   return app;
 }

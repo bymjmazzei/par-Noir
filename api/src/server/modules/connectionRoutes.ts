@@ -4,7 +4,6 @@
  */
 
 import express from 'express';
-import crypto from 'crypto';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { messagingLog } from '../utils/messagingLog';
 import { safeLogger } from '../../utils/logger';
@@ -26,21 +25,16 @@ function isSocialEnvelopeShape(value: unknown): value is SocialEnvelopeShape {
   return typeof v.kemCiphertext === 'string' && typeof v.ciphertext === 'string';
 }
 
-export interface ConnectionRouteDeps {
-  extractAccountId: (account: any) => string | undefined;
-  getMetadataFolder: (
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    accountId?: string
-  ) => Promise<{ metadataFolderId: string; pnFolderId: string } | null>;
-  driveNotInitialized: (res: express.Response) => express.Response;
+/** Same id on both sides regardless of who sent the request. */
+export function generateConnectionId(pnA: string, pnB: string): string {
+  const [first, second] = [pnA, pnB].sort();
+  return `conn_${Buffer.from(`${first}_${second}`).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32)}`;
 }
 
 /**
  * Setup connection routes
  */
-export function setupConnectionRoutes(app: express.Application, deps: ConnectionRouteDeps) {
-  const { extractAccountId, getMetadataFolder, driveNotInitialized } = deps;
+export function setupConnectionRoutes(app: express.Application) {
 
     // ============================================================================
     // Connections APIs
@@ -76,12 +70,11 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           return;
         }
 
-        const { ConnectionsService } = await import('./connectionsService');
         safeLogger.info('[ConnectionRequest] start', { category: 'connections' });
         const connectionId =
           typeof submitted.connectionId === 'string' && submitted.connectionId
             ? submitted.connectionId
-            : ConnectionsService.generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
+            : generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
         const now = new Date().toISOString();
 
         const connection = {

@@ -1,99 +1,95 @@
-import type { DevicePolicy, DeviceRow } from '@par-noir/device-auth';
-import { DeviceSheetsService } from '../deviceSheetsService';
-import { getOwnerStorageContext } from './ownerStorageContext';
+/**
+ * Device registry: keyed device public keys and the unkeyed-access policy.
+ *
+ * The API verifies device proofs against these rows, so it owns them in Postgres.
+ * Labels and device type ride in `privateDisplay`, sealed by the client.
+ */
+
 import {
-  getDeviceByIdPortable,
-  listDevicesPortable,
-  readPolicyPortable,
-  updatePrivateDisplayPortable,
-  upsertDevicePortable,
-  writePolicyPortable
-} from './devicePortableService';
+  defaultDevicePolicy,
+  normalizeDevicePolicy,
+  type DevicePolicy,
+  type DeviceRow
+} from '@par-noir/device-auth';
+import { getDatabasePool } from '../../utils/database';
 
 export interface DeviceStorageBundle {
   pnIdentifier: string;
-  accountId?: string;
-  isPortable: boolean;
-  spreadsheetId?: string;
-  metadataFolderId?: string;
-  token?: { access_token: string };
 }
 
-export async function loadDeviceBundle(
-  pn: string,
-  opts?: { accessToken?: string }
-): Promise<DeviceStorageBundle | null> {
-  const ctx = await getOwnerStorageContext(pn, opts);
-  if (!ctx) return null;
+function normalizePn(pn: string): string {
+  return pn.startsWith('pn-') ? pn : `pn-${pn}`;
+}
 
-  if (ctx.kind === 'portable') {
-    return {
-      pnIdentifier: ctx.pnIdentifier,
-      accountId: ctx.accountId,
-      isPortable: true
-    };
+let tablesReady: Promise<void> | null = null;
+
+export function ensureDeviceRegistryTables(): Promise<void> {
+  if (!tablesReady) {
+    const db = getDatabasePool();
+    tablesReady = (async () => {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS device_registry (
+          pn_identifier VARCHAR(255) NOT NULL,
+          device_id VARCHAR(255) NOT NULL,
+          row JSONB NOT NULL,
+          status VARCHAR(16) NOT NULL,
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (pn_identifier, device_id)
+        )
+      `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS device_policy (
+          pn_identifier VARCHAR(255) PRIMARY KEY,
+          policy JSONB NOT NULL,
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        )
+      `);
+    })().catch((error) => {
+      tablesReady = null;
+      throw error;
+    });
   }
+  return tablesReady;
+}
 
-  const { loadPnDriveIndex, getSheetIdFromIndex, PN_DRIVE_SHEET_KEYS } = await import('../pnDriveIndex');
-  const index = await loadPnDriveIndex(ctx.pnIdentifier);
-  if (!index) return null;
-  const spreadsheetId = getSheetIdFromIndex(index, PN_DRIVE_SHEET_KEYS.DEVICES);
-
-  return {
-    pnIdentifier: ctx.pnIdentifier,
-    accountId: ctx.accountId,
-    isPortable: false,
-    spreadsheetId,
-    metadataFolderId: ctx.metadataFolderId,
-    token: opts?.accessToken
-      ? { access_token: opts.accessToken }
-      : ctx.token
-  };
+export async function loadDeviceBundle(pn: string): Promise<DeviceStorageBundle> {
+  return { pnIdentifier: normalizePn(pn) };
 }
 
 export async function listDevices(
   bundle: DeviceStorageBundle,
   includeRevoked = false
 ): Promise<DeviceRow[]> {
-  if (bundle.isPortable) {
-    return listDevicesPortable(bundle.pnIdentifier, bundle.accountId, includeRevoked);
-  }
-  return DeviceSheetsService.listDevices(
-    bundle.token!,
-    bundle.spreadsheetId!,
-    bundle.pnIdentifier,
-    bundle.accountId,
-    includeRevoked
+  await ensureDeviceRegistryTables();
+  const result = await getDatabasePool().query(
+    `SELECT row FROM device_registry
+       WHERE pn_identifier = $1 AND ($2::boolean OR status = 'active')
+       ORDER BY row->>'createdAt'`,
+    [bundle.pnIdentifier, includeRevoked]
   );
+  return result.rows.map((r) => r.row as DeviceRow);
 }
 
 export async function getDeviceById(
   bundle: DeviceStorageBundle,
   deviceId: string
 ): Promise<DeviceRow | null> {
-  if (bundle.isPortable) {
-    return getDeviceByIdPortable(bundle.pnIdentifier, deviceId, bundle.accountId);
-  }
-  return DeviceSheetsService.getDeviceById(
-    bundle.token!,
-    bundle.spreadsheetId!,
-    deviceId,
-    bundle.pnIdentifier,
-    bundle.accountId
+  await ensureDeviceRegistryTables();
+  const result = await getDatabasePool().query(
+    'SELECT row FROM device_registry WHERE pn_identifier = $1 AND device_id = $2',
+    [bundle.pnIdentifier, deviceId]
   );
+  return (result.rows[0]?.row as DeviceRow | undefined) ?? null;
 }
 
 export async function upsertDevice(bundle: DeviceStorageBundle, row: DeviceRow): Promise<void> {
-  if (bundle.isPortable) {
-    await upsertDevicePortable(bundle.pnIdentifier, row, bundle.accountId);
-    return;
-  }
-  await DeviceSheetsService.upsertDevice(
-    bundle.token!,
-    bundle.spreadsheetId!,
-    row,
-    bundle.pnIdentifier,
-    bundle.accountId
+  await ensureDeviceRegistryTables();
+  await getDatabasePool().query(
+    `INSERT INTO device_registry (pn_identifier, device_id, row, status, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (pn_identifier, device_id)
+       DO UPDATE SET row = EXCLUDED.row, status = EXCLUDED.status, updated_at = NOW()`,
+    [bundle.pnIdentifier, row.deviceId, JSON.stringify(row), row.status]
   );
 }
 
@@ -102,49 +98,47 @@ export async function updateDevicePrivateDisplay(
   deviceId: string,
   privateDisplay: string
 ): Promise<void> {
-  if (bundle.isPortable) {
-    await updatePrivateDisplayPortable(
-      bundle.pnIdentifier,
-      deviceId,
-      privateDisplay,
-      bundle.accountId
-    );
-    return;
-  }
-  await DeviceSheetsService.updatePrivateDisplay(
-    bundle.token!,
-    bundle.spreadsheetId!,
-    deviceId,
-    privateDisplay,
-    bundle.pnIdentifier,
-    bundle.accountId
-  );
+  const row = await getDeviceById(bundle, deviceId);
+  if (!row) return;
+  await upsertDevice(bundle, { ...row, privateDisplay });
 }
 
 export async function readPolicy(bundle: DeviceStorageBundle): Promise<DevicePolicy> {
-  if (bundle.isPortable) {
-    return readPolicyPortable(bundle.pnIdentifier, bundle.accountId);
-  }
-  return DeviceSheetsService.readPolicy(
-    bundle.token!,
-    bundle.metadataFolderId!,
-    bundle.pnIdentifier,
-    bundle.accountId
+  await ensureDeviceRegistryTables();
+  const result = await getDatabasePool().query(
+    'SELECT policy FROM device_policy WHERE pn_identifier = $1',
+    [bundle.pnIdentifier]
   );
+  const raw = result.rows[0]?.policy;
+  return raw ? normalizeDevicePolicy(raw) : defaultDevicePolicy();
 }
 
 export async function writePolicy(bundle: DeviceStorageBundle, policy: DevicePolicy): Promise<void> {
-  if (bundle.isPortable) {
-    await writePolicyPortable(bundle.pnIdentifier, policy, bundle.accountId);
-    return;
-  }
-  await DeviceSheetsService.writePolicy(
-    bundle.token!,
-    bundle.metadataFolderId!,
-    policy,
-    bundle.pnIdentifier,
-    bundle.accountId
+  await ensureDeviceRegistryTables();
+  await getDatabasePool().query(
+    `INSERT INTO device_policy (pn_identifier, policy, updated_at) VALUES ($1, $2, NOW())
+     ON CONFLICT (pn_identifier) DO UPDATE SET policy = EXCLUDED.policy, updated_at = NOW()`,
+    [bundle.pnIdentifier, JSON.stringify(policy)]
   );
+}
+
+/**
+ * One-time import of the registry a device kept in its own cloud before the API owned it.
+ * Only allowed while the API has no rows for this pN, which is the same trust level as
+ * keying a first device.
+ */
+export async function importDeviceRegistry(
+  bundle: DeviceStorageBundle,
+  devices: DeviceRow[],
+  policy: DevicePolicy | null
+): Promise<{ imported: number } | { refused: 'registry_not_empty' }> {
+  const existing = await listDevices(bundle, true);
+  if (existing.length > 0) return { refused: 'registry_not_empty' };
+  for (const row of devices) {
+    await upsertDevice(bundle, row);
+  }
+  if (policy) await writePolicy(bundle, normalizeDevicePolicy(policy));
+  return { imported: devices.length };
 }
 
 /** Revoke every active device and clear firstDeviceKeyedAt (registry reset). */
@@ -154,7 +148,6 @@ export async function resetDeviceRegistry(bundle: DeviceStorageBundle): Promise<
     await upsertDevice(bundle, { ...row, status: 'revoked' });
   }
   const policy = await readPolicy(bundle);
-  const { defaultDevicePolicy } = await import('@par-noir/device-auth');
   const next = {
     ...defaultDevicePolicy(),
     unkeyedAllows: policy.unkeyedAllows?.length

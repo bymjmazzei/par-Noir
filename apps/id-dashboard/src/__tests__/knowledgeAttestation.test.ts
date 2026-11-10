@@ -8,11 +8,27 @@
 const writeKnowledgeClaimDoc = jest.fn(async (..._a: unknown[]) => ({}));
 const listDeviceKnowledgeClaims = jest.fn();
 const readKnowledgeClaimSource = jest.fn();
+const heldProofsFor = jest.fn(async (..._a: unknown[]) => [] as unknown[]);
 
 jest.mock('@par-noir/device-cloud-credentials', () => ({
   writeKnowledgeClaimDoc: (...a: unknown[]) => writeKnowledgeClaimDoc(...a),
   listDeviceKnowledgeClaims: (...a: unknown[]) => listDeviceKnowledgeClaims(...a),
   readKnowledgeClaimSource: (...a: unknown[]) => readKnowledgeClaimSource(...a),
+  heldProofsFor: (...a: unknown[]) => heldProofsFor(...a),
+  grantedDataPointIds: (perms: Record<string, { status?: string; dataPoints?: string[]; requiredDataPoints?: string[] }>) =>
+    new Set(
+      Object.values(perms || {})
+        .filter((g) => g.status === 'active')
+        .flatMap((g) => [...(g.dataPoints || []), ...(g.requiredDataPoints || [])])
+    ),
+}));
+
+const jsonResponse = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+const ownerGet = jest.fn(async (..._a: unknown[]) => jsonResponse({ permissions: {} }));
+const ownerFetch = jest.fn(async (..._a: unknown[]) => jsonResponse({ released: 0 }));
+jest.mock('../services/ownerApiService', () => ({
+  ownerGet: (...a: unknown[]) => ownerGet(...a),
+  ownerFetch: (...a: unknown[]) => ownerFetch(...a),
 }));
 
 jest.mock('../services/sessionDrive', () => ({
@@ -46,6 +62,7 @@ import {
   attestFromTemplate,
   buildAgeDerivedPayloads,
   reissueKnowledgeClaims,
+  releaseGrantedProofs,
   resolveAttestationKeys,
 } from '../services/knowledgeAttestation';
 import { clearShellKeys, rememberShellMlKem, rememberShellSigningKeys } from '../services/shellKeys';
@@ -141,6 +158,50 @@ describe('attestFromTemplate', () => {
   it('asks for the unlock app when no signing key is held', async () => {
     await expect(resolveAttestationKeys({ identityId: 'did:pn:none', publicKey })).rejects.toThrow(
       /unlock again with the unlock app/
+    );
+  });
+});
+
+describe('releaseGrantedProofs', () => {
+  it('releases held proofs only for data points an active grant covers', async () => {
+    ownerGet.mockResolvedValueOnce(
+      jsonResponse({
+        permissions: {
+          shop: { status: 'active', dataPoints: ['over_21'], requiredDataPoints: ['email'] },
+          old: { status: 'revoked', dataPoints: ['phone'] },
+        },
+      })
+    );
+    const proof = { dataPointId: 'over_21', zkpProof: 'p' };
+    heldProofsFor.mockResolvedValueOnce([proof]);
+    ownerFetch.mockResolvedValueOnce(jsonResponse({ released: 1 }));
+
+    await expect(releaseGrantedProofs('pn-owner', 'api-token')).resolves.toBe(1);
+
+    const { dataPointIds, accessToken } = heldProofsFor.mock.calls[0]![0] as {
+      dataPointIds: Set<string>;
+      accessToken: string;
+    };
+    expect([...dataPointIds].sort()).toEqual(['email', 'over_21']);
+    expect(accessToken).toBe('google-token');
+    expect(ownerFetch).toHaveBeenCalledWith(
+      'api-token',
+      'PUT',
+      '/api/users/pn-owner/released-proofs',
+      { proofs: [proof] },
+      { pnIdentifier: 'pn-owner' }
+    );
+  });
+
+  it('clears released proofs without reading the cloud when nothing is granted', async () => {
+    await releaseGrantedProofs('pn-owner', 'api-token');
+    expect(heldProofsFor).not.toHaveBeenCalled();
+    expect(ownerFetch).toHaveBeenCalledWith(
+      'api-token',
+      'PUT',
+      '/api/users/pn-owner/released-proofs',
+      { proofs: [] },
+      { pnIdentifier: 'pn-owner' }
     );
   });
 });

@@ -318,13 +318,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         // OAuth only returns over_21 when granted and verificationLevel === verified
         const zkpResponse = await ownerGet('/oauth/zkp-data-points?data_points=over_21');
 
-        if (zkpResponse.status === 409) {
-          // ownerGet already waited for and tried to mint a Drive token, so a 409
-          // here means Drive is genuinely unreachable, not merely not hydrated yet.
-          console.warn('[Over 21 ZKP Check] Drive unreachable; age eligibility unknown');
-          return;
-        }
-
         if (zkpResponse.ok) {
           const responseData = await zkpResponse.json();
           const { dataPoints } = responseData;
@@ -339,7 +332,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             const verifyResponse = await ownerFetch(
               'POST',
               `/api/users/${pn}/zkp-data-points/verify`,
-              { dataPointId: 'over_21', condition: 'age >= 21' }
+              { dataPointId: 'over_21', zkpProof: over21ZKP.zkpProof, condition: 'age >= 21' }
             );
 
           if (verifyResponse.ok) {

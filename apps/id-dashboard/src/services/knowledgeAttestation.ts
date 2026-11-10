@@ -4,6 +4,8 @@
  */
 
 import {
+  grantedDataPointIds,
+  heldProofsFor,
   listDeviceKnowledgeClaims,
   readKnowledgeClaimSource,
   writeKnowledgeClaimDoc,
@@ -16,6 +18,7 @@ import { STANDARD_DATA_POINTS } from '../types/StandardDataPointsRegistry';
 import { ZKPGenerator } from '../utils/ZKPGenerator';
 import { loadMlDsaKeypairForZk, type MlDsaKeypair } from '../utils/zkPqcSigning';
 import { resolveIdentityMlKemSecret } from './resolveIdentityMlKem';
+import { ownerFetch, ownerGet } from './ownerApiService';
 import { sessionDriveFor } from './sessionDrive';
 import { readShellMlKem } from './shellKeys';
 
@@ -187,6 +190,7 @@ export async function attestFromTemplate(params: {
     signingKeys: { secretKey: params.keys.signing.mlDsaSecretKey, publicKey: params.keys.signing.mlDsaPublicKey },
     mlKemSecretKey: params.keys.mlKemSecretKey,
   });
+  await releaseGrantedProofsQuietly(params.keys.pnIdentifier, params.authToken);
   return claims.map((c) => c.dataPointId);
 }
 
@@ -233,6 +237,39 @@ export async function attestIssuedProof(
 ): Promise<void> {
   const { keys, authToken, ...proof } = params;
   await writeIssuedProof(await knowledgeTarget(keys.pnIdentifier, authToken), keys, proof);
+  await releaseGrantedProofsQuietly(keys.pnIdentifier, authToken);
+}
+
+/**
+ * Hand the API the held proofs for every data point the user has granted, replacing
+ * what it held before. The API never reads the cloud, so apps only see proofs this
+ * device released.
+ */
+export async function releaseGrantedProofs(pnIdentifier: string, authToken: string): Promise<number> {
+  const id = encodeURIComponent(pnIdentifier);
+  const grantsRes = await ownerGet(authToken, `/api/users/${id}/third-party-permissions`, { pnIdentifier });
+  if (!grantsRes.ok) throw new Error(`Reading grants failed (${grantsRes.status})`);
+  const { permissions } = (await grantsRes.json()) as { permissions?: Record<string, { status?: string; dataPoints?: string[]; requiredDataPoints?: string[] }> };
+  const granted = grantedDataPointIds(permissions);
+  const proofs = granted.size
+    ? await heldProofsFor({
+        accessToken: (await sessionDriveFor(pnIdentifier, authToken)).accessToken,
+        pnIdentifier,
+        dataPointIds: granted,
+      })
+    : [];
+  const res = await ownerFetch(authToken, 'PUT', `/api/users/${id}/released-proofs`, { proofs }, { pnIdentifier });
+  if (!res.ok) throw new Error(`Releasing proofs failed (${res.status})`);
+  return ((await res.json()) as { released?: number }).released ?? 0;
+}
+
+/** Attestation and grant changes must not fail on the release step; apps catch up on the next one. */
+export async function releaseGrantedProofsQuietly(pnIdentifier: string, authToken: string): Promise<void> {
+  try {
+    await releaseGrantedProofs(pnIdentifier, authToken);
+  } catch (error) {
+    console.warn('[Knowledge] Could not release proofs to granted apps:', error instanceof Error ? error.message : error);
+  }
 }
 
 /** The API-signed verification credential (JWT) is held as a single-claim doc under this id. */

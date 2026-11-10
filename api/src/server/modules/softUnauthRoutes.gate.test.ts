@@ -28,12 +28,6 @@ jest.mock('../jobs/reconcilePublicAggregatorJob', () => ({
   }),
 }));
 
-jest.mock('./userStorageSyncService', () => ({
-  userStorageSyncService: {
-    syncPortableUsers: jest.fn().mockResolvedValue({ synced: 0 }),
-  },
-}));
-
 jest.mock('./verificationIntegrationService', () => ({
   VerificationIntegrationService: {
     syncVerificationStatus: jest.fn().mockResolvedValue(undefined),
@@ -114,13 +108,6 @@ function buildAggregatorApp() {
   setupAggregatorRoutes(app, {
     aggregatorLimiter: passthroughLimiter,
     metadataIndexReadLimiter: passthroughLimiter,
-    extractAccountId: () => undefined,
-    getMetadataFolder: async () => null,
-    driveNotInitialized: (res: express.Response) => {
-      res.status(409).json({ error: 'drive_not_initialized' });
-      return res;
-    },
-    scheduleDriveIndexUpdates: () => undefined,
   });
   return app;
 }

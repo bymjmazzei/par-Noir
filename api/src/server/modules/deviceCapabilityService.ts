@@ -55,7 +55,6 @@ export interface DeviceAuthContext {
   policy: DevicePolicy;
   isKeyed: boolean;
   deviceRow?: DeviceRow;
-  /** Populated when Drive device registry is loaded. */
   deviceBundle?: DeviceStorageBundle;
 }
 
@@ -115,46 +114,13 @@ export async function gateFirstPartyOwnerRoute(
   return gateOwnerRoute(req, res, capability, targetPn);
 }
 
-async function loadDeviceContextUncached(
-  pn: string,
-  opts?: { accessToken?: string }
-): Promise<DeviceContextLoad | null> {
-  let bundle: DeviceStorageBundle | null;
-  try {
-    bundle = await loadDeviceBundle(pn, opts);
-  } catch (error) {
-    // Belt: custody miss must not 500 device gates (ownerStorageContext soft-paths this).
-    const { DriveIndexError } = await import('./pnDriveIndex');
-    if (error instanceof DriveIndexError && error.code === 'CLOUD_TOKEN_REQUIRED') {
-      return null;
-    }
-    throw error;
-  }
-  if (!bundle) return null;
-  try {
-    const [policy, devices] = await Promise.all([
-      readPolicy(bundle),
-      listDevices(bundle, true)
-    ]);
-    return { bundle, policy, devices };
-  } catch (error) {
-    safeLogger.warn('[deviceCapability] device sheet read failed; using unkeyed fallback', {
-      err: (error as Error)?.message
-    });
-    let policy = defaultDevicePolicy();
-    try {
-      policy = await readPolicy(bundle);
-    } catch {
-      /* keep default */
-    }
-    return { bundle, policy, devices: [] };
-  }
+async function loadDeviceContextUncached(pn: string): Promise<DeviceContextLoad> {
+  const bundle = await loadDeviceBundle(pn);
+  const [policy, devices] = await Promise.all([readPolicy(bundle), listDevices(bundle, true)]);
+  return { bundle, policy, devices };
 }
 
-async function loadDeviceContext(
-  pn: string,
-  opts?: { accessToken?: string }
-): Promise<DeviceContextLoad | null> {
+async function loadDeviceContext(pn: string): Promise<DeviceContextLoad | null> {
   const normalized = normalizePnIdentifier(pn);
   const now = Date.now();
   const cached = deviceContextCache.get(normalized);
@@ -162,7 +128,7 @@ async function loadDeviceContext(
     return cached.value;
   }
 
-  const loaded = await loadDeviceContextUncached(normalized, opts);
+  const loaded = await loadDeviceContextUncached(normalized);
   if (loaded) {
     deviceContextCache.set(normalized, {
       expiresAt: now + DEVICE_CONTEXT_CACHE_TTL_MS,
@@ -212,12 +178,7 @@ export async function resolveDeviceAuthContext(req: Request): Promise<DeviceAuth
   const auth = bearerPn(req);
   if (!auth) return null;
 
-  const { extractCloudAccessToken } = await import('./cloudAccessToken');
-  const accessToken = extractCloudAccessToken(req);
-  const bundle = await loadDeviceContext(
-    auth.pnIdentifier,
-    accessToken ? { accessToken } : undefined
-  );
+  const bundle = await loadDeviceContext(auth.pnIdentifier);
   if (!bundle) {
     // Drive layout not provisioned yet (first storage credential save).
     // unkeyed_legacy uses LEGACY_BOOTSTRAP_ALLOWS only — not allow-all.

@@ -94,10 +94,6 @@ jest.mock('../googleApiRetry', () => ({
   isRetryableGoogleError: jest.fn(() => false),
 }));
 
-jest.mock('../driveInitSteps', () => ({
-  runFullDriveInitAndPersist: jest.fn(),
-}));
-
 jest.mock('./storageProviderUtils', () => ({
   isPortableSocialCloud: jest.fn(async () => false),
   isPortableStorageProvider: jest.fn(async () => false),
@@ -133,7 +129,6 @@ import { isPnRevokedForNetwork } from '../identitySuccessionService';
 import { isDeviceCloudCustodyEnabled } from '../socialMailboxService';
 import { googleDriveProxyService } from '../googleDriveProxy';
 import { isRetryableGoogleError } from '../googleApiRetry';
-import { runFullDriveInitAndPersist } from '../driveInitSteps';
 import { getDriveInitProgress, isDriveInitProgressActive } from '../driveInitProgress';
 import { cloudVaultService, looksLikePlaintextCloudSecrets } from '../cloudVaultService';
 import { MessageSheetsService } from '../messageSheetsService';
@@ -151,7 +146,6 @@ const mockIsRevoked = isPnRevokedForNetwork as jest.Mock;
 const mockCustodyEnabled = isDeviceCloudCustodyEnabled as jest.Mock;
 const mockGetAccessToken = googleDriveProxyService.getAccessToken as jest.Mock;
 const mockIsRetryable = isRetryableGoogleError as jest.Mock;
-const mockRunFullDriveInit = runFullDriveInitAndPersist as jest.Mock;
 const mockGetProgress = getDriveInitProgress as jest.Mock;
 const mockProgressActive = isDriveInitProgressActive as jest.Mock;
 const mockGetSealedVault = cloudVaultService.getSealedVault as jest.Mock;
@@ -212,7 +206,6 @@ describe('storage credentials routes', () => {
     mockCustodyEnabled.mockReset().mockReturnValue(false);
     mockGetAccessToken.mockReset();
     mockIsRetryable.mockReset().mockReturnValue(false);
-    mockRunFullDriveInit.mockReset();
     mockGetProgress.mockReset().mockReturnValue(null);
     mockProgressActive.mockReset().mockReturnValue(false);
     mockGetSealedVault.mockReset().mockResolvedValue(null);
@@ -365,7 +358,6 @@ describe('storage credentials routes', () => {
 
       expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
       expect(mockGetCredentials).not.toHaveBeenCalled();
-      expect(mockRunFullDriveInit).not.toHaveBeenCalled();
     });
 
     it('rejects missing bearer with 401 before credentials lookup', async () => {
@@ -391,7 +383,6 @@ describe('storage credentials routes', () => {
 
       const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(409);
       expect(res.body.error).toBe('cloud_on_device');
-      expect(mockRunFullDriveInit).not.toHaveBeenCalled();
     });
 
     it('commits layout migration via layoutMigrationCommit body', async () => {

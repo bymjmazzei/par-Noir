@@ -24,8 +24,6 @@ import {
   isPlatformChannel,
   normalizeChannelClientId,
 } from './messagingChannel';
-import { IntegratorFolderService } from './integratorFolderService';
-import { findOrCreateFolderUnderParent } from './pnDriveLayout';
 
 function rethrowIfSheetsQuota(err: unknown): never | void {
   if (isGoogleSheetsPerMinuteQuota(err)) {
@@ -289,13 +287,7 @@ export class MessageSheetsService {
     if (await isPortableStorageProvider(userPnIdentifier)) {
       return MsgPortable.getOrCreateMessagesFolderPortable(pnFolderId);
     }
-    const silo = await IntegratorFolderService.ensureIntegratorFolder(
-      token.access_token,
-      userPnIdentifier,
-      channel,
-      accountId
-    );
-    return findOrCreateFolderUnderParent(token.access_token, 'messages', silo.integratorFolderId);
+    throw new Error('Integrator message silos are retired; integrators no longer get a folder in the user cloud.');
   }
 
   /**

@@ -53,29 +53,6 @@ export function registerFileViewRoutes(app: Application): void {
           } catch (engagementError: any) {
             console.warn('[file-views] Failed to update aggregator metadata engagement:', engagementError?.message || engagementError);
           }
-
-          // Update creator's companion metadata Sheets (best-effort)
-          try {
-            const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-            const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-            const { appendOwnerCompanionEngagement } = await import('./engagementCompanionSync');
-            const fileMetadata = await AggregatorMetadataServiceDB.getInstance().getFileMetadata(fileId);
-            if (fileMetadata) {
-              const ownerDid =
-                fileMetadata.pnIdentifier ||
-                (fileMetadata.metadata as any).creator?.['@id'] ||
-                (fileMetadata.metadata as any).author?.did;
-              if (ownerDid) {
-                await appendOwnerCompanionEngagement(fileId, ownerDid, 'view', {
-                    fileId,
-                    viewerPnIdentifier: userPnIdentifier,
-                    timestamp: new Date().toISOString()
-                  });
-              }
-            }
-          } catch (sheetError: any) {
-            console.warn('[file-views] Failed to update creator companion metadata sheet for view:', sheetError?.message || sheetError);
-          }
         }
 
         return res.json({ success: true });

@@ -42,7 +42,6 @@ import {
 } from './server/modules/verificationRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
 import { registerStripeMonetizationRoutes } from './server/modules/stripeMonetizationRoutes';
-import { registerIntegratorRoutes } from './server/modules/integratorRoutes';
 import { registerStorageRoutes } from './server/modules/storage/storageRoutes';
 import {
   setupStorageCredentialsRoutes,
@@ -63,7 +62,6 @@ import { registerCoinbaseWebhookRoutes } from './server/modules/coinbaseWebhookR
 import { registerRecommendationRoutes } from './server/modules/recommendationRoutes';
 import { registerFileViewRoutes } from './server/modules/fileViewRoutes';
 import { registerCreatorSubscriberRoutes } from './server/modules/creatorSubscriberRoutes';
-import { setupActivityLedgerRoutes } from './server/modules/activityLedgerRoutes';
 import { setupNotificationRoutes } from './server/modules/notificationRoutes';
 import { setupProfileRoutes } from './server/modules/profileRoutes';
 import { setupMessageRoutes } from './server/modules/messageRoutes';
@@ -71,7 +69,7 @@ import { setupGroupRoutes } from './server/modules/groupRoutes';
 import { setupPenRoutes } from './server/modules/penRoutes';
 import { setupConnectionRoutes } from './server/modules/connectionRoutes';
 import { setupUserRoutes } from './server/modules/userRoutes';
-import { setupDriveRoutes } from './server/modules/driveRoutes';
+import { setupCloudProxyGoneRoutes } from './server/modules/cloudProxyGoneRoutes';
 import { setupPnOAuthRoutes } from './server/modules/pnOAuthRoutes';
 import { setupSessionPolicyRoutes } from './server/modules/sessionPolicy';
 import {
@@ -798,10 +796,6 @@ class ProductionServer {
     setupAggregatorRoutes(this.app, {
       aggregatorLimiter,
       metadataIndexReadLimiter,
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-      driveNotInitialized: (res) => this.driveNotInitialized(res),
-      scheduleDriveIndexUpdates,
     });
 
     const { registerPublicContentRoutes } = await import('./server/modules/publicContentRoutes');
@@ -815,11 +809,7 @@ class ProductionServer {
     registerFeedPreviewLifecycleRoutes(this.app);
 
     const { setupEngagementRoutes } = await import('./server/modules/engagementRoutes');
-    setupEngagementRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-      driveNotInitialized: (res) => this.driveNotInitialized(res),
-    });
+    setupEngagementRoutes(this.app);
 
     const { setupContentNoticeRoutes } = await import('./server/modules/contentNoticeRoutes');
     setupContentNoticeRoutes(this.app);
@@ -859,9 +849,7 @@ class ProductionServer {
 
     registerCreatorSubscriberRoutes(this.app);
 
-    setupDriveRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-    });
+    setupCloudProxyGoneRoutes(this.app);
 
     registerDidResolveRoute(this.app);
 
@@ -998,7 +986,6 @@ class ProductionServer {
    */
   private setupPNOAuthEndpoints(): void {
     setupPnOAuthRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
       oauthTokenLimiter,
       authLimiter,
     });
@@ -1022,7 +1009,6 @@ class ProductionServer {
     registerMusicTrackRegistryRoutes(this.app);
     registerStripeMonetizationRoutes(this.app);
     registerCreatorFundPeriodRoutes(this.app);
-    registerIntegratorRoutes(this.app);
     registerStorageRoutes(this.app, NODE_ENV);
     registerMailboxRoutes(this.app, NODE_ENV);
   }
@@ -1058,29 +1044,11 @@ class ProductionServer {
       getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
     });
 
-    setupConnectionRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-      driveNotInitialized: (res) => this.driveNotInitialized(res),
-    });
+    setupConnectionRoutes(this.app);
 
-    setupUserRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-      driveNotInitialized: (res) => this.driveNotInitialized(res),
-    });
+    setupUserRoutes(this.app);
 
-    setupActivityLedgerRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-      driveNotInitialized: (res) => this.driveNotInitialized(res),
-    });
-
-    setupNotificationRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-      driveNotInitialized: (res) => this.driveNotInitialized(res),
-    });
+    setupNotificationRoutes(this.app);
   }
 
   public async start(): Promise<void> {

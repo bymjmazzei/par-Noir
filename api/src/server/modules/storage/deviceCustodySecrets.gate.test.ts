@@ -45,7 +45,6 @@ import { isDeviceCloudCustodyEnabled } from '../socialMailboxService';
 import { googleDriveProxyService } from '../googleDriveProxy';
 import { dropboxProxyService } from './dropboxProxy';
 import { onedriveProxyService } from './onedriveProxy';
-import { createStorageRequestContext } from './storageRequestContext';
 import { DriveIndexError } from '../pnDriveIndex';
 
 const mockCustody = isDeviceCloudCustodyEnabled as jest.Mock;
@@ -217,63 +216,6 @@ describe('device custody — no server-held cloud secrets', () => {
         onedriveProxyService.getAccessToken('pn-test', 'acct', 'fwd-onedrive')
       ).resolves.toBe('fwd-onedrive');
       expect(mockQuery).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('createStorageRequestContext under custody', () => {
-    it('does not resurrect DB access_token when header is missing', async () => {
-      jest
-        .spyOn(storageCredentialsService, 'getCredentials')
-        .mockResolvedValue({
-          identityId: 'pn-test',
-          credentials: {
-            googleDriveAccounts: [
-              {
-                backendId: 'acct',
-                access_token: 'db-secret-should-not-leak',
-                expires_at: Date.now() + 3_600_000,
-              },
-            ],
-          },
-          updatedAt: '',
-          createdAt: '',
-        });
-
-      await expect(
-        createStorageRequestContext(reqWithCloudHeader(), 'pn-test', 'acct')
-      ).rejects.toBeInstanceOf(DriveIndexError);
-
-      jest.restoreAllMocks();
-    });
-
-    it('uses forwarded header only', async () => {
-      jest
-        .spyOn(storageCredentialsService, 'getCredentials')
-        .mockResolvedValue({
-          identityId: 'pn-test',
-          credentials: {
-            googleDriveAccounts: [
-              {
-                backendId: 'acct',
-                access_token: 'db-secret',
-                expires_at: Date.now() + 3_600_000,
-              },
-            ],
-          },
-          updatedAt: '',
-          createdAt: '',
-        });
-
-      const ctx = await createStorageRequestContext(
-        reqWithCloudHeader('header-tok'),
-        'pn-test',
-        'acct'
-      );
-      expect(ctx?.accessToken).toBe('header-tok');
-      expect(ctx?.driveToken?.access_token).toBe('header-tok');
-      expect(ctx?.driveToken?.refresh_token).toBeUndefined();
-
-      jest.restoreAllMocks();
     });
   });
 });

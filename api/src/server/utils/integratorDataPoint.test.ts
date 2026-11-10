@@ -1,47 +1,31 @@
 /**
  * @jest-environment node
  */
-import { getUserDriveMetadataContext, normalizePnIdentifier } from '../modules/driveMetadataHelper';
 import { fetchGrantedZkpProofs } from '../modules/integratorDataPointService';
 import { ThirdPartyPermissionsService } from '../modules/thirdPartyPermissionsService';
 
-jest.mock('../modules/driveMetadataHelper', () => {
-  const actual = jest.requireActual('../modules/driveMetadataHelper');
-  return {
-    ...actual,
-    getUserDriveMetadataContext: jest.fn(),
-  };
-});
-
 jest.mock('../modules/thirdPartyPermissionsService', () => ({
   ThirdPartyPermissionsService: {
-    getPermissions: jest.fn(),
+    getPermission: jest.fn(),
+    getReleasedProofs: jest.fn(),
   },
 }));
 
-const mockGetContext = getUserDriveMetadataContext as jest.MockedFunction<
-  typeof getUserDriveMetadataContext
->;
-const mockGetPermissions = ThirdPartyPermissionsService.getPermissions as jest.MockedFunction<
-  typeof ThirdPartyPermissionsService.getPermissions
->;
+const mockGetPermission = ThirdPartyPermissionsService.getPermission as jest.Mock;
+const mockGetReleasedProofs = ThirdPartyPermissionsService.getReleasedProofs as jest.Mock;
 
-describe('driveMetadataHelper', () => {
-  it('normalizePnIdentifier adds pn- prefix', () => {
-    expect(normalizePnIdentifier('abc123')).toBe('pn-abc123');
-    expect(normalizePnIdentifier('pn-abc123')).toBe('pn-abc123');
-  });
+const proof = (dataPointId: string, verificationLevel: string) => ({
+  dataPointId,
+  proofType: 'zk',
+  zkpProof: `proof-${dataPointId}`,
+  verifiedAt: '2026-01-01T00:00:00.000Z',
+  verificationLevel,
 });
 
-describe('integratorDataPointService BLOCKED list', () => {
+describe('fetchGrantedZkpProofs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetContext.mockResolvedValue({
-      accessToken: 'token',
-      metadataFolderId: 'meta',
-      normalizedPnIdentifier: 'pn-abc123',
-      accountId: undefined,
-    } as never);
+    mockGetReleasedProofs.mockResolvedValue([proof('email_verified', 'basic'), proof('age_attestation', 'basic')]);
   });
 
   it('returns nothing when every requested data point is blocked', async () => {
@@ -53,18 +37,55 @@ describe('integratorDataPointService BLOCKED list', () => {
 
     expect(proofs).toEqual([]);
     // Blocked ids must never reach the permission or proof lookup path.
-    expect(mockGetPermissions).not.toHaveBeenCalled();
+    expect(mockGetPermission).not.toHaveBeenCalled();
+    expect(mockGetReleasedProofs).not.toHaveBeenCalled();
   });
 
-  it('returns nothing when the user has no storage context', async () => {
-    mockGetContext.mockResolvedValue(null);
+  it('returns nothing without an active grant, first-party clients included', async () => {
+    mockGetPermission.mockResolvedValue(null);
+    for (const clientId of ['test-client', 'browser-app']) {
+      await expect(
+        fetchGrantedZkpProofs({ userPnIdentifier: 'pn-abc123', clientId, dataPointIds: ['email_verified'] })
+      ).resolves.toEqual([]);
+    }
+    expect(mockGetReleasedProofs).not.toHaveBeenCalled();
+  });
 
-    const proofs = await fetchGrantedZkpProofs({
-      userPnIdentifier: 'pn-nonexistent-user-xyz',
-      clientId: 'test-client',
-      dataPointIds: ['age_attestation'],
+  it('returns only released proofs the grant covers', async () => {
+    mockGetPermission.mockResolvedValue({
+      toolId: 'test-client',
+      status: 'active',
+      dataPoints: ['email_verified'],
+      requiredDataPoints: [],
+      optionalDataPoints: ['email_verified', 'age_attestation'],
     });
 
-    expect(proofs).toEqual([]);
+    const proofs = await fetchGrantedZkpProofs({
+      userPnIdentifier: 'pn-abc123',
+      clientId: 'test-client',
+      dataPointIds: ['email_verified', 'age_attestation'],
+    });
+
+    expect(proofs.map((p) => p.dataPointId)).toEqual(['email_verified']);
+    expect(proofs[0].zkpProof).toBe('proof-email_verified');
+  });
+
+  it('omits a proof below the level the grant requires', async () => {
+    mockGetPermission.mockResolvedValue({
+      toolId: 'test-client',
+      status: 'active',
+      dataPoints: ['email_verified'],
+      requiredDataPoints: [],
+      optionalDataPoints: [],
+      dataPointLevels: { email_verified: 'verified' },
+    });
+
+    await expect(
+      fetchGrantedZkpProofs({
+        userPnIdentifier: 'pn-abc123',
+        clientId: 'test-client',
+        dataPointIds: ['email_verified'],
+      })
+    ).resolves.toEqual([]);
   });
 });

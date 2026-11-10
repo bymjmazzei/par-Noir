@@ -95,13 +95,6 @@ export async function scanGoogleTableRows(
     return requests as unknown as TableRow[];
   }
 
-  if (schema.path === TABLE_PATHS.dataPointRequests) {
-    const { DataPointRequestSheetsService } = await import('../dataPointRequestSheetsService');
-    const sheetId = await DataPointRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId);
-    const requests = await DataPointRequestSheetsService.listRequests(token, sheetId, pnIdentifier, accountId);
-    return requests as unknown as TableRow[];
-  }
-
   if (schema.path === TABLE_PATHS.prismLedger) {
     const { PrismLedgerSheetsService } = await import('../prismLedgerSheetsService');
     const sheetId = await PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
@@ -218,13 +211,6 @@ export async function replaceAllGoogleTableRows(
     const { MessageRequestSheetsService } = await import('../messageRequestSheetsService');
     const sheetId = await MessageRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId);
     await MessageRequestSheetsService.setAllRequests(token, sheetId, rows as never[], pnIdentifier, accountId);
-    return;
-  }
-
-  if (schema.path === TABLE_PATHS.dataPointRequests) {
-    const { DataPointRequestSheetsService } = await import('../dataPointRequestSheetsService');
-    const sheetId = await DataPointRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId);
-    await DataPointRequestSheetsService.setAllRequests(token, sheetId, rows as never[], pnIdentifier, accountId);
     return;
   }
 

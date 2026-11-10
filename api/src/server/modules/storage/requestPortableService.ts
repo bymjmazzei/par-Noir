@@ -1,4 +1,4 @@
-import type { DataPointRequestRow } from '../dataPointRequestSheetsService';
+import type { DataPointRequestRow } from '../dataPointRequestStore';
 import type { StoredMessageRequestRow } from '../messageRequestSheetsService';
 import {
   portableTableAppend,

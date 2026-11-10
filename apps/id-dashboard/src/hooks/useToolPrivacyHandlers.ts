@@ -10,6 +10,7 @@ import {
   attestFromTemplate,
   listHeldKnowledgeClaims,
   readAttestationSource,
+  releaseGrantedProofsQuietly,
   resolveAttestationKeys
 } from '../services/knowledgeAttestation';
 import { ownerFetch } from '../services/ownerApiService';
@@ -181,7 +182,6 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     };
     setPrivacySettings(newSettings);
 
-    // Persist to Google Drive via API
     try {
       const credentials = SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
       if (!credentials || !authenticatedUser?.id) {
@@ -201,7 +201,6 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
       const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
       const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey || '');
 
-      // Store permissions via API (will be saved to Google Drive)
       const path = `/api/users/${pnIdentifier}/third-party-permissions`;
       const response = await ownerFetch(authToken, 'PUT', path, {
         toolId,
@@ -211,7 +210,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
       if (!response.ok) {
         console.error('Failed to persist permissions:', response.status);
       } else {
-        console.log('✅ Permissions persisted to Google Drive');
+        await releaseGrantedProofsQuietly(pnIdentifier, authToken);
       }
     } catch (error) {
       console.error('Error persisting permissions:', error);
@@ -286,13 +285,13 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
       );
       if (!response.ok) {
         console.error('Failed to persist tool revoke:', response.status);
-        setError('Revoked locally but failed to save to your cloud. Try again.');
+        setError('Revoked locally but failed to save. Try again.');
         return;
       }
       setSuccessWithTimeout('Third-party access revoked.');
     } catch (error) {
       console.error('Error persisting tool revoke:', error);
-      setError('Revoked locally but failed to save to your cloud. Try again.');
+      setError('Revoked locally but failed to save. Try again.');
     }
   };
 

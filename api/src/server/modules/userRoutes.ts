@@ -1,12 +1,12 @@
 /**
  * User Routes
- * User-scoped endpoints: storage tier, subscriptions, preferences, tag
- * preferences, ZKP data points, and third-party permissions
+ * User-scoped endpoints: storage tier, subscriptions, third-party grants, and
+ * the ZK proofs the owner's device releases under them. Preferences and held
+ * proofs live in the user's cloud and are read on the device.
  */
 
 import express from 'express';
 import { safeClientErrorMessage } from '../utils/safeError';
-import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import {
   gateOwnerRoute,
@@ -16,21 +16,14 @@ import {
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-export interface UserRouteDeps {
-  extractAccountId: (account: any) => string | undefined;
-  getMetadataFolder: (
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    accountId?: string
-  ) => Promise<{ metadataFolderId: string; pnFolderId: string } | null>;
-  driveNotInitialized: (res: express.Response) => express.Response;
+function normalizePn(pn: string): string {
+  return pn.startsWith('pn-') ? pn : `pn-${pn}`;
 }
 
 /**
  * Setup user routes
  */
-export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
-  const { extractAccountId, getMetadataFolder, driveNotInitialized } = deps;
+export function setupUserRoutes(app: express.Application) {
 
     // GET /api/users/:userPnIdentifier/storage-tier - Get encryption limit (derived from feed creator tier)
     app.get('/api/users/:userPnIdentifier/storage-tier', async (req, res) => {
@@ -72,327 +65,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
       }
     });
 
-    // PUT /api/users/:pnIdentifier/preferences - Save user preferences to Google Drive
-    app.put('/api/users/:pnIdentifier/preferences', async (req, res) => {
-      try {
-        const { pnIdentifier } = req.params;
-        const preferences = req.body;
-
-        if (!pnIdentifier) {
-          return res.status(400).json({ error: 'pnIdentifier is required' });
-        }
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
-
-        const { PreferencesService } = await import('./preferencesService');
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          let userAccessToken = '';
-          try {
-            const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-            userAccessToken = resolved.token.access_token;
-          } catch (error) {
-            if (respondDriveTokenError(res, error)) return;
-            throw error;
-          }
-
-        // Find pN folder and _metadata folder (same pattern as other endpoints)
-        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
-        }
-
-        if (!pnFolderId) {
-          return res.status(404).json({ error: 'pN folder not found' });
-        }
-
-        // Find _metadata folder
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        let metadataFolderId: string | null = null;
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (metadataFolderResponse.ok) {
-          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-            metadataFolderId = metadataFolderData.files[0].id;
-          }
-        }
-
-        if (!metadataFolderId) {
-          return res.status(404).json({ error: '_metadata folder not found' });
-        }
-
-        // Update preferences file
-        const updatedPreferences = await PreferencesService.updatePreferencesFile(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier,
-          preferences,
-          normalizedPnIdentifier,
-          accountId
-        );
-
-        return res.json({ success: true, preferences: updatedPreferences });
-      } catch (error: any) {
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        if (respondDriveTokenError(res, error)) return;
-        console.error('Error saving preferences:', error);
-        return res.status(500).json({
-          error: 'Failed to save preferences',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to save preferences'
-        });
-      }
-    });
-
-    // GET /api/users/:pnIdentifier/zkp-data-points - Get all available ZKP data points (metadata only)
-    app.get('/api/users/:pnIdentifier/zkp-data-points', async (req, res) => {
-      try {
-        const { pnIdentifier } = req.params;
-
-        if (!pnIdentifier) {
-          return res.status(400).json({ error: 'pnIdentifier is required' });
-        }
-
-        const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
-        const { loadZkpBundle } = await import('./storage/zkpStorageService');
-
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
-
-        const bundle = await loadZkpBundle(normalizedPnIdentifier, {
-          accessToken: extractCloudAccessToken(req),
-        });
-        if (!bundle) {
-          return driveNotInitialized(res);
-        }
-        if (!bundle.token?.access_token) {
-          return res.status(401).json({
-            error: 'Google Drive authentication failed',
-            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
-          });
-        }
-
-        const dataPoints = await ZKPDataPointsService.getAvailableDataPoints(bundle);
-
-        return res.json({ success: true, dataPoints });
-      } catch (error: any) {
-        console.error('Error getting ZKP data points:', error);
-        return res.status(500).json({
-          error: 'Failed to get ZKP data points',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get ZKP data points'
-        });
-      }
-    });
-
-    // GET /api/users/:pnIdentifier/zkp-data-points/:dataPointId - Get specific ZKP proof
-    app.get('/api/users/:pnIdentifier/zkp-data-points/:dataPointId', async (req, res) => {
-      try {
-        const { pnIdentifier, dataPointId } = req.params;
-
-        if (!pnIdentifier || !dataPointId) {
-          return res.status(400).json({ error: 'pnIdentifier and dataPointId are required' });
-        }
-
-        const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
-        const { loadZkpBundle } = await import('./storage/zkpStorageService');
-
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
-
-        const bundle = await loadZkpBundle(normalizedPnIdentifier, {
-          accessToken: extractCloudAccessToken(req),
-        });
-        if (!bundle) {
-          return driveNotInitialized(res);
-        }
-        if (!bundle.token?.access_token) {
-          return res.status(401).json({
-            error: 'Google Drive authentication failed',
-            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
-          });
-        }
-
-        const proof = await ZKPDataPointsService.getDataPointProof(bundle, dataPointId);
-
-        if (!proof) {
-          return res.status(404).json({ error: 'ZKP data point not found or expired' });
-        }
-
-        return res.json({ success: true, proof });
-      } catch (error: any) {
-        console.error('Error getting ZKP data point:', error);
-        return res.status(500).json({
-          error: 'Failed to get ZKP data point',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get ZKP data point'
-        });
-      }
-    });
-
-    // GET /api/users/:pnIdentifier/third-party-permissions - Get all third-party permissions
+    // GET /api/users/:pnIdentifier/third-party-permissions - Every grant this pN has made
     app.get('/api/users/:pnIdentifier/third-party-permissions', async (req, res) => {
       try {
-        const { pnIdentifier } = req.params;
-        const authHeader = req.headers.authorization;
-        
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
+        const normalizedPnIdentifier = normalizePn(req.params.pnIdentifier);
         if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
 
         const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          let userAccessToken = '';
-          if (account) {
-            try {
-              const { respondDriveTokenError } = await import('./ownerDriveToken');
-              const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-              userAccessToken = resolved.token.access_token;
-            } catch {
-              // Empty here means "could not check", not "nothing granted". Say so in
-              // the log rather than letting the caller read it as an answer.
-              safeLogger.warn('[Users] Third-party permissions unreadable — no Drive token', {
-                reason: 'cloud_token_required',
-                pnIdHash: hashIdentifier(normalizedPnIdentifier)
-              });
-              return res.json({ success: true, permissions: {} });
-            }
-          }
-          if (!userAccessToken) {
-            return res.json({ success: true, permissions: {} });
-          }
-
-        // Find pN folder and _metadata folder (same pattern as ZKP endpoints)
-        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
-        }
-
-        if (!pnFolderId) {
-          return res.json({ success: true, permissions: {} });
-        }
-
-        // Find _metadata folder
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (!metadataFolderResponse.ok) {
-          return res.json({ success: true, permissions: {} });
-        }
-
-        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-        if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
-          return res.json({ success: true, permissions: {} });
-        }
-
-        const metadataFolderId = metadataFolderData.files[0].id;
-
-        // Get permissions
-        const permissions = await ThirdPartyPermissionsService.getPermissions(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier,
-          accountId
-        );
-
+        const permissions = await ThirdPartyPermissionsService.getPermissions(normalizedPnIdentifier);
         return res.json({ success: true, permissions });
       } catch (error: any) {
         console.error('Error getting third-party permissions:', error);
@@ -403,112 +83,36 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
       }
     });
 
-    // PUT /api/users/:pnIdentifier/third-party-permissions - Store or update third-party permission
+    // PUT /api/users/:pnIdentifier/third-party-permissions - Store or update one grant
     app.put('/api/users/:pnIdentifier/third-party-permissions', async (req, res) => {
       try {
-        const { pnIdentifier } = req.params;
-        const { toolId, permission } = req.body;
-        const authHeader = req.headers.authorization;
-        
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
+        const normalizedPnIdentifier = normalizePn(req.params.pnIdentifier);
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
 
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
-
-        if (!toolId || !permission) {
+        const { toolId, permission } = req.body || {};
+        if (typeof toolId !== 'string' || !toolId || !permission || typeof permission !== 'object') {
           return res.status(400).json({ error: 'toolId and permission are required' });
         }
-
-        const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
+        if (!['active', 'pending', 'revoked'].includes(permission.status)) {
+          return res.status(400).json({ error: 'permission.status must be active, pending, or revoked' });
         }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          let token: {
-            access_token: string;
-            refresh_token?: string;
-            expires_at?: number;
-            expires_in?: number;
-          };
-          let userAccessToken = '';
-          try {
-            const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-            token = resolved.token;
-            userAccessToken = resolved.token.access_token;
-          } catch (error) {
-            if (respondDriveTokenError(res, error)) return;
-            throw error;
-          }
-
-        const out = await getMetadataFolder(token, normalizedPnIdentifier, accountId);
-        if (!out) {
-          return driveNotInitialized(res);
-        }
-        const metadataFolderId = out.metadataFolderId;
-
-        // Get existing permissions
-        const existingPermissions = await ThirdPartyPermissionsService.getPermissions(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier,
-          accountId
-        );
 
         // First-party apps have a static contract; dataPoints still reflects what
         // the user granted and remains editable.
         const { applyStaticContract } = await import('@par-noir/standard-data-points');
-        const finalPermission = applyStaticContract(toolId, permission);
+        const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
+        const finalPermission = applyStaticContract(toolId, {
+          ...permission,
+          toolId,
+          dataPoints: Array.isArray(permission.dataPoints) ? permission.dataPoints : [],
+          requiredDataPoints: Array.isArray(permission.requiredDataPoints) ? permission.requiredDataPoints : [],
+          optionalDataPoints: Array.isArray(permission.optionalDataPoints) ? permission.optionalDataPoints : [],
+          permissions: Array.isArray(permission.permissions) ? permission.permissions : [],
+        });
+        await ThirdPartyPermissionsService.storePermission(normalizedPnIdentifier, finalPermission);
 
-        // Update permissions
-        const updatedPermissions = {
-          ...existingPermissions,
-          [toolId]: finalPermission
-        };
-
-        // Store permissions
-        await ThirdPartyPermissionsService.storePermissions(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier,
-          updatedPermissions,
-          normalizedPnIdentifier,
-          accountId
-        );
-
-        return res.json({ success: true, permission });
+        return res.json({ success: true, permission: finalPermission });
       } catch (error: any) {
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        if (respondDriveTokenError(res, error)) return;
         console.error('Error storing third-party permission:', error);
         return res.status(500).json({
           error: 'Failed to store third-party permission',
@@ -517,466 +121,57 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
       }
     });
 
+    // PUT /api/users/:pnIdentifier/released-proofs - The device releases its held proofs
+    // for data points the user has granted. Proofs nobody was granted are dropped.
+    app.put('/api/users/:pnIdentifier/released-proofs', async (req, res) => {
+      try {
+        const normalizedPnIdentifier = normalizePn(req.params.pnIdentifier);
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
+
+        const proofs = req.body?.proofs;
+        if (!Array.isArray(proofs) || proofs.length > 200) {
+          return res.status(400).json({ error: 'proofs must be an array of at most 200 entries' });
+        }
+
+        const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
+        const released = await ThirdPartyPermissionsService.releaseProofs(normalizedPnIdentifier, proofs);
+        return res.json({ success: true, released });
+      } catch (error: any) {
+        console.error('Error releasing proofs:', error);
+        return res.status(500).json({
+          error: 'Failed to release proofs',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to release proofs'
+        });
+      }
+    });
+
     // POST /api/users/:pnIdentifier/zkp-data-points/verify - Verify a ZKP proof against a condition
     app.post('/api/users/:pnIdentifier/zkp-data-points/verify', async (req, res) => {
       try {
-        const { pnIdentifier } = req.params;
-        const { dataPointId, condition } = req.body; // e.g., condition: "age >= 18"
-
-        if (!pnIdentifier || !dataPointId || !condition) {
-          return res.status(400).json({ error: 'pnIdentifier, dataPointId, and condition are required' });
+        const normalizedPnIdentifier = normalizePn(req.params.pnIdentifier);
+        const { dataPointId, condition, zkpProof } = req.body || {};
+        if (typeof condition !== 'string' || !condition || (!zkpProof && !dataPointId)) {
+          return res.status(400).json({ error: 'condition and either zkpProof or dataPointId are required' });
         }
 
-        const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
-        const { loadZkpBundle } = await import('./storage/zkpStorageService');
-
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        const bundle = await loadZkpBundle(normalizedPnIdentifier, {
-          accessToken: extractCloudAccessToken(req),
-        });
-        if (!bundle) {
-          return driveNotInitialized(res);
+        let proof: string | undefined = typeof zkpProof === 'string' && zkpProof ? zkpProof : undefined;
+        if (!proof) {
+          const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
+          const released = await ThirdPartyPermissionsService.getReleasedProofs(normalizedPnIdentifier);
+          proof = released.find((p) => p.dataPointId === dataPointId)?.zkpProof;
         }
-        if (!bundle.token?.access_token) {
-          return res.status(401).json({
-            error: 'Google Drive authentication failed',
-            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
-          });
-        }
-
-        const proof = await ZKPDataPointsService.getDataPointProof(bundle, dataPointId);
-
         if (!proof) {
           return res.status(404).json({ error: 'ZKP data point not found or expired' });
         }
 
-        const verification = await ZKPDataPointsService.verifyProof(proof.zkpProof, condition);
-
+        const { ZKPDataPointsService } = await import('./zkpDataPointsService');
+        const verification = await ZKPDataPointsService.verifyProof(proof, condition);
         return res.json({ success: true, verification });
       } catch (error: any) {
         console.error('Error verifying ZKP proof:', error);
         return res.status(500).json({
           error: 'Failed to verify ZKP proof',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to verify ZKP proof'
-        });
-      }
-    });
-
-    // GET /api/users/:pnIdentifier/preferences - Get user preferences from Google Drive
-    app.get('/api/users/:pnIdentifier/preferences', async (req, res) => {
-      try {
-        const { pnIdentifier } = req.params;
-
-        if (!pnIdentifier) {
-          return res.status(400).json({ error: 'pnIdentifier is required' });
-        }
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
-
-        const { PreferencesService } = await import('./preferencesService');
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.json({ preferences: null });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.json({ preferences: null });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          let userAccessToken = '';
-          try {
-            const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-            userAccessToken = resolved.token.access_token;
-          } catch (error) {
-            if (respondDriveTokenError(res, error)) return;
-            throw error;
-          }
-
-        // Find pN folder and _metadata folder (same pattern as other endpoints)
-        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
-        }
-
-        if (!pnFolderId) {
-          // Soft-fail: stale/missing Drive layout during unlock — client keeps local prefs.
-          return res.json({ preferences: null });
-        }
-
-        // Find _metadata folder
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        let metadataFolderId: string | null = null;
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (metadataFolderResponse.ok) {
-          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-            metadataFolderId = metadataFolderData.files[0].id;
-          }
-        }
-
-        if (!metadataFolderId) {
-          return res.json({ preferences: null });
-        }
-
-        // Get preferences file
-        const preferences = await PreferencesService.getPreferencesFile(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier
-        );
-
-        if (!preferences) {
-          return res.json({ preferences: null });
-        }
-
-        return res.json({ preferences });
-      } catch (error: any) {
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        if (respondDriveTokenError(res, error)) return;
-        const msg = error instanceof Error ? error.message : String(error || '');
-        if (/access token|authentication failed|invalid_grant|cloud.?token|unauthorized/i.test(msg)) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description: msg || 'Google Drive access token required'
-          });
-        }
-        console.error('Error getting preferences:', error);
-        return res.status(500).json({
-          error: 'Failed to get preferences',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get preferences'
-        });
-      }
-    });
-
-    // POST /api/users/:pnIdentifier/tag-preferences - Save a tag preference
-    app.post('/api/users/:pnIdentifier/tag-preferences', async (req, res) => {
-      try {
-        const { pnIdentifier } = req.params;
-        const { tagId, preference, action, confidence, metadata, sourceFileId } = req.body;
-
-        if (!pnIdentifier) {
-          return res.status(400).json({ error: 'pnIdentifier is required' });
-        }
-
-        if (!tagId || !preference || !action) {
-          return res.status(400).json({ error: 'tagId, preference, and action are required' });
-        }
-
-        if (!['like', 'dislike', 'block', 'subscribe'].includes(preference)) {
-          return res.status(400).json({ error: 'preference must be one of: like, dislike, block, subscribe' });
-        }
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
-
-        const { PreferencesService } = await import('./preferencesService');
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          let userAccessToken = '';
-          try {
-            const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-            userAccessToken = resolved.token.access_token;
-          } catch (error) {
-            if (respondDriveTokenError(res, error)) return;
-            throw error;
-          }
-
-        // Find _metadata folder
-        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
-        }
-
-        if (!pnFolderId) {
-          return res.status(404).json({ error: 'pN folder not found' });
-        }
-
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        let metadataFolderId: string | null = null;
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (metadataFolderResponse.ok) {
-          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-            metadataFolderId = metadataFolderData.files[0].id;
-          }
-        }
-
-        if (!metadataFolderId) {
-          return res.status(404).json({ error: '_metadata folder not found' });
-        }
-
-        // Save tag preference to Google Drive
-        await PreferencesService.addTagPreference(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier,
-          tagId.toLowerCase(),
-          preference,
-          action,
-          {
-            sourceFileId,
-            confidence: confidence ?? 0.8,
-            metadata
-          }
-        );
-
-        return res.json({ success: true });
-      } catch (error: any) {
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        if (respondDriveTokenError(res, error)) return;
-        console.error('Error saving tag preference:', error);
-        return res.status(500).json({
-          error: 'Failed to save tag preference',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to save tag preference'
-        });
-      }
-    });
-
-    // GET /api/users/:pnIdentifier/tag-preferences - Get all tag preferences
-    app.get('/api/users/:pnIdentifier/tag-preferences', async (req, res) => {
-      try {
-        const { pnIdentifier } = req.params;
-
-        if (!pnIdentifier) {
-          return res.status(400).json({ error: 'pnIdentifier is required' });
-        }
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
-
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.json({ preferences: [] });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          return res.json({ preferences: [] });
-        }
-        // Tag sheets live on the device. This route does not proxy Drive.
-        return res.json({ preferences: [] });
-      } catch (error: any) {
-        console.error('Error getting tag preferences:', error);
-        return res.status(500).json({
-          error: 'Failed to get tag preferences',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get tag preferences'
-        });
-      }
-    });
-
-
-    // DELETE /api/users/:pnIdentifier/tag-preferences/:tagId - Remove a tag preference
-    app.delete('/api/users/:pnIdentifier/tag-preferences/:tagId', async (req, res) => {
-      try {
-        const { pnIdentifier, tagId } = req.params;
-
-        if (!pnIdentifier) {
-          return res.status(400).json({ error: 'pnIdentifier is required' });
-        }
-
-        if (!tagId) {
-          return res.status(400).json({ error: 'tagId is required' });
-        }
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
-
-        const { PreferencesService } = await import('./preferencesService');
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          let userAccessToken = '';
-          try {
-            const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-            userAccessToken = resolved.token.access_token;
-          } catch (error) {
-            if (respondDriveTokenError(res, error)) return;
-            throw error;
-          }
-
-        // Find _metadata folder
-        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
-        }
-
-        if (!pnFolderId) {
-          return res.status(404).json({ error: 'pN folder not found' });
-        }
-
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        let metadataFolderId: string | null = null;
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (metadataFolderResponse.ok) {
-          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-            metadataFolderId = metadataFolderData.files[0].id;
-          }
-        }
-
-        if (!metadataFolderId) {
-          return res.status(404).json({ error: '_metadata folder not found' });
-        }
-
-        // Remove tag preference from Google Drive
-        await PreferencesService.removeTagPreference(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier,
-          tagId.toLowerCase()
-        );
-
-        return res.json({ success: true });
-      } catch (error: any) {
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        if (respondDriveTokenError(res, error)) return;
-        console.error('Error removing tag preference:', error);
-        return res.status(500).json({
-          error: 'Failed to remove tag preference',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to remove tag preference'
         });
       }
     });

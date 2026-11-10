@@ -30,50 +30,6 @@ function isMessagingHandoffClient(clientId: string | undefined): boolean {
 }
 
 /**
- * Which of the requested data points the user actually holds a usable proof for.
- *
- * Returns null when we could not look, which the consent screen must treat as
- * "unknown" rather than "none": a Drive hiccup should not silently strip a data
- * point the user does have. Only proof metadata is read here, never the proof
- * itself or the underlying value.
- */
-async function loadOfferableDataPoints(
-  req: express.Request,
-  pnIdentifier: string,
-  requestedDataPoints: string[],
-  dataPointLevels: Record<string, 'attested' | 'verified'>
-): Promise<Record<string, { available: boolean; reason?: string }> | null> {
-  if (requestedDataPoints.length === 0) return {};
-  try {
-    const { normalizePnIdentifier } = await import('./integratorStoragePaths');
-    const normalized = normalizePnIdentifier(pnIdentifier);
-    const { extractCloudAccessToken } = await import('./cloudAccessToken');
-    const { loadZkpBundle } = await import('./storage/zkpStorageService');
-
-    const bundle = await loadZkpBundle(normalized, {
-      accessToken: extractCloudAccessToken(req) || undefined
-    });
-    if (!bundle) return null;
-
-    const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-    const heldProofs = await ZKPDataPointsService.getAvailableDataPoints(bundle);
-
-    const { resolveOfferableDataPoints } = await import('@par-noir/standard-data-points');
-    return resolveOfferableDataPoints({
-      requestedDataPoints,
-      dataPointLevels,
-      heldProofs
-    });
-  } catch (error: unknown) {
-    safeLogger.warn('[OAuth] Could not read held ZKP proofs for consent', {
-      reason: error instanceof Error ? error.message : 'unknown',
-      pnIdHash: hashIdentifier(pnIdentifier)
-    });
-    return null;
-  }
-}
-
-/**
  * Consent sends the user's per-data-point choices as a comma-separated list.
  * `undefined` means the client made no choice this time (consent was skipped),
  * which is distinct from an empty list meaning "declined everything".
@@ -97,7 +53,6 @@ function redactPnIdentifier(pnIdentifier?: string): string {
 }
 
 export interface PnOAuthRouteDeps {
-  extractAccountId: (account: any) => string | undefined;
   oauthTokenLimiter: RequestHandler;
   authLimiter: RequestHandler;
 }
@@ -107,7 +62,7 @@ export interface PnOAuthRouteDeps {
  * Implements authorization code flow similar to Google OAuth
  */
 export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteDeps) {
-  const { extractAccountId, oauthTokenLimiter, authLimiter } = deps;
+  const { oauthTokenLimiter, authLimiter } = deps;
 
     // Dynamic import to avoid circular dependencies
     const PNOAuthService = require('./pnOAuthService').PNOAuthService;
@@ -348,9 +303,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           throw oauthErr;
         }
 
-        const { code, did, pnIdentifier } = authResult;
+        const { code, pnIdentifier } = authResult;
 
-        // Consent-skip hint: cache first, then the authoritative Drive record.
         // A stored grant only skips consent when the user has already been asked
         // about everything this request wants.
         const { dataPointIdsFromScopes } = await import('./integratorStoragePaths');
@@ -361,8 +315,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
         let existingGrant: { dataPoints: string[] } | null = null;
         if (pnIdentifier) {
-          const { getExistingGrantWithTimeout } = await import('./oauthDrivePermissionContext');
-          const grant = await getExistingGrantWithTimeout(req, client_id, { pnIdentifier, did });
+          const { getExistingGrant } = await import('./integratorOAuthGrants');
+          const grant = await getExistingGrant(client_id, pnIdentifier);
           if (grant && grantCoversRequest(grant.consideredDataPoints, requestedDataPoints)) {
             existingGrant = { dataPoints: grant.dataPoints };
           }
@@ -388,13 +342,6 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
         const dataPointLevels = getClientContract(client_id)?.dataPointLevels || {};
 
-        // What the user can actually offer. A contract asking for over_21 at
-        // "verified" says nothing about whether they hold such a proof, and
-        // offering one they do not have records a grant nothing can honour.
-        const availableDataPoints = pnIdentifier
-          ? await loadOfferableDataPoints(req, pnIdentifier, requestedDataPoints, dataPointLevels)
-          : null;
-
         return res.json({
           code,
           state: state || undefined,
@@ -402,7 +349,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           requestedDataPoints,
           // Lets the consent screen show the level a proof must meet (e.g. verified)
           dataPointLevels,
-          availableDataPoints,
+          // Held proofs live on the device; the consent screen treats null as unknown.
+          availableDataPoints: null,
           sealedCloudVault
         });
       } catch (error: unknown) {
@@ -601,18 +549,16 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       }
     });
 
-    // Retry path for consent pages when the inline lookup raced its deadline.
     app.get('/oauth/existing-grant', async (req, res) => {
       try {
         const pnIdentifier = req.query.pnIdentifier as string | undefined;
-        const did = req.query.did as string | undefined;
         const clientId = req.query.client_id as string | undefined;
         const scope = (req.query.scope as string | undefined) || '';
         if (!pnIdentifier || !clientId) {
           return res.status(400).json({ error: 'pnIdentifier and client_id are required' });
         }
 
-        const { getExistingGrant } = await import('./oauthDrivePermissionContext');
+        const { getExistingGrant } = await import('./integratorOAuthGrants');
         const { dataPointIdsFromScopes } = await import('./integratorStoragePaths');
         const { grantCoversRequest, getClientContract } = await import(
           '@par-noir/standard-data-points'
@@ -621,26 +567,16 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         const requestedDataPoints = dataPointIdsFromScopes(
           scope.split(' ').filter(Boolean)
         );
-        const grant = await getExistingGrant(req, clientId, { pnIdentifier, did });
+        const grant = await getExistingGrant(clientId, pnIdentifier);
         const existingGrant =
           grant && grantCoversRequest(grant.consideredDataPoints, requestedDataPoints)
             ? { dataPoints: grant.dataPoints }
             : null;
 
         const dataPointLevels = getClientContract(clientId)?.dataPointLevels || {};
-        const availableDataPoints = await loadOfferableDataPoints(
-          req,
-          pnIdentifier,
-          requestedDataPoints,
-          dataPointLevels
-        );
 
-        return res.json({ existingGrant, dataPointLevels, availableDataPoints });
+        return res.json({ existingGrant, dataPointLevels, availableDataPoints: null });
       } catch (error: unknown) {
-        // Tell the page "your token aged out" rather than "no grant exists",
-        // so it does not treat a lookup failure as a first-time consent.
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        if (respondDriveTokenError(res, error)) return;
         return res.status(500).json({
           error: 'server_error',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Grant lookup failed',
@@ -728,35 +664,16 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           return res.json(tokenResponse);
         }
 
-        // Persist third-party permissions + integrator silo for all OAuth clients
         try {
           const tokenPayload = PNOAuthService.validateAccessToken(tokenResponse.access_token);
           if (tokenPayload?.pnIdentifier) {
-            const { resolveOAuthDriveContext } = await import('./oauthDrivePermissionContext');
-            const { persistIntegratorGrantAfterTokenExchange } = await import(
-              './integratorOAuthGrants'
-            );
-
-            const driveCtx = await resolveOAuthDriveContext(req, {
+            const { persistIntegratorGrant } = await import('./integratorOAuthGrants');
+            await persistIntegratorGrant({
+              clientId: client_id,
+              scopes: tokenPayload.scope || [],
               pnIdentifier: tokenPayload.pnIdentifier,
-              did: tokenPayload.did,
+              grantedDataPoints: parseGrantedDataPoints(granted_data_points),
             });
-
-            if (driveCtx) {
-              await persistIntegratorGrantAfterTokenExchange({
-                clientId: client_id,
-                scopes: tokenPayload.scope || [],
-                tokenPayload,
-                userAccessToken: driveCtx.userAccessToken,
-                accountId: driveCtx.accountId,
-                grantedDataPoints: parseGrantedDataPoints(granted_data_points),
-              });
-            } else {
-              safeLogger.warn('[OAuth] Skipped Drive permission persist — no Drive context', {
-                clientId: client_id,
-                pnIdHash: hashIdentifier(tokenPayload.pnIdentifier),
-              });
-            }
           }
         } catch (permError: unknown) {
           safeLogger.error('[OAuth] Failed to persist integrator grant', {
@@ -775,12 +692,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
     });
 
     /**
-     * Persist the grant once the client can supply a Drive token.
-     *
-     * Token exchange happens before the app has hydrated its cloud vault, so under
-     * device cloud custody the write above has nothing to authenticate with. The
-     * app calls this after hydration with X-PN-Cloud-Access-Token. Same grant
-     * builder as the exchange path — one implementation, two entry points.
+     * Record the consent choice and the proofs the owner's device released for it.
+     * Proofs come from the device; the API never reads them from the user's cloud.
      */
     app.post('/oauth/grant/persist', async (req, res) => {
       try {
@@ -793,56 +706,42 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         }
 
         const clientId = req.body?.client_id;
-        if (!clientId) {
+        if (typeof clientId !== 'string' || !clientId) {
           return res.status(400).json({
             error: 'invalid_request',
             error_description: 'client_id is required'
           });
         }
 
-        const { resolveOAuthDriveContextDetailed } = await import('./oauthDrivePermissionContext');
-        const { persistIntegratorGrantAfterTokenExchange } = await import(
-          './integratorOAuthGrants'
-        );
-
-        const driveResult = await resolveOAuthDriveContextDetailed(req, {
-          pnIdentifier: tokenPayload.pnIdentifier,
-          did: tokenPayload.did
-        });
-
-        if (!driveResult.ok) {
-          const reason = driveResult.reason;
-          if (reason === 'drive_index_incomplete') {
-            return res.status(409).json({
-              error: 'drive_index_incomplete',
-              error_description:
-                'Drive layout index is incomplete. Call POST /api/storage/initialize then retry grant persist.'
-            });
-          }
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Forward X-PN-Cloud-Access-Token from the unsealed cloud vault to persist the grant'
+        const releasedProofs = req.body?.released_proofs;
+        if (releasedProofs !== undefined && (!Array.isArray(releasedProofs) || releasedProofs.length > 200)) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'released_proofs must be an array of at most 200 entries'
           });
         }
 
-        const driveCtx = driveResult.ctx;
-
-        await persistIntegratorGrantAfterTokenExchange({
+        const { persistIntegratorGrant } = await import('./integratorOAuthGrants');
+        await persistIntegratorGrant({
           clientId,
           scopes: tokenPayload.scope || [],
-          tokenPayload,
-          userAccessToken: driveCtx.userAccessToken,
-          accountId: driveCtx.accountId,
+          pnIdentifier: tokenPayload.pnIdentifier,
           grantedDataPoints: parseGrantedDataPoints(req.body?.granted_data_points)
         });
 
-        return res.json({ success: true });
+        let released = 0;
+        if (releasedProofs?.length) {
+          const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
+          released = await ThirdPartyPermissionsService.releaseProofs(
+            tokenPayload.pnIdentifier,
+            releasedProofs,
+            { replace: false }
+          );
+        }
+
+        return res.json({ success: true, released });
       } catch (error: unknown) {
-        // An expired forwarded token is the caller's to fix, not a server fault.
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        if (respondDriveTokenError(res, error)) return;
-        safeLogger.error('[OAuth] Grant reconcile failed', {
+        safeLogger.error('[OAuth] Grant persist failed', {
           message: error instanceof Error ? error.message : String(error)
         });
         return res.status(500).json({
@@ -921,108 +820,17 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           return res.json({ success: true, dataPoints: [] });
         }
 
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-        const { loadZkpBundle } = await import('./storage/zkpStorageService');
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
-        const cloudAccessToken = extractCloudAccessToken(req);
-        const zkpBundle = await loadZkpBundle(normalizedPnIdentifier, {
-          accessToken: cloudAccessToken,
-        });
-        if (!zkpBundle) {
-          return res.json({ success: true, dataPoints: [] });
-        }
-
         const clientId = tokenPayload.clientId;
         if (!clientId) {
           return res.json({ success: true, dataPoints: [] });
         }
-        let finalAllowedDataPoints = allowedDataPoints;
-        let toolPermission: import('./thirdPartyPermissionsService').ThirdPartyPermission | undefined;
 
-        {
-          const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-          const driveCtx = await getUserDriveMetadataContext(normalizedPnIdentifier, {
-            accessToken: cloudAccessToken || zkpBundle.token?.access_token,
-          });
-          if (!driveCtx) {
-            return res.json({ success: true, dataPoints: [] });
-          }
-          const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
-          const permissions = await ThirdPartyPermissionsService.getPermissions(
-            driveCtx.accessToken,
-            driveCtx.metadataFolderId,
-            driveCtx.normalizedPnIdentifier,
-            driveCtx.accountId
-          );
-          toolPermission = permissions[clientId];
-          if (!toolPermission || toolPermission.status !== 'active') {
-            return res.json({ success: true, dataPoints: [] });
-          }
-          // Re-stamp the static contract so a sheet row predating dataPointLevels
-          // cannot downgrade the required verification level.
-          const { applyStaticContract } = await import('@par-noir/standard-data-points');
-          toolPermission = applyStaticContract(clientId, toolPermission);
-          finalAllowedDataPoints = allowedDataPoints.filter(
-            (dp: string) =>
-              toolPermission!.requiredDataPoints.includes(dp) || toolPermission!.dataPoints.includes(dp)
-          );
-          if (finalAllowedDataPoints.length === 0) {
-            return res.json({ success: true, dataPoints: [] });
-          }
-        }
-
-        const {
-          getDataPointMinLevel,
-          proofMeetsMinLevel,
-        } = await import('@par-noir/standard-data-points');
-        const ZKPDataPointsService = (await import('./zkpDataPointsService')).ZKPDataPointsService;
-        const zkpDataPoints: any[] = [];
-        const heldProofs = await ZKPDataPointsService.getHeldProofs(zkpBundle);
-
-        for (const dataPointId of finalAllowedDataPoints) {
-          try {
-            if (isDevVerbose()) {
-              console.log(`[OAuth ZKP] Attempting to get proof for ${dataPointId}`);
-            }
-            const proof = heldProofs.find((p) => p.dataPointId === dataPointId);
-            
-            if (proof) {
-              const minLevel = getDataPointMinLevel(toolPermission?.dataPointLevels, dataPointId);
-              if (!proofMeetsMinLevel(proof.verificationLevel, minLevel)) {
-                if (isDevVerbose()) {
-                  console.log(
-                    `[OAuth ZKP] Omitting ${dataPointId}: level ${proof.verificationLevel} below min ${minLevel}`
-                  );
-                }
-                continue;
-              }
-              if (isDevVerbose()) {
-                console.log(`[OAuth ZKP] Found proof for ${dataPointId}`);
-              }
-              zkpDataPoints.push({
-                dataPointId: proof.dataPointId,
-                proofType: proof.proofType,
-                zkpProof: proof.zkpProof,
-                verifiedAt: proof.verifiedAt,
-                expiresAt: proof.expiresAt,
-                verificationLevel: proof.verificationLevel
-                // NEVER include: encryptedUserData, signature, or any actual user data
-              });
-            } else if (isDevVerbose()) {
-              console.log(`[OAuth ZKP] No proof found for ${dataPointId} (permission granted but ZKP not created yet)`);
-            }
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            if (isDevVerbose()) {
-              console.warn(`[OAuth ZKP] Failed to get ZKP proof for ${dataPointId}: ${msg}`);
-            }
-            // Continue with other data points
-          }
-        }
-        
-        if (isDevVerbose()) {
-          console.log(`[OAuth ZKP] Returning ${zkpDataPoints.length} data point(s) for ${clientId}`);
-        }
+        const { fetchGrantedZkpProofs } = await import('./integratorDataPointService');
+        const zkpDataPoints = await fetchGrantedZkpProofs({
+          userPnIdentifier: pnIdentifier,
+          clientId,
+          dataPointIds: allowedDataPoints,
+        });
 
         return res.json({ success: true, dataPoints: zkpDataPoints });
       } catch (error: any) {

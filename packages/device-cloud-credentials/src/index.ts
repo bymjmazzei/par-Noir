@@ -295,6 +295,8 @@ export {
   readKnowledgeClaimSource,
 } from './knowledgeClaimDoc.js';
 export type { DeviceKnowledgeClaim, KnowledgeDriveTarget } from './knowledgeClaimDoc.js';
+export { grantedDataPointIds, heldProofsFor } from './releasedProofs.js';
+export type { ReleasableProof } from './releasedProofs.js';
 export {
   downloadDriveText,
   penRootFolderId,

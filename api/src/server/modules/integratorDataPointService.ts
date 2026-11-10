@@ -1,12 +1,15 @@
 /**
- * Fetch ZKP data points for L5 integrators (OAuth bearer or API-key + user grant).
+ * ZK data points for L5 integrators (OAuth bearer or API-key + user grant).
+ * Grants and released proofs are server-owned rows; the user's cloud is not read.
  */
 
-import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
-import { ZKPDataPointsService } from './zkpDataPointsService';
-import { getUserDriveMetadataContext, normalizePnIdentifier } from './driveMetadataHelper';
-import { filterAllowedDataPointIds } from '@par-noir/standard-data-points';
-import { loadZkpBundle } from './storage/zkpStorageService';
+import {
+  applyStaticContract,
+  filterAllowedDataPointIds,
+  getDataPointMinLevel,
+  proofMeetsMinLevel,
+} from '@par-noir/standard-data-points';
+import { ThirdPartyPermissionsService, type ThirdPartyPermission } from './thirdPartyPermissionsService';
 
 export interface IntegratorZkpProofPayload {
   dataPointId: string;
@@ -21,69 +24,40 @@ export async function fetchGrantedZkpProofs(params: {
   userPnIdentifier: string;
   clientId: string;
   dataPointIds: string[];
-  skipPermissionCheck?: boolean;
-  accessToken?: string;
 }): Promise<IntegratorZkpProofPayload[]> {
-  const zkpBundle = await loadZkpBundle(params.userPnIdentifier, {
-    accessToken: params.accessToken,
-  });
-  if (!zkpBundle) {
-    return [];
-  }
-
   const allowedIds = filterAllowedDataPointIds(params.dataPointIds);
-  if (allowedIds.length === 0) {
-    return [];
-  }
+  if (allowedIds.length === 0) return [];
 
-  let finalAllowed = allowedIds;
-
-  if (!params.skipPermissionCheck && params.clientId !== 'browser-app') {
-    const at = String(params.accessToken || '').trim();
-    if (!at) {
-      return [];
-    }
-    const ctx = await getUserDriveMetadataContext(params.userPnIdentifier, {
-      accessToken: at,
-    });
-    if (!ctx) {
-      return [];
-    }
-
-    const permissions = await ThirdPartyPermissionsService.getPermissions(
-      ctx.accessToken,
-      ctx.metadataFolderId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
-
-    const toolPermission = permissions[params.clientId];
-    if (!toolPermission || toolPermission.status !== 'active') {
-      return [];
-    }
-
-    finalAllowed = allowedIds.filter(
-      (dp) =>
-        toolPermission.requiredDataPoints.includes(dp) || toolPermission.dataPoints.includes(dp)
-    );
-  }
+  const stored = await ThirdPartyPermissionsService.getPermission(
+    params.userPnIdentifier,
+    params.clientId
+  );
+  if (!stored || stored.status !== 'active') return [];
+  // Re-stamp the static contract so a stored row predating dataPointLevels
+  // cannot downgrade the required verification level.
+  const permission: ThirdPartyPermission = applyStaticContract(params.clientId, stored);
+  const finalAllowed = allowedIds.filter(
+    (dp) => permission.requiredDataPoints.includes(dp) || permission.dataPoints.includes(dp)
+  );
+  if (finalAllowed.length === 0) return [];
 
   const wanted = new Set(finalAllowed);
-  let held: Awaited<ReturnType<typeof ZKPDataPointsService.getHeldProofs>> = [];
-  try {
-    held = await ZKPDataPointsService.getHeldProofs(zkpBundle);
-  } catch {
-    return [];
-  }
-  return held
+  const released = await ThirdPartyPermissionsService.getReleasedProofs(params.userPnIdentifier);
+  return released
     .filter((proof) => wanted.has(proof.dataPointId))
+    .filter((proof) =>
+      proofMeetsMinLevel(
+        proof.verificationLevel,
+        getDataPointMinLevel(permission.dataPointLevels, proof.dataPointId)
+      )
+    )
     .map((proof) => ({
       dataPointId: proof.dataPointId,
       proofType: proof.proofType,
       zkpProof: proof.zkpProof,
       verifiedAt: proof.verifiedAt,
       expiresAt: proof.expiresAt,
-      verificationLevel: proof.verificationLevel
+      verificationLevel: proof.verificationLevel,
     }));
 }
 
@@ -92,36 +66,16 @@ export async function grantDataPointsToClient(params: {
   clientId: string;
   toolName: string;
   dataPointIds: string[];
-  accessToken?: string;
 }): Promise<void> {
-  const at = String(params.accessToken || '').trim();
-  if (!at) {
-    throw Object.assign(new Error('Google Drive access token required'), {
-      code: 'CLOUD_TOKEN_REQUIRED',
-    });
-  }
-  const ctx = await getUserDriveMetadataContext(params.userPnIdentifier, {
-    accessToken: at,
-  });
-  if (!ctx) {
-    throw Object.assign(new Error('User Drive not connected'), {
-      code: 'CLOUD_TOKEN_REQUIRED',
-    });
-  }
-
-  const permissions = await ThirdPartyPermissionsService.getPermissions(
-    ctx.accessToken,
-    ctx.metadataFolderId,
-    ctx.normalizedPnIdentifier,
-    ctx.accountId
+  const existing = await ThirdPartyPermissionsService.getPermission(
+    params.userPnIdentifier,
+    params.clientId
   );
-
-  const existing = permissions[params.clientId];
   const mergedDataPoints = [
-    ...new Set([...(existing?.dataPoints || []), ...params.dataPointIds])
+    ...new Set([...(existing?.dataPoints || []), ...params.dataPointIds]),
   ];
-
-  const updated = {
+  const now = new Date().toISOString();
+  await ThirdPartyPermissionsService.storePermission(params.userPnIdentifier, {
     ...(existing || {
       toolId: params.clientId,
       toolName: params.toolName,
@@ -129,20 +83,10 @@ export async function grantDataPointsToClient(params: {
       permissions: ['data_points'],
       requiredDataPoints: [],
       optionalDataPoints: params.dataPointIds,
-      grantedAt: new Date().toISOString(),
-      status: 'active' as const
+      grantedAt: now,
     }),
     dataPoints: mergedDataPoints,
-    status: 'active' as const,
-    grantedAt: existing?.grantedAt || new Date().toISOString()
-  };
-
-  await ThirdPartyPermissionsService.storePermissions(
-    ctx.accessToken,
-    ctx.metadataFolderId,
-    normalizePnIdentifier(params.userPnIdentifier),
-    { [params.clientId]: updated },
-    ctx.normalizedPnIdentifier,
-    ctx.accountId
-  );
+    status: 'active',
+    grantedAt: existing?.grantedAt || now,
+  } as ThirdPartyPermission);
 }

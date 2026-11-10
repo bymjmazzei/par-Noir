@@ -1,8 +1,9 @@
 /**
  * @jest-environment node
  *
- * Route-level behaviour for user-scoped endpoints. Everything that touches Drive,
- * OAuth, or the credential store is mocked; no network calls are made.
+ * Route-level behaviour for user-scoped endpoints. Grants and released proofs are
+ * Postgres rows behind ThirdPartyPermissionsService, mocked here; the routes never
+ * reach the user's cloud.
  */
 jest.mock('../middleware/authMiddleware', () => ({
   getBearerTokenPayload: jest.fn(),
@@ -16,40 +17,35 @@ jest.mock('./deviceCapabilityService', () => {
     profileRead: 'profile.read',
     profileWrite: 'profile.write',
   };
+  const gate = jest.fn(async (_req: unknown, res: any, _cap: string, targetPn?: string) => {
+    if (!currentBearer) {
+      res.status(401).json({ error: 'unauthorized' });
+      return null;
+    }
+    if (targetPn !== undefined && currentBearer !== targetPn) {
+      res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
+      return null;
+    }
+    return { pnIdentifier: currentBearer };
+  });
   return {
     DEVICE_CAPABILITIES,
-    gateOwnerSelfRoute: jest.fn(async () => true),
-    gateOwnerRoute: jest.fn(async (_req: unknown, res: any, _cap: string, targetPn?: string) => {
-      if (!currentBearer) {
-        res.status(401).json({ error: 'unauthorized' });
-        return null;
-      }
-      if (targetPn !== undefined && currentBearer !== targetPn) {
-        res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
-        return null;
-      }
-      return { pnIdentifier: currentBearer };
-    }),
+    gateOwnerSelfRoute: gate,
+    gateOwnerRoute: gate,
   };
 });
-
-jest.mock('./storageCredentialsService', () => ({
-  storageCredentialsService: { getCredentials: jest.fn() },
-}));
-
-jest.mock('./googleDriveProxy', () => ({
-  googleDriveProxyService: { getAccessToken: jest.fn() },
-}));
 
 jest.mock('./thirdPartyPermissionsService', () => ({
   ThirdPartyPermissionsService: {
     getPermissions: jest.fn(),
-    storePermissions: jest.fn(),
+    storePermission: jest.fn(),
+    releaseProofs: jest.fn(),
+    getReleasedProofs: jest.fn(),
   },
 }));
 
-jest.mock('./storage/storageProviderUtils', () => ({
-  isPortableStorageProvider: jest.fn(async () => false),
+jest.mock('./zkpDataPointsService', () => ({
+  ZKPDataPointsService: { verifyProof: jest.fn() },
 }));
 
 jest.mock('./storageTierService', () => ({
@@ -58,73 +54,28 @@ jest.mock('./storageTierService', () => ({
 
 import express from 'express';
 import request from 'supertest';
-import { setupUserRoutes, UserRouteDeps } from './userRoutes';
+import { setupUserRoutes } from './userRoutes';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
-import { storageCredentialsService } from './storageCredentialsService';
-import { googleDriveProxyService } from './googleDriveProxy';
 import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
-import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import { ZKPDataPointsService } from './zkpDataPointsService';
 import { getStorageTier } from './storageTierService';
 
 const mockBearerPayload = getBearerTokenPayload as jest.Mock;
-const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock;
-const mockGetAccessToken = googleDriveProxyService.getAccessToken as jest.Mock;
 const mockGetPermissions = ThirdPartyPermissionsService.getPermissions as jest.Mock;
-const mockStorePermissions = ThirdPartyPermissionsService.storePermissions as jest.Mock;
-const mockIsPortable = isPortableStorageProvider as jest.Mock;
+const mockStorePermission = ThirdPartyPermissionsService.storePermission as jest.Mock;
+const mockReleaseProofs = ThirdPartyPermissionsService.releaseProofs as jest.Mock;
+const mockGetReleasedProofs = ThirdPartyPermissionsService.getReleasedProofs as jest.Mock;
+const mockVerifyProof = ZKPDataPointsService.verifyProof as jest.Mock;
 const mockGetStorageTier = getStorageTier as jest.Mock;
 
 const PN = 'pn-test';
 const AUTH = 'Bearer test-token';
 
-function buildApp(overrides: Partial<UserRouteDeps> = {}) {
-  const getMetadataFolder = jest.fn(async () => ({
-    metadataFolderId: 'meta-folder',
-    pnFolderId: 'pn-folder',
-  }));
-  const driveNotInitialized = jest.fn((res: express.Response) =>
-    res.status(409).json({ error: 'drive_not_initialized' })
-  );
-  const deps: UserRouteDeps = {
-    extractAccountId: (account: any) => account?.backendId || account?.keyPrefix,
-    getMetadataFolder: getMetadataFolder as unknown as UserRouteDeps['getMetadataFolder'],
-    driveNotInitialized: driveNotInitialized as unknown as UserRouteDeps['driveNotInitialized'],
-    ...overrides,
-  };
+function buildApp() {
   const app = express();
   app.use(express.json());
-  setupUserRoutes(app, deps);
-  return { app, deps, getMetadataFolder, driveNotInitialized };
-}
-
-/** Drive folder lookups: pN root first, then _metadata. */
-function mockDriveFolderLookups(options: { pnFolder?: boolean; metadataFolder?: boolean } = {}) {
-  const { pnFolder = true, metadataFolder = true } = options;
-  const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
-    const url = decodeURIComponent(String(input));
-    if (url.includes("name='par Noir - ")) {
-      return new Response(JSON.stringify({ files: pnFolder ? [{ id: 'pn-folder' }] : [] }), {
-        status: 200,
-      });
-    }
-    if (url.includes("name='_metadata'")) {
-      return new Response(
-        JSON.stringify({ files: metadataFolder ? [{ id: 'meta-folder' }] : [] }),
-        { status: 200 }
-      );
-    }
-    throw new Error(`Unexpected fetch: ${url}`);
-  });
-  global.fetch = fetchMock as unknown as typeof fetch;
-  return fetchMock;
-}
-
-function credentialsWithDrive() {
-  return {
-    credentials: {
-      googleDriveAccounts: [{ backendId: 'acct-1' }],
-    },
-  };
+  setupUserRoutes(app);
+  return app;
 }
 
 describe('setupUserRoutes', () => {
@@ -132,13 +83,7 @@ describe('setupUserRoutes', () => {
 
   beforeEach(() => {
     currentBearer = PN;
-    mockGetCredentials.mockReset();
-    mockGetAccessToken.mockReset();
-    mockGetPermissions.mockReset();
-    mockStorePermissions.mockReset();
-    mockIsPortable.mockReset().mockResolvedValue(false);
-    mockBearerPayload.mockReset();
-    mockGetStorageTier.mockReset();
+    jest.clearAllMocks();
     global.fetch = jest.fn(async () => {
       throw new Error('fetch should not be called');
     }) as unknown as typeof fetch;
@@ -149,118 +94,29 @@ describe('setupUserRoutes', () => {
   });
 
   describe('GET /api/users/:pnIdentifier/third-party-permissions', () => {
-    it('rejects requests without a Bearer token', async () => {
-      const { app } = buildApp();
-      const res = await request(app).get(`/api/users/${PN}/third-party-permissions`).expect(401);
-      expect(res.body.error).toBe('Unauthorized');
-      expect(mockGetCredentials).not.toHaveBeenCalled();
-    });
-
-    it('returns 404 when no storage provider is connected at all', async () => {
-      mockGetCredentials.mockResolvedValue({ credentials: {} });
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .get(`/api/users/${PN}/third-party-permissions`)
-        .set('Authorization', AUTH)
-        .expect(404);
-      expect(res.body.error).toBe('Storage not connected');
-    });
-
-    it('soft-empties when the server cannot mint a Drive token (device cloud custody)', async () => {
-      mockGetCredentials.mockResolvedValue(credentialsWithDrive());
-      mockGetAccessToken.mockRejectedValue(new Error('oauth secrets are device-held'));
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .get(`/api/users/${PN}/third-party-permissions`)
-        .set('Authorization', AUTH)
-        .expect(200);
-
-      expect(res.body).toEqual({ success: true, permissions: {} });
-      expect(mockGetPermissions).not.toHaveBeenCalled();
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
-    it('soft-empties when the Drive access token is blank', async () => {
-      mockGetCredentials.mockResolvedValue(credentialsWithDrive());
-      mockGetAccessToken.mockResolvedValue('');
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .get(`/api/users/${PN}/third-party-permissions`)
-        .set('Authorization', AUTH)
-        .expect(200);
-
-      expect(res.body).toEqual({ success: true, permissions: {} });
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
-    it('soft-empties when the pN root folder does not exist yet', async () => {
-      mockGetCredentials.mockResolvedValue(credentialsWithDrive());
-      mockGetAccessToken.mockResolvedValue('drive-token');
-      mockDriveFolderLookups({ pnFolder: false });
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .get(`/api/users/${PN}/third-party-permissions`)
-        .set('Authorization', AUTH)
-        .expect(200);
-
-      expect(res.body).toEqual({ success: true, permissions: {} });
+    it('rejects requests without an owner bearer', async () => {
+      currentBearer = null;
+      await request(buildApp()).get(`/api/users/${PN}/third-party-permissions`).expect(401);
       expect(mockGetPermissions).not.toHaveBeenCalled();
     });
 
-    it('soft-empties when the _metadata folder is missing', async () => {
-      mockGetCredentials.mockResolvedValue(credentialsWithDrive());
-      mockGetAccessToken.mockResolvedValue('drive-token');
-      mockDriveFolderLookups({ metadataFolder: false });
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .get(`/api/users/${PN}/third-party-permissions`)
-        .set('Authorization', AUTH)
-        .expect(200);
-
-      expect(res.body).toEqual({ success: true, permissions: {} });
-      expect(mockGetPermissions).not.toHaveBeenCalled();
-    });
-
-    it('returns stored permissions on the happy path', async () => {
-      mockGetCredentials.mockResolvedValue(credentialsWithDrive());
-      mockGetAccessToken.mockResolvedValue('drive-token');
-      mockDriveFolderLookups();
+    it('returns stored grants for a bare identifier, normalized', async () => {
       mockGetPermissions.mockResolvedValue({ 'browser-app': { dataPoints: ['age_attestation'] } });
-      const { app } = buildApp();
 
-      const res = await request(app)
-        .get(`/api/users/${PN}/third-party-permissions`)
-        .set('Authorization', AUTH)
-        .set('X-PN-Cloud-Access-Token', 'drive-token')
-        .expect(200);
-
-      expect(res.body.success).toBe(true);
-      expect(res.body.permissions['browser-app'].dataPoints).toEqual(['age_attestation']);
-      expect(mockGetPermissions).toHaveBeenCalledWith('drive-token', 'meta-folder', PN, 'acct-1');
-    });
-
-    it('normalizes a bare identifier to pn- form before reading credentials', async () => {
-      mockGetCredentials.mockResolvedValue({ credentials: {} });
-      const { app } = buildApp();
-
-      await request(app)
+      const res = await request(buildApp())
         .get('/api/users/test/third-party-permissions')
         .set('Authorization', AUTH)
-        .expect(404);
+        .expect(200);
 
-      expect(mockGetCredentials).toHaveBeenCalledWith('pn-test');
+      expect(res.body.permissions['browser-app'].dataPoints).toEqual(['age_attestation']);
+      expect(mockGetPermissions).toHaveBeenCalledWith(PN);
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 
   describe('PUT /api/users/:pnIdentifier/third-party-permissions', () => {
     it('requires toolId and permission', async () => {
-      const { app } = buildApp();
-      const res = await request(app)
+      const res = await request(buildApp())
         .put(`/api/users/${PN}/third-party-permissions`)
         .set('Authorization', AUTH)
         .send({ toolId: 'browser-app' })
@@ -268,43 +124,33 @@ describe('setupUserRoutes', () => {
       expect(res.body.error).toBe('toolId and permission are required');
     });
 
-    it('reports drive-not-initialized when the metadata folder cannot be resolved', async () => {
-      mockGetCredentials.mockResolvedValue({
-        credentials: {
-          googleDriveAccounts: [{ backendId: 'acct-1' }],
-        },
-      });
-      const { app, driveNotInitialized } = buildApp({
-        getMetadataFolder: jest.fn(async () => null) as unknown as UserRouteDeps['getMetadataFolder'],
-      });
-
-      await request(app)
+    it('rejects an unknown status', async () => {
+      await request(buildApp())
         .put(`/api/users/${PN}/third-party-permissions`)
         .set('Authorization', AUTH)
-        .set('X-PN-Cloud-Access-Token', 'drive-token')
-        .send({ toolId: 'some-tool', permission: { dataPoints: [] } })
-        .expect(409);
+        .send({ toolId: 'some-tool', permission: { status: 'granted' } })
+        .expect(400);
+      expect(mockStorePermission).not.toHaveBeenCalled();
+    });
 
-      expect(driveNotInitialized).toHaveBeenCalled();
-      expect(mockStorePermissions).not.toHaveBeenCalled();
+    it('rejects writing another identity grant', async () => {
+      currentBearer = 'pn-attacker';
+      await request(buildApp())
+        .put(`/api/users/${PN}/third-party-permissions`)
+        .set('Authorization', AUTH)
+        .send({ toolId: 'some-tool', permission: { status: 'active' } })
+        .expect(403);
+      expect(mockStorePermission).not.toHaveBeenCalled();
     });
 
     it('forces browser-app required/optional data points to the static contract', async () => {
-      mockGetCredentials.mockResolvedValue({
-        credentials: {
-          googleDriveAccounts: [{ backendId: 'acct-1' }],
-        },
-      });
-      mockGetPermissions.mockResolvedValue({ 'other-tool': { dataPoints: [] } });
-      const { app } = buildApp();
-
-      await request(app)
+      await request(buildApp())
         .put(`/api/users/${PN}/third-party-permissions`)
         .set('Authorization', AUTH)
-        .set('X-PN-Cloud-Access-Token', 'drive-token')
         .send({
           toolId: 'browser-app',
           permission: {
+            status: 'active',
             dataPoints: ['over_21'],
             requiredDataPoints: ['email_verification'],
             optionalDataPoints: ['phone_verification'],
@@ -312,27 +158,93 @@ describe('setupUserRoutes', () => {
         })
         .expect(200);
 
-      const stored = mockStorePermissions.mock.calls[0][3];
-      expect(stored['browser-app'].requiredDataPoints).toEqual([]);
-      expect(stored['browser-app'].optionalDataPoints).toEqual(['over_21']);
-      expect(stored['browser-app'].dataPointLevels).toEqual({ over_21: 'verified' });
-      expect(stored['browser-app'].dataPoints).toEqual(['over_21']);
-      expect(stored['other-tool']).toBeDefined();
+      const [pn, stored] = mockStorePermission.mock.calls[0];
+      expect(pn).toBe(PN);
+      expect(stored.toolId).toBe('browser-app');
+      expect(stored.requiredDataPoints).toEqual([]);
+      expect(stored.optionalDataPoints).toEqual(['over_21']);
+      expect(stored.dataPointLevels).toEqual({ over_21: 'verified' });
+      expect(stored.dataPoints).toEqual(['over_21']);
+    });
+  });
+
+  describe('PUT /api/users/:pnIdentifier/released-proofs', () => {
+    it('stores what the device released', async () => {
+      mockReleaseProofs.mockResolvedValue(1);
+      const proofs = [{ dataPointId: 'over_21', zkpProof: 'p', verifiedAt: 'x', verificationLevel: 'verified' }];
+
+      const res = await request(buildApp())
+        .put(`/api/users/${PN}/released-proofs`)
+        .set('Authorization', AUTH)
+        .send({ proofs })
+        .expect(200);
+
+      expect(res.body).toEqual({ success: true, released: 1 });
+      expect(mockReleaseProofs).toHaveBeenCalledWith(PN, proofs);
+    });
+
+    it('rejects a non-array body', async () => {
+      await request(buildApp())
+        .put(`/api/users/${PN}/released-proofs`)
+        .set('Authorization', AUTH)
+        .send({ proofs: 'nope' })
+        .expect(400);
+      expect(mockReleaseProofs).not.toHaveBeenCalled();
+    });
+
+    it('rejects releasing for another identity', async () => {
+      currentBearer = 'pn-attacker';
+      await request(buildApp())
+        .put(`/api/users/${PN}/released-proofs`)
+        .set('Authorization', AUTH)
+        .send({ proofs: [] })
+        .expect(403);
+      expect(mockReleaseProofs).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/users/:pnIdentifier/zkp-data-points/verify', () => {
+    it('verifies a proof the caller supplies', async () => {
+      mockVerifyProof.mockResolvedValue({ isValid: true });
+      const res = await request(buildApp())
+        .post(`/api/users/${PN}/zkp-data-points/verify`)
+        .send({ zkpProof: 'proof-body', condition: 'age >= 21' })
+        .expect(200);
+      expect(res.body.verification).toEqual({ isValid: true });
+      expect(mockVerifyProof).toHaveBeenCalledWith('proof-body', 'age >= 21');
+      expect(mockGetReleasedProofs).not.toHaveBeenCalled();
+    });
+
+    it('falls back to a released proof by data point id', async () => {
+      mockGetReleasedProofs.mockResolvedValue([{ dataPointId: 'over_21', zkpProof: 'released' }]);
+      mockVerifyProof.mockResolvedValue({ isValid: true });
+      await request(buildApp())
+        .post(`/api/users/${PN}/zkp-data-points/verify`)
+        .send({ dataPointId: 'over_21', condition: 'age >= 21' })
+        .expect(200);
+      expect(mockVerifyProof).toHaveBeenCalledWith('released', 'age >= 21');
+    });
+
+    it('404s when no proof is available', async () => {
+      mockGetReleasedProofs.mockResolvedValue([]);
+      await request(buildApp())
+        .post(`/api/users/${PN}/zkp-data-points/verify`)
+        .send({ dataPointId: 'over_21', condition: 'age >= 21' })
+        .expect(404);
+      expect(mockVerifyProof).not.toHaveBeenCalled();
     });
   });
 
   describe('GET /api/users/:userPnIdentifier/storage-tier', () => {
     it('rejects an unauthenticated request', async () => {
       mockBearerPayload.mockReturnValue(null);
-      const { app } = buildApp();
-      const res = await request(app).get(`/api/users/${PN}/storage-tier`).expect(401);
+      const res = await request(buildApp()).get(`/api/users/${PN}/storage-tier`).expect(401);
       expect(res.body.error).toBe('Invalid token');
     });
 
     it('rejects reading another identity tier', async () => {
       mockBearerPayload.mockReturnValue({ pnIdentifier: PN, did: 'did:key:test' });
-      const { app } = buildApp();
-      const res = await request(app).get('/api/users/pn-someone-else/storage-tier').expect(403);
+      const res = await request(buildApp()).get('/api/users/pn-someone-else/storage-tier').expect(403);
       expect(res.body.error).toBe('Can only request your own storage tier');
       expect(mockGetStorageTier).not.toHaveBeenCalled();
     });
@@ -340,122 +252,22 @@ describe('setupUserRoutes', () => {
     it('resolves "me" to the bearer identity', async () => {
       mockBearerPayload.mockReturnValue({ pnIdentifier: PN, did: 'did:key:test' });
       mockGetStorageTier.mockResolvedValue({ tier: 'free', encryptionLimit: 10 });
-      const { app } = buildApp();
 
-      const res = await request(app).get('/api/users/me/storage-tier').expect(200);
+      const res = await request(buildApp()).get('/api/users/me/storage-tier').expect(200);
       expect(res.body).toEqual({ tier: 'free', encryptionLimit: 10 });
       expect(mockGetStorageTier).toHaveBeenCalledWith(PN, 'did:key:test');
     });
   });
 
-  describe('PUT /api/users/:pnIdentifier/preferences', () => {
-    it('rejects wrong bearer pn with 403 before credentials lookup', async () => {
-      currentBearer = 'pn-attacker';
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .put(`/api/users/${PN}/preferences`)
-        .set('Authorization', AUTH)
-        .send({ theme: 'dark' })
-        .expect(403);
-
-      expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
-      expect(mockGetCredentials).not.toHaveBeenCalled();
-    });
-
-    it('rejects missing bearer with 401', async () => {
-      currentBearer = null;
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .put(`/api/users/${PN}/preferences`)
-        .send({ theme: 'dark' })
-        .expect(401);
-
-      expect(res.body.error).toBe('unauthorized');
-      expect(mockGetCredentials).not.toHaveBeenCalled();
-    });
-
-    it('returns 409 cloud_token_required when no Drive token can be obtained', async () => {
-      mockGetCredentials.mockResolvedValue(credentialsWithDrive());
-      mockGetAccessToken.mockRejectedValue(new Error('access token required'));
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .put(`/api/users/${PN}/preferences`)
-        .set('Authorization', AUTH)
-        .send({ theme: 'dark' })
-        .expect(409);
-
-      expect(res.body.error).toBe('cloud_token_required');
-    });
-  });
-
-  describe('GET /api/users/:pnIdentifier/preferences', () => {
-    it('rejects wrong bearer pn with 403 before credentials lookup', async () => {
-      currentBearer = 'pn-attacker';
-      const { app } = buildApp();
-
-      const res = await request(app).get(`/api/users/${PN}/preferences`).expect(403);
-
-      expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
-      expect(mockGetCredentials).not.toHaveBeenCalled();
-    });
-
-    it('rejects missing bearer with 401', async () => {
-      currentBearer = null;
-      const { app } = buildApp();
-
-      const res = await request(app).get(`/api/users/${PN}/preferences`).expect(401);
-
-      expect(res.body.error).toBe('unauthorized');
-      expect(mockGetCredentials).not.toHaveBeenCalled();
-    });
-
-    it('soft-nulls when authenticated owner has no credentials (layout absent)', async () => {
-      mockGetCredentials.mockResolvedValue(null);
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .get(`/api/users/${PN}/preferences`)
-        .set('Authorization', AUTH)
-        .expect(200);
-
-      expect(res.body).toEqual({ preferences: null });
-    });
-  });
-
-  describe('GET /api/users/:pnIdentifier/tag-preferences', () => {
-    it('rejects wrong bearer pn with 403', async () => {
-      currentBearer = 'pn-attacker';
-      const { app } = buildApp();
-
-      const res = await request(app).get(`/api/users/${PN}/tag-preferences`).expect(403);
-      expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
-      expect(mockGetCredentials).not.toHaveBeenCalled();
-    });
-
-    it('returns an empty list rather than 404 when the identity has no credentials', async () => {
-      mockGetCredentials.mockResolvedValue(null);
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .get(`/api/users/${PN}/tag-preferences`)
-        .set('Authorization', AUTH)
-        .expect(200);
-      expect(res.body).toEqual({ preferences: [] });
-    });
-
-    it('returns an empty list when no Drive account is attached', async () => {
-      mockGetCredentials.mockResolvedValue({ credentials: {} });
-      const { app } = buildApp();
-
-      const res = await request(app)
-        .get(`/api/users/${PN}/tag-preferences`)
-        .set('Authorization', AUTH)
-        .expect(200);
-      expect(res.body).toEqual({ preferences: [] });
-      expect(global.fetch).not.toHaveBeenCalled();
+  describe('removed cloud proxies', () => {
+    it.each([
+      ['get', '/preferences'],
+      ['put', '/preferences'],
+      ['get', '/tag-preferences'],
+      ['get', '/zkp-data-points'],
+    ])('%s %s is not served by the API', async (method, path) => {
+      const agent = request(buildApp()) as any;
+      await agent[method](`/api/users/${PN}${path}`).set('Authorization', AUTH).expect(404);
     });
   });
 });

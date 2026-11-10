@@ -7,6 +7,7 @@ import { defaultDevicePolicy, normalizeDevicePolicy, type DeviceRow } from '@par
 import { PNOAuthService } from './pnOAuthService';
 import {
   getDeviceById,
+  importDeviceRegistry,
   listDevices,
   loadDeviceBundle,
   readPolicy,
@@ -28,7 +29,6 @@ import {
   recoveryOwnerHash,
   refreshRequestExpiry,
 } from './recoveryRelayService';
-import { extractCloudAccessToken } from './cloudAccessToken';
 import { isProduction, securityFlags } from '../utils/securityFlags';
 
 const NONCE_TTL_MS = 5 * 60 * 1000;
@@ -51,9 +51,6 @@ function bearerPn(req: Request): string | null {
   return payload.pnIdentifier.startsWith('pn-') ? payload.pnIdentifier : `pn-${payload.pnIdentifier}`;
 }
 
-async function storageBundle(pn: string, req?: Request) {
-  return loadDeviceBundle(pn, { accessToken: extractCloudAccessToken(req) });
-}
 
 export function registerDeviceAuthRoutes(app: Application): void {
   app.get('/api/devices/:userPnIdentifier/registry', async (req: Request, res: Response) => {
@@ -88,8 +85,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
       const pn = req.params.userPnIdentifier.startsWith('pn-')
         ? req.params.userPnIdentifier
         : `pn-${req.params.userPnIdentifier}`;
-      const bundle = await storageBundle(pn, req);
-      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
+      const bundle = await loadDeviceBundle(pn);
       const policy = await readPolicy(bundle);
       return res.json({ policy });
     } catch (e) {
@@ -115,8 +111,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'unkeyedAllows array required' });
       }
 
-      const bundle = await storageBundle(pn, req);
-      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
+      const bundle = await loadDeviceBundle(pn);
 
       const existing = await readPolicy(bundle);
 
@@ -198,16 +193,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'privateDisplay required' });
       }
 
-      const cloudToken = extractCloudAccessToken(req);
-      const bundle = await storageBundle(pn, req);
-      if (!bundle) {
-        return res.status(404).json({
-          error: 'Storage not connected',
-          error_description: cloudToken
-            ? 'Drive layout is incomplete on the server. Open Storage once after reconnecting Google Drive, then try again.'
-            : 'Reconnect Google Drive on this device first, then key the device.',
-        });
-      }
+      const bundle = await loadDeviceBundle(pn);
 
       const active = await listDevices(bundle, false);
 
@@ -257,7 +243,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
 
   /**
    * Dev / emergency: wipe device registry without custodian quorum.
-   * Requires ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM=1 and cloud access token.
+   * Requires ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM=1.
    * Production user path is Shamir device_registry_reset finalize.
    */
   app.post('/api/devices/:userPnIdentifier/registry/reset', async (req: Request, res: Response) => {
@@ -284,13 +270,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         : `pn-${req.params.userPnIdentifier}`;
       if (pn !== authPn) return res.status(403).json({ error: 'pn_mismatch' });
 
-      const bundle = await storageBundle(pn, req);
-      if (!bundle) {
-        return res.status(404).json({
-          error: 'Storage not connected',
-          error_description: 'Reconnect Google Drive, then reset keyed devices.',
-        });
-      }
+      const bundle = await loadDeviceBundle(pn);
 
       const result = await resetDeviceRegistry(bundle);
       return res.json({ success: true, ...result });
@@ -341,19 +321,66 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'wrong_request_type' });
       }
 
-      const bundle = await storageBundle(pn, req);
-      if (!bundle) {
-        return res.status(404).json({
-          error: 'Storage not connected',
-          error_description: 'Reconnect Google Drive with X-PN-Cloud-Access-Token, then finalize.',
-        });
-      }
+      const bundle = await loadDeviceBundle(pn);
 
       const result = await resetDeviceRegistry(bundle);
       await store.updateRequest(row.requestId, { status: 'completed' });
       return res.json({ success: true, ...result });
     } catch (e) {
       console.error('[devices] registry reset finalize:', e);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  /**
+   * One-time import of the registry a device kept in its own cloud before the API owned it.
+   * Refused once the API has any rows for this pN.
+   */
+  app.post('/api/devices/:userPnIdentifier/registry/import', async (req: Request, res: Response) => {
+    try {
+      const authPn = bearerPn(req);
+      if (!authPn) return res.status(401).json({ error: 'unauthorized' });
+      const pn = req.params.userPnIdentifier.startsWith('pn-')
+        ? req.params.userPnIdentifier
+        : `pn-${req.params.userPnIdentifier}`;
+      if (pn !== authPn) return res.status(403).json({ error: 'pn_mismatch' });
+
+      const { devices, policy } = req.body ?? {};
+      if (!Array.isArray(devices)) {
+        return res.status(400).json({ error: 'devices array required' });
+      }
+      const rows: DeviceRow[] = [];
+      for (const d of devices) {
+        if (!d || typeof d.deviceId !== 'string' || typeof d.devicePublicKey !== 'string') {
+          return res.status(400).json({ error: 'each device needs deviceId and devicePublicKey' });
+        }
+        rows.push({
+          deviceId: d.deviceId,
+          devicePublicKey: d.devicePublicKey,
+          label: typeof d.label === 'string' ? d.label : '',
+          deviceType: ['mobile', 'desktop', 'tablet'].includes(d.deviceType) ? d.deviceType : 'other',
+          keyType: d.keyType === 'webauthn' ? 'webauthn' : 'software',
+          status: d.status === 'revoked' ? 'revoked' : 'active',
+          isPrimary: d.isPrimary === true,
+          createdAt: typeof d.createdAt === 'string' ? d.createdAt : new Date().toISOString(),
+          lastSeenAt: typeof d.lastSeenAt === 'string' ? d.lastSeenAt : '',
+          ...(typeof d.privateDisplay === 'string' && d.privateDisplay
+            ? { privateDisplay: d.privateDisplay }
+            : {}),
+        });
+      }
+
+      const result = await importDeviceRegistry(
+        await loadDeviceBundle(pn),
+        rows,
+        policy && typeof policy === 'object' ? policy : null
+      );
+      if ('refused' in result) {
+        return res.status(409).json({ error: result.refused });
+      }
+      return res.json({ success: true, imported: result.imported });
+    } catch (e) {
+      console.error('[devices] registry import:', e);
       return res.status(500).json({ error: 'server_error' });
     }
   });
@@ -365,8 +392,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
 
       const { userPnIdentifier } = req.body ?? {};
       const pn = String(userPnIdentifier || gate.ctx.pnIdentifier);
-      const bundle = await storageBundle(pn, req);
-      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
+      const bundle = await loadDeviceBundle(pn);
 
       const row = await getDeviceById(bundle, req.params.deviceId);
       if (!row) return res.status(404).json({ error: 'device_not_found' });
@@ -396,8 +422,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'privateDisplay required' });
       }
 
-      const bundle = await storageBundle(gate.ctx.pnIdentifier, req);
-      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
+      const bundle = await loadDeviceBundle(gate.ctx.pnIdentifier);
 
       await updateDevicePrivateDisplay(bundle, req.params.deviceId, privateDisplay.trim());
 
@@ -409,7 +434,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
   });
 
   /**
-   * Unkeyed unlock on a pN that already has keyed devices → notify owner's Drive notifications
+   * Unkeyed unlock on a pN that already has keyed devices → alert stored in the layout shell
    * so a keyed device can open pairing QR.
    */
   app.post('/api/devices/unkeyed-unlock-alert', async (req: Request, res: Response) => {
@@ -439,58 +464,30 @@ export function registerDeviceAuthRoutes(app: Application): void {
           ? fingerprint.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64)
           : 'default';
 
-      const { NotificationService } = await import('./notificationService');
-      const { getRecoveryDriveContext } = await import('./recoveryDriveContext');
-      const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
       const { storageCredentialsService } = await import('./storageCredentialsService');
+      const record = await storageCredentialsService.getCredentials(pn);
+      const creds = { ...(record?.credentials || {}) } as Record<string, unknown>;
+      const alerts = Array.isArray(creds.deviceUnlockAlerts)
+        ? [...(creds.deviceUnlockAlerts as Array<Record<string, unknown>>)]
+        : [];
 
       // Dedupe: unread device_unkeyed_unlock with same fingerprint within 1h
       const DEDUPE_MS = 60 * 60 * 1000;
-      let existing: Array<{
-        type?: string;
-        read?: boolean;
-        created_at?: string;
-        data?: Record<string, unknown>;
-      }> = [];
-      try {
-        const drive = await getRecoveryDriveContext(pn, { softMissingToken: true });
-        const token = drive?.token?.access_token || '';
-        const metaId = drive?.metadataFolderId || '';
-        const result = await NotificationService.getUserNotifications(token, metaId, pn, drive?.accountId, {
-          limit: 20,
-          unreadOnly: true,
-          type: 'device_unkeyed_unlock' as never,
-        });
-        existing = result.notifications || [];
-      } catch {
-        /* also check credentials layout */
-      }
-      try {
-        const record = await storageCredentialsService.getCredentials(pn);
-        const layoutAlerts = Array.isArray(
-          (record?.credentials as { deviceUnlockAlerts?: unknown })?.deviceUnlockAlerts
-        )
-          ? ((record!.credentials as { deviceUnlockAlerts: typeof existing }).deviceUnlockAlerts)
-          : [];
-        existing = existing.concat(layoutAlerts.filter((a) => !a.read));
-      } catch {
-        /* ignore */
-      }
-
       const now = Date.now();
-      const dup = existing.some((n) => {
+      const dup = alerts.some((n) => {
         if (n.type !== 'device_unkeyed_unlock' || n.read) return false;
-        const created = n.created_at ? Date.parse(n.created_at) : 0;
+        const created = typeof n.created_at === 'string' ? Date.parse(n.created_at) : 0;
         if (now - created > DEDUPE_MS) return false;
-        return String(n.data?.fingerprint || '') === fp;
+        return String((n.data as { fingerprint?: unknown } | undefined)?.fingerprint || '') === fp;
       });
       if (dup) {
         return res.json({ success: true, skipped: true, reason: 'deduped' });
       }
 
-      const notificationBody = {
+      alerts.unshift({
+        notification_id: crypto.randomUUID(),
         user_pn_identifier: pn,
-        type: 'device_unkeyed_unlock' as const,
+        type: 'device_unkeyed_unlock',
         title: 'New device unlock',
         message: `An unrecognized browser unlocked this pN (${coarseHint || 'unknown'}). Pair it from Recovery if this was you.`,
         data: {
@@ -498,47 +495,18 @@ export function registerDeviceAuthRoutes(app: Application): void {
           fingerprint: fp,
           device_hint: coarseHint,
         },
-      };
-
-      if (await isPortableStorageProvider(pn)) {
-        await NotificationService.createNotification('', '', pn, notificationBody);
-        return res.json({ success: true });
+        read: false,
+        created_at: new Date().toISOString(),
+      });
+      creds.deviceUnlockAlerts = alerts.slice(0, 20);
+      await storageCredentialsService.upsertCredentials(pn, creds, record?.cid ?? undefined);
+      try {
+        const { emitNewNotification } = await import('./realtimeEvents');
+        emitNewNotification(pn, 'device_unkeyed_unlock');
+      } catch {
+        /* optional */
       }
-
-      const drive = await getRecoveryDriveContext(pn, { softMissingToken: true });
-      if (!drive?.token?.access_token || !drive.metadataFolderId) {
-        const record = await storageCredentialsService.getCredentials(pn);
-        const creds = { ...(record?.credentials || {}) } as Record<string, unknown>;
-        const alerts = Array.isArray(creds.deviceUnlockAlerts)
-          ? [...(creds.deviceUnlockAlerts as Record<string, unknown>[])]
-          : [];
-        alerts.unshift({
-          notification_id: crypto.randomUUID(),
-          type: 'device_unkeyed_unlock',
-          title: notificationBody.title,
-          message: notificationBody.message,
-          data: notificationBody.data,
-          read: false,
-          created_at: new Date().toISOString(),
-        });
-        creds.deviceUnlockAlerts = alerts.slice(0, 20);
-        await storageCredentialsService.upsertCredentials(pn, creds, record?.cid ?? undefined);
-        try {
-          const { emitNewNotification } = await import('./realtimeEvents');
-          emitNewNotification(pn, 'device_unkeyed_unlock');
-        } catch {
-          /* optional */
-        }
-        return res.json({ success: true, stored: 'credentials_layout' });
-      }
-
-      await NotificationService.createNotification(
-        drive.token.access_token,
-        drive.metadataFolderId,
-        pn,
-        notificationBody
-      );
-      return res.json({ success: true });
+      return res.json({ success: true, stored: 'credentials_layout' });
     } catch (e) {
       console.error('[devices] unkeyed-unlock-alert:', e);
       return res.status(500).json({ error: 'server_error' });

@@ -1,16 +1,22 @@
 /**
- * Gate: device-cloud owners index via Postgres without server Drive companion sync.
+ * Gate: the metadata index is Postgres-only. Owner files and their companion
+ * metadata live in the owner's cloud and are written by the owner's device.
  */
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-describe('metadata-index device-cloud companion', () => {
-  it('does not fail PUT when companion sync is skipped on device-cloud', () => {
+describe('metadata-index never touches the owner cloud', () => {
+  it('has no Drive client, companion sync, or forwarded cloud token', () => {
     const src = readFileSync(resolve(__dirname, './aggregatorRoutes.ts'), 'utf8');
-    expect(src).toContain('Device-cloud Google owner — companion create skipped');
-    expect(src).toContain('Companion field sync failed (non-blocking)');
-    expect(src).not.toContain(
-      'Companion metadata update failed. This is the source of truth, so the update cannot proceed.'
-    );
+    for (const forbidden of [
+      'googleapis',
+      'googleDriveProxy',
+      'CompanionMetadata',
+      'createStorageRequestContext',
+      'X-PN-Cloud-Access-Token',
+      'resolveOwnerDriveToken',
+    ]) {
+      expect(src).not.toContain(forbidden);
+    }
   });
 });

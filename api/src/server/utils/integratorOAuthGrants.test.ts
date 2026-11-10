@@ -9,36 +9,26 @@ jest.mock('../modules/clientRegistration', () => ({
   },
 }));
 
-jest.mock('../modules/integratorFolderService', () => ({
-  IntegratorFolderService: {
-    ensureIntegratorFolder: jest.fn().mockResolvedValue({ integratorFolderId: 'folder-1' }),
-  },
-}));
-
 jest.mock('../modules/thirdPartyPermissionsService', () => ({
   ThirdPartyPermissionsService: {
-    getPermissions: jest.fn(),
-    storePermissions: jest.fn().mockResolvedValue(undefined),
+    getPermission: jest.fn(),
+    storePermission: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
-jest.mock('../modules/pnDriveIndex', () => ({
-  loadPnDriveIndex: jest.fn().mockResolvedValue({ metadataFolderId: 'meta-folder' }),
-  isPnDriveIndexComplete: jest.fn().mockReturnValue(true),
-  PN_DRIVE_SHEET_KEYS: {},
-}));
-
-import { persistIntegratorGrantAfterTokenExchange } from '../modules/integratorOAuthGrants';
+import { getExistingGrant, persistIntegratorGrant } from '../modules/integratorOAuthGrants';
 import { ThirdPartyPermissionsService } from '../modules/thirdPartyPermissionsService';
 
-const mockGetPermissions = ThirdPartyPermissionsService.getPermissions as jest.Mock;
-const mockStorePermissions = ThirdPartyPermissionsService.storePermissions as jest.Mock;
+const mockGetPermission = ThirdPartyPermissionsService.getPermission as jest.Mock;
+const mockStorePermission = ThirdPartyPermissionsService.storePermission as jest.Mock;
 
 const PN = 'pn-59e4692524b7';
 
 function storedPermission(clientId: string) {
-  const call = mockStorePermissions.mock.calls.at(-1);
-  return call?.[3]?.[clientId];
+  const call = mockStorePermission.mock.calls.at(-1);
+  expect(call?.[0]).toBe(PN);
+  expect(call?.[1]?.toolId).toBe(clientId);
+  return call?.[1];
 }
 
 function exchange(overrides: {
@@ -46,19 +36,18 @@ function exchange(overrides: {
   scopes?: string[];
   grantedDataPoints?: string[];
 }) {
-  return persistIntegratorGrantAfterTokenExchange({
+  return persistIntegratorGrant({
     clientId: overrides.clientId ?? 'browser-app',
     scopes: overrides.scopes ?? ['openid', 'profile', 'zkp:over_21', 'cloud:read'],
-    tokenPayload: { pnIdentifier: PN } as never,
-    userAccessToken: 'tok',
+    pnIdentifier: PN,
     grantedDataPoints: overrides.grantedDataPoints,
   });
 }
 
-describe('persistIntegratorGrantAfterTokenExchange', () => {
+describe('persistIntegratorGrant', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetPermissions.mockResolvedValue({});
+    mockGetPermission.mockResolvedValue(null);
   });
 
   it('stores exactly what the user chose at consent', async () => {
@@ -67,13 +56,11 @@ describe('persistIntegratorGrantAfterTokenExchange', () => {
   });
 
   it('does not re-add a data point the user disabled in the dashboard', async () => {
-    mockGetPermissions.mockResolvedValue({
-      'browser-app': {
-        toolId: 'browser-app',
-        status: 'active',
-        dataPoints: [],
-        optionalDataPoints: ['over_21'],
-      },
+    mockGetPermission.mockResolvedValue({
+      toolId: 'browser-app',
+      status: 'active',
+      dataPoints: [],
+      optionalDataPoints: ['over_21'],
     });
 
     // Consent was skipped, so the request carries no choices
@@ -83,13 +70,11 @@ describe('persistIntegratorGrantAfterTokenExchange', () => {
   });
 
   it('keeps the previous choice for data points this request did not ask about', async () => {
-    mockGetPermissions.mockResolvedValue({
-      'browser-app': {
-        toolId: 'browser-app',
-        status: 'active',
-        dataPoints: ['over_21', 'email'],
-        optionalDataPoints: ['over_21', 'email'],
-      },
+    mockGetPermission.mockResolvedValue({
+      toolId: 'browser-app',
+      status: 'active',
+      dataPoints: ['over_21', 'email'],
+      optionalDataPoints: ['over_21', 'email'],
     });
 
     await exchange({ scopes: ['openid', 'profile', 'zkp:over_21'], grantedDataPoints: [] });
@@ -127,5 +112,31 @@ describe('persistIntegratorGrantAfterTokenExchange', () => {
     const permission = storedPermission('some-third-party');
     expect(permission.dataPoints).toEqual(['over_21']);
     expect(permission.optionalDataPoints).toEqual(['over_21']);
+  });
+});
+
+describe('getExistingGrant', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns null without an active grant', async () => {
+    mockGetPermission.mockResolvedValue(null);
+    await expect(getExistingGrant('browser-app', PN)).resolves.toBeNull();
+    mockGetPermission.mockResolvedValue({ toolId: 'browser-app', status: 'revoked', dataPoints: ['over_21'] });
+    await expect(getExistingGrant('browser-app', PN)).resolves.toBeNull();
+  });
+
+  it('remembers declined data points as considered', async () => {
+    mockGetPermission.mockResolvedValue({
+      toolId: 'browser-app',
+      status: 'active',
+      dataPoints: ['over_21'],
+      requiredDataPoints: [],
+      optionalDataPoints: ['over_21', 'email'],
+    });
+    await expect(getExistingGrant('browser-app', '59e4692524b7')).resolves.toEqual({
+      dataPoints: ['over_21'],
+      consideredDataPoints: ['over_21', 'email'],
+    });
+    expect(mockGetPermission).toHaveBeenCalledWith(PN, 'browser-app');
   });
 });
