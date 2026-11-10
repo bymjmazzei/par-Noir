@@ -4,7 +4,7 @@
 # Prefer repository-root Nixpacks (`/nixpacks.toml`) so `file:../packages/*` resolves.
 # This file applies only when Railway Root Directory is set to `api` (packages must still be in context).
 [phases.setup]
-nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
+nixPkgs = ["nodejs_22", "npm-9_x", "ffmpeg"]
 
 [phases.install]
 cmds = ["npm ci --production=false --ignore-scripts"]

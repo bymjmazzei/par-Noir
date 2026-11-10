@@ -4,7 +4,7 @@
 # Install uses --ignore-scripts so linked packages' prepare hooks (e.g. tsc) don't run before typescript is linked.
 # `npm run build` runs `build:deps` (package tsc) then api tsc.
 [phases.setup]
-nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
+nixPkgs = ["nodejs_22", "npm-9_x", "ffmpeg"]
 
 [phases.install]
 cmds = ["cd api && npm ci --production=false --ignore-scripts"]
