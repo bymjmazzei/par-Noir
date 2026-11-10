@@ -276,19 +276,15 @@ export class StorageCredentialsService {
       delete credentials.driveFolderId;
     }
 
-    // Device cloud custody: never persist long-lived cloud OAuth/provider secrets.
-    // This is the single write choke point — every upsert path (exchange, proxy
-    // refresh dual-write, PUT merge, layout patch) goes through here.
-    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
-    if (isDeviceCloudCustodyEnabled()) {
-      if (credentialsContainCloudSecrets(credentials)) {
-        safeLogger.warn('[StorageCredentials] Stripping cloud secrets under device custody', {
-          reason: 'custody_strip_on_upsert',
-          pnIdHash: hashIdentifier(identityId),
-        });
-      }
-      credentials = this.stripCloudSecrets(credentials as Record<string, unknown>);
+    // Never persist cloud OAuth/provider secrets. This is the single write choke
+    // point, so every upsert path goes through here.
+    if (credentialsContainCloudSecrets(credentials)) {
+      safeLogger.warn('[StorageCredentials] Stripping cloud secrets on upsert', {
+        reason: 'custody_strip_on_upsert',
+        pnIdHash: hashIdentifier(identityId),
+      });
     }
+    credentials = this.stripCloudSecrets(credentials as Record<string, unknown>);
 
     const db = getDatabasePool();
     const serialized = JSON.stringify(credentials);

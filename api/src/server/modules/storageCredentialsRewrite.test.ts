@@ -2,7 +2,6 @@
  * @jest-environment node
  */
 process.env.STORAGE_CREDENTIALS_SECRET = 'unit-test-storage-secret';
-process.env.DEVICE_CLOUD_CUSTODY = '0';
 
 import { storageCredentialsService } from './storageCredentialsService';
 import { getDatabasePool } from '../utils/database';
@@ -54,13 +53,17 @@ describe('rewriteCloudSecretsAtRest', () => {
     });
     (getDatabasePool as jest.Mock).mockReturnValue({ query });
 
-    await storageCredentialsService.upsertCredentials('pn-self', {
+    // A row written before the API stopped storing secrets (upserts strip them now).
+    const legacy = {
       driveFolderId: 'folder-1',
       pnDriveIndex: { metadataFolderId: 'meta-1' },
       googleDriveAccounts: [{ accountId: 'acct', accessToken: 'ya29-secret' }],
-    });
+    };
+    const encrypt = (storageCredentialsService as unknown as {
+      encryptPayload(plaintext: string): Promise<unknown>;
+    }).encryptPayload.bind(storageCredentialsService);
+    rows.set('pn-self', { encrypted_metadata: JSON.stringify(await encrypt(JSON.stringify(legacy))), cid: null });
 
-    process.env.DEVICE_CLOUD_CUSTODY = '1';
     const rewritten = await storageCredentialsService.rewriteCloudSecretsAtRest();
     expect(rewritten).toBe(1);
 

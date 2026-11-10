@@ -1,3 +1,9 @@
+/**
+ * Storage account layout routes. The API keeps only the layout shell (provider,
+ * account ids, bucket/container names, prefixes). Provider secrets stay sealed
+ * on the owner's device, and all reads and writes to the owner's cloud run there.
+ */
+
 import type { Application, Request, Response } from 'express';
 import type { StorageCredentialsEnvelope, StorageProviderId } from '@par-noir/user-owned-storage';
 import { isPnDid } from '@par-noir/pqc-crypto/oauth-unlock-proof';
@@ -15,36 +21,13 @@ import {
 import { getBearerTokenPayload } from '../../middleware/authMiddleware';
 import { gateOwnerRoute, DEVICE_CAPABILITIES } from '../deviceCapabilityService';
 import { listStorageAccounts } from './storageAccountsService';
-import {
-  assignSocialCloudIfUnset,
-  inferPrimaryProviderFromCredentials,
-  initializePortableStorage,
-  shouldInitializePortable
-} from './storageInitService';
-import {
-  resolveFileBackendContext,
-  resolveSocialCloudContext,
-  resolveStorageContext
-} from './storageFacade';
-import { storageCredentialsService } from '../storageCredentialsService';
-import { dropboxProxyService } from './dropboxProxy';
-import { onedriveProxyService } from './onedriveProxy';
+import { assignSocialCloudIfUnset } from './storageInitService';
+import { credentialsContainCloudSecrets, storageCredentialsService } from '../storageCredentialsService';
 import { safeClientErrorMessage } from '../../utils/safeError';
 import { registerMigrationRoutes } from './migrationRoutes';
-import { isCompletedSocialCloudMigrationJob } from './storageMigrationJobs';
-import { extractCloudAccessToken } from '../cloudAccessToken';
 
-function respondCloudTokenRequired(res: Response, error: unknown, nodeEnv: string): boolean {
-  const msg = error instanceof Error ? error.message : String(error || '');
-  if (/cloud_token_required|CLOUD_TOKEN_REQUIRED|X-PN-Cloud-Access-Token|access token required/i.test(msg)) {
-    res.status(409).json({
-      error: 'cloud_token_required',
-      error_description: msg,
-      message: safeClientErrorMessage(error, nodeEnv === 'production'),
-    });
-    return true;
-  }
-  return false;
+function ownerPn(identityId: string): string {
+  return identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 }
 
 export function registerStorageRoutes(app: Application, nodeEnv: string): void {
@@ -56,7 +39,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         return res.status(400).json({ error: 'Missing identityId parameter' });
       }
 
-      let pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+      let pnIdentifier = ownerPn(identityId);
       if (isPnDid(identityId)) {
         const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload?.pnIdentifier) {
@@ -70,11 +53,8 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         return res.json({ success: true, accounts: [], primaryProvider: null });
       }
 
-      const accounts = await listStorageAccounts(
-        pnIdentifier,
-        record.credentials as StorageCredentialsEnvelope
-      );
       const creds = record.credentials as StorageCredentialsEnvelope;
+      const accounts = listStorageAccounts(pnIdentifier, creds);
       const socialCloudProvider =
         creds.socialCloudProvider ??
         creds.primaryProvider ??
@@ -96,368 +76,68 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
     }
   });
 
-  app.get('/api/storage/context/:identityId', async (req: Request, res: Response) => {
-    try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, pnIdentifier))) return;
-
-      const scope = req.query.scope === 'file' ? 'file' : 'social';
-      const providerParam = typeof req.query.provider === 'string' ? req.query.provider : undefined;
-      const accountId =
-        typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
-
-      const cloudTok = extractCloudAccessToken(req);
-      const ctx =
-        scope === 'file' && providerParam
-          ? await resolveFileBackendContext(
-              pnIdentifier,
-              providerParam as StorageProviderId,
-              accountId,
-              cloudTok
-            )
-          : await resolveSocialCloudContext(pnIdentifier, accountId, cloudTok);
-
-      return res.json({
-        provider: ctx.provider,
-        rootPrefix: ctx.rootPrefix,
-        metadataFolderId: ctx.metadataFolderId ?? null,
-        isSocialCloud: ctx.isSocialCloud ?? scope !== 'file'
-      });
-    } catch (error: unknown) {
-      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
-      return res.status(500).json({
-        error: 'Failed to resolve storage context',
-        message: safeClientErrorMessage(error, nodeEnv === 'production')
-      });
-    }
-  });
-
-  app.post('/api/storage/test-connection/:identityId', async (req: Request, res: Response) => {
-    try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, pnIdentifier))) return;
-
-      const providerParam =
-        typeof req.body?.provider === 'string'
-          ? (req.body.provider as StorageProviderId)
-          : undefined;
-      const cloudTok = extractCloudAccessToken(req);
-      const ctx = providerParam
-        ? await resolveFileBackendContext(pnIdentifier, providerParam, undefined, cloudTok)
-        : await resolveSocialCloudContext(pnIdentifier, undefined, cloudTok);
-      if (!ctx.blobStore) {
-        return res.json({ ok: true, provider: ctx.provider, message: 'Google Drive connected' });
-      }
-      const probeKey = `${ctx.rootPrefix}.connection-probe`;
-      const body = Buffer.from(JSON.stringify({ ts: new Date().toISOString() }), 'utf8');
-      await ctx.blobStore.put(probeKey, body, { contentType: 'application/json' });
-      await ctx.blobStore.delete(probeKey);
-      return res.json({ ok: true, provider: ctx.provider });
-    } catch (error: unknown) {
-      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
-      return res.status(500).json({
-        ok: false,
-        message: safeClientErrorMessage(error, nodeEnv === 'production')
-      });
-    }
-  });
-
-  app.get('/api/storage/blobs/:identityId', async (req: Request, res: Response) => {
-    try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, pnIdentifier))) return;
-
-      const prefix = typeof req.query.prefix === 'string' ? req.query.prefix : '';
-      const providerParam = typeof req.query.provider === 'string' ? req.query.provider : undefined;
-      if (!providerParam) {
-        return res.status(400).json({ error: 'provider query param required' });
-      }
-      const ctx = await resolveFileBackendContext(
-        pnIdentifier,
-        providerParam as StorageProviderId,
-        typeof req.query.accountId === 'string' ? req.query.accountId : undefined,
-        extractCloudAccessToken(req)
-      );
-      if (!ctx.blobStore) {
-        return res.status(400).json({ error: 'Blob API not available for Google Drive; use /api/drive/files' });
-      }
-      const entries = await ctx.blobStore.list(`${ctx.rootPrefix}${prefix}`);
-      return res.json({ files: entries, provider: ctx.provider });
-    } catch (error: unknown) {
-      return res.status(500).json({
-        error: 'Failed to list blobs',
-        message: safeClientErrorMessage(error, nodeEnv === 'production')
-      });
-    }
-  });
-
-  app.post('/api/storage/credentials/:identityId/portable-init', async (req: Request, res: Response) => {
-    try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
-
-      const record = await storageCredentialsService.getCredentials(pnIdentifier);
-      if (!record?.credentials) {
-        return res.status(404).json({ error: 'No credentials found' });
-      }
-      let credentials = inferPrimaryProviderFromCredentials(
-        record.credentials as StorageCredentialsEnvelope
-      );
-      if (!shouldInitializePortable(credentials)) {
-        return res.status(400).json({ error: 'No portable provider configured' });
-      }
-      const result = await initializePortableStorage(
-        pnIdentifier,
-        credentials,
-        undefined,
-        extractCloudAccessToken(req)
-      );
-      return res.json({ success: true, ...result });
-    } catch (error: unknown) {
-      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
-      return res.status(500).json({
-        error: 'Portable init failed',
-        message: safeClientErrorMessage(error, nodeEnv === 'production')
-      });
-    }
-  });
-
+  /** Register a connected provider's layout shell. Secrets are refused, not stripped. */
   app.put('/api/storage/credentials/:identityId/provider', async (req: Request, res: Response) => {
     try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
+      const pnIdentifier = ownerPn(req.params.identityId);
       if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
 
-      const body = req.body as StorageCredentialsEnvelope & {
+      const body = req.body as {
         provider?: string;
         awsS3?: NonNullable<StorageCredentialsEnvelope['awsS3Accounts']>[number];
         azureBlob?: NonNullable<StorageCredentialsEnvelope['azureBlobAccounts']>[number];
         ftp?: NonNullable<StorageCredentialsEnvelope['ftpAccounts']>[number];
       };
+      if (credentialsContainCloudSecrets({ awsS3Accounts: [body.awsS3], azureBlobAccounts: [body.azureBlob], ftpAccounts: [body.ftp] })) {
+        return res.status(400).json({
+          error: 'secrets_not_accepted',
+          message: 'Provider keys stay sealed on your device. Send the account layout only.'
+        });
+      }
 
       const record = await storageCredentialsService.getCredentials(pnIdentifier);
-      const existing = (record?.credentials ?? {}) as StorageCredentialsEnvelope;
-      let credentials: StorageCredentialsEnvelope = { ...existing };
+      let credentials: StorageCredentialsEnvelope = { ...((record?.credentials ?? {}) as StorageCredentialsEnvelope) };
+      let newProvider: StorageProviderId;
+      let newAccountId: string;
+      const defaultPrefix = `par-noir-${pnIdentifier}`;
 
-      let newProvider: StorageProviderId | null = null;
-      let newAccountId: string | undefined;
-
-      if (body.provider === 'aws_s3' && body.awsS3) {
-        const defaultPrefix = `par-noir-${pnIdentifier}`;
+      if (body.provider === 'aws_s3' && body.awsS3?.bucket && body.awsS3.region) {
         const prefix = (body.awsS3.prefix || defaultPrefix).replace(/\/$/, '');
         if (!prefix.startsWith('par-noir-')) {
-          return res.status(400).json({
-            error: 'S3 prefix required',
-            message: 'prefix must be set (default par-noir-{pn})'
-          });
+          return res.status(400).json({ error: 'S3 prefix required', message: 'prefix must start with par-noir-' });
         }
-        credentials = upsertS3Account(credentials, pnIdentifier, {
-          ...body.awsS3,
-          prefix
-        });
-        newAccountId =
-          body.awsS3.accountId || buildAccountId('aws_s3', pnIdentifier, body.awsS3.bucket);
+        newAccountId = body.awsS3.accountId || buildAccountId('aws_s3', pnIdentifier, body.awsS3.bucket);
+        credentials = upsertS3Account(credentials, pnIdentifier, { ...body.awsS3, prefix, accountId: newAccountId });
         newProvider = 'aws_s3';
-      } else if (body.provider === 'azure_blob' && body.azureBlob) {
-        if (body.azureBlob.connectionString) {
-          return res.status(400).json({
-            error: 'connection_string_not_allowed',
-            message: 'Azure Blob accepts container SAS only — reconnect with a SAS token.'
-          });
-        }
-        if (!body.azureBlob.sasToken) {
-          return res.status(400).json({
-            error: 'sas_token_required',
-            message: 'Azure Blob requires a container SAS token.'
-          });
-        }
-        const defaultPrefix = `par-noir-${pnIdentifier}`;
+      } else if (body.provider === 'azure_blob' && body.azureBlob?.accountName && body.azureBlob.container) {
         const prefix = (body.azureBlob.prefix || defaultPrefix).replace(/\/$/, '');
         if (!prefix.startsWith('par-noir-')) {
-          return res.status(400).json({
-            error: 'Azure prefix required',
-            message: 'prefix must be set (default par-noir-{pn})'
-          });
+          return res.status(400).json({ error: 'Azure prefix required', message: 'prefix must start with par-noir-' });
         }
-        credentials = upsertAzureAccount(credentials, pnIdentifier, {
-          ...body.azureBlob,
-          prefix,
-          connectionString: undefined
-        });
         newAccountId =
-          body.azureBlob.accountId ||
-          buildAccountId('azure_blob', pnIdentifier, body.azureBlob.container);
+          body.azureBlob.accountId || buildAccountId('azure_blob', pnIdentifier, body.azureBlob.container);
+        credentials = upsertAzureAccount(credentials, pnIdentifier, { ...body.azureBlob, prefix, accountId: newAccountId });
         newProvider = 'azure_blob';
-      } else if (body.provider === 'ftp' && body.ftp) {
-        credentials = upsertFtpAccount(credentials, pnIdentifier, body.ftp);
+      } else if (body.provider === 'ftp' && body.ftp?.host) {
         const slug = body.ftp.host.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 32);
         newAccountId = body.ftp.accountId || buildAccountId('ftp', pnIdentifier, slug);
+        credentials = upsertFtpAccount(credentials, pnIdentifier, { ...body.ftp, accountId: newAccountId });
         newProvider = 'ftp';
       } else {
         return res.status(400).json({ error: 'Invalid provider payload' });
       }
 
-      credentials = assignSocialCloudIfUnset(credentials, newProvider!, newAccountId);
-      credentials = ensureSocialCloudOnCredentials(credentials);
-      const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
-      if (isDeviceCloudCustodyEnabled()) {
-        credentials = storageCredentialsService.stripCloudSecrets(
-          credentials as Record<string, unknown>
-        ) as StorageCredentialsEnvelope;
-      }
+      credentials = ensureSocialCloudOnCredentials(assignSocialCloudIfUnset(credentials, newProvider, newAccountId));
       await storageCredentialsService.upsertCredentials(pnIdentifier, credentials);
-
-      let initResult: { pathPrefix: string } | undefined;
-      if (resolveSocialCloudProvider(credentials) === newProvider) {
-        initResult = await initializePortableStorage(pnIdentifier, credentials, newProvider!);
-      }
       return res.json({
         success: true,
         provider: newProvider,
-        socialCloudProvider: resolveSocialCloudProvider(credentials),
-        ...initResult
+        accountId: newAccountId,
+        socialCloudProvider: resolveSocialCloudProvider(credentials)
       });
     } catch (error: unknown) {
       return res.status(500).json({
-        error: 'Failed to save provider credentials',
-        message: safeClientErrorMessage(error, nodeEnv === 'production')
-      });
-    }
-  });
-
-  app.post('/api/storage/blobs/:identityId/upload', async (req: Request, res: Response) => {
-    try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
-
-      const body = req.body as {
-        provider?: StorageProviderId;
-        key?: string;
-        fileData?: string;
-        contentType?: string;
-        accountId?: string;
-      };
-      const provider = body.provider;
-      const key = body.key;
-      if (!provider || !key || !body.fileData) {
-        return res.status(400).json({ error: 'provider, key, and fileData required' });
-      }
-      if (provider === 'google_drive') {
-        return res.status(400).json({ error: 'Use /api/drive/files for Google Drive uploads' });
-      }
-
-      const ctx = await resolveFileBackendContext(
-        pnIdentifier,
-        provider,
-        body.accountId,
-        extractCloudAccessToken(req)
-      );
-      if (!ctx.blobStore) {
-        return res.status(400).json({ error: 'Blob store unavailable for provider' });
-      }
-      const fullKey = key.startsWith(ctx.rootPrefix) ? key : `${ctx.rootPrefix}${key}`;
-      const buf = Buffer.from(body.fileData, 'base64');
-      await ctx.blobStore.put(fullKey, buf, {
-        contentType: body.contentType || 'application/octet-stream'
-      });
-      return res.json({ success: true, key: fullKey.replace(ctx.rootPrefix, ''), provider });
-    } catch (error: unknown) {
-      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
-      return res.status(500).json({
-        error: 'Blob upload failed',
-        message: safeClientErrorMessage(error, nodeEnv === 'production')
-      });
-    }
-  });
-
-  app.get('/api/storage/blobs/:identityId/download', async (req: Request, res: Response) => {
-    try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
-
-      const provider = req.query.provider as StorageProviderId | undefined;
-      const key = typeof req.query.key === 'string' ? req.query.key : undefined;
-      const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
-      if (!provider || !key) {
-        return res.status(400).json({ error: 'provider and key query params required' });
-      }
-      if (provider === 'google_drive') {
-        return res.status(400).json({ error: 'Use /api/drive/files for Google Drive downloads' });
-      }
-
-      const ctx = await resolveFileBackendContext(
-        pnIdentifier,
-        provider,
-        accountId,
-        extractCloudAccessToken(req)
-      );
-      if (!ctx.blobStore) {
-        return res.status(400).json({ error: 'Blob store unavailable' });
-      }
-      const fullKey = key.startsWith(ctx.rootPrefix) ? key : `${ctx.rootPrefix}${key}`;
-      const data = await ctx.blobStore.get(fullKey);
-      if (!data) {
-        return res.status(404).json({ error: 'Blob not found' });
-      }
-      if (req.query.download === 'true') {
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Content-Disposition', 'attachment');
-      }
-      return res.send(Buffer.from(data));
-    } catch (error: unknown) {
-      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
-      return res.status(500).json({
-        error: 'Blob download failed',
-        message: safeClientErrorMessage(error, nodeEnv === 'production')
-      });
-    }
-  });
-
-  app.delete('/api/storage/blobs/:identityId', async (req: Request, res: Response) => {
-    try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
-
-      const provider = (req.query.provider || req.body?.provider) as StorageProviderId | undefined;
-      const key = (req.query.key || req.body?.key) as string | undefined;
-      const accountId = (req.query.accountId || req.body?.accountId) as string | undefined;
-      if (!provider || !key) {
-        return res.status(400).json({ error: 'provider and key required' });
-      }
-      if (provider === 'google_drive') {
-        return res.status(400).json({ error: 'Use /api/drive/files for Google Drive deletes' });
-      }
-
-      const ctx = await resolveFileBackendContext(
-        pnIdentifier,
-        provider,
-        accountId,
-        extractCloudAccessToken(req)
-      );
-      if (!ctx.blobStore) {
-        return res.status(400).json({ error: 'Blob store unavailable' });
-      }
-      const fullKey = key.startsWith(ctx.rootPrefix) ? key : `${ctx.rootPrefix}${key}`;
-      await ctx.blobStore.delete(fullKey);
-      return res.json({ success: true });
-    } catch (error: unknown) {
-      return res.status(500).json({
-        error: 'Blob delete failed',
+        error: 'Failed to save provider layout',
         message: safeClientErrorMessage(error, nodeEnv === 'production')
       });
     }
@@ -467,9 +147,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
     '/api/storage/credentials/:identityId/provider/:provider/:accountId',
     async (req: Request, res: Response) => {
       try {
-        const pnIdentifier = req.params.identityId.startsWith('pn-')
-          ? req.params.identityId
-          : `pn-${req.params.identityId}`;
+        const pnIdentifier = ownerPn(req.params.identityId);
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
 
         const provider = req.params.provider as StorageProviderId;
@@ -484,12 +162,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
 
         let credentials: StorageCredentialsEnvelope;
         try {
-          credentials = disconnectProviderAccount(
-            existing,
-            provider,
-            accountId,
-            replacementAccountId
-          );
+          credentials = disconnectProviderAccount(existing, provider, accountId, replacementAccountId);
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Disconnect failed';
           if (msg.includes('replacementAccountId')) {
@@ -509,17 +182,19 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
     }
   );
 
+  /**
+   * Switch the social cloud. The device copies tables and indexes first (it holds
+   * the keys), then reports `migrated: true`.
+   */
   app.put('/api/storage/credentials/:identityId/social-cloud', async (req: Request, res: Response) => {
     try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
+      const pnIdentifier = ownerPn(req.params.identityId);
       if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
 
-      const { provider, accountId, migrationJobId } = req.body as {
+      const { provider, accountId, migrated } = req.body as {
         provider?: StorageProviderId;
         accountId?: string;
-        migrationJobId?: string;
+        migrated?: boolean;
       };
       if (!provider) {
         return res.status(400).json({ error: 'provider required' });
@@ -527,26 +202,11 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
 
       const record = await storageCredentialsService.getCredentials(pnIdentifier);
       const existing = (record?.credentials ?? {}) as StorageCredentialsEnvelope;
-      const previousSocial = resolveSocialCloudProvider(existing);
-
-      const needsMigration = previousSocial !== provider;
-
-      if (needsMigration) {
-        const jobOk =
-          migrationJobId &&
-          (await isCompletedSocialCloudMigrationJob(
-            migrationJobId,
-            pnIdentifier,
-            provider,
-            accountId
-          ));
-        if (!jobOk) {
-          return res.status(409).json({
-            error: 'migration_required',
-            message: 'Changing social cloud requires a completed migration job.',
-            previewPath: '/api/storage/migrate/social-cloud/preview'
-          });
-        }
+      if (resolveSocialCloudProvider(existing) !== provider && migrated !== true) {
+        return res.status(409).json({
+          error: 'migration_required',
+          message: 'Copy your tables to the new cloud on this device before switching.'
+        });
       }
 
       const credentials: StorageCredentialsEnvelope = ensureSocialCloudOnCredentials({
@@ -555,12 +215,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         primaryProvider: provider,
         socialCloudAccountId: accountId
       });
-
       await storageCredentialsService.upsertCredentials(pnIdentifier, credentials);
-
-      if (provider !== 'google_drive' && provider !== previousSocial) {
-        await initializePortableStorage(pnIdentifier, credentials, provider);
-      }
 
       return res.json({
         success: true,
@@ -575,12 +230,10 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
     }
   });
 
-  /** Non-secret layout hints only (folder ids / provider enum). Used with device cloud custody. */
+  /** Non-secret layout hints only (folder ids / provider enum). */
   app.post('/api/storage/layout/:identityId', async (req: Request, res: Response) => {
     try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
+      const pnIdentifier = ownerPn(req.params.identityId);
       if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
 
       const { socialCloudProvider, socialCloudAccountId, cachedLayout, driveFolderId, publicKey } =
@@ -610,28 +263,13 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
     }
   });
 
-  /** Purge OAuth/provider secrets from server after client has sealed them on device. */
+  /** Purge provider secrets left from before device custody, once the device has sealed them. */
   app.post('/api/storage/credentials/:identityId/purge-secrets', async (req: Request, res: Response) => {
     try {
-      const pnIdentifier = req.params.identityId.startsWith('pn-')
-        ? req.params.identityId
-        : `pn-${req.params.identityId}`;
+      const pnIdentifier = ownerPn(req.params.identityId);
       if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
-
-      const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
-      if (!isDeviceCloudCustodyEnabled()) {
-        return res.status(409).json({
-          error: 'device_cloud_custody_disabled',
-          message: 'Set DEVICE_CLOUD_CUSTODY=1 before purging server-held cloud secrets.'
-        });
-      }
-
       const record = await storageCredentialsService.purgeCloudSecrets(pnIdentifier);
-      return res.json({
-        success: true,
-        purged: !!record,
-        identityId: pnIdentifier
-      });
+      return res.json({ success: true, purged: !!record, identityId: pnIdentifier });
     } catch (error: unknown) {
       return res.status(500).json({
         error: 'Failed to purge cloud secrets',
@@ -639,7 +277,4 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       });
     }
   });
-
-  void dropboxProxyService;
-  void onedriveProxyService;
 }

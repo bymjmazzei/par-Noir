@@ -3,24 +3,12 @@
  * Never ack without a successful write.
  */
 
-import type {
-  AwsS3Account,
-  AzureBlobAccount,
-  DropboxAccount,
-  GoogleDriveAccount,
-  OnedriveAccount,
-  StorageCredentialsEnvelope
-} from '@par-noir/user-owned-storage';
-import {
-  MESSAGES_DIR,
-  outboxRecordPath,
-  pnRootFolderName,
-  resolveSocialCloudProvider,
-  TABLE_PATHS
-} from '@par-noir/user-owned-storage';
+import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
+import { MESSAGES_DIR, outboxRecordPath, resolveSocialCloudProvider, TABLE_PATHS } from '@par-noir/user-owned-storage';
+import { createDeviceBlobStore } from './deviceBlobStore.js';
 import { deviceDriveCall } from './deviceDriveCall.js';
 import { ensureDriveChildFolder, findDriveChild, upsertDriveChildFile } from './driveChild.js';
-import { accountAccessToken, freshAccessTokenFromEnvelope } from './driveTokenResolver.js';
+import { freshAccessTokenFromEnvelope } from './driveTokenResolver.js';
 import type { MailboxJob } from './types.js';
 import type { OutboxRecord } from './outbox.js';
 
@@ -29,178 +17,33 @@ export interface DeviceCloudWriter {
   putText(key: string, text: string, contentType?: string): Promise<void>;
 }
 
-function rootPrefix(pnIdentifier: string): string {
-  return `${pnRootFolderName(pnIdentifier)}/`;
-}
-
-/**
- * Raw token read for the non-Google providers, which carry no shared freshness
- * rule. The Google path deliberately does not use this: it goes through
- * freshAccessTokenFromEnvelope so an expired token is caught before the write.
- */
-function providerAccessToken(
-  account: { access_token?: string; accessToken?: string }
-): string | null {
-  return accountAccessToken(account as Record<string, unknown>);
-}
-
-/** Build a minimal blob writer from sealed credentials (device custody). */
+/** Build a minimal text writer from sealed credentials (device custody). */
 export async function createDeviceCloudWriter(
   pnIdentifier: string,
   credentials: StorageCredentialsEnvelope
 ): Promise<DeviceCloudWriter> {
   const provider = resolveSocialCloudProvider(credentials);
-  const prefix = rootPrefix(pnIdentifier);
 
-  if (provider === 'dropbox') {
-    const account = (credentials.dropboxAccounts ?? [])[0] as DropboxAccount | undefined;
-    const token = account ? providerAccessToken(account) : null;
-    if (!token) throw new Error('Dropbox access token missing — reconnect under App folder grant');
-    return dropboxWriter(token, prefix);
+  if (provider !== 'google_drive') {
+    const store = createDeviceBlobStore(pnIdentifier, credentials, { provider, layoutRoot: '' });
+    return {
+      async getText(key) {
+        const bytes = await store.get(key);
+        return bytes ? new TextDecoder().decode(bytes) : null;
+      },
+      putText: (key, text, contentType = 'application/json') => store.put(key, text, contentType),
+    };
   }
 
-  if (provider === 'onedrive') {
-    const account = (credentials.onedriveAccounts ?? [])[0] as OnedriveAccount | undefined;
-    const token = account ? providerAccessToken(account) : null;
-    if (!token) throw new Error('OneDrive access token missing — reconnect under AppFolder grant');
-    return onedriveAppRootWriter(token, prefix);
-  }
-
-  if (provider === 'aws_s3') {
-    const account = (credentials.awsS3Accounts ?? [])[0] as AwsS3Account | undefined;
-    if (!account?.accessKeyId || !account.secretAccessKey || !account.bucket || !account.region) {
-      throw new Error('S3 credentials incomplete');
-    }
-    if (!account.prefix) {
-      throw new Error('S3 prefix required (par-noir-{pn}/)');
-    }
-    return s3Writer(account);
-  }
-
-  if (provider === 'azure_blob') {
-    const account = (credentials.azureBlobAccounts ?? [])[0] as AzureBlobAccount | undefined;
-    if (!account?.accountName || !account.container || !account.sasToken) {
-      throw new Error('Azure SAS credentials required (connection strings are not accepted)');
-    }
-    if (!account.prefix) {
-      throw new Error('Azure prefix required (par-noir-{pn}/)');
-    }
-    return azureWriter(account);
-  }
-
-  // google_drive (default / social). Freshness comes from the shared resolver:
-  // writing with an expired token fails at Google, and the local helper below
-  // has no way to tell a live token from a dead one.
+  // Freshness comes from the shared resolver: writing with an expired token
+  // fails at Google, and a raw read cannot tell a live token from a dead one.
   const token = freshAccessTokenFromEnvelope(credentials);
   if (!token) throw new Error('Google Drive access token missing or expired');
-  return googleDriveWriter(token, pnIdentifier, credentials);
-}
-
-function dropboxWriter(accessToken: string, rootPrefix: string): DeviceCloudWriter {
-  // App folder grant: API paths are relative to app sandbox root.
-  const full = (key: string) => {
-    const k = key.startsWith('/') ? key.slice(1) : key;
-    return `/${rootPrefix}${k}`.replace(/\/+/g, '/');
-  };
-  return {
-    async getText(key) {
-      const res = await fetch('https://content.dropboxapi.com/2/files/download', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Dropbox-API-Arg': JSON.stringify({ path: full(key) })
-        }
-      });
-      if (res.status === 409 || res.status === 404) return null;
-      if (!res.ok) throw new Error(`Dropbox get failed: ${res.status}`);
-      return res.text();
-    },
-    async putText(key, text, contentType = 'application/json') {
-      void contentType;
-      const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/octet-stream',
-          'Dropbox-API-Arg': JSON.stringify({ path: full(key), mode: 'overwrite' })
-        },
-        body: text
-      });
-      if (!res.ok) throw new Error(`Dropbox put failed: ${res.status}`);
-    }
-  };
-}
-
-function onedriveAppRootWriter(accessToken: string, rootPrefix: string): DeviceCloudWriter {
-  const itemPath = (key: string) => {
-    const k = key.startsWith('/') ? key.slice(1) : key;
-    const full = `${rootPrefix}${k}`.replace(/\/+/g, '/');
-    return `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${full}`;
-  };
-  return {
-    async getText(key) {
-      const res = await fetch(`${itemPath(key)}:/content`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`OneDrive get failed: ${res.status}`);
-      return res.text();
-    },
-    async putText(key, text, contentType = 'application/json') {
-      const res = await fetch(`${itemPath(key)}:/content`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': contentType
-        },
-        body: text
-      });
-      if (!res.ok) throw new Error(`OneDrive put failed: ${res.status}`);
-    }
-  };
-}
-
-function s3Writer(account: AwsS3Account): DeviceCloudWriter {
-  const prefix = account.prefix!.endsWith('/') ? account.prefix! : `${account.prefix!}/`;
-  // Minimal PUT/GET via AWS Signature V4 would be heavy; use fetch to S3 REST with
-  // query-string-less path and rely on browser CORS being configured for the bucket.
-  // For dashboard (often Electron/native or same tooling), use AWS SDK-free signed URL alternative:
-  // store via temporary signed approach — here we use fetch with AWS4 from subtle crypto is complex.
-  // Practical path: use fetch to a path-style URL with Authorization from a tiny signer.
-  return createAwsS3RestWriter(account, prefix);
-}
-
-function azureWriter(account: AzureBlobAccount): DeviceCloudWriter {
-  const prefix = account.prefix!.endsWith('/') ? account.prefix! : `${account.prefix!}/`;
-  const sas = account.sasToken!.replace(/^\?/, '');
-  const base = `https://${account.accountName}.blob.core.windows.net/${account.container}`;
-  return {
-    async getText(key) {
-      const res = await fetch(`${base}/${prefix}${key}?${sas}`);
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`Azure get failed: ${res.status}`);
-      return res.text();
-    },
-    async putText(key, text, contentType = 'application/json') {
-      const res = await fetch(`${base}/${prefix}${key}?${sas}`, {
-        method: 'PUT',
-        headers: {
-          'x-ms-blob-type': 'BlockBlob',
-          'Content-Type': contentType
-        },
-        body: text
-      });
-      if (!res.ok) throw new Error(`Azure put failed: ${res.status}`);
-    }
-  };
+  return googleDriveWriter(token, credentials);
 }
 
 /** Google Drive: store as app-created files under drive.file (JSONL / JSON). */
-function googleDriveWriter(
-  accessToken: string,
-  pnIdentifier: string,
-  credentials: StorageCredentialsEnvelope
-): DeviceCloudWriter {
+function googleDriveWriter(accessToken: string, credentials: StorageCredentialsEnvelope): DeviceCloudWriter {
   const folderId =
     credentials.driveFolderId ||
     credentials.cachedLayout?.nodeIds?.pnFolderId ||
@@ -217,8 +60,6 @@ function googleDriveWriter(
       parts.length > 1 ? await ensureDriveChildFolder(accessToken, messagesId, parts[0]!) : messagesId;
     return { parent, name: parts[parts.length - 1]! };
   }
-
-  void pnIdentifier;
 
   return {
     async getText(key) {
@@ -237,102 +78,6 @@ function googleDriveWriter(
     async putText(key, text) {
       const { parent, name } = await resolveKey(key);
       await upsertDriveChildFile(accessToken, parent, name, text, 'text/plain');
-    }
-  };
-}
-
-/**
- * Minimal S3 REST writer using AWS Signature Version 4 (browser-safe WebCrypto).
- */
-function createAwsS3RestWriter(account: AwsS3Account, prefix: string): DeviceCloudWriter {
-  const encoder = new TextEncoder();
-
-  async function hmac(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      key instanceof ArrayBuffer ? key : key,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    return crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(data));
-  }
-
-  async function sha256Hex(data: string): Promise<string> {
-    const hash = await crypto.subtle.digest('SHA-256', encoder.encode(data));
-    return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  async function sign(
-    method: string,
-    objectKey: string,
-    body: string,
-    contentType: string
-  ): Promise<{ url: string; headers: Record<string, string> }> {
-    const service = 's3';
-    const region = account.region;
-    const host = `${account.bucket}.s3.${region}.amazonaws.com`;
-    const path = `/${prefix}${objectKey}`.replace(/\/+/g, '/');
-    const now = new Date();
-    const amzDate =
-      now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
-    const dateStamp = amzDate.slice(0, 8);
-    const payloadHash = await sha256Hex(body);
-    const canonicalHeaders =
-      `content-type:${contentType}\n` +
-      `host:${host}\n` +
-      `x-amz-content-sha256:${payloadHash}\n` +
-      `x-amz-date:${amzDate}\n`;
-    const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date';
-    const canonicalRequest = [
-      method,
-      path,
-      '',
-      canonicalHeaders,
-      signedHeaders,
-      payloadHash
-    ].join('\n');
-    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
-    const stringToSign = [
-      'AWS4-HMAC-SHA256',
-      amzDate,
-      credentialScope,
-      await sha256Hex(canonicalRequest)
-    ].join('\n');
-    const kDate = await hmac(encoder.encode(`AWS4${account.secretAccessKey}`), dateStamp);
-    const kRegion = await hmac(kDate, region);
-    const kService = await hmac(kRegion, service);
-    const kSigning = await hmac(kService, 'aws4_request');
-    const signature = [...new Uint8Array(await hmac(kSigning, stringToSign))]
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-    return {
-      url: `https://${host}${path}`,
-      headers: {
-        Authorization: `AWS4-HMAC-SHA256 Credential=${account.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
-        'Content-Type': contentType,
-        'x-amz-content-sha256': payloadHash,
-        'x-amz-date': amzDate
-      }
-    };
-  }
-
-  return {
-    async getText(key) {
-      const signed = await sign('GET', key, '', 'application/octet-stream');
-      const res = await fetch(signed.url, { headers: signed.headers });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`S3 get failed: ${res.status}`);
-      return res.text();
-    },
-    async putText(key, text, contentType = 'application/json') {
-      const signed = await sign('PUT', key, text, contentType);
-      const res = await fetch(signed.url, {
-        method: 'PUT',
-        headers: signed.headers,
-        body: text
-      });
-      if (!res.ok) throw new Error(`S3 put failed: ${res.status}`);
     }
   };
 }

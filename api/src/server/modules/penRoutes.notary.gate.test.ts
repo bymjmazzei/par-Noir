@@ -38,10 +38,7 @@ describe('pen notary first-party gate', () => {
   function buildApp() {
     const app = express();
     app.use(express.json());
-    setupPenRoutes(app, {
-      extractAccountId: () => undefined,
-      getMetadataFolder: async () => null
-    });
+    setupPenRoutes(app);
     return app;
   }
 

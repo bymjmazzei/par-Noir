@@ -133,7 +133,7 @@ export function SocialCloudMigrationWizard({
         authToken,
         'PUT',
         `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/social-cloud`,
-        { provider: targetProvider, accountId: targetAccountId, migrationJobId: id }
+        { provider: targetProvider, accountId: targetAccountId, migrated: true }
       );
       if (!socialRes.ok) {
         const errData = await socialRes.json();

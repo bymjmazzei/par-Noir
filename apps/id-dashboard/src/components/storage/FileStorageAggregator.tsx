@@ -246,7 +246,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             backendId,
             new PortableBlobBackend(
               cloudPnIdentifier,
-              ownerToken,
               acct.provider,
               acct.accountId
             )

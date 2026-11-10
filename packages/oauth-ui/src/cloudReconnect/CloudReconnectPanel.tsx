@@ -3,6 +3,7 @@ import {
   buildAccountId,
   type StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
+import { providerAccountLayout } from '@par-noir/device-cloud-credentials';
 import {
   isCloudProviderId,
   isOAuthCloudProvider,
@@ -175,7 +176,7 @@ export function CloudReconnectPanel({
         authToken,
         'PUT',
         `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider`,
-        { provider: 'aws_s3', awsS3 }
+        { provider: 'aws_s3', awsS3: providerAccountLayout(awsS3) }
       );
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { message?: string };
@@ -204,7 +205,7 @@ export function CloudReconnectPanel({
         authToken,
         'PUT',
         `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider`,
-        { provider: 'azure_blob', azureBlob }
+        { provider: 'azure_blob', azureBlob: providerAccountLayout(azureBlob) }
       );
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { message?: string };
@@ -239,7 +240,7 @@ export function CloudReconnectPanel({
         authToken,
         'PUT',
         `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider`,
-        { provider: 'ftp', ftp }
+        { provider: 'ftp', ftp: providerAccountLayout(ftp) }
       );
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { message?: string };

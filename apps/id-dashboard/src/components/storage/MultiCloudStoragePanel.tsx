@@ -248,16 +248,20 @@ export function MultiCloudStoragePanel({
     setLoading(true);
     setError(null);
     try {
-      const res = await ownerFetch(
-        authToken,
-        'POST',
-        `/api/storage/test-connection/${encodeURIComponent(pnIdentifier)}`,
-        undefined,
-        { pnIdentifier }
+      const { deviceBlobStoreForSession, getCloudAccessTokenFromSession } = await import(
+        '@par-noir/device-cloud-credentials'
       );
-      const data = (await res.json()) as { ok?: boolean; message?: string };
-      if (!res.ok || !data.ok) {
-        throw new Error(data.message || 'Connection test failed');
+      if (!socialCloudProvider || socialCloudProvider === 'google_drive') {
+        if (!getCloudAccessTokenFromSession(pnIdentifier)) {
+          throw new Error('Google Drive is not unlocked on this device. Reconnect Drive.');
+        }
+      } else {
+        const store = deviceBlobStoreForSession(pnIdentifier, {
+          provider: socialCloudProvider as import('@par-noir/user-owned-storage').StorageProviderId
+        });
+        const probe = '.connection-probe';
+        await store.put(probe, JSON.stringify({ ts: new Date().toISOString() }), 'application/json');
+        await store.delete(probe);
       }
       setMessage('Connection test succeeded.');
     } catch (e) {
@@ -320,7 +324,7 @@ export function MultiCloudStoragePanel({
     setError(null);
     try {
       let body: Record<string, unknown> = { provider: selected };
-      let localEnvelope: Record<string, unknown> | null = null;
+      let localEnvelope: Record<string, unknown>;
       if (selected === 'aws_s3') {
         const accountId = buildAccountId('aws_s3', pnIdentifier, s3Form.bucket);
         const prefix =
@@ -357,36 +361,35 @@ export function MultiCloudStoragePanel({
       } else {
         throw new Error('Use OAuth for this provider');
       }
-      try {
-        if (sessionId && localEnvelope) {
-          const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
-          const {
-            persistCloudCredentials,
-            resolveCloudPersistMode,
-            publishCloudDriveReady
-          } = await import('@par-noir/device-cloud-credentials');
-          const creds = SecureCredentialManager.getCredentials(sessionId);
-          if (creds) {
-            await persistCloudCredentials({
-              identityId: pnIdentifier,
-              credentials: localEnvelope as import('@par-noir/user-owned-storage').StorageCredentialsEnvelope,
-              session: {
-                sessionId,
-                key1: creds.key1,
-                key2: creds.key2
-              },
-              mode: resolveCloudPersistMode({ hasKeyedDevices: false })
-            });
-            // Drive READY only if a Google access token can be minted (non-Google connect alone is not Drive-ready).
-            await publishCloudDriveReady({
-              authToken,
-              pnIdentifier,
-              apiEndpoint: API_ENDPOINT
-            });
-          }
-        }
-      } catch {
-        /* device persist best-effort */
+      // Keys live only in this device's vault; the API gets the layout shell.
+      if (!sessionId) throw new Error('Unlock on this device before connecting storage.');
+      const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
+      const {
+        persistCloudCredentials,
+        providerAccountLayout,
+        resolveCloudPersistMode,
+        publishCloudDriveReady
+      } = await import('@par-noir/device-cloud-credentials');
+      const creds = SecureCredentialManager.getCredentials(sessionId);
+      if (!creds) throw new Error('Unlock on this device before connecting storage.');
+      await persistCloudCredentials({
+        identityId: pnIdentifier,
+        credentials: localEnvelope as import('@par-noir/user-owned-storage').StorageCredentialsEnvelope,
+        session: {
+          sessionId,
+          key1: creds.key1,
+          key2: creds.key2
+        },
+        mode: resolveCloudPersistMode({ hasKeyedDevices: false })
+      });
+      // Drive READY only if a Google access token can be minted (non-Google connect alone is not Drive-ready).
+      await publishCloudDriveReady({
+        authToken,
+        pnIdentifier,
+        apiEndpoint: API_ENDPOINT
+      }).catch(() => undefined);
+      for (const key of ['awsS3', 'azureBlob', 'ftp'] as const) {
+        if (body[key]) body[key] = providerAccountLayout(body[key] as object);
       }
       const res = await ownerFetch(
         authToken,

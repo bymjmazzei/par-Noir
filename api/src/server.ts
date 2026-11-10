@@ -1039,10 +1039,7 @@ class ProductionServer {
       emitRealtime: (pnIdentifier, event, payload) => this.emitRealtime(pnIdentifier, event, payload),
     });
 
-    setupPenRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-    });
+    setupPenRoutes(this.app);
 
     setupConnectionRoutes(this.app);
 

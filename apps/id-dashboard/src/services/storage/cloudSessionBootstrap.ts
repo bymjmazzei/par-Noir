@@ -206,7 +206,7 @@ async function registerBackendsFromEnvelope(
         if (!aggregator.getBackend(backendId)) {
           aggregator.registerBackend(
             backendId,
-            new PortableBlobBackend(pnIdentifier, apiToken, acct.provider, acct.accountId)
+            new PortableBlobBackend(pnIdentifier, acct.provider, acct.accountId)
           );
         }
       }

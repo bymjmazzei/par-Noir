@@ -68,6 +68,11 @@ function stripSecretsFromRecord(record: Record<string, unknown>): Record<string,
   return out;
 }
 
+/** One provider account with its secrets removed, for the API's layout shell. */
+export function providerAccountLayout<T extends object>(account: T): Partial<T> {
+  return stripSecretsFromRecord(account as Record<string, unknown>) as Partial<T>;
+}
+
 /** Layout-only credentials body for PUT /api/storage/credentials (no provider secrets). */
 export function buildLayoutCredentialsForPut(
   envelope: StorageCredentialsEnvelope

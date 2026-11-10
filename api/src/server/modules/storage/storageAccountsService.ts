@@ -23,10 +23,11 @@ function accountLabel(provider: string, index: number): string {
   return `${names[provider] ?? provider} ${index + 1}`;
 }
 
-export async function listStorageAccounts(
+/** Accounts from the stored layout shell. The device fills email/name at connect time. */
+export function listStorageAccounts(
   pnIdentifier: string,
   credentials: StorageCredentialsEnvelope
-): Promise<StorageAccountSummary[]> {
+): StorageAccountSummary[] {
   const socialCloud = resolveSocialCloudProvider(credentials);
   const socialAccountId = credentials.socialCloudAccountId;
   const accounts: StorageAccountSummary[] = [];
@@ -42,24 +43,8 @@ export async function listStorageAccounts(
     const accountId = String(
       account.accountId ?? account.backendId ?? account.keyPrefix ?? `${pnIdentifier}_${i}`
     );
-    let email = account.email as string | undefined;
-    let displayName = (account.email as string) || (account.keyPrefix as string);
-
-    const accessToken = (account.access_token ?? account.accessToken) as string | undefined;
-    if (accessToken) {
-      try {
-        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-          headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        if (userInfoResponse.ok) {
-          const userInfo = (await userInfoResponse.json()) as { email?: string; name?: string };
-          email = userInfo.email;
-          displayName = userInfo.name || userInfo.email || accountLabel('google_drive', i);
-        }
-      } catch {
-        // fall through to stored fields
-      }
-    }
+    const email = account.email as string | undefined;
+    const displayName = (account.name as string) || email || (account.keyPrefix as string);
 
     const isSocial =
       socialCloud === 'google_drive' &&

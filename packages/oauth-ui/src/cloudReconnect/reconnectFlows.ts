@@ -240,13 +240,6 @@ export async function reconnectOAuthProvider(
     const err = (await putRes.json().catch(() => ({}))) as { message?: string };
     throw new Error(err.message || 'Failed to save storage layout');
   }
-  await fetch(`${apiEndpoint.replace(/\/$/, '')}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/portable-init`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-      'Content-Type': 'application/json'
-    }
-  });
   if (provider === 'dropbox') {
     return {
       socialCloudProvider: 'dropbox',

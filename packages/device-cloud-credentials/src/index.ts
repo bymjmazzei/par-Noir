@@ -52,6 +52,13 @@ export {
   SOCIAL_JOB_TYPES_APPLIED_VIA_API
 } from './siloMaterialize.js';
 export {
+  createDeviceBlobStore,
+  deviceBlobStoreForSession,
+  DeviceCloudLockedError,
+  type DeviceBlobStore,
+  type DeviceBlobProvider
+} from './deviceBlobStore.js';
+export {
   createApiSocialApplier,
   createApiOnlyApplyJob,
   type ApiSocialApplierOptions
@@ -173,6 +180,7 @@ export {
   SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT,
   CloudRegistrationIncomplete,
   buildLayoutCredentialsForPut,
+  providerAccountLayout,
   storageAccountsHasLayout,
   ensureServerCloudRegistration,
   repairServerCloudRegistrationIfNeeded,

@@ -1,5 +1,6 @@
 import { encryptedMediaPath, type ContentClass } from '@par-noir/user-owned-storage/pn-layout';
-import { ownerFetch, ownerGet } from '../ownerApiService';
+import type { StorageProviderId } from '@par-noir/user-owned-storage';
+import { deviceBlobStoreForSession } from '@par-noir/device-cloud-credentials';
 import { AbstractStorageBackend, type StorageFile, type StorageQuota, type StorageUserInfo } from './StorageBackend';
 
 export class PortableBlobBackend extends AbstractStorageBackend {
@@ -9,7 +10,6 @@ export class PortableBlobBackend extends AbstractStorageBackend {
 
   constructor(
     private pnIdentifier: string,
-    private authToken: string,
     provider: string,
     accountId: string
   ) {
@@ -34,22 +34,22 @@ export class PortableBlobBackend extends AbstractStorageBackend {
     return '';
   }
 
+  /** Files live in the owner's cloud; the device reads and writes them directly. */
+  private store() {
+    return deviceBlobStoreForSession(this.pnIdentifier, {
+      provider: this.provider as StorageProviderId,
+      accountId: this.accountId
+    });
+  }
+
   async listFiles(_pnIdentifier?: string): Promise<StorageFile[]> {
-    const res = await ownerFetch(
-      this.authToken,
-      'GET',
-      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}?provider=${encodeURIComponent(this.provider)}&accountId=${encodeURIComponent(this.accountId)}&prefix=_metadata/`,
-      undefined,
-      { pnIdentifier: this.pnIdentifier }
-    );
-    if (!res.ok) return [];
-    const data = (await res.json()) as { files?: Array<{ key: string; size?: number }> };
-    return (data.files ?? []).map((f) => ({
+    const entries = await this.store().list('_metadata/');
+    return entries.map((f) => ({
       id: f.key,
       name: f.key.split('/').pop() || f.key,
       mimeType: 'application/octet-stream',
       size: f.size ?? 0,
-      modifiedTime: new Date().toISOString()
+      modifiedTime: f.lastModified || new Date().toISOString()
     }));
   }
 
@@ -64,22 +64,11 @@ export class PortableBlobBackend extends AbstractStorageBackend {
         ? metadata.contentClass as ContentClass
         : 'media';
     const key = encryptedMediaPath(contentClass, fileId);
-    const buf = await file.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    const res = await ownerFetch(
-      this.authToken,
-      'POST',
-      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}/upload`,
-      {
-        provider: this.provider,
-        accountId: this.accountId,
-        key,
-        fileData: base64,
-        contentType: file.type || 'application/octet-stream'
-      },
-      { pnIdentifier: this.pnIdentifier }
+    await this.store().put(
+      key,
+      new Uint8Array(await file.arrayBuffer()),
+      file.type || 'application/octet-stream'
     );
-    if (!res.ok) throw new Error('Portable upload failed');
     return {
       id: fileId,
       name: file.name,
@@ -92,26 +81,13 @@ export class PortableBlobBackend extends AbstractStorageBackend {
   }
 
   async downloadFile(fileKey: string): Promise<Blob> {
-    const path =
-      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}/download` +
-      `?provider=${encodeURIComponent(this.provider)}` +
-      `&accountId=${encodeURIComponent(this.accountId)}` +
-      `&key=${encodeURIComponent(fileKey)}` +
-      `&download=true`;
-    const res = await ownerGet(this.authToken, path, { pnIdentifier: this.pnIdentifier });
-    if (!res.ok) throw new Error('Portable download failed');
-    return res.blob();
+    const bytes = await this.store().get(fileKey);
+    if (!bytes) throw new Error('File not found in your cloud');
+    return new Blob([bytes as BlobPart]);
   }
 
   async deleteFile(fileKey: string): Promise<void> {
-    const res = await ownerFetch(
-      this.authToken,
-      'DELETE',
-      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}?provider=${encodeURIComponent(this.provider)}&accountId=${encodeURIComponent(this.accountId)}&key=${encodeURIComponent(fileKey)}`,
-      undefined,
-      { pnIdentifier: this.pnIdentifier }
-    );
-    if (!res.ok) throw new Error('Portable delete failed');
+    await this.store().delete(fileKey);
   }
 
   async getQuota(): Promise<StorageQuota | null> {

@@ -1,5 +1,5 @@
 /**
- * Gate: apply-inbound rejects forged promote signatures.
+ * Gate: apply-inbound records the device's cloud result and never opens Drive.
  */
 
 jest.mock('../../utils/logger', () => ({
@@ -41,36 +41,6 @@ jest.mock('./deviceCapabilityService', () => ({
   gateFirstPartyOwnerRoute: async () => true
 }));
 
-jest.mock('./ownerDriveToken', () => ({
-  resolveOwnerDriveToken: async () => ({
-    token: { access_token: 'ga' },
-    accountId: 'acc'
-  }),
-  respondDriveTokenError: () => false
-}));
-
-jest.mock('./storageCredentialsService', () => ({
-  storageCredentialsService: {
-    getCredentials: async () => ({
-      credentials: { googleDriveAccounts: [{ id: 'acc' }] }
-    })
-  }
-}));
-
-jest.mock('googleapis', () => ({
-  google: {
-    auth: { OAuth2: class { setCredentials() {} } },
-    drive: () => ({
-      files: {
-        list: async () => ({ data: { files: [] } }),
-        create: async () => ({ data: { id: 'fid' } }),
-        update: async () => ({ data: { id: 'fid' } }),
-        get: async () => ({ data: Buffer.from('') })
-      }
-    })
-  }
-}));
-
 import express from 'express';
 import request from 'supertest';
 import { setupPenRoutes } from './penRoutes';
@@ -88,10 +58,7 @@ describe('pen apply-inbound signature gate', () => {
   function buildApp() {
     const app = express();
     app.use(express.json());
-    setupPenRoutes(app, {
-      extractAccountId: () => 'acc',
-      getMetadataFolder: async () => ({ pnFolderId: 'pnf', metadataFolderId: 'meta' })
-    });
+    setupPenRoutes(app);
     return app;
   }
 

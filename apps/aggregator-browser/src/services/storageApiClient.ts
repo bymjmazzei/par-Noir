@@ -4,6 +4,7 @@ import { accountsCacheService } from './accountsCacheService';
 import { apiGet, ownerFetch, ownerGet } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
 import {
+  deviceBlobStoreForSession,
   ensureOwnerBlobFolders,
   SERVER_CLOUD_REGISTRATION_COMPLETE_EVENT,
 } from '@par-noir/device-cloud-credentials';
@@ -43,115 +44,24 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
-export async function uploadBlob(
-  authToken: string,
-  pnIdentifier: string,
-  provider: StorageProviderId,
-  key: string,
-  fileData: ArrayBuffer | Uint8Array,
-  opts?: { accountId?: string; contentType?: string }
-): Promise<void> {
-  const bytes = fileData instanceof ArrayBuffer ? new Uint8Array(fileData) : fileData;
-  const base64 = bytesToBase64(bytes);
-  const res = await ownerFetch(
-    'POST',
-    `/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/upload`,
-    {
-      provider,
-      accountId: opts?.accountId,
-      key,
-      fileData: base64,
-      contentType: opts?.contentType || 'application/octet-stream'
-    },
-    { authToken, pnIdentifier }
-  );
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { message?: string };
-    throw new Error(err.message || 'Blob upload failed');
-  }
+/** Non-Google files live in the owner's cloud and are read on the device, never via the API. */
+function blobStore(pnIdentifier: string, provider: StorageProviderId, accountId?: string) {
+  return deviceBlobStoreForSession(pnIdentifier, { provider, accountId });
 }
 
-export async function downloadBlob(
-  authToken: string,
-  pnIdentifier: string,
-  provider: StorageProviderId,
-  key: string,
-  accountId?: string
-): Promise<Blob> {
-  const q = new URLSearchParams({
-    provider,
-    key,
-    download: 'true',
-    ...(accountId ? { accountId } : {})
-  });
-  const res = await ownerGet(
-    `/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/download?${q}`,
-    { authToken, pnIdentifier }
-  );
-  if (!res.ok) throw new Error('Blob download failed');
-  return res.blob();
+/** Google Drive file URL; ownerGet answers it on the device. */
+function driveFileUrl(backendFileId: string, opts?: ResolveFileUrlOptions): string {
+  const q = new URLSearchParams();
+  q.set(opts?.thumbnail ? 'thumbnail' : 'download', 'true');
+  if (opts?.accountId) q.set('accountId', opts.accountId);
+  if (opts?.ownerPnIdentifier) q.set('ownerPnIdentifier', opts.ownerPnIdentifier);
+  return `${API_ENDPOINT}/api/drive/files/${encodeURIComponent(backendFileId)}?${q}`;
 }
 
 export interface ResolveFileUrlOptions {
   thumbnail?: boolean;
   accountId?: string;
   ownerPnIdentifier?: string;
-}
-
-export function resolveFileUrl(
-  pnIdentifier: string,
-  backend: string,
-  backendFileId: string,
-  accountId?: string,
-  opts?: Omit<ResolveFileUrlOptions, 'accountId'>
-): string {
-  const provider = normalizeBackend(backend);
-  const endpoint = API_ENDPOINT;
-  const resolvedAccountId = accountId;
-
-  if (provider === 'google_drive') {
-    const q = new URLSearchParams();
-    if (opts?.thumbnail) {
-      q.set('thumbnail', 'true');
-    } else {
-      q.set('download', 'true');
-    }
-    if (resolvedAccountId) q.set('accountId', resolvedAccountId);
-    if (opts?.ownerPnIdentifier) q.set('ownerPnIdentifier', opts.ownerPnIdentifier);
-    return `${endpoint}/api/drive/files/${encodeURIComponent(backendFileId)}?${q}`;
-  }
-
-  const q = new URLSearchParams({
-    provider,
-    key: backendFileId,
-    download: 'true',
-    ...(resolvedAccountId ? { accountId: resolvedAccountId } : {})
-  });
-  return `${endpoint}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/download?${q}`;
-}
-
-export function resolveThumbnailUrl(
-  pnIdentifier: string,
-  backend: string,
-  backendFileId: string,
-  accountId?: string
-): string {
-  const provider = normalizeBackend(backend);
-  if (provider === 'google_drive') {
-    return resolveFileUrl(pnIdentifier, backend, backendFileId, accountId, { thumbnail: true });
-  }
-  return resolveFileUrl(pnIdentifier, backend, backendFileId, accountId);
-}
-
-export async function fetchStorageFile(
-  authToken: string,
-  pnIdentifier: string,
-  backend: string,
-  backendFileId: string,
-  opts?: ResolveFileUrlOptions
-): Promise<Response> {
-  const url = resolveFileUrl(pnIdentifier, backend, backendFileId, opts?.accountId, opts);
-  return ownerGet(url, { authToken, pnIdentifier });
 }
 
 export async function downloadStorageBlob(
@@ -163,17 +73,13 @@ export async function downloadStorageBlob(
 ): Promise<Blob> {
   const provider = normalizeBackend(backend);
   if (provider === 'google_drive') {
-    const res = await fetchStorageFile(authToken, pnIdentifier, backend, backendFileId, opts);
+    const res = await ownerGet(driveFileUrl(backendFileId, opts), { authToken, pnIdentifier });
     if (!res.ok) throw new Error('File download failed');
     return res.blob();
   }
-  return downloadBlob(
-    authToken,
-    pnIdentifier,
-    provider,
-    backendFileId,
-    opts?.accountId
-  );
+  const bytes = await blobStore(pnIdentifier, provider, opts?.accountId).get(backendFileId);
+  if (!bytes) throw new Error('File not found in your cloud');
+  return new Blob([bytes as BlobPart]);
 }
 
 export interface UploadDriveFileOptions {
@@ -253,10 +159,11 @@ export async function uploadStorageFile(
       ? Uint8Array.from(atob(opts.fileData), (c) => c.charCodeAt(0))
       : opts.fileData;
   const key = opts.key ?? opts.fileName;
-  await uploadBlob(authToken, pnIdentifier, provider, key, bytes, {
-    accountId: opts.accountId,
-    contentType: opts.mimeType || 'application/octet-stream'
-  });
+  await blobStore(pnIdentifier, provider, opts.accountId).put(
+    key,
+    bytes,
+    opts.mimeType || 'application/octet-stream'
+  );
   return { id: key, backend: provider };
 }
 
@@ -280,18 +187,7 @@ export async function deleteStorageFile(
     return;
   }
 
-  const q = new URLSearchParams({
-    provider,
-    key: backendFileId,
-    ...(accountId ? { accountId } : {})
-  });
-  const res = await ownerFetch(
-    'DELETE',
-    `/api/storage/blobs/${encodeURIComponent(pnIdentifier)}?${q}`,
-    undefined,
-    { authToken, pnIdentifier }
-  );
-  if (!res.ok) throw new Error('Blob delete failed');
+  await blobStore(pnIdentifier, provider, accountId).delete(backendFileId);
 }
 
 export interface ListedStorageFile {
@@ -377,23 +273,8 @@ export async function listStorageFiles(
     return listed;
   }
 
-  const q = new URLSearchParams({
-    provider: backend,
-    ...(prefix ? { prefix } : {}),
-    ...(accountId ? { accountId } : {})
-  });
-  const res = await ownerGet(
-    `/api/storage/blobs/${encodeURIComponent(pnIdentifier)}?${q}`,
-    { authToken, pnIdentifier }
-  );
-  if (!res.ok) {
-    const err = await res.text().catch(() => 'Unknown error');
-    throw new Error(`Failed to list blobs: ${err}`);
-  }
-  const data = await res.json();
-  return (data.files || []).map((entry: { key: string; size: number; lastModified?: string }) =>
-    mapBlobEntry(entry, accountId || '')
-  );
+  const entries = await blobStore(pnIdentifier, backend, accountId).list(prefix);
+  return entries.map((entry) => mapBlobEntry(entry, accountId || ''));
 }
 
 export type StorageAccountsResult = {
