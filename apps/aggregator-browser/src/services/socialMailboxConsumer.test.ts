@@ -2,7 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   waitForCloudCredentialsReady: vi.fn(),
-  sessionDriveFor: vi.fn(),
+  sessionSocialFor: vi.fn(),
   fetchMailboxPending: vi.fn(),
   createApiSocialApplier: vi.fn(),
 }));
@@ -27,7 +27,7 @@ vi.mock('./pnOAuthService', () => ({
 }));
 vi.mock('./dmIdentitySession', () => ({ getDmIdentity: () => ({ mlKemSecretKey: 'sk' }) }));
 vi.mock('./deviceService', () => ({ fetchDeviceRegistry: vi.fn(async () => null) }));
-vi.mock('./sessionDrive', () => ({ sessionDriveFor: (...args: unknown[]) => h.sessionDriveFor(...args) }));
+vi.mock('./sessionSocial', () => ({ sessionSocialFor: (...args: unknown[]) => h.sessionSocialFor(...args) }));
 vi.mock('./inboundMailboxPreview', () => ({ tryBuildInboundPreview: vi.fn() }));
 vi.mock('./messageService', () => ({
   notifyMessagingInboxRefresh: vi.fn(),
@@ -38,7 +38,7 @@ import { drainSocialMailbox, requestHotDrain } from './socialMailboxConsumer';
 
 beforeEach(() => {
   h.waitForCloudCredentialsReady.mockReset().mockResolvedValue(true);
-  h.sessionDriveFor.mockReset().mockResolvedValue({ accessToken: 'cloud-at', index: {} });
+  h.sessionSocialFor.mockReset().mockResolvedValue({ kind: 'google_drive', accessToken: 'cloud-at', index: {} });
   h.fetchMailboxPending.mockReset().mockResolvedValue([]);
   h.createApiSocialApplier.mockReset().mockReturnValue(async () => true);
 });
@@ -52,7 +52,7 @@ test('does not fetch or apply mailbox jobs until cloud credentials are ready', a
 });
 
 test('defers the drain when the Drive layout cannot load, leaving jobs pending', async () => {
-  h.sessionDriveFor.mockRejectedValue(new Error('cloud_on_device'));
+  h.sessionSocialFor.mockRejectedValue(new Error('cloud_on_device'));
   const result = await drainSocialMailbox();
   expect(result.errors).toEqual(['drive: cloud_on_device']);
   expect(h.fetchMailboxPending).not.toHaveBeenCalled();

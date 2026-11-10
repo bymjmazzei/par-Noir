@@ -24,6 +24,8 @@ import {
 import { requestHotDrain } from '../services/socialMailboxConsumer';
 import { ownerFetch } from '../services/ownerApiFetch';
 import { sessionDriveFor } from '../services/sessionDrive';
+import { sessionTablesFor } from '../services/sessionSocial';
+import { listTablesFollowers, socialReceipt, tablesFollowing } from '@par-noir/device-cloud-credentials';
 
 interface Follower {
   followerPnIdentifier: string;
@@ -66,6 +68,7 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
     setError(null);
 
     try {
+      const tables = activeTab === 'connections' ? null : await sessionTablesFor(userPnIdentifier);
       if (activeTab === 'connections') {
         // Pending connection requests may still be mailbox jobs — drain in background.
         void requestHotDrain().catch(() => undefined);
@@ -84,6 +87,10 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
         pendingData.received.forEach(c => allUserPnIdentifiers.add(c.userPnIdentifier));
         
         loadDisplayNames(Array.from(allUserPnIdentifiers));
+      } else if (tables && activeTab === 'followers') {
+        setFollowers(await listTablesFollowers(tables));
+      } else if (tables && activeTab === 'following') {
+        setFollowing(await tablesFollowing(tables).list());
       } else if (activeTab === 'followers') {
         const { listDeviceFollowers } = await import('@par-noir/device-cloud-credentials');
         const drive = await sessionDriveFor(userPnIdentifier);
@@ -250,6 +257,19 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
 
   const handleUnfollow = async (targetType: 'user' | 'feed', targetPnIdentifier: string) => {
     try {
+      const tables = await sessionTablesFor(userPnIdentifier);
+      if (tables) {
+        await tablesFollowing(tables).remove(targetPnIdentifier);
+        const response = await ownerFetch('POST', '/api/connections/unfollow', {
+          userPnIdentifier,
+          peerPnIdentifier: targetPnIdentifier,
+          targetType,
+          targetId: targetPnIdentifier,
+          deviceCloudResult: socialReceipt(tables),
+        });
+        if (response.ok) loadData();
+        return;
+      }
       const { removeDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
       const drive = await sessionDriveFor(userPnIdentifier);
       const sheetId = drive.index.sheetIds.following;

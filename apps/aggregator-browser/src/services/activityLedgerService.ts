@@ -4,6 +4,7 @@
 
 import { listDeviceActivities } from '@par-noir/device-cloud-credentials';
 import { sessionDriveFor } from './sessionDrive';
+import { sessionTablesFor } from './sessionSocial';
 
 export interface ActivityEntry {
   activity_id: string;
@@ -36,6 +37,9 @@ export class ActivityLedgerService {
     }
   ): Promise<ActivityListResponse> {
     const pn = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    if (await sessionTablesFor(pn)) {
+      return { activities: [], total: 0, limit: options?.limit || 50, offset: options?.offset || 0 };
+    }
     const drive = await sessionDriveFor(pn);
     const sheetId = drive.index.sheetIds.activity_ledger;
     const rows = sheetId ? await listDeviceActivities(drive.accessToken, sheetId) : [];

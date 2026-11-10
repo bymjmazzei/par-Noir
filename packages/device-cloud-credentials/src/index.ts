@@ -99,6 +99,14 @@ export {
 export { openSocialCloudMove, type SocialCloudMove } from './social/socialCloudMove.js';
 export { moveOwnedFilesOnDevice, type FileMoveResult } from './social/moveOwnedFiles.js';
 export {
+  listTablesFollowers,
+  tablesEngagement,
+  tablesFollowing,
+  tablesNotifications,
+  tablesOwnedAssets,
+  tablesPreferences,
+} from './social/productTables.js';
+export {
   deviceFileIndex,
   indexEntryFromSheetRow,
   type DeviceFileIndex,

@@ -7,6 +7,7 @@ import {
   ensureDeviceOwnedAssetsSheet,
   listDeviceOwnedAssets,
   setSessionDriveIndex,
+  tablesOwnedAssets,
   upsertDeviceOwnedAsset
 } from '@par-noir/device-cloud-credentials';
 import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
@@ -23,6 +24,7 @@ import {
 import { apiFetch, ownerFetch } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
 import { sessionDriveFor } from './sessionDrive';
+import { sessionTablesFor } from './sessionSocial';
 
 export const PERSONAL_FEED_CHANGE_EVENT = 'pn_personal_feed_change';
 
@@ -135,6 +137,26 @@ export async function ensurePersonalFeed(): Promise<PersonalFeedInfo | null> {
 
 /** Device writes the Drive owned-asset row; the API only keeps the Postgres cache. */
 async function writeOwnedAssetRow(feed: PersonalFeedInfo): Promise<void> {
+  const tables = await sessionTablesFor(feed.rootPn);
+  if (tables) {
+    const assets = tablesOwnedAssets(tables);
+    const existing = await assets.get(feed.assetId);
+    if (existing?.status === 'active' && existing.subjectPnIdentifier === feed.subPnIdentifier) return;
+    const now = new Date().toISOString();
+    await assets.upsert({
+      id: feed.assetId,
+      rootPnIdentifier: feed.rootPn,
+      subjectPnIdentifier: feed.subPnIdentifier,
+      kind: 'feed',
+      status: 'active',
+      metadata: { feedId: feed.feedId, tier: 'personal', label: feed.feedName },
+      apiKeyId: null,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      revokedAt: null
+    });
+    return;
+  }
   const drive = await sessionDriveFor(feed.rootPn);
   let spreadsheetId = drive.index.sheetIds['owned-assets'];
   if (!spreadsheetId) {

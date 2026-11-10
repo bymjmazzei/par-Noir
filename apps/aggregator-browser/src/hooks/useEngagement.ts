@@ -38,6 +38,27 @@ interface Comment {
 
 const STORAGE_KEY = 'pn_engagement_data';
 
+/** Likes and dislikes on a non-Google social cloud; null when the pN uses Google Drive. */
+async function tablesEngagementFor(pnIdentifier: string) {
+  const { sessionTablesFor } = await import('../services/sessionSocial');
+  const tables = await sessionTablesFor(pnIdentifier);
+  if (!tables) return null;
+  const { tablesEngagement } = await import('@par-noir/device-cloud-credentials');
+  return tablesEngagement(tables, pnIdentifier);
+}
+
+/** null when the Google layout has no engagement sheet. */
+async function listLikedFileIds(pnIdentifier: string): Promise<string[] | null> {
+  const tablesStore = await tablesEngagementFor(pnIdentifier);
+  if (tablesStore) return tablesStore.likedIds();
+  const { sessionDriveFor } = await import('../services/sessionDrive');
+  const { listDeviceLikedFileIds } = await import('@par-noir/device-cloud-credentials');
+  const drive = await sessionDriveFor(pnIdentifier);
+  const sheetId = drive.index.sheetIds.engagement;
+  if (!sheetId) return null;
+  return listDeviceLikedFileIds(drive.accessToken, sheetId);
+}
+
 function loadEngagementData(): EngagementData {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -136,7 +157,14 @@ export function useEngagement() {
     try {
       const { stats } = await fetchBulkEngagementStats(fileIds, viewerPn);
       let likedFromSheet: string[] = [];
-      if (viewerPn) {
+      const tablesStore = viewerPn ? await tablesEngagementFor(viewerPn).catch(() => null) : null;
+      if (tablesStore) {
+        try {
+          likedFromSheet = (await tablesStore.likedIds()).filter((id) => fileIds.includes(id));
+        } catch (error) {
+          console.warn('Failed to read likes:', error);
+        }
+      } else if (viewerPn) {
         try {
           const { sessionDriveFor } = await import('../services/sessionDrive');
           const { listDeviceLikedFileIds } = await import('@par-noir/device-cloud-credentials');
@@ -194,6 +222,32 @@ export function useEngagement() {
 
   const toggleLike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
+      const tablesStore = await tablesEngagementFor(userState.pnIdentifier);
+      if (tablesStore) {
+        const liked = !(await tablesStore.likedIds()).includes(fileId);
+        await tablesStore.setLiked(fileId, liked);
+        const response = await apiFetch('POST', `/api/engagement/${fileId}/like`, {
+          userPnIdentifier: userState.pnIdentifier,
+          liked
+        });
+        if (!response.ok) {
+          await tablesStore.setLiked(fileId, !liked).catch(() => undefined);
+          throw new Error(await parseEngagementApiError(response));
+        }
+        const result = await response.json();
+        setEngagement(prev => {
+          const newLikes = new Set(prev.likes);
+          const newDislikes = new Set(prev.dislikes || []);
+          if (result.liked) {
+            newLikes.add(fileId);
+            newDislikes.delete(fileId);
+          } else {
+            newLikes.delete(fileId);
+          }
+          return { ...prev, likes: newLikes, dislikes: newDislikes };
+        });
+        return;
+      }
       const { sessionDriveFor } = await import('../services/sessionDrive');
       const { listDeviceLikedFileIds, setDeviceFileLiked } = await import('@par-noir/device-cloud-credentials');
       const drive = await sessionDriveFor(userState.pnIdentifier);
@@ -250,6 +304,32 @@ export function useEngagement() {
 
   const toggleDislike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
+      const tablesStore = await tablesEngagementFor(userState.pnIdentifier);
+      if (tablesStore) {
+        const disliked = !(await tablesStore.dislikedIds()).includes(fileId);
+        await tablesStore.setDisliked(fileId, disliked);
+        const response = await apiFetch('POST', `/api/engagement/${fileId}/dislike`, {
+          userPnIdentifier: userState.pnIdentifier,
+          disliked
+        });
+        if (!response.ok) {
+          await tablesStore.setDisliked(fileId, !disliked).catch(() => undefined);
+          throw new Error(await parseEngagementApiError(response));
+        }
+        const result = await response.json();
+        setEngagement(prev => {
+          const newDislikes = new Set(prev.dislikes || []);
+          const newLikes = new Set(prev.likes);
+          newLikes.delete(fileId);
+          if (result.disliked) {
+            newDislikes.add(fileId);
+          } else {
+            newDislikes.delete(fileId);
+          }
+          return { ...prev, likes: newLikes, dislikes: newDislikes };
+        });
+        return;
+      }
       const { sessionDriveFor } = await import('../services/sessionDrive');
       const { listDeviceDislikedFileIds, setDeviceFileDisliked } = await import('@par-noir/device-cloud-credentials');
       const drive = await sessionDriveFor(userState.pnIdentifier);
@@ -564,12 +644,8 @@ export function useEngagement() {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
     try {
-      const { sessionDriveFor } = await import('../services/sessionDrive');
-      const { listDeviceLikedFileIds } = await import('@par-noir/device-cloud-credentials');
-      const drive = await sessionDriveFor(userState.pnIdentifier);
-      const sheetId = drive.index.sheetIds.engagement;
-      if (!sheetId) return;
-      const ids = await listDeviceLikedFileIds(drive.accessToken, sheetId);
+      const ids = await listLikedFileIds(userState.pnIdentifier);
+      if (!ids) return;
       setEngagement(prev => {
         const newLikes = new Set(prev.likes);
         if (ids.includes(fileId)) {

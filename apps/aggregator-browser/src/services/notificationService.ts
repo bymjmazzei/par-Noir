@@ -3,7 +3,9 @@
  * Handles notifications for feed subscriptions, comments, likes, etc.
  */
 
+import { tablesNotifications, tablesPreferences } from '@par-noir/device-cloud-credentials';
 import { sessionDriveFor } from './sessionDrive';
+import { sessionTablesFor } from './sessionSocial';
 
 export interface Notification {
   notification_id: string;
@@ -46,6 +48,15 @@ export interface NotificationListResponse {
   offset: number;
 }
 
+async function listGoogleNotifications(userPnIdentifier: string) {
+  const { listDeviceNotifications } = await import('@par-noir/device-cloud-credentials');
+  const drive = await sessionDriveFor(userPnIdentifier);
+  const sheetId = drive.index.sheetIds.notifications;
+  return sheetId
+    ? await listDeviceNotifications(drive.accessToken, sheetId)
+    : [];
+}
+
 export class NotificationService {
   /**
    * Get user's notifications
@@ -59,12 +70,8 @@ export class NotificationService {
       type?: Notification['type'];
     }
   ): Promise<NotificationListResponse> {
-    const { listDeviceNotifications } = await import('@par-noir/device-cloud-credentials');
-    const drive = await sessionDriveFor(userPnIdentifier);
-    const sheetId = drive.index.sheetIds.notifications;
-    let notifications = sheetId
-      ? await listDeviceNotifications(drive.accessToken, sheetId)
-      : [];
+    const tables = await sessionTablesFor(userPnIdentifier);
+    let notifications = tables ? await tablesNotifications(tables).list() : await listGoogleNotifications(userPnIdentifier);
     if (options?.unreadOnly) notifications = notifications.filter((n) => !n.read);
     if (options?.type) notifications = notifications.filter((n) => n.type === options.type);
     const total = notifications.length;
@@ -91,6 +98,11 @@ export class NotificationService {
    * Mark notification as read
    */
   static async markAsRead(notificationId: string, userPnIdentifier: string): Promise<void> {
+    const tables = await sessionTablesFor(userPnIdentifier);
+    if (tables) {
+      await tablesNotifications(tables).markRead([notificationId]);
+      return;
+    }
     const { markDeviceNotificationsRead } = await import('@par-noir/device-cloud-credentials');
     const drive = await sessionDriveFor(userPnIdentifier);
     const sheetId = drive.index.sheetIds.notifications;
@@ -102,6 +114,8 @@ export class NotificationService {
    * Mark all notifications as read
    */
   static async markAllAsRead(userPnIdentifier: string): Promise<number> {
+    const tables = await sessionTablesFor(userPnIdentifier);
+    if (tables) return tablesNotifications(tables).markRead('all');
     const { markDeviceNotificationsRead } = await import('@par-noir/device-cloud-credentials');
     const drive = await sessionDriveFor(userPnIdentifier);
     const sheetId = drive.index.sheetIds.notifications;
@@ -113,6 +127,11 @@ export class NotificationService {
    * Delete notification
    */
   static async deleteNotification(notificationId: string, userPnIdentifier: string): Promise<void> {
+    const tables = await sessionTablesFor(userPnIdentifier);
+    if (tables) {
+      await tablesNotifications(tables).remove(notificationId);
+      return;
+    }
     const { readSheetValues, writeSheetValues } = await import('@par-noir/device-cloud-credentials');
     const drive = await sessionDriveFor(userPnIdentifier);
     const sheetId = drive.index.sheetIds.notifications;
@@ -141,6 +160,11 @@ export class NotificationService {
       mention: true,
     };
     try {
+      const tables = await sessionTablesFor(userPnIdentifier);
+      if (tables) {
+        const stored = (await tablesPreferences(tables).read())?.notificationPreferences;
+        return stored && typeof stored === 'object' ? { ...defaults, ...stored } : defaults;
+      }
       const { readSheetValues } = await import('@par-noir/device-cloud-credentials');
       const drive = await sessionDriveFor(userPnIdentifier);
       const sheetId = drive.index.sheetIds.preferences;
@@ -163,6 +187,11 @@ export class NotificationService {
   ): Promise<NotificationPreferences> {
     const current = await NotificationService.getPreferences(userPnIdentifier);
     const next = { ...current, ...preferences, user_did: userPnIdentifier };
+    const tables = await sessionTablesFor(userPnIdentifier);
+    if (tables) {
+      await tablesPreferences(tables).merge({ notificationPreferences: next });
+      return next;
+    }
     const { readSheetValues, writeSheetValues } = await import('@par-noir/device-cloud-credentials');
     const drive = await sessionDriveFor(userPnIdentifier);
     const sheetId = drive.index.sheetIds.preferences;

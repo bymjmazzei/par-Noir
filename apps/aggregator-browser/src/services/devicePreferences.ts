@@ -1,9 +1,12 @@
-import { readDevicePreferences, writeDevicePreferences } from '@par-noir/device-cloud-credentials';
+import { readDevicePreferences, tablesPreferences, writeDevicePreferences } from '@par-noir/device-cloud-credentials';
 import { sessionDriveFor } from './sessionDrive';
+import { sessionTablesFor } from './sessionSocial';
 
 export async function loadDevicePreferenceDoc(
   pnIdentifier: string
 ): Promise<Record<string, unknown> | null> {
+  const tables = await sessionTablesFor(pnIdentifier);
+  if (tables) return tablesPreferences(tables).read();
   const drive = await sessionDriveFor(pnIdentifier);
   const sheetId = drive.index.sheetIds.preferences;
   if (!sheetId) return null;
@@ -15,6 +18,11 @@ export async function putDevicePreferences(
   patch: Record<string, unknown>
 ): Promise<{ ok: boolean; status: number }> {
   try {
+    const tables = await sessionTablesFor(pnIdentifier);
+    if (tables) {
+      await tablesPreferences(tables).merge(patch);
+      return { ok: true, status: 200 };
+    }
     const drive = await sessionDriveFor(pnIdentifier);
     const sheetId = drive.index.sheetIds.preferences;
     if (!sheetId) return { ok: false, status: 404 };

@@ -11,6 +11,10 @@ vi.mock('./sessionDrive', () => ({
   sessionDriveFor: (pn: string) => sessionDriveFor(pn),
 }));
 
+vi.mock('./sessionSocial', () => ({
+  sessionTablesFor: async () => null,
+}));
+
 import { ActivityLedgerService } from './activityLedgerService';
 
 describe('ActivityLedgerService', () => {

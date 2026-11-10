@@ -125,11 +125,11 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
 
   // Package mints X-PN-Cloud-Access-Token via apiBaseUrl; no app buildAuthHeaders.
   try {
-    const { sessionDriveFor } = await import('./sessionDrive');
-    await sessionDriveFor(identityId);
+    const { sessionSocialFor } = await import('./sessionSocial');
+    await sessionSocialFor(identityId);
   } catch (e) {
     errors.push(`drive: ${e instanceof Error ? e.message : 'layout unavailable'}`);
-    console.warn('[socialMailbox] drain deferred until Drive is ready', errors);
+    console.warn('[socialMailbox] drain deferred until the social cloud is ready', errors);
     return { ...EMPTY, errors };
   }
   const applySocialJob = createApiSocialApplier({

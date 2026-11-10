@@ -25,7 +25,7 @@ vi.mock('./pnOAuthService', () => ({
 }));
 vi.mock('./dmIdentitySession', () => ({ getDmIdentity: () => ({ mlKemSecretKey: 'sk' }) }));
 vi.mock('./deviceService', () => ({ fetchDeviceRegistry: vi.fn(async () => null) }));
-vi.mock('./sessionDrive', () => ({ sessionDriveFor: vi.fn(async () => ({ accessToken: 'cloud-at', index: {} })) }));
+vi.mock('./sessionSocial', () => ({ sessionSocialFor: vi.fn(async () => ({ kind: 'google_drive', accessToken: 'cloud-at', index: {} })) }));
 vi.mock('./inboundMailboxPreview', () => ({ tryBuildInboundPreview: vi.fn() }));
 vi.mock('./messageService', () => ({
   notifyMessagingInboxRefresh: vi.fn(),

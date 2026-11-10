@@ -51,6 +51,37 @@ function listFeedsCacheKey(filters?: Record<string, unknown>): string {
   return JSON.stringify(filters ?? {});
 }
 
+async function feedTablesFor(userPnIdentifier: string) {
+  const { sessionTablesFor } = await import('./sessionSocial');
+  return sessionTablesFor(userPnIdentifier);
+}
+
+async function tablesFollowing(tables: NonNullable<Awaited<ReturnType<typeof feedTablesFor>>>) {
+  const { tablesFollowing: open } = await import('@par-noir/device-cloud-credentials');
+  return open(tables);
+}
+
+async function subscribeRequest(method: 'POST' | 'DELETE', feedId: string, userPnIdentifier: string): Promise<void> {
+  const response = await apiFetch(method, `/api/feeds/${feedId}/subscribe`, { userPnIdentifier });
+  if (!response.ok) {
+    const fallback = method === 'POST' ? 'Failed to subscribe to feed' : 'Failed to unsubscribe from feed';
+    const error = await response.json().catch(() => ({ error: fallback }));
+    throw new Error(error.error || fallback);
+  }
+}
+
+/** null when the Google layout has no followers sheet. */
+async function listFeedFollowing(userPnIdentifier: string) {
+  const tables = await feedTablesFor(userPnIdentifier);
+  if (tables) return (await tablesFollowing(tables)).list();
+  const { sessionDriveFor } = await import('./sessionDrive');
+  const { listDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
+  const drive = await sessionDriveFor(userPnIdentifier);
+  const sheetId = drive.index.sheetIds.followers;
+  if (!sheetId) return null;
+  return listDeviceFollowing(drive.accessToken, sheetId);
+}
+
 export class FeedService {
   /**
    * Create a new feed
@@ -185,6 +216,14 @@ export class FeedService {
    * Subscribe to feed - stores subscription on user's cloud storage (like connection index)
    */
   static async subscribeToFeed(feedId: string, userPnIdentifier: string): Promise<void> {
+    const tables = await feedTablesFor(userPnIdentifier);
+    if (tables) {
+      const following = await tablesFollowing(tables);
+      if ((await following.list()).some((row) => row.targetType === 'feed' && row.targetPnIdentifier === feedId)) return;
+      await subscribeRequest('POST', feedId, userPnIdentifier);
+      await following.add('feed', feedId);
+      return;
+    }
     const { sessionDriveFor } = await import('./sessionDrive');
     const { listDeviceFollowing, upsertDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
     const drive = await sessionDriveFor(userPnIdentifier);
@@ -213,6 +252,14 @@ export class FeedService {
    * Unsubscribe from feed - removes from user's cloud storage
    */
   static async unsubscribeFromFeed(feedId: string, userPnIdentifier: string): Promise<void> {
+    const tables = await feedTablesFor(userPnIdentifier);
+    if (tables) {
+      const following = await tablesFollowing(tables);
+      if (!(await following.list()).some((row) => row.targetType === 'feed' && row.targetPnIdentifier === feedId)) return;
+      await subscribeRequest('DELETE', feedId, userPnIdentifier);
+      await following.remove(feedId);
+      return;
+    }
     const { sessionDriveFor } = await import('./sessionDrive');
     const { listDeviceFollowing, removeDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
     const drive = await sessionDriveFor(userPnIdentifier);
@@ -242,12 +289,8 @@ export class FeedService {
    */
   static async getUserSubscriptions(userPnIdentifier: string): Promise<Feed[]> {
     try {
-      const { sessionDriveFor } = await import('./sessionDrive');
-      const { listDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
-      const drive = await sessionDriveFor(userPnIdentifier);
-      const sheetId = drive.index.sheetIds.followers;
-      if (!sheetId) return [];
-      const following = await listDeviceFollowing(drive.accessToken, sheetId);
+      const following = await listFeedFollowing(userPnIdentifier);
+      if (!following) return [];
       const feedIds = following
         .filter((row) => row.targetType === 'feed')
         .map((row) => row.targetPnIdentifier);
