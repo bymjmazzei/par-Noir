@@ -449,7 +449,7 @@ class ProductionServer {
           'X-PN-Device-Signature',
           'X-PN-Device-Timestamp',
           'X-PN-Device-Nonce',
-          // Ephemeral Google AT for custody-gated routes (initialize, Drive proxy); not persisted server-side.
+          // Allowed through CORS only so old clients get the explicit 400 cloud_token_rejected below.
           'X-PN-Cloud-Access-Token',
           // Anonymous feed view metering (browse public-media)
           'X-PN-Anon-Id',

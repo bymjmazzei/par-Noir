@@ -208,9 +208,8 @@ export function setupStorageCredentialsRoutes(app: Application) {
           return res.status(404).json({ error: 'No storage credentials found for identity' });
         }
 
-        // No server-side token refresh here: under device cloud custody the stored
-        // row holds account shells with no refresh secret, so there is nothing to
-        // refresh. The device refreshes and forwards X-PN-Cloud-Access-Token.
+        // No server-side token refresh: the stored row holds account shells with no
+        // refresh secret. Cloud tokens live and refresh only on the device.
 
         return res.json({
           success: true,
