@@ -75,7 +75,6 @@ const TRANSFORMER_ARTIFACTS: MigrationArtifact[] = [
   { id: 'engagement', kind: 'transformer', path: metadataPath('engagement.json'), critical: false, transformerId: 'engagement' },
   { id: 'messaging-conversations', kind: 'transformer', path: messagesPath('conversations'), critical: true, transformerId: 'messaging' },
   { id: 'companion-metadata', kind: 'transformer', path: `${METADATA_DIR}/companion`, critical: false, transformerId: 'companion' },
-  { id: 'feed-subscribers', kind: 'transformer', path: `${METADATA_DIR}/feeds`, critical: false, transformerId: 'feed-subscribers' },
   { id: 'integrators', kind: 'transformer', path: 'integrators', critical: false, transformerId: 'integrators' }
 ];
 

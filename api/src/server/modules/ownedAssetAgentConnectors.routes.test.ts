@@ -47,8 +47,6 @@ jest.mock('@par-noir/pqc-crypto/oauth-unlock-proof', () => ({
 }));
 jest.mock('./auditService', () => ({ appendAuditEvent: jest.fn(async () => undefined) }));
 jest.mock('./identitySuccessionService', () => ({ isPnRevokedForNetwork: () => false }));
-jest.mock('./ownedAssetStorageService', () => ({ loadOwnedAssetDriveBundle: jest.fn() }));
-jest.mock('./ownedAssetsSheetsService', () => ({ OwnedAssetsSheetsService: {} }));
 
 import express from 'express';
 import request from 'supertest';

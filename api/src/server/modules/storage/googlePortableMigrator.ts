@@ -34,8 +34,6 @@ import {
   migrateRecoveryPortableToGoogle,
   migrateCompanionGoogleToPortable,
   migrateCompanionPortableToGoogle,
-  migrateFeedSubscribersGoogleToPortable,
-  migrateFeedSubscribersPortableToGoogle,
   migrateIntegratorsGoogleToPortable,
   migrateIntegratorsPortableToGoogle
 } from './migrationTransformers';
@@ -184,10 +182,6 @@ async function runTransformer(
     companion: {
       g2p: () => migrateCompanionGoogleToPortable(jobId, ctx, pnIdentifier, accountId),
       p2g: () => migrateCompanionPortableToGoogle(jobId, ctx, pnIdentifier, accountId)
-    },
-    'feed-subscribers': {
-      g2p: () => migrateFeedSubscribersGoogleToPortable(jobId, ctx, pnIdentifier, accountId),
-      p2g: () => migrateFeedSubscribersPortableToGoogle(jobId, ctx, pnIdentifier, accountId)
     },
     integrators: {
       g2p: () => migrateIntegratorsGoogleToPortable(jobId, ctx, pnIdentifier, accountId),

@@ -1350,33 +1350,24 @@ export function setupFeedRoutes(app: Application) {
     // Feed Subscription APIs
     // ============================================================================
 
-    // POST /api/feeds/:feedId/subscribe - Subscribe to feed
-    // Creator stores subscriber info on their Google Drive
-    // Subscriber stores local reference (handled by frontend)
+    // POST /api/feeds/:feedId/subscribe - public follower count; the follow itself lives on the follower's device
     app.post('/api/feeds/:feedId/subscribe', async (req, res) => {
       try {
         const { FeedService } = await import('./feedService');
         const { feedId } = req.params;
-        const { userPnIdentifier, creatorGoogleTokens } = req.body;
+        const { userPnIdentifier } = req.body;
 
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
-        // Note: creatorGoogleTokens is optional - if creator doesn't have Drive connected,
-        // subscription is stored in database only and can sync to Drive later
-
-        const success = await FeedService.subscribeToFeed(feedId, userPnIdentifier, creatorGoogleTokens);
+        const success = await FeedService.subscribeToFeed(feedId, userPnIdentifier);
 
         if (!success) {
           return res.status(500).json({ error: 'Failed to subscribe to feed' });
         }
 
-        return res.json({ 
-          success: true, 
-          message: 'Subscribed to feed',
-          note: 'Subscription stored in database and creator Google Drive (if connected)'
-        });
+        return res.json({ success: true, message: 'Subscribed to feed' });
       } catch (error: any) {
         console.error('Error subscribing to feed:', error);
         return res.status(500).json({ error: 'Failed to subscribe to feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });

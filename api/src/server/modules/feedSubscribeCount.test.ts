@@ -5,16 +5,9 @@ process.env.NODE_ENV = 'test';
 
 import { FeedService } from './feedService';
 import { getDatabasePool } from '../utils/database';
-import { CreatorSubscriberStorage } from './creatorSubscriberStorage';
 
 jest.mock('../utils/database', () => ({
   getDatabasePool: jest.fn(),
-}));
-
-jest.mock('./creatorSubscriberStorage', () => ({
-  CreatorSubscriberStorage: {
-    storeSubscriberOnCreatorDrive: jest.fn(async () => undefined),
-  },
 }));
 
 describe('public follower count', () => {
@@ -42,7 +35,6 @@ describe('public follower count', () => {
 
     const ok = await FeedService.subscribeToFeed('feed-1', 'pn-follower');
     expect(ok).toBe(true);
-    expect(CreatorSubscriberStorage.storeSubscriberOnCreatorDrive).toHaveBeenCalled();
 
     const writes = query.mock.calls.map((call) => String(call[0]));
     expect(writes.some((sql) => sql.includes('subscriber_count = subscriber_count + 1'))).toBe(true);

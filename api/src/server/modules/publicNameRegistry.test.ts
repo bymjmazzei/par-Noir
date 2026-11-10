@@ -256,8 +256,6 @@ jest.mock('../utils/database', () => {
 });
 jest.mock('./auditService', () => ({ appendAuditEvent: jest.fn(async () => undefined) }));
 jest.mock('./identitySuccessionService', () => ({ isPnRevokedForNetwork: () => false }));
-jest.mock('./ownedAssetStorageService', () => ({ loadOwnedAssetDriveBundle: jest.fn() }));
-jest.mock('./ownedAssetsSheetsService', () => ({ OwnedAssetsSheetsService: {} }));
 jest.mock('./rdapService', () => ({ fetchDomainRegistrationDate: jest.fn(async () => null) }));
 
 process.env.NAME_REGISTRY_SIGNING_SEED = bytesToBase64(new Uint8Array(32).fill(21));

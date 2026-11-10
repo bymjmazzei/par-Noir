@@ -407,40 +407,17 @@ export class FeedService {
     return result.rowCount !== null && result.rowCount > 0;
   }
 
-  /**
-   * Subscribe to feed
-   * Creator stores subscriber info on their Google Drive
-   * Subscriber stores local reference (handled by frontend)
-   */
-  static async subscribeToFeed(feedId: string, userPnIdentifier: string, creatorGoogleTokens?: any): Promise<boolean> {
-    const db = getDatabasePool();
-    
+  /** Public follower count only. The follower's device records the follow on its own cloud. */
+  static async subscribeToFeed(feedId: string, _userPnIdentifier: string): Promise<boolean> {
     try {
       const feed = await this.getFeedById(feedId);
       if (!feed) {
         throw new Error('Feed not found');
       }
-
-      const creatorDid = feed.creatorId;
-
-      try {
-        const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
-        await CreatorSubscriberStorage.storeSubscriberOnCreatorDrive(
-          creatorDid,
-          feedId,
-          userPnIdentifier,
-          creatorGoogleTokens
-        );
-      } catch (error) {
-        console.warn('Creator follower sheet was not updated:', error);
-      }
-
-      await db.query(`
-        UPDATE feeds
-        SET subscriber_count = subscriber_count + 1
-        WHERE feed_id = $1
-      `, [feedId]);
-
+      await getDatabasePool().query(
+        `UPDATE feeds SET subscriber_count = subscriber_count + 1 WHERE feed_id = $1`,
+        [feedId]
+      );
       return true;
     } catch (error) {
       console.error('Failed to subscribe to feed:', error);
@@ -448,40 +425,16 @@ export class FeedService {
     }
   }
 
-  /**
-   * Unsubscribe from feed
-   * Removes from database and creator's Google Drive
-   */
-  static async unsubscribeFromFeed(feedId: string, userPnIdentifier: string, creatorGoogleTokens?: any): Promise<boolean> {
-    const db = getDatabasePool();
-    
+  static async unsubscribeFromFeed(feedId: string, _userPnIdentifier: string): Promise<boolean> {
     try {
-      // Get feed to find creator
       const feed = await this.getFeedById(feedId);
       if (!feed) {
         throw new Error('Feed not found');
       }
-
-      const creatorDid = feed.creatorId;
-
-      try {
-        const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
-        await CreatorSubscriberStorage.removeSubscriberFromCreatorDrive(
-          creatorDid,
-          feedId,
-          userPnIdentifier,
-          creatorGoogleTokens
-        );
-      } catch (error) {
-        console.warn('Creator follower sheet was not updated:', error);
-      }
-
-      await db.query(`
-        UPDATE feeds
-        SET subscriber_count = GREATEST(subscriber_count - 1, 0)
-        WHERE feed_id = $1
-      `, [feedId]);
-
+      await getDatabasePool().query(
+        `UPDATE feeds SET subscriber_count = GREATEST(subscriber_count - 1, 0) WHERE feed_id = $1`,
+        [feedId]
+      );
       return true;
     } catch (error) {
       console.error('Failed to unsubscribe from feed:', error);
@@ -801,7 +754,8 @@ export class FeedService {
 
   /**
    * Activate feed after verification
-   * Creates sub-pN identifier, Google Drive folder structure, owned-asset registry row, and activates feed
+   * Creates the sub-pN identifier and owned-asset authz row and activates the feed. The device
+   * creates the feed folder on Google Drive and submits its id; other clouds use a path.
    */
   static async activateFeedAfterVerification(
     feedId: string,
@@ -810,7 +764,7 @@ export class FeedService {
       verificationId: string;
       verifiedZKPs: any;
     },
-    opts?: { cloudAccessToken?: string; deviceFolderId?: string }
+    opts?: { deviceFolderId?: string }
   ): Promise<Feed> {
     const db = getDatabasePool();
     const crypto = await import('crypto');
@@ -831,7 +785,6 @@ export class FeedService {
 
       const ownerPnIdentifier = creatorCredentials.identityId;
       const deviceFolderId = opts?.deviceFolderId?.trim();
-      const cloudAccessToken = opts?.cloudAccessToken;
 
       const registerOwnedFeedAsset = async (subPnIdentifier: string, rootPn: string) => {
         const existing = await db.query(
@@ -852,8 +805,7 @@ export class FeedService {
               feedName: feed.feedName,
               label: feed.feedName
             }
-          },
-          { accessToken: cloudAccessToken }
+          }
         );
       };
 
@@ -900,13 +852,6 @@ export class FeedService {
 
         if (await isPortableSocialCloud(ownerPnIdentifier)) {
           storageFolderRef = metadataPath('feeds', feedId);
-          const { writeSubscribersPortable } = await import('./storage/creatorSubscriberPortableService');
-          await writeSubscribersPortable(ownerPnIdentifier, feedId, {
-            creatorDid,
-            feedId,
-            subscribers: [],
-            updatedAt: new Date().toISOString()
-          });
         } else {
           // Creating the feed folder writes to the creator's Drive, which needs
           // their device-held token. Without one, fail rather than leave the feed
