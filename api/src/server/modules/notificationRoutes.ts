@@ -85,7 +85,7 @@ export function setupNotificationRoutes(app: express.Application) {
         return res.json({ success: true });
       }
       const { respondCloudOnDevice } = await import('./deviceCloudResult');
-      respondCloudOnDevice(res);
+      return respondCloudOnDevice(res);
     } catch (error: any) {
       console.error('Failed to mark notification as read:', error);
       return res.status(500).json({
