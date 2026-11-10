@@ -65,8 +65,6 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | GET | `/api/identity/migration/:id` | OAuth — migration status |
 | PATCH | `/api/identity/migration/:id/steps/:stepId` | OAuth — ack step |
 | POST | `/api/identity/migration/:id/complete` | OAuth (successor) — lineage ZK + succession |
-| POST | `/api/identity/migration/:id/connections/rekey` | OAuth — update kemCiphertext |
-| POST | `/api/identity/migration/:id/groups/rewrap` | OAuth — group key re-wrap |
 | POST | `/api/identity/migration/:id/zkp-data-points/batch` | OAuth — batch ZKP sheet |
 | POST | `/api/identity/migration/:id/recovery/custodians` | OAuth — recovery custodian rows |
 

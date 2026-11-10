@@ -30,7 +30,7 @@ Distinct from **Shamir custodian recovery**, which keeps the same `publicKey` an
 
 ## API routes (OAuth Bearer — predecessor or successor during migration)
 
-Drive-backed migrate routes require **`X-PN-Cloud-Access-Token`** (same as other owner Drive calls). Clients must use `ownerFetch` / `ownerCloudHeadersAsync`. The API resolves Google AT only via `resolveOwnerDriveToken` — never from DB credential shells.
+The API only tracks migration steps and registers succession. Every write to the user's cloud (connection `kemCiphertext`, inbox `wrappedMessageRootKey`, group key re-wrap, DM history rows) runs on the device through the `@par-noir/device-cloud-credentials` social stores (`rekeyConnectionOnDevice`, `rewrapInboxRootOnDevice`, `deviceGroups().rewrap`, `deviceConversation().rows/applyRowUpdates`), for Google Drive and portable social clouds alike.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -38,13 +38,7 @@ Drive-backed migrate routes require **`X-PN-Cloud-Access-Token`** (same as other
 | GET | `/api/identity/migration/:id` | Migration status, `driveProgress`, `migrationReport` |
 | PATCH | `/api/identity/migration/:id/steps/:stepId` | Idempotent step completion |
 | PATCH | `/api/identity/migration/:id/drive/progress` | Persist drive phase cursor + report |
-| POST | `/api/identity/migration/:id/drive/sheets/migrate` | Batch pn/did rewrite across `_metadata` + `par-noir-messages` sheets; companion `*.metadata` spreadsheets |
 | GET | `/api/identity/migration/:id/zkp-data-points/from-drive` | Read ZKP envelopes from Drive sheet for client re-sign |
-| GET | `/api/identity/migration/:id/conversations/:participantPn/rows` | Conversation rows for DM history re-encrypt |
-| POST | `/api/identity/migration/:id/drive/messages/rows` | Persist re-encrypted message rows + connection kem ack |
-| POST | `/api/identity/migration/:id/connections/rekey` | Update connection sheet `kemCiphertext` (requester) |
-| POST | `/api/identity/migration/:id/connections/rewrap-root` | Update acceptor inbox `wrappedMessageRootKey` |
-| POST | `/api/identity/migration/:id/groups/rewrap` | Owner group key re-wrap fan-out |
 | POST | `/api/identity/migration/:id/zkp-data-points/batch` | Batch ZKP sheet updates |
 | POST | `/api/identity/migration/:id/recovery/custodians` | Recovery custodian rows (predecessor Drive creds + pinned folder) |
 | POST | `/api/identity/migration/:id/complete` | Verify lineage ZK + `registerSuccession` (successor token) |

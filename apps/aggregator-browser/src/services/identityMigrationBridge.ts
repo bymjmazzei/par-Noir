@@ -21,13 +21,13 @@ import { getDmIdentity } from './dmIdentitySession';
 import { cacheLegacyMessageRoot } from './dmCryptoClient';
 import { setMessageRootKey, getLegacyMessageRootKey } from './dmSessionCache';
 import {
-  rekeyConnection,
-  rewrapConnectionRoot,
-  rewrapGroupKeys,
-  fetchConversationRowsForMigration,
-  postDmMessageRowUpdates,
-  ackMigrationStep,
-} from './identityMigrationApiClient';
+  deviceConversation,
+  deviceGroups,
+  rekeyConnectionOnDevice,
+  rewrapInboxRootOnDevice,
+} from '@par-noir/device-cloud-credentials';
+import { ackMigrationStep } from './identityMigrationApiClient';
+import { sessionSocialFor } from './sessionSocial';
 import { unwrapChatKeyForOwner } from './groupCryptoClient';
 import { PNOAuthService } from './pnOAuthService';
 
@@ -64,6 +64,7 @@ export async function migrateConnectionsOnUnlock(params: {
   const { migrationId } = progress;
   if (progress.completedStepIds.includes('dm_rekey')) return;
 
+  const ctx = await sessionSocialFor(userPn);
   const threads = await getMessageThreads(userPn);
   const rekeyResults: Array<{ participantPnIdentifier: string; newMessageRootKey: string }> = [];
 
@@ -102,13 +103,7 @@ export async function migrateConnectionsOnUnlock(params: {
         legacyRoot = result.legacyMessageRootKey;
         newRoot = result.newMessageRootKey;
         if (newKem) {
-          await rekeyConnection(
-            params.authToken,
-            migrationId,
-            thread.connectionId,
-            userPn,
-            newKem
-          );
+          await rekeyConnectionOnDevice(ctx, thread.connectionId, newKem);
         }
       } else {
         if (thread.wrappedMessageRootKey) {
@@ -123,14 +118,7 @@ export async function migrateConnectionsOnUnlock(params: {
             params.successorMlKemSecretKey,
             thread.connectionId
           );
-          await rewrapConnectionRoot(
-            params.authToken,
-            migrationId,
-            thread.connectionId,
-            userPn,
-            thread.participantPnIdentifier,
-            newWrapped
-          );
+          await rewrapInboxRootOnDevice(ctx, thread.participantPnIdentifier, thread.connectionId, newWrapped);
         } else {
           legacyRoot = getLegacyMessageRootKey(thread.connectionId);
           if (!legacyRoot) continue;
@@ -143,14 +131,11 @@ export async function migrateConnectionsOnUnlock(params: {
       }
       setMessageRootKey(thread.connectionId, newRoot);
 
-      const { rows, spreadsheetId } = await fetchConversationRowsForMigration(
-        params.authToken,
-        migrationId,
-        thread.participantPnIdentifier,
-        userPn,
-        thread.spreadsheetId
-      );
-      if (rows.length) {
+      const conversation = thread.spreadsheetId ? deviceConversation(ctx, thread.spreadsheetId) : null;
+      const rows = conversation
+        ? (await conversation.rows()).filter((r) => r.fromPnIdentifier || r.encryptedContent)
+        : [];
+      if (conversation && rows.length) {
         const history = await migrateDmThreadHistory(
           {
             connectionId: thread.connectionId,
@@ -170,14 +155,11 @@ export async function migrateConnectionsOnUnlock(params: {
             pnIdentifier: plan.successorPnIdentifier,
           }
         );
+        if (history.newKemCiphertext) {
+          await rekeyConnectionOnDevice(ctx, thread.connectionId, history.newKemCiphertext);
+        }
         if (history.rowUpdates.length) {
-          await postDmMessageRowUpdates(params.authToken, migrationId, userPn, {
-            connectionId: thread.connectionId,
-            kemCiphertext: history.newKemCiphertext,
-            spreadsheetId,
-            participantPnIdentifier: thread.participantPnIdentifier,
-            rowUpdates: history.rowUpdates,
-          });
+          await conversation.applyRowUpdates(history.rowUpdates);
         }
       }
 
@@ -224,14 +206,7 @@ export async function migrateConnectionsOnUnlock(params: {
         successorMlKemSecretKey: params.successorMlKemSecretKey,
         memberMessageRoots: memberRoots,
       });
-      await rewrapGroupKeys(
-        params.authToken,
-        migrationId,
-        ownerRow.ownerPnIdentifier,
-        plan.successorPnIdentifier,
-        groupId,
-        keyRotation
-      );
+      await deviceGroups(ctx).rewrap(groupId, plan.successorPnIdentifier, keyRotation);
     } catch {
       /* skip group */
     }

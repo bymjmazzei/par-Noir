@@ -82,6 +82,7 @@ export {
 } from './social/conversations.js';
 export { deviceGroups, type DeviceGroupStore, type GroupKeyRotation } from './social/groups.js';
 export { deviceMessageRequests, type DeviceMessageRequestStore } from './social/requests.js';
+export { rekeyConnectionOnDevice, rewrapInboxRootOnDevice } from './social/identityRekey.js';
 export {
   deviceFileIndex,
   indexEntryFromSheetRow,

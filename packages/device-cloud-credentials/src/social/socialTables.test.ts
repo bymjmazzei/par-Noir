@@ -13,6 +13,7 @@ import { deviceInbox } from './inbox.js';
 import { deviceConversation, groupConversationIdFor, resolveDmConversation } from './conversations.js';
 import { deviceGroups } from './groups.js';
 import { deviceMessageRequests } from './requests.js';
+import { rekeyConnectionOnDevice, rewrapInboxRootOnDevice } from './identityRekey.js';
 
 const ROOT = 'par-noir-pn-me/';
 
@@ -120,6 +121,19 @@ describe('device social helpers on table storage', () => {
       expect.objectContaining({ groupId: 'g1', ownerPnIdentifier: 'pn-me2', memberPnIdentifier: 'pn-me2', wrappedChatKey: 'k3', title: 'T' }),
     ]);
     expect(groupConversationIdFor(ctx, 'g1')).toBe('pn-portable-group:g1');
+  });
+
+  it('identity re-key updates the connection KEM and the inbox wrapped root', async () => {
+    const { ctx } = tablesContext();
+    await deviceConnections(ctx).upsert({ connectionId: 'c1', userPnIdentifier: 'pn-peer', status: 'accepted', createdAt: 'c' });
+    await resolveDmConversation(ctx, { identityId: 'pn-me', peerPnIdentifier: 'pn-peer', connectionId: 'c1', wrappedMessageRootKey: 'old' });
+
+    expect(await rekeyConnectionOnDevice(ctx, 'c1', 'new-kem')).toBe(true);
+    expect((await deviceConnections(ctx).get('c1'))?.kemCiphertext).toBe('new-kem');
+    expect(await rekeyConnectionOnDevice(ctx, 'missing', 'k')).toBe(false);
+
+    expect(await rewrapInboxRootOnDevice(ctx, 'peer', 'c1', 'new-root')).toBe(true);
+    expect((await deviceInbox(ctx).list())[0]?.wrappedMessageRootKey).toBe('new-root');
   });
 
   it('message requests append and change status', async () => {
