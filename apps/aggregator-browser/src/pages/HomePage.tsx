@@ -112,7 +112,6 @@ export function HomePage() {
     isNote,
     handleComment,
     handleLike,
-    handleShare,
     handleReportCopyright,
     handleCreatorClick,
     openFileOnCreatorFeed,
@@ -575,7 +574,7 @@ export function HomePage() {
                   )}
                   <div className="pt-3 border-t border-neutral-700 relative" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end">
-                      {(() => { const fp = getFileProps(indexedFile); return <FeedEngagementSidebar file={fp.file} isLiked={fp.isLiked} onLike={() => handleLike(file.fileId)} onComment={() => handleComment(indexedFile)} onShare={() => handleShare(file.fileId)} isOwner={fp.isOwner} onCreatorClick={handleCreatorClick} indexedFiles={stableIndexedFiles} />; })()}
+                      {(() => { const fp = getFileProps(indexedFile); return <FeedEngagementSidebar file={fp.file} isLiked={fp.isLiked} onLike={() => handleLike(file.fileId)} onComment={() => handleComment(indexedFile)} onShare={() => share(file.fileId)} isOwner={fp.isOwner} onCreatorClick={handleCreatorClick} indexedFiles={stableIndexedFiles} />; })()}
                     </div>
                   </div>
                 </div>

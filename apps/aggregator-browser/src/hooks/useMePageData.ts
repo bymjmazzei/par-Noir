@@ -68,6 +68,7 @@ export function useMePageData({
   const [, setIsLoadingUserEngagement] = useState(false);
   const [creatorOverrideFiles, setCreatorOverrideFiles] = useState<IndexedFile[]>([]);
   const [pendingCreatorFileId, setPendingCreatorFileId] = useState<string | null>(null);
+  const [creatorFilesLoadedFor, setCreatorFilesLoadedFor] = useState<string | null>(null);
 
   // --- refs ---
   const savedFeedLoadingRef = useRef(false);
@@ -199,6 +200,7 @@ export function useMePageData({
     // Creator content index is browse-only.
     if (MESSAGING_ONLY || !viewingCreatorId) {
       setCreatorOverrideFiles([]);
+      setCreatorFilesLoadedFor(null);
       return;
     }
     const authorDid = viewingCreatorId.startsWith('pn-') ? viewingCreatorId : `pn-${viewingCreatorId}`;
@@ -211,6 +213,8 @@ export function useMePageData({
         if (!cancelled) setCreatorOverrideFiles(list);
       } catch {
         if (!cancelled) setCreatorOverrideFiles([]);
+      } finally {
+        if (!cancelled) setCreatorFilesLoadedFor(viewingCreatorId);
       }
     })();
     return () => { cancelled = true; };
@@ -556,7 +560,11 @@ export function useMePageData({
       return;
     }
     const target = creatorFiles.find((f) => f.metadata.fileId === pendingCreatorFileId);
-    if (!target) return; // creator files still loading
+    if (!target) {
+      // Post is gone (deleted / unpublished) once the creator's index has loaded.
+      if (creatorFilesLoadedFor === viewingCreatorId) setPendingCreatorFileId(null);
+      return;
+    }
     const tab: MePageTab | null = isMedia(target)
       ? 'media'
       : isNote(target)
@@ -569,7 +577,7 @@ export function useMePageData({
     } else {
       setPendingCreatorFileId(null);
     }
-  }, [pendingCreatorFileId, viewingCreatorId, filteredMeFiles, creatorFiles, mePageTab, setCurrentFeedIndex]);
+  }, [pendingCreatorFileId, viewingCreatorId, filteredMeFiles, creatorFiles, creatorFilesLoadedFor, mePageTab, setCurrentFeedIndex]);
 
   // --- refreshSavedFeed for onSave onComplete ---
   const refreshSavedFeed = async () => {

@@ -65,31 +65,18 @@ export function EngagementOverlay({
     };
   }, [isOpen]);
 
-  const handleCopyLink = async () => {
-    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.metadata.fileId}&view=feed`;
-    const { copyToClipboard } = await import('../utils/clipboard');
-    const ok = await copyToClipboard(shareUrl);
-    if (ok) {
+  const shareVia = async (mode: 'copy' | 'sheet') => {
+    const { sharePostLink } = await import('../utils/postLink');
+    const result = await sharePostLink(file, mode);
+    if (result === 'copied' || result === 'shared') {
       onShare();
       setShareMenuOpen(false);
       onClose();
     }
   };
 
-  const handleExternalShare = async () => {
-    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.metadata.fileId}&view=feed`;
-    const { shareContent } = await import('../utils/nativeShare');
-    const ok = await shareContent({
-      title: file.metadata.name || file.metadata.title || 'Check this out',
-      text: file.metadata.description || '',
-      url: shareUrl
-    });
-    if (ok) {
-      onShare();
-      setShareMenuOpen(false);
-      onClose();
-    }
-  };
+  const handleCopyLink = () => shareVia('copy');
+  const handleExternalShare = () => shareVia('sheet');
 
   if (!isOpen) return null;
 

@@ -68,7 +68,6 @@ export interface HomePageContextValue {
   getCreatorIdentifier: (f: IndexedFile) => string | null;
   handleComment: (f: IndexedFile) => void;
   handleLike: (fileId: string) => void;
-  handleShare: (fileId: string) => void;
   handleReportCopyright?: (file: IndexedFile, link?: string) => void;
   handleCreatorClick: (creatorId: string) => void;
   openFileOnCreatorFeed: (file: IndexedFile) => void;

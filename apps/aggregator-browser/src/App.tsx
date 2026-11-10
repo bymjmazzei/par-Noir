@@ -400,6 +400,24 @@ function App() {
     };
   }, []);
 
+  const openPostOnCreatorFeed = useCallback((creatorId: string, fileId: string) => {
+    if (MESSAGING_ONLY) return;
+    mePageData.setPendingCreatorFileId(fileId);
+    setViewingCreatorId(creatorId);
+    setViewMode('feed');
+    mePageData.setMePageTab('all');
+  }, []);
+
+  const openFileOnCreatorFeed = useCallback((file: IndexedFile) => {
+    const creatorId = getCreatorIdentifier(file)?.trim();
+    if (!creatorId) {
+      if (import.meta.env.DEV) console.error('No creator ID found for file:', file.metadata.fileId);
+      return;
+    }
+    openPostOnCreatorFeed(creatorId, file.metadata.fileId);
+  }, [openPostOnCreatorFeed]);
+
+  const handledFileParamRef = useRef<string | null>(null);
   useEffect(() => {
     const fileParam = getParam('file');
     const feedParam = getParam('feed');
@@ -410,70 +428,33 @@ function App() {
     if (!hasInitializedFromURLRef.current) {
       hasInitializedFromURLRef.current = true;
 
-    if (viewParam && (viewParam === 'grid' || viewParam === 'feed')) {
-      setViewMode(viewParam);
+      if (viewParam && (viewParam === 'grid' || viewParam === 'feed')) {
+        setViewMode(viewParam);
+      }
+
+      if (feedParam) {
+        setActiveFeedId(feedParam);
+      }
+
+      if (creatorParam && !fileParam) {
+        setViewingCreatorId(creatorParam);
+      }
     }
 
-    if (feedParam) {
-      setActiveFeedId(feedParam);
-    }
-
+    // Post links (?creator=&file=) open the post on the creator's feed.
+    if (!fileParam || handledFileParamRef.current === fileParam) return;
     if (creatorParam) {
-      setViewingCreatorId(creatorParam);
-      }
+      handledFileParamRef.current = fileParam;
+      openPostOnCreatorFeed(creatorParam, fileParam);
+      return;
     }
-
-    // Handle file param separately - can change dynamically
-    if (fileParam && indexedFiles.length > 0) {
-      const file = indexedFiles.find(f => f.metadata.fileId === fileParam);
-      if (file) {
-        setViewMode('feed');
-        setActiveBottomTab('home');
-        // Determine which feed the file belongs to
-        const fileFeedIds = file.metadata.feedIds || [];
-        let targetFeedId = feedParam || 'public';
-        if (!feedParam && fileFeedIds.length > 0) {
-          // If file has feed IDs and no feed param, use the first feed
-          targetFeedId = fileFeedIds[0];
-        }
-        if (targetFeedId !== activeFeedId) {
-          isManualFeedChangeRef.current = true; // Mark as manual change
-          setActiveFeedId(targetFeedId);
-        }
-        // Wait for feed to be set and files to be filtered, then find the file index
-        setTimeout(() => {
-          // Find file in filteredFilesByFeed (which depends on activeFeedId)
-          // Recalculate filtered files based on current activeFeedId
-          let filesToSearch = indexedFiles;
-          if (targetFeedId === 'public') {
-            filesToSearch = indexedFiles;
-          } else if (targetFeedId === 'curated') {
-            const subscribedFeedIds = userState.preferences.subscribedFeedIds;
-            filesToSearch = indexedFiles.filter(f => 
-              f.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId))
-            );
-          } else {
-            filesToSearch = indexedFiles.filter(f => 
-              f.metadata.feedIds?.includes(targetFeedId)
-            );
-          }
-          
-          const fileIndex = filesToSearch.findIndex(f => f.metadata.fileId === fileParam);
-          if (fileIndex !== -1) {
-            setCurrentFeedIndex(fileIndex);
-            setVisibleFileId(fileParam);
-          }
-          // Also try to scroll to it after a short delay
-        setTimeout(() => {
-          const element = document.querySelector(`[data-file-id="${fileParam}"]`);
-            if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-          }, 300);
-        }, 500);
-      }
+    // Older links without creator: wait until the post is in the loaded index.
+    const file = indexedFiles.find((f) => f.metadata.fileId === fileParam);
+    if (file) {
+      handledFileParamRef.current = fileParam;
+      openFileOnCreatorFeed(file);
     }
-  }, [getParam, indexedFiles.length, userState.preferences.subscribedFeedIds]); // Removed activeFeedId to prevent interference
+  }, [getParam, indexedFiles.length, openPostOnCreatorFeed, openFileOnCreatorFeed]);
 
   // Reset feed index and pagination when feed changes (unless navigating to a specific file)
   useEffect(() => {
@@ -990,19 +971,6 @@ function App() {
   
   // CommentModal render logic (logging removed - was too verbose)
 
-  const handleShare = useCallback(async (fileId: string) => {
-    share(fileId);
-    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-    const { shareContent } = await import('./utils/nativeShare');
-    const ok = await shareContent({ url: shareUrl });
-    if (ok) {
-      success('Link copied to clipboard!');
-      setParam('file', fileId);
-    } else {
-      showErrorToast('Failed to copy link. Please try again.');
-    }
-  }, [share, success, setParam, showErrorToast]);
-
   const handleReportCopyright = useCallback((file: IndexedFile, link?: string) => {
     setReportingLink(link);
     setReportingCopyrightFile(file);
@@ -1011,19 +979,6 @@ function App() {
   const handleCreatorClick = useCallback((creatorId: string) => {
     // Messaging host is inbox-only — never open browse Me/profile.
     if (MESSAGING_ONLY) return;
-    setViewingCreatorId(creatorId);
-    setViewMode('feed');
-    mePageData.setMePageTab('all');
-  }, []);
-
-  const openFileOnCreatorFeed = useCallback((file: IndexedFile) => {
-    if (MESSAGING_ONLY) return;
-    const creatorId = getCreatorIdentifier(file)?.trim();
-    if (!creatorId) {
-      if (import.meta.env.DEV) console.error('No creator ID found for file:', file.metadata.fileId);
-      return;
-    }
-    mePageData.setPendingCreatorFileId(file.metadata.fileId);
     setViewingCreatorId(creatorId);
     setViewMode('feed');
     mePageData.setMePageTab('all');
@@ -1143,7 +1098,6 @@ function App() {
     getCreatorIdentifier,
     handleComment,
     handleLike,
-    handleShare,
     handleReportCopyright,
     handleCreatorClick,
     openFileOnCreatorFeed,

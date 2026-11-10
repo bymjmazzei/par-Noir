@@ -713,6 +713,7 @@ export function FullScreenFeed({
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isUserScrollingRef = useRef<boolean>(false);
   const userScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const programmaticScrollUntilRef = useRef<number>(0);
   
   // Track viewing behavior for bot detection
   const viewStartTimeRef = useRef<Map<string, number>>(new Map());
@@ -729,7 +730,7 @@ export function FullScreenFeed({
     if (!container) return;
 
     const handleScroll = () => {
-      // Mark as user scrolling
+      if (Date.now() < programmaticScrollUntilRef.current) return;
       isUserScrollingRef.current = true;
       
       // Clear existing timeout
@@ -768,27 +769,27 @@ export function FullScreenFeed({
     if (prevIndexRef.current === currentIndex && prevFileIdRef.current === currentFile.metadata.fileId) {
       return;
     }
-    
-    prevIndexRef.current = currentIndex;
-    prevFileIdRef.current = currentFile.metadata.fileId;
 
     // Clear any pending scroll
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
     }
 
-    // Use a small delay to batch rapid index changes and let CSS snap handle smoothness
+    // Prev refs are only committed once the scroll runs, so a cancelled or skipped
+    // scroll (files re-render, user scroll) is retried on the next effect run.
     scrollTimeoutRef.current = setTimeout(() => {
-      // Check again if user started scrolling
       if (isUserScrollingRef.current) {
         return;
       }
       
       const element = scrollContainerRef.current?.querySelector(`[data-file-id="${currentFile.metadata.fileId}"]`);
       if (element && scrollContainerRef.current) {
-        // Use smooth scroll - CSS snap will provide the snap behavior
         const fileId = currentFile.metadata.fileId;
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const isJump = prevIndexRef.current === -1 || Math.abs(currentIndex - prevIndexRef.current) > 1;
+        programmaticScrollUntilRef.current = Date.now() + (isJump ? 150 : 1000);
+        element.scrollIntoView({ behavior: isJump ? 'auto' : 'smooth', block: 'start' });
+        prevIndexRef.current = currentIndex;
+        prevFileIdRef.current = fileId;
         setVisibleFileId(fileId);
         
         // Track viewing start time for bot detection
@@ -2085,12 +2086,7 @@ export function FullScreenFeed({
                   console.warn('[FullScreenFeed] onComment or indexedFile is missing', { onComment: !!onComment, indexedFile: !!indexedFile });
                 }
               }}
-              onShare={isMePageCover ? async () => {} : async () => {
-                _onShare(fileId);
-                const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-                const { copyToClipboard } = await import('../utils/clipboard');
-                await copyToClipboard(shareUrl);
-              }}
+              onShare={isMePageCover ? undefined : () => _onShare(fileId)}
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
               onEdit={onEdit ? () => onEdit(indexedFile) : undefined}
               isOwner={!!(userState.isUnlocked && userState.pnIdentifier && (

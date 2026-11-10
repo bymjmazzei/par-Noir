@@ -46,24 +46,11 @@ export function EngagementActions({
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    
-    const fileId = file.metadata.fileId;
-    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-    
-    const { shareContent } = await import('../utils/nativeShare');
-    const ok = await shareContent({
-      title: file.metadata.name || file.metadata.title || 'par Noir',
-      text: file.metadata.description || '',
-      url: shareUrl
-    });
-    if (ok) {
-      success('Link copied to clipboard!');
-      if (onShare) {
-        onShare();
-      }
-    } else {
-      error('Failed to copy link. Please try again.');
-    }
+    const { sharePostLink } = await import('../utils/postLink');
+    const result = await sharePostLink(file);
+    if (result === 'copied') success('Link copied to clipboard!');
+    if (result === 'failed') error('Failed to copy link. Please try again.');
+    if (result === 'copied' || result === 'shared') onShare?.();
   };
 
   const handleAction = (e: React.MouseEvent, action: 'like' | 'comment', callback?: () => void) => {

@@ -13,8 +13,7 @@ import { ProfileActionMenu } from './ProfileActionMenu';
 import { useToast } from '../hooks/useToast';
 import { isFileSaved } from '../services/savedFeedService';
 import { uploadQueueService } from '../services/uploadQueueService';
-import { API_ENDPOINT } from '../config/api';
-import { shareContent } from '../utils/nativeShare';
+import { sharePostLink } from '../utils/postLink';
 import { LikersListModal } from './LikersListModal';
 import { viewsForFeedPage, type FeedPagePosition } from '../utils/feedPageViews';
 
@@ -173,40 +172,10 @@ export function FeedEngagementSidebar({
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    
-    const fileId = file.metadata.fileId;
-    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-    
-    const ok = await shareContent({
-      title: file.metadata.name || file.metadata.title || 'par Noir',
-      text: file.metadata.description || '',
-      url: shareUrl
-    });
-    
-    if (ok) {
-      success('Link copied to clipboard!');
-      
-      // Record share engagement if user is unlocked
-      if (userState.isUnlocked && userState.pnIdentifier) {
-        try {
-          await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/share`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
-          });
-        } catch (engagementErr) {
-          console.warn('Failed to record share engagement:', engagementErr);
-        }
-      }
-      
-      if (onShare) {
-        onShare();
-      }
-    } else {
-      error('Failed to copy link. Please try again.');
-    }
+    const result = await sharePostLink(file);
+    if (result === 'copied') success('Link copied to clipboard!');
+    if (result === 'failed') error('Failed to copy link. Please try again.');
+    if (result === 'copied' || result === 'shared') onShare?.();
   };
 
   const handleAction = (e: React.MouseEvent, action: 'like' | 'comment' | 'bookmark', callback?: () => void) => {
