@@ -24,7 +24,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'private',
     examples: ['Identity verification', 'Name disclosure'],
     uiClass: 'name',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'full_name',
@@ -40,7 +40,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'first_last',
@@ -56,7 +56,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'first_last_initial',
@@ -72,7 +72,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'first_name',
@@ -88,7 +88,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'middle_name',
@@ -105,7 +105,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'last_name',
@@ -121,7 +121,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'suffix',
@@ -138,7 +138,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'nickname',
@@ -154,7 +154,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: false
+    idVerifiable: false
   },
   {
     id: 'identity_attestation',
@@ -171,7 +171,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'name',
     derived: true,
     derivedFrom: 'name_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
 
   // —— Age bundle ——
@@ -187,7 +187,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'selective',
     examples: ['Age-restricted content', 'Age verification services', 'Compliance requirements'],
     uiClass: 'age',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'over_18',
@@ -203,7 +203,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'age',
     derived: true,
     derivedFrom: 'age_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'over_21',
@@ -219,7 +219,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'age',
     derived: true,
     derivedFrom: 'age_attestation',
-    veriffCapable: true
+    idVerifiable: true
   },
 
   // —— Contact ——
@@ -235,7 +235,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'selective',
     examples: ['Account recovery', 'Communication verification', 'Account creation'],
     uiClass: 'contact',
-    veriffCapable: false
+    idVerifiable: false
   },
   {
     id: 'phone_verification',
@@ -249,7 +249,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'private',
     examples: ['Two-factor authentication', 'Account recovery', 'Emergency contact'],
     uiClass: 'contact',
-    veriffCapable: false
+    idVerifiable: false
   },
 
   // —— Location ——
@@ -266,7 +266,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'private',
     examples: ['Geographic verification', 'Regional compliance', 'Location-based services'],
     uiClass: 'location',
-    veriffCapable: false
+    idVerifiable: false
   },
 
   // —— Documents ——
@@ -282,7 +282,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'private',
     examples: ['KYC'],
     uiClass: 'documents',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'document_number',
@@ -296,7 +296,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'private',
     examples: ['KYC'],
     uiClass: 'documents',
-    veriffCapable: true
+    idVerifiable: true
   },
   {
     id: 'document_front',
@@ -310,7 +310,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'private',
     examples: ['KYC document image'],
     uiClass: 'documents',
-    veriffCapable: true,
+    idVerifiable: true,
     documentImage: true
   },
   {
@@ -325,7 +325,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'private',
     examples: ['KYC document image'],
     uiClass: 'documents',
-    veriffCapable: true,
+    idVerifiable: true,
     documentImage: true
   },
   {
@@ -340,7 +340,7 @@ const CATALOG_ROWS: Array<
     defaultPrivacy: 'private',
     examples: ['Liveness'],
     uiClass: 'documents',
-    veriffCapable: true,
+    idVerifiable: true,
     documentImage: true
   },
   {
@@ -358,7 +358,7 @@ const CATALOG_ROWS: Array<
     uiClass: 'documents',
     derived: true,
     derivedFrom: 'document_type',
-    veriffCapable: true
+    idVerifiable: true
   },
 
   // —— System (not shown in classed Add/Edit lists) ——
@@ -444,8 +444,8 @@ export const NAME_DERIVED_IDS = [
 /** Derived proof ids minted from age_attestation / DOB form */
 export const AGE_DERIVED_IDS = ['age_attestation', 'over_18', 'over_21'] as const;
 
-export const VERIFF_CAPABLE_IDS = Object.values(STANDARD_DATA_POINTS)
-  .filter((dp) => dp.veriffCapable)
+export const ID_VERIFIABLE_IDS = Object.values(STANDARD_DATA_POINTS)
+  .filter((dp) => dp.idVerifiable)
   .map((dp) => dp.id);
 
 export function getAvailableDataPoints(): StandardDataPoint[] {

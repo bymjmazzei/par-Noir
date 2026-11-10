@@ -2,7 +2,7 @@
  * License Modal (Reworked)
  * Now handles API key activation instead of license purchase
  * All pNs automatically get an inactive API key
- * Activation requires Veriff verification (AML/KYC)
+ * Activation requires Stripe Identity verification (AML/KYC)
  */
 
 import React, { useState, useEffect } from 'react';

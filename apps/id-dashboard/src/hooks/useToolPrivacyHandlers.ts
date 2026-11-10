@@ -14,7 +14,7 @@ import {
 } from '../services/knowledgeAttestation';
 import { ownerFetch } from '../services/ownerApiService';
 import { requireOwnerApiToken, resolveOwnerApiToken } from '../services/ownerApiToken';
-import { STANDARD_DATA_POINTS, VERIFF_CAPABLE_IDS } from '../types/StandardDataPointsRegistry';
+import { STANDARD_DATA_POINTS, ID_VERIFIABLE_IDS } from '../types/StandardDataPointsRegistry';
 import type { GlobalPrivacySettings } from '../types/privacy';
 import type { DIDInfo, SyncedDevice } from '../types/app';
 export interface UseToolPrivacyHandlersParams {
@@ -378,16 +378,16 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         return;
       }
 
-      const veriffLocked =
-        (dataPoint.veriffCapable || VERIFF_CAPABLE_IDS.includes(dataPointId)) &&
+      const idVerifiedLocked =
+        (dataPoint.idVerifiable || ID_VERIFIABLE_IDS.includes(dataPointId)) &&
         (verifiedDataPoints.has(dataPointId) ||
           (dataPointId === 'name_attestation' &&
             (verifiedDataPoints.has('full_name') || verifiedDataPoints.has('first_name'))) ||
           (dataPointId === 'age_attestation' &&
             (verifiedDataPoints.has('age_attestation') || verifiedDataPoints.has('over_18'))));
-      if (veriffLocked) {
+      if (idVerifiedLocked) {
         setError(
-          'This identity proof is Veriff-verified and locked. Changing it requires identity rekey / rotation.'
+          'This identity proof is ID-verified and locked. Changing it requires identity rekey / rotation.'
         );
         setTimeout(() => setError(null), 9000);
         return;
@@ -408,7 +408,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
           if (existing.length) {
             if (existing.some((c) => c.verificationLevel === 'verified')) {
               setError(
-                'This identity proof is Veriff-verified and locked. Changing it requires identity rekey / rotation.'
+                'This identity proof is ID-verified and locked. Changing it requires identity rekey / rotation.'
               );
               setTimeout(() => setError(null), 9000);
               return;

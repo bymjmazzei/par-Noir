@@ -25,7 +25,7 @@ export interface MonetizationStatusResponse {
   renewalPriceCents: number | null;
   eligibleForFundAccrual: boolean;
   stripeConfigured: boolean;
-  veriffConfigured: boolean;
+  identityVerificationConfigured: boolean;
   stripeCustomerId: string | null;
   connectOnboarded: boolean;
   payoutCadenceNote: string;
@@ -35,17 +35,19 @@ export interface MonetizationStatusResponse {
   creatorFundPaidOutCents?: number;
 }
 
-export interface VeriffSessionResponse {
+export interface IdentitySessionResponse {
   url: string;
   sessionId: string;
-  /** API-signed (session, pN) binding; the only link between this pN and the Veriff session. */
+  /** API-signed (session, pN) binding; the only link between this pN and the Stripe Identity session. */
   state: string;
 }
 
-export interface VeriffDecisionResponse {
-  /** pending | approved | declined | resubmission_requested | expired | abandoned | review */
+export interface IdentityDecisionResponse {
+  /** pending | review | resubmission_requested | approved | declined | expired | unknown */
   status: string;
   sessionId: string;
+  /** Fresh hosted URL while the session still needs input; replaces the stored one. */
+  url?: string;
   /** API-signed verification credential (approved only); store it in the pN's own Knowledge docs. */
   credential?: string;
   expiresAt?: string;
@@ -189,35 +191,35 @@ export class MonetizationService {
     };
   }
 
-  /** Veriff hosted flow for the token's pN (membership required). Keep `state` to finalize. */
-  static async createVeriffSession(accessToken: string, returnUrl: string): Promise<VeriffSessionResponse> {
-    const res = await fetch(`${API_ENDPOINT}/api/verification/veriff/session`, {
+  /** Stripe Identity hosted flow for the token's pN (membership required). Keep `state` to finalize. */
+  static async createIdentitySession(accessToken: string, returnUrl: string): Promise<IdentitySessionResponse> {
+    const res = await fetch(`${API_ENDPOINT}/api/verification/session`, {
       method: 'POST',
       headers: authHeaders(accessToken),
       body: JSON.stringify({ return_url: returnUrl })
     });
-    const data = (await res.json().catch(() => ({}))) as Partial<VeriffSessionResponse> & {
+    const data = (await res.json().catch(() => ({}))) as Partial<IdentitySessionResponse> & {
       error_description?: string;
     };
     if (!res.ok) {
-      throw new Error(data.error_description || `Veriff session failed (${res.status})`);
+      throw new Error(data.error_description || `Verification session failed (${res.status})`);
     }
-    if (!data.url || !data.state || !data.sessionId) throw new Error('Veriff session response incomplete');
+    if (!data.url || !data.state || !data.sessionId) throw new Error('Verification session response incomplete');
     return { url: data.url, sessionId: data.sessionId, state: data.state };
   }
 
-  static async getVeriffDecision(accessToken: string, state: string): Promise<VeriffDecisionResponse> {
-    const res = await fetch(`${API_ENDPOINT}/api/verification/veriff/decision`, {
+  static async getIdentityDecision(accessToken: string, state: string): Promise<IdentityDecisionResponse> {
+    const res = await fetch(`${API_ENDPOINT}/api/verification/decision`, {
       method: 'POST',
       headers: authHeaders(accessToken),
       body: JSON.stringify({ state })
     });
-    const data = (await res.json().catch(() => ({}))) as VeriffDecisionResponse & {
+    const data = (await res.json().catch(() => ({}))) as IdentityDecisionResponse & {
       error?: string;
       error_description?: string;
     };
     if (!res.ok) {
-      throw Object.assign(new Error(data.error_description || `Veriff decision failed (${res.status})`), {
+      throw Object.assign(new Error(data.error_description || `Verification decision failed (${res.status})`), {
         code: data.error
       });
     }

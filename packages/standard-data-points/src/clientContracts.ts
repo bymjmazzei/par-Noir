@@ -26,7 +26,7 @@ export interface ClientContract {
   scopes: readonly string[];
 }
 
-/** NSFW gating requires a Veriff-verified over_21, never a self-attested one. */
+/** NSFW gating requires an ID-verified over_21, never a self-attested one. */
 const BROWSER_APP_CONTRACT: ClientContract = {
   clientId: BROWSER_APP_CLIENT_ID,
   name: 'par Noir Browser',

@@ -21,7 +21,9 @@ const PLATFORM_EVENTS = [
   'charge.refunded',
   'charge.dispute.created',
   'charge.dispute.closed',
-  'transfer.reversed'
+  'transfer.reversed',
+  'identity.verification_session.verified',
+  'identity.verification_session.requires_input'
 ];
 const CONNECT_EVENTS = ['checkout.session.completed'];
 

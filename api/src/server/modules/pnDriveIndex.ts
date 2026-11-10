@@ -43,7 +43,7 @@ export interface PnDriveIndex {
   integratorsRootId: string;
   messagesFolderId: string;
   inboxSheetId: string;
-  /** Private folder for Veriff/KYC encrypted images — not in Storage root listing or public indexes */
+  /** Private folder for KYC encrypted images — not in Storage root listing or public indexes */
   zkpDocsFolderId?: string;
   /** Dashboard cabinet. Files, never the pN root. */
   filesFolderId?: string;

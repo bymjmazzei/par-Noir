@@ -44,6 +44,7 @@ import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
 import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   attestFromTemplate,
+  buildAgeDerivedPayloads,
   reissueKnowledgeClaims,
   resolveAttestationKeys,
 } from '../services/knowledgeAttestation';
@@ -105,6 +106,36 @@ describe('attestFromTemplate', () => {
     expect(call.template.id).toBe(KNOWLEDGE_CLAIM_TEMPLATE_IDS.age);
     expect(call.claims.every((c: { proofRef: string }) => c.proofRef.length > 0)).toBe(true);
     expect(JSON.stringify(call.claims)).not.toContain('1990-01-02');
+  });
+
+  it('derives over_18 / over_21 from the birth date, not from its presence', () => {
+    const yearsAgo = (n: number) => {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - n);
+      d.setDate(d.getDate() + 2);
+      return d.toISOString().slice(0, 10);
+    };
+    expect(buildAgeDerivedPayloads(yearsAgo(19))).toEqual({ over_18: { over18: true }, over_21: { over21: false } });
+    expect(buildAgeDerivedPayloads(yearsAgo(18))).toEqual({ over_18: { over18: false }, over_21: { over21: false } });
+    expect(buildAgeDerivedPayloads('1990-01-02')).toEqual({ over_18: { over18: true }, over_21: { over21: true } });
+  });
+
+  it('labels verified claims with the stripe_identity provider by default', async () => {
+    rememberShellSigningKeys(['did:pn:verified'], {
+      mlDsaSecretKey: bytesToBase64(signing.secretKey),
+      mlDsaPublicKey: publicKey,
+    });
+    rememberShellMlKem(['did:pn:verified'], 'ml-kem-secret');
+    const keys = await resolveAttestationKeys({ identityId: 'did:pn:verified', publicKey });
+    await attestFromTemplate({
+      keys,
+      authToken: 'api-token',
+      dataPointId: 'age_attestation',
+      userData: { dateOfBirth: '1990-01-02' },
+      verificationLevel: 'verified',
+    });
+    const call = writeKnowledgeClaimDoc.mock.calls[0]![0] as Record<string, any>;
+    expect(call.claims.every((c: { provider: string }) => c.provider === 'stripe_identity')).toBe(true);
   });
 
   it('asks for the unlock app when no signing key is held', async () => {

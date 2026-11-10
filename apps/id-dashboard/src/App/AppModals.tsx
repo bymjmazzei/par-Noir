@@ -831,7 +831,12 @@ export function AppModals(props: AppModalsProps) {
                   updatedVerifiedDataPoints.add(id);
                   updatedAttestedDataPoints.add(id);
                 });
-              const verified = { keys, authToken, verificationLevel: 'verified' as const, provider: 'veriff' };
+              const verified = {
+                keys,
+                authToken,
+                verificationLevel: 'verified' as const,
+                provider: verifiedData.provider
+              };
 
               if (firstName && lastName) {
                 markVerified(
@@ -871,7 +876,7 @@ export function AppModals(props: AppModalsProps) {
                   proofType: mapDataPointIdToProofType(dataPointId),
                   zkpProof: row.zkpProof,
                   verificationLevel: 'verified',
-                  provider: verifiedData.provider || 'veriff',
+                  provider: verifiedData.provider,
                   verifiedAt: row.verifiedAt || verifiedData.verifiedAt,
                   expiresAt: row.expiresAt
                 });
@@ -879,7 +884,7 @@ export function AppModals(props: AppModalsProps) {
               }
             }
           } catch (error) {
-            console.error('Error minting verified ZKPs after Veriff:', error);
+            console.error('Error minting verified ZKPs after identity verification:', error);
           }
 
           setAttestedDataPoints(updatedAttestedDataPoints);

@@ -178,7 +178,7 @@ function resolveOauthSigningKeys(): { privateKey: string; publicKey: string; kid
 
 const oauthSigningKeys = resolveOauthSigningKeys();
 
-export type AttestationTyp = 'pn-verified+jwt' | 'veriff-state+jwt';
+export type AttestationTyp = 'pn-verified+jwt' | 'identity-state+jwt';
 
 interface RefreshTokenRecord {
   refresh_token: string;
@@ -275,7 +275,7 @@ export class PNOAuthService {
   }
 
   /**
-   * Statements the API vouches for (verification credentials, Veriff state), signed with the
+   * Statements the API vouches for (verification credentials, identity session state), signed with the
    * session key so anyone can check them via `/.well-known/jwks.json`. `typ` is both the JOSE
    * header and the audience, so an attestation never validates as an access token or as
    * another attestation type.

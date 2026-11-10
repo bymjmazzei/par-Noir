@@ -90,7 +90,7 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
             <Key className="h-5 w-5" />
             API keys
             <SectionInfo title="API keys">
-              <p>Each pN has an API key for OAuth and integrations. Activate after identity verification (Veriff).</p>
+              <p>Each pN has an API key for OAuth and integrations. Activate after identity verification (Stripe Identity).</p>
             </SectionInfo>
           </h2>
           {authenticatedUser ? (

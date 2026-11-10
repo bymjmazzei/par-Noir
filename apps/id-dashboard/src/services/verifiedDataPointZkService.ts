@@ -1,5 +1,5 @@
 /**
- * Queue and issue ZK v2 envelopes for Veriff-verified data points (verified house).
+ * Issue ZK v2 envelopes for ID-verified data points left in the local queue (verified house).
  * Issuance requires unlocked identity with ML-DSA keys.
  */
 
@@ -16,12 +16,6 @@ export interface VerifiedDataPointQueueEntry {
     value: string;
     verificationLevel: 'verified';
   }>;
-}
-
-export function queueVerifiedDataPoints(entry: VerifiedDataPointQueueEntry): void {
-  const list = listQueuedVerifiedDataPoints();
-  list.push(entry);
-  localStorage.setItem(QUEUE_KEY, JSON.stringify(list));
 }
 
 export function listQueuedVerifiedDataPoints(): VerifiedDataPointQueueEntry[] {
@@ -60,7 +54,7 @@ export async function issueVerifiedZkpsForQueue(params: {
         zkp_type: dp.dataPointId,
         data_point_id: dp.dataPointId,
         verification_level: dp.verificationLevel,
-        veriff_verification_id: params.verificationId,
+        provider_verification_id: params.verificationId,
         verified_at: entry.verifiedAt
       },
       expiresAtMs
@@ -71,68 +65,4 @@ export async function issueVerifiedZkpsForQueue(params: {
   const remaining = queue.filter((e) => e.verificationId !== params.verificationId);
   localStorage.setItem(QUEUE_KEY, JSON.stringify(remaining));
   return proofs;
-}
-
-/** Map Veriff extracted fields to standard verified data point queue entries. */
-export function queueFromVeriffResult(
-  verificationId: string,
-  extracted: {
-    firstName?: string;
-    lastName?: string;
-    middleName?: string;
-    dateOfBirth?: string;
-    documentType?: string;
-    documentNumber?: string;
-    country?: string;
-  }
-): void {
-  const dataPoints: VerifiedDataPointQueueEntry['dataPoints'] = [];
-  if (extracted.firstName || extracted.lastName) {
-    dataPoints.push({
-      dataPointId: 'name_attestation',
-      value: [extracted.firstName, extracted.lastName].filter(Boolean).join(' '),
-      verificationLevel: 'verified'
-    });
-  }
-  if (extracted.firstName) {
-    dataPoints.push({ dataPointId: 'first_name', value: extracted.firstName, verificationLevel: 'verified' });
-  }
-  if (extracted.lastName) {
-    dataPoints.push({ dataPointId: 'last_name', value: extracted.lastName, verificationLevel: 'verified' });
-  }
-  if (extracted.dateOfBirth) {
-    dataPoints.push({
-      dataPointId: 'age_attestation',
-      value: extracted.dateOfBirth,
-      verificationLevel: 'verified'
-    });
-    dataPoints.push({ dataPointId: 'over_18', value: 'true', verificationLevel: 'verified' });
-    dataPoints.push({ dataPointId: 'over_21', value: 'true', verificationLevel: 'verified' });
-  }
-  if (extracted.documentType) {
-    dataPoints.push({
-      dataPointId: 'document_type',
-      value: extracted.documentType,
-      verificationLevel: 'verified'
-    });
-  }
-  if (extracted.documentNumber) {
-    dataPoints.push({
-      dataPointId: 'document_number',
-      value: extracted.documentNumber,
-      verificationLevel: 'verified'
-    });
-  }
-  if (dataPoints.length === 0) {
-    dataPoints.push({
-      dataPointId: 'identity_attestation',
-      value: 'verified',
-      verificationLevel: 'verified'
-    });
-  }
-  queueVerifiedDataPoints({
-    verificationId,
-    verifiedAt: new Date().toISOString(),
-    dataPoints
-  });
 }

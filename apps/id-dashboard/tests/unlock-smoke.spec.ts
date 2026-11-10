@@ -8,7 +8,7 @@ import { expect, test, type ConsoleMessage, type Page } from '@playwright/test';
  * `vite.config.ts`. Those never reproduce in dev, so this runs against `vite preview`
  * over a real build and fails on any uncaught exception during first paint.
  *
- * Hermetic: no identity is unlocked and no Drive, Stripe, or Veriff call is made. Only
+ * Hermetic: no identity is unlocked and no Drive or Stripe call is made. Only
  * the pre-auth screen is exercised.
  */
 

@@ -13,7 +13,7 @@ export interface VerifiedIdentityData {
     [key: string]: VerifiedDataPoint;
   };
   fraudPrevention: FraudPreventionResult;
-  provider: 'veriff' | 'jumio' | 'onfido' | 'mock';
+  provider: VerificationProvider;
   metadata: VerificationMetadata;
   /** API-signed verification credential (JWT) the pN holds in its own Knowledge docs. */
   credential?: string;
@@ -142,20 +142,6 @@ export interface VerificationHistoryItem {
   riskScore: number;
 }
 
-// Configuration types
-export interface VerificationConfig {
-  provider: 'veriff' | 'jumio' | 'onfido' | 'mock';
-  apiKey?: string;
-  apiSecret?: string;
-  baseUrl?: string;
-  fraudThreshold: number; // Maximum acceptable risk score
-  confidenceThreshold: number; // Minimum acceptable confidence
-  supportedDocuments: string[];
-  supportedCountries: string[];
-  maxRetries: number;
-  timeout: number; // in milliseconds
-}
-
 // Event types for verification process
 export interface VerificationEvent {
   type: 'started' | 'document_uploaded' | 'selfie_captured' | 'liveness_check' | 'processing' | 'completed' | 'failed';
@@ -173,7 +159,7 @@ export type VerificationStep =
   | 'processing'
   | 'completed';
 
-export type VerificationProvider = 'veriff' | 'jumio' | 'onfido' | 'mock';
+export type VerificationProvider = 'stripe_identity';
 
 export type DocumentType = 'drivers_license' | 'passport' | 'state_id' | 'national_id';
 

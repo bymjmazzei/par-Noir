@@ -506,7 +506,6 @@ class ProductionServer {
       '/favicon.ico',
       '/api/monetization/stripe-webhook',
       '/api/monetization/stripe-connect-webhook',
-      '/api/verification/veriff/webhook',
     ];
     const publicNoOriginGetOnlyPrefixes = [
       '/api/aggregator/metadata-index',
@@ -727,9 +726,7 @@ class ProductionServer {
       const p = req.path || req.url?.split('?')[0] || '';
       if (
         req.method === 'POST' &&
-        (p === '/api/monetization/stripe-webhook' ||
-          p === '/api/monetization/stripe-connect-webhook' ||
-          p === '/api/verification/veriff/webhook')
+        (p === '/api/monetization/stripe-webhook' || p === '/api/monetization/stripe-connect-webhook')
       ) {
         return express.raw({ type: 'application/json', limit: '1mb' })(req, res, next);
       }

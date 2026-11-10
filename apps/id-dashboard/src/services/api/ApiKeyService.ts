@@ -2,7 +2,7 @@
  * API Key Service
  * Manages API key generation, activation, and validation
  * All pNs automatically get an inactive API key
- * Activation requires Veriff verification (AML/KYC)
+ * Activation requires Stripe Identity verification (AML/KYC)
  * 
  * SECURITY: API keys are stored encrypted in Google Drive metadata
  * for persistence and cross-device sync
@@ -19,7 +19,7 @@ export interface ApiKey {
   createdAt: string;
   activatedAt?: string;
   lastUsedAt?: string;
-  verificationId?: string; // Veriff verification ID
+  verificationId?: string; // Identity verification ID
   scopes: string[];
   rateLimit?: {
     requestsPerMinute: number;
@@ -158,7 +158,7 @@ export class ApiKeyService {
   }
 
   /**
-   * Activate API key (requires Veriff verification)
+   * Activate API key (requires identity verification)
    */
   async activateApiKey(
     pnId: string,

@@ -9,7 +9,7 @@ import { getDatabasePool } from '../utils/database';
 import { EngagementService } from './engagementService';
 import { CreatorFundPeriodService, type ClosedFundPeriodRow } from './creatorFundPeriodService';
 import { isCreatorFundPayoutCadenceDayET } from './creatorFundPayoutCadence';
-import { veriffConfig } from './veriffService';
+import { StripeIdentityService, stripeIdentityConfigured } from './stripeIdentityService';
 
 type DbQueryable = Pick<Pool, 'query'>;
 
@@ -172,9 +172,8 @@ const READINESS_ENV_KEYS = [
   'STRIPE_MONETIZATION_PRICE_ID',
   'STRIPE_WEBHOOK_SECRET',
   'STRIPE_CONNECT_WEBHOOK_SECRET',
-  'VERIFF_API_KEY',
-  'VERIFF_SHARED_SECRET',
-  'VERIFF_COST_CENTS',
+  'STRIPE_IDENTITY_RESTRICTED_KEY',
+  'STRIPE_IDENTITY_COST_CENTS',
   'CREATOR_FUND_CRON_SECRET'
 ] as const;
 
@@ -217,8 +216,8 @@ export interface MonetizationStatusDto {
   renewalPriceCents: number | null;
   eligibleForFundAccrual: boolean;
   stripeConfigured: boolean;
-  /** Veriff keys present; verification is included in the membership. */
-  veriffConfigured: boolean;
+  /** Stripe Identity key present; verification is included in the membership. */
+  identityVerificationConfigured: boolean;
   stripeCustomerId: string | null;
   connectOnboarded: boolean;
   /** UX copy only — not a legal guarantee */
@@ -302,7 +301,7 @@ export class MonetizationService {
       renewalPriceCents,
       eligibleForFundAccrual,
       stripeConfigured: isStripeMonetizationConfigured(),
-      veriffConfigured: veriffConfig() != null,
+      identityVerificationConfigured: stripeIdentityConfigured(),
       stripeCustomerId: row?.stripe_customer_id ?? null,
       connectOnboarded,
       payoutCadenceNote:
@@ -1078,6 +1077,13 @@ export class MonetizationService {
             [tr.id]
           );
         }
+        break;
+      }
+      case 'identity.verification_session.verified':
+      case 'identity.verification_session.requires_input': {
+        await StripeIdentityService.handleWebhookSession(
+          event.data.object as Stripe.Identity.VerificationSession
+        );
         break;
       }
       default:

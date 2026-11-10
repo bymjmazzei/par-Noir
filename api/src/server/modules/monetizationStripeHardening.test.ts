@@ -207,17 +207,18 @@ describe('monetizationReadiness', () => {
   it('reports presence only and lists what is missing', () => {
     const keep = { ...process.env };
     for (const k of Object.keys(process.env)) {
-      if (/^(STRIPE_|VERIFF_|CREATOR_FUND_CRON)/.test(k)) delete process.env[k];
+      if (/^(STRIPE_|CREATOR_FUND_CRON)/.test(k)) delete process.env[k];
     }
     process.env.STRIPE_SECRET_KEY = 'sk_test_secret_value';
-    process.env.VERIFF_API_KEY = '  ';
+    process.env.STRIPE_IDENTITY_RESTRICTED_KEY = '  ';
     const out = monetizationReadiness();
     process.env = keep;
 
     expect(out.ready).toBe(false);
     expect(out.env.STRIPE_SECRET_KEY).toBe(true);
-    expect(out.env.VERIFF_API_KEY).toBe(false);
-    expect(out.missing).toContain('VERIFF_SHARED_SECRET');
+    expect(out.env.STRIPE_IDENTITY_RESTRICTED_KEY).toBe(false);
+    expect(out.missing).toContain('STRIPE_IDENTITY_COST_CENTS');
+    expect(Object.keys(out.env).some((k) => k.startsWith('VERIFF_'))).toBe(false);
     expect(out.missing).not.toContain('VERIFICATION_DEDUPE_SECRET');
     expect(JSON.stringify(out)).not.toContain('sk_test_secret_value');
   });

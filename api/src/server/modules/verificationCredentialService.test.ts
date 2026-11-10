@@ -83,7 +83,7 @@ describe('VerificationCredentialService', () => {
   });
 
   it('rejects other attestation typs, access-token audiences and expired credentials', async () => {
-    const state = await PNOAuthService.signAttestation('veriff-state+jwt', { sub: 'pn-a', jti: 'x', lvl: 'verified' }, 60);
+    const state = await PNOAuthService.signAttestation('identity-state+jwt', { sub: 'pn-a', jti: 'x', lvl: 'verified' }, 60);
     expect(VerificationCredentialService.verify(state)).toBeNull();
     const expired = await PNOAuthService.signAttestation(
       CREDENTIAL_TYP,

@@ -31,10 +31,10 @@ const PRIVACY_GROUPS: Array<{
           they need.
         </p>
         <p>
-          <strong className="text-text-primary">Verify</strong> (government ID) locks Veriff-capable
+          <strong className="text-text-primary">Verify</strong> (government ID) locks ID-verifiable
           fields on this identity. Changing those requires identity rekey / rotation.
         </p>
-        <p>Email and phone use separate contact verification (Twilio), not Veriff.</p>
+        <p>Email and phone use separate contact verification (Twilio), not the government ID check.</p>
       </>
     )
   },
@@ -49,7 +49,7 @@ const PRIVACY_GROUPS: Array<{
           ID metadata and images are stored encrypted under private zkp-docs — not in Storage or
           public feeds.
         </p>
-        <p>Rows Veriff proves are locked until identity rekey / rotation.</p>
+        <p>Rows proven by government ID verification are locked until identity rekey / rotation.</p>
       </>
     )
   }

@@ -1370,12 +1370,12 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const fs = await import('fs');
       const path = await import('path');
-      const veriffPath = path.join(__dirname, '../../migrations/add_veriff_sessions.sql');
-      await db.query(fs.readFileSync(veriffPath, 'utf-8'));
-      console.log('✅ veriff verification migration executed');
+      const identityPath = path.join(__dirname, '../../migrations/add_stripe_identity_billing.sql');
+      await db.query(fs.readFileSync(identityPath, 'utf-8'));
+      console.log('✅ stripe identity verification migration executed');
     } catch (migrationError: unknown) {
       console.debug(
-        'ℹ️ veriff verification migration error (may already be applied):',
+        'ℹ️ stripe identity verification migration error (may already be applied):',
         migrationError instanceof Error ? migrationError.message : migrationError
       );
     }

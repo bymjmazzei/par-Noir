@@ -1,7 +1,7 @@
 import { apiGet } from './penOwnerFetch';
 import type { PenSession } from './penSession';
 
-/** Verified author = active identity verification on the API (Veriff, included in membership). */
+/** Verified author = active identity verification on the API (Stripe Identity, included in membership). */
 export async function resolveVerifiedAuthor(session: PenSession | null | undefined): Promise<boolean> {
   if (!session?.pnIdentifier || !session.accessToken) return false;
   try {

@@ -29,7 +29,7 @@ export type KnowledgeClaim = {
   label?: string;
   proofType?: string;
   verificationLevel?: 'basic' | 'enhanced' | 'verified';
-  /** Who vouched: user_attested, veriff, … */
+  /** Who vouched: user_attested, stripe_identity, … */
   provider?: string;
   verifiedAt?: string;
   expiresAt?: string;

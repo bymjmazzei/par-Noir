@@ -6,7 +6,7 @@ import { SectionInfo } from './common/SectionInfo';
 import {
   MonetizationService,
   type MonetizationStatusResponse,
-  type VeriffDecisionResponse
+  type IdentityDecisionResponse
 } from '../services/monetization/MonetizationService';
 
 interface IdentityVerificationModalProps {
@@ -16,31 +16,31 @@ interface IdentityVerificationModalProps {
   identityId?: string;
   /** Required to mint ZK v1 proofs (ML-DSA). */
   encryptedIdentity?: EncryptedIdentity;
-  /** API bearer token for membership status, Veriff session and decision. */
+  /** API bearer token for membership status, verification session and decision. */
   accessToken?: string | null;
   /** Reconciles the held credential with the API flag (present / reissue); true when the flag changed. */
   syncHeldCredential?: (serverVerified: boolean) => Promise<boolean>;
 }
 
-interface PendingVeriffSession {
+interface PendingIdentitySession {
   sessionId: string;
   url: string;
   state: string;
   createdAt: number;
 }
 
-/** Veriff sessions live 7 days; resume for 6 so a stale URL is never reused. */
+/** The signed state lives 7 days; resume for 6. Hosted URLs are short-lived, so resuming refetches one. */
 const PENDING_RESUME_MS = 6 * 24 * 60 * 60 * 1000;
-const TERMINAL_STATUSES = new Set(['approved', 'declined', 'expired', 'abandoned']);
+const TERMINAL_STATUSES = new Set(['approved', 'declined', 'expired', 'unknown']);
 
 function pendingKey(identityId: string | undefined): string {
-  return `parnoir.veriffPending.${identityId || 'default'}`;
+  return `parnoir.identityPending.${identityId || 'default'}`;
 }
 
-function readPending(identityId: string | undefined): PendingVeriffSession | null {
+function readPending(identityId: string | undefined): PendingIdentitySession | null {
   try {
     const raw = localStorage.getItem(pendingKey(identityId));
-    const p = raw ? (JSON.parse(raw) as PendingVeriffSession) : null;
+    const p = raw ? (JSON.parse(raw) as PendingIdentitySession) : null;
     if (!p?.state || !p.url || Date.now() - p.createdAt > PENDING_RESUME_MS) return null;
     return p;
   } catch {
@@ -48,7 +48,7 @@ function readPending(identityId: string | undefined): PendingVeriffSession | nul
   }
 }
 
-function writePending(identityId: string | undefined, p: PendingVeriffSession | null): void {
+function writePending(identityId: string | undefined, p: PendingIdentitySession | null): void {
   try {
     if (p) localStorage.setItem(pendingKey(identityId), JSON.stringify(p));
     else localStorage.removeItem(pendingKey(identityId));
@@ -70,31 +70,31 @@ const STEPS: VerificationStep[] = [
 ];
 
 const DECISION_MESSAGES: Record<string, string> = {
-  pending: 'Finish the Veriff flow, then finalize here. If you already submitted, try again in a few minutes.',
-  review: 'Veriff is reviewing your submission. Try again in a few minutes.',
-  resubmission_requested: 'Veriff asked for a resubmission. Continue verification to resubmit.',
-  declined: 'Veriff declined this verification.',
-  expired: 'The Veriff session expired. Start verification again.',
-  abandoned: 'The Veriff session was abandoned. Start verification again.'
+  pending: 'Finish the Stripe verification flow, then finalize here. If you already submitted, try again in a few minutes.',
+  review: 'Stripe is processing your submission. Try again in a few minutes.',
+  resubmission_requested: 'Stripe could not verify that submission. Continue verification to try again.',
+  declined: 'This verification was declined.',
+  expired: 'The verification session ended. Start verification again.',
+  unknown: 'The verification session is in an unexpected state. Start verification again.'
 };
 
-function documentTypeFromVeriff(
+function documentTypeFromStripe(
   type: string | null | undefined,
   country: string | null | undefined
 ): VerificationMetadata['documentType'] {
-  switch (String(type || '').toUpperCase()) {
-    case 'PASSPORT':
+  switch (String(type || '').toLowerCase()) {
+    case 'passport':
       return 'passport';
-    case 'DRIVERS_LICENSE':
+    case 'driving_license':
       return 'drivers_license';
-    case 'ID_CARD':
+    case 'id_card':
       return String(country || '').toUpperCase() === 'US' ? 'state_id' : 'national_id';
     default:
       return 'national_id';
   }
 }
 
-function extractedFromDecision(decision: VeriffDecisionResponse) {
+function extractedFromDecision(decision: IdentityDecisionResponse) {
   const person = decision.person;
   const doc = decision.document;
   return {
@@ -102,7 +102,7 @@ function extractedFromDecision(decision: VeriffDecisionResponse) {
     lastName: person?.lastName || '',
     middleName: '',
     dateOfBirth: person?.dateOfBirth || '',
-    documentType: documentTypeFromVeriff(doc?.type, doc?.country),
+    documentType: documentTypeFromStripe(doc?.type, doc?.country),
     documentNumber: doc?.number || '',
     country: doc?.country || '',
     state: doc?.state || '',
@@ -123,7 +123,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<MonetizationStatusResponse | null>(null);
-  const [pending, setPending] = useState<PendingVeriffSession | null>(null);
+  const [pending, setPending] = useState<PendingIdentitySession | null>(null);
 
   const loadStatus = useCallback(async () => {
     if (!accessToken) return;
@@ -174,23 +174,39 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
     }
   };
 
-  const redirectToVeriff = async () => {
+  const redirectToVerification = async () => {
     if (!accessToken) return;
     setLoading(true);
     setError(null);
     try {
       const resume = readPending(identityId);
       if (resume) {
-        window.location.href = resume.url;
-        return;
+        const decision = await MonetizationService.getIdentityDecision(accessToken, resume.state);
+        if (decision.url) {
+          writePending(identityId, { ...resume, url: decision.url });
+          window.location.href = decision.url;
+          return;
+        }
+        if (decision.status === 'approved') {
+          await completeFromDecision(decision);
+          setLoading(false);
+          return;
+        }
+        if (!TERMINAL_STATUSES.has(decision.status)) {
+          setError(DECISION_MESSAGES[decision.status] || `Verification status: ${decision.status}`);
+          setLoading(false);
+          return;
+        }
+        clearPending();
       }
-      const session = await MonetizationService.createVeriffSession(
+      const session = await MonetizationService.createIdentitySession(
         accessToken,
-        `${window.location.origin}/?verification=veriff_return`
+        `${window.location.origin}/?verification=identity_return`
       );
       writePending(identityId, { ...session, createdAt: Date.now() });
       window.location.href = session.url;
     } catch (e) {
+      if ((e as { code?: string }).code === 'invalid_state') clearPending();
       setError(e instanceof Error ? e.message : 'Failed to start verification. Please try again later.');
       setLoading(false);
     }
@@ -323,68 +339,74 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
     return zkpProofs;
   };
 
+  /** Mint proofs from an approved decision and hand the credential to the pN. */
+  const completeFromDecision = async (decision: IdentityDecisionResponse) => {
+    const extracted = extractedFromDecision(decision);
+    const zkpProofs = await generateZKProofs(extracted);
+    const now = new Date().toISOString();
+    const dataPoints: VerifiedIdentityData['dataPoints'] = {};
+    for (const [id, p] of Object.entries(zkpProofs)) {
+      dataPoints[id] = {
+        dataPointId: id,
+        zkpProof: p.zkpProof,
+        verified: true,
+        verifiedAt: now,
+        expiresAt: p.expirationDate,
+        verificationLevel: 'verified',
+        value: p.value
+      };
+    }
+    await onVerificationComplete({
+      id: identityId || 'stripe_identity',
+      verificationId: `stripe_identity:${decision.sessionId}`,
+      verifiedAt: now,
+      verificationLevel: 'verified',
+      provider: 'stripe_identity',
+      fraudPrevention: {
+        livenessCheck: true,
+        documentAuthenticity: true,
+        biometricMatch: true,
+        riskScore: 0,
+        fraudIndicators: [],
+        confidence: 1,
+        timestamp: now
+      },
+      metadata: {
+        documentType: extracted.documentType,
+        documentNumber: extracted.documentNumber || 'unknown',
+        expirationDate: extracted.expirationDate || undefined,
+        verificationProvider: 'stripe_identity',
+        providerVerificationId: decision.sessionId || undefined,
+        quality: { document: 1, biometric: 1, overall: 1 },
+        securityFeatures: []
+      },
+      dataPoints,
+      credential: decision.credential,
+      credentialExpiresAt: decision.expiresAt,
+      extracted
+    } as VerifiedIdentityData & { extracted: typeof extracted });
+    clearPending();
+    setCurrentStep(2);
+  };
+
   const finalizeFromDecision = async () => {
     if (!accessToken) return;
     const session = readPending(identityId);
     if (!session) {
-      setError('No Veriff session in progress on this device. Start verification first.');
+      setError('No verification session in progress on this device. Start verification first.');
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const decision = await MonetizationService.getVeriffDecision(accessToken, session.state);
+      const decision = await MonetizationService.getIdentityDecision(accessToken, session.state);
       if (decision.status !== 'approved') {
         if (TERMINAL_STATUSES.has(decision.status)) clearPending();
-        setError(DECISION_MESSAGES[decision.status] || `Veriff status: ${decision.status}`);
+        else if (decision.url) writePending(identityId, { ...session, url: decision.url });
+        setError(DECISION_MESSAGES[decision.status] || `Verification status: ${decision.status}`);
         return;
       }
-      const extracted = extractedFromDecision(decision);
-      const zkpProofs = await generateZKProofs(extracted);
-      const now = new Date().toISOString();
-      const dataPoints: VerifiedIdentityData['dataPoints'] = {};
-      for (const [id, p] of Object.entries(zkpProofs)) {
-        dataPoints[id] = {
-          dataPointId: id,
-          zkpProof: p.zkpProof,
-          verified: true,
-          verifiedAt: now,
-          expiresAt: p.expirationDate,
-          verificationLevel: 'verified',
-          value: p.value
-        };
-      }
-      await onVerificationComplete({
-        id: identityId || 'veriff',
-        verificationId: `veriff:${decision.sessionId}`,
-        verifiedAt: now,
-        verificationLevel: 'verified',
-        provider: 'veriff',
-        fraudPrevention: {
-          livenessCheck: true,
-          documentAuthenticity: true,
-          biometricMatch: true,
-          riskScore: 0,
-          fraudIndicators: [],
-          confidence: 1,
-          timestamp: now
-        },
-        metadata: {
-          documentType: extracted.documentType,
-          documentNumber: extracted.documentNumber || 'unknown',
-          expirationDate: extracted.expirationDate || undefined,
-          verificationProvider: 'veriff',
-          providerVerificationId: decision.sessionId || undefined,
-          quality: { document: 1, biometric: 1, overall: 1 },
-          securityFeatures: []
-        },
-        dataPoints,
-        credential: decision.credential,
-        credentialExpiresAt: decision.expiresAt,
-        extracted
-      } as VerifiedIdentityData & { extracted: typeof extracted });
-      clearPending();
-      setCurrentStep(2);
+      await completeFromDecision(decision);
     } catch (e) {
       if ((e as { code?: string }).code === 'invalid_state') clearPending();
       setError(e instanceof Error ? e.message : 'Failed to finalize verification proofs');
@@ -426,7 +448,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
                   <ul>
                     <li>Verification is included in the membership ({price}).</li>
                     <li>Each pN verifies separately; verification stays active for its validity period even if your membership lapses.</li>
-                    <li>Document authenticity, biometric match and liveness are checked by Veriff.</li>
+                    <li>Document authenticity, selfie match and liveness are checked by Stripe Identity.</li>
                     <li>ZKPs for name, age, location and document are minted on this device.</li>
                   </ul>
                 </SectionInfo>
@@ -452,7 +474,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
       }
 
       case 1:
-        if (!status.veriffConfigured) {
+        if (!status.identityVerificationConfigured) {
           return (
             <div className="text-center space-y-6">
               <div className="mx-auto w-24 h-24 bg-neutral-800 rounded-full flex items-center justify-center">
@@ -463,7 +485,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
                   Identity verification coming soon
                 </h3>
                 <p className="text-text-secondary mb-6">
-                  Veriff-hosted identity verification is not enabled on this deployment yet.
+                  Stripe Identity verification is not enabled on this deployment yet.
                 </p>
               </div>
               <button
@@ -487,7 +509,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
                 <SectionInfo title="Secure third-party verification">
                   <ul>
                     <li>par Noir never stores your ID documents or your name</li>
-                    <li>Veriff processes everything securely</li>
+                    <li>Stripe runs the ID and selfie check, and the session is redacted at Stripe once you finalize</li>
                     <li>You&apos;ll return here after verification</li>
                     <li>Your signed verification credential and ZKPs live in your pN&apos;s encrypted Knowledge docs</li>
                     <li>Each pN verifies (and pays) separately, even with the same ID</li>
@@ -498,19 +520,19 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
                 {status.verified
                   ? 'Your pN is verified. Your signed credential is held in your pN.'
                   : pending
-                    ? 'You have a Veriff session in progress. Continue it, or finalize once Veriff has approved it.'
-                    : "You'll be redirected to Veriff to upload your ID and take a selfie, then return here to finalize."}
+                    ? 'You have a verification session in progress. Continue it, or finalize once Stripe has verified it.'
+                    : "You'll be redirected to Stripe to scan your ID and take a selfie, then return here to finalize."}
               </p>
             </div>
 
             {!status.verified && (
               <button
                 type="button"
-                onClick={() => void redirectToVeriff()}
+                onClick={() => void redirectToVerification()}
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? 'Starting Verification...' : pending ? 'Continue Veriff session' : 'Start Verification with Veriff'}
+                {loading ? 'Starting Verification...' : pending ? 'Continue verification' : 'Start Verification with Stripe'}
               </button>
             )}
             {pending && (
@@ -524,8 +546,8 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
                   Finalize verification
                 </button>
                 <p className="text-xs text-text-secondary">
-                  Finalizing reads your Veriff decision, stores the signed credential in your pN and mints locked
-                  name/age/document proofs (Veriff extraction wins over prior attestations).
+                  Finalizing reads your verification result, stores the signed credential in your pN and mints locked
+                  name/age/document proofs (ID-verified values win over prior attestations).
                 </p>
               </>
             )}

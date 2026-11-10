@@ -13,6 +13,7 @@ import { isSuccessorOf } from './identitySuccessionService';
 import { VerificationIntegrationService } from './verificationIntegrationService';
 
 export const CREDENTIAL_TYP = 'pn-verified+jwt' as const;
+export const IDENTITY_PROVIDER = 'stripe_identity' as const;
 const DEFAULT_VALIDITY_DAYS = 365;
 
 export interface VerifiedPerson {
@@ -65,7 +66,7 @@ export class VerificationCredentialService {
       sub: subject,
       jti,
       lvl: 'verified',
-      provider: opts.provider || 'veriff',
+      provider: opts.provider || IDENTITY_PROVIDER,
       exp: Math.floor(expiresAt.getTime() / 1000)
     };
     const given = clean(person.givenName);

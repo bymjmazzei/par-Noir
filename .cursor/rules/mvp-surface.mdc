@@ -1,5 +1,5 @@
 ---
-description: Deferred rails (Veriff, Stripe, store distribution) stay out unless this chat asks for them
+description: Deferred rails (Stripe Identity, Stripe monetization, store distribution) stay out unless this chat asks for them
 alwaysApply: false
 ---
 
@@ -18,7 +18,7 @@ A request in the current chat is in scope. Default work targets a closed/beta MV
 
 ## Out of scope unless asked
 
-- Veriff / identity verification product rails
+- Stripe Identity verification rails
 - Stripe / creator fund / monetization go-live
 - Platform paid feed subscriptions (already `410`)
 - App Store / Play distribution

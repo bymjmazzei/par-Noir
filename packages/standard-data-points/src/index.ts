@@ -17,7 +17,7 @@ export {
   DATA_POINT_UI_CLASSES,
   NAME_DERIVED_IDS,
   AGE_DERIVED_IDS,
-  VERIFF_CAPABLE_IDS,
+  ID_VERIFIABLE_IDS,
   getAvailableDataPoints,
   getDataPointsByCategory,
   getDataPointsByUiClass,

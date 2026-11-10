@@ -157,7 +157,7 @@ export async function attestFromTemplate(params: {
 }): Promise<string[]> {
   const template = knowledgeTemplateFor(params.dataPointId);
   const level = params.verificationLevel || 'basic';
-  const provider = params.provider || (level === 'verified' ? 'veriff' : 'user_attested');
+  const provider = params.provider || (level === 'verified' ? 'stripe_identity' : 'user_attested');
   const claims = [];
   for (const [dataPointId, payload] of knowledgeClaimPayloads(template, params.dataPointId, params.userData)) {
     const proof = await ZKPGenerator.generateZKP({
@@ -227,7 +227,7 @@ async function writeIssuedProof(
   });
 }
 
-/** A proof minted elsewhere (Veriff document rows) stored as its own single-claim doc. */
+/** A proof minted elsewhere (ID verification document rows) stored as its own single-claim doc. */
 export async function attestIssuedProof(
   params: IssuedProof & { keys: AttestationKeys; authToken: string }
 ): Promise<void> {
@@ -282,7 +282,7 @@ export async function listHeldKnowledgeClaims(
 /**
  * Identity re-key: every Knowledge doc is rewritten under the successor (new genesis signature,
  * proofs re-bound to the successor ML-DSA key, docKey wrapped for the successor ML-KEM key).
- * The predecessor ML-KEM key opens the old `source` section. Issued proofs (Veriff queue)
+ * The predecessor ML-KEM key opens the old `source` section. Issued proofs (ID verification queue)
  * land as single-claim docs. The API-signed verification credential is carried over unchanged;
  * the successor swaps it for its own via the credential reissue endpoint once succession is live.
  */
@@ -369,7 +369,7 @@ export async function reissueKnowledgeClaims(params: {
       proofType: STANDARD_DATA_POINTS[proof.dataPointId]?.zkpType || '',
       zkpProof: proof.zkpProof,
       verificationLevel: 'verified',
-      provider: 'veriff',
+      provider: 'stripe_identity',
     });
     written += 1;
   }

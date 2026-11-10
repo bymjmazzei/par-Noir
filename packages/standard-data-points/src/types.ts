@@ -43,8 +43,8 @@ export interface StandardDataPoint {
   derived?: boolean;
   /** Parent attestation / form id that produces this derived proof */
   derivedFrom?: string;
-  /** Veriff can mint this at verificationLevel verified */
-  veriffCapable?: boolean;
+  /** Government ID verification can mint this at verificationLevel verified */
+  idVerifiable?: boolean;
   /** Document image stored in zkp-docs */
   documentImage?: boolean;
 }
@@ -70,6 +70,6 @@ export interface StandardDataPointPublic {
   uiClass?: DataPointUiClass;
   derived?: boolean;
   derivedFrom?: string;
-  veriffCapable?: boolean;
+  idVerifiable?: boolean;
   documentImage?: boolean;
 }

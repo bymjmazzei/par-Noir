@@ -10,7 +10,7 @@ export interface MonetizationTabProps {
   accessToken: string;
   showErrorMessage: (message: string) => void;
   showSuccessMessage: (message: string) => void;
-  /** Opens the identity verification modal (Veriff, included in membership). */
+  /** Opens the identity verification modal (Stripe Identity, included in membership). */
   onVerifyIdentity: () => void;
 }
 
@@ -185,7 +185,7 @@ export function MonetizationTab({
             <div className="rounded-lg border border-border bg-secondary p-4">
               <div className="text-xs text-text-secondary uppercase tracking-wide">Verification</div>
               <div className="mt-1 font-medium">{status?.verified ? 'Verified' : 'Not verified'}</div>
-              {!status?.verified && status?.maintenanceActive && status.veriffConfigured && (
+              {!status?.verified && status?.maintenanceActive && status.identityVerificationConfigured && (
                 <button
                   type="button"
                   onClick={onVerifyIdentity}
