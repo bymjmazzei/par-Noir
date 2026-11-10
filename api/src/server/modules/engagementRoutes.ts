@@ -5,6 +5,7 @@
 
 import express, { Request, Response } from 'express';
 import { safeClientErrorMessage } from '../utils/safeError';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -262,7 +263,11 @@ app.get('/api/engagement/user/:userPnIdentifier', async (req: Request, res: Resp
 
     const commentedFileIds = commentedResult.rows.map(row => row.file_id);
 
-    console.log(`📊 User engagement query: userPnIdentifier=${userPnIdentifier}, found ${likedFileIds.length} likes, ${commentedFileIds.length} comments`);
+    safeLogger.info('[Engagement] User engagement query', {
+      pnIdHash: hashIdentifier(userPnIdentifier),
+      likes: likedFileIds.length,
+      comments: commentedFileIds.length,
+    });
 
     return res.json({
       likedFileIds,
