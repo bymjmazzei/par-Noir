@@ -16,8 +16,7 @@ export {
   claimMailboxRoute,
   ackMailboxJobsRemote,
   enqueueMailboxThroughway,
-  lookupMailboxThroughway,
-  migrateServerSecretsToDevice
+  lookupMailboxThroughway
 } from './flushWorker.js';
 export type {
   OutboxKind,

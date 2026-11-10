@@ -94,157 +94,147 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         }
 
         const {
-          isDeviceCloudCustodyEnabled,
           enqueueSocialMailboxJob,
           getMailboxRouteKeyForOwner,
           isMailboxRouteKey
         } = await import('./socialMailboxService');
 
         // Throughway fan-out only. Sender outbox (client/cloud) is the durable commit.
-        if (isDeviceCloudCustodyEnabled()) {
-          const connectionIdFromBody =
-            typeof req.body?.connectionId === 'string' ? req.body.connectionId.trim() : '';
-          if (!isConnectionRequest && !connectionIdFromBody) {
-            return res.status(400).json({
-              error: 'connectionId required',
-              message: 'Clients must supply connectionId for throughway delivery.'
-            });
-          }
-          const explicitRoute =
-            (isMailboxRouteKey(bodyRouteKey) && String(bodyRouteKey).trim()) ||
-            (isMailboxRouteKey(mailboxRouteKey) && String(mailboxRouteKey).trim()) ||
-            '';
-          const routeKey =
-            explicitRoute || (await getMailboxRouteKeyForOwner(toPnIdentifier)) || '';
-          if (!routeKey) {
-            return res.status(400).json({
-              error: 'routeKey required',
-              message:
-                'Recipient has no claimed opaque mailbox route. They must unlock once to claim an inbox route.'
-            });
-          }
-
-          const clientMessageId =
-            typeof req.body?.messageId === 'string' ? req.body.messageId.trim() : '';
-          const messageId =
-            clientMessageId ||
-            `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          const timestamp =
-            (typeof req.body?.timestamp === 'string' && req.body.timestamp) ||
-            new Date().toISOString();
-          const connectionId = connectionIdFromBody || `conn_pending_${messageId}`;
-
-          const { sealSocialEnvelope } = await import('@par-noir/dm-crypto');
-          const db = (await import('../utils/database')).getDatabasePool();
-          const keyRow = await db.query(
-            `SELECT ml_kem_public_key FROM user_profiles WHERE pn_identifier = $1`,
-            [toPnIdentifier]
-          );
-          const peerKey = keyRow.rows[0]?.ml_kem_public_key;
-          if (typeof peerKey !== 'string' || !peerKey) {
-            return res.status(409).json({
-              error: 'peer_key_missing',
-              message: 'Recipient has not published a messaging key.'
-            });
-          }
-          const channelClientId = normalizeChannelClientIdSync(
-            typeof req.body?.channelClientId === 'string' ? req.body.channelClientId : undefined
-          );
-          const messagePlain = {
-            messageId,
-            encryptedContent,
-            cryptoVersion: 2,
-            timestamp,
-            read: false,
-            mediaFileId: mediaFileId || undefined,
-            mediaMimeType: mediaMimeType || undefined,
-            mediaBackend: mediaBackend || undefined,
-            mediaEnvelopesByPn:
-              mediaEnvelopesByPn && typeof mediaEnvelopesByPn === 'object'
-                ? mediaEnvelopesByPn
-                : undefined,
-            connectionId,
-            channelClientId,
-            isConnectionRequest: !!isConnectionRequest,
-            role: 'recipient'
-          };
-          const messageEnvelope = await sealSocialEnvelope(peerKey, messageId, messagePlain);
-          await enqueueSocialMailboxJob({
-            routeKey,
-            jobType: 'message_append',
-            callerKey: messageId,
-            payload: { envelope: messageEnvelope, envelopeContext: messageId }
+        const connectionIdFromBody =
+          typeof req.body?.connectionId === 'string' ? req.body.connectionId.trim() : '';
+        if (!isConnectionRequest && !connectionIdFromBody) {
+          return res.status(400).json({
+            error: 'connectionId required',
+            message: 'Clients must supply connectionId for throughway delivery.'
           });
-          if (mediaFileId) {
-            const attachmentEnvelope = await sealSocialEnvelope(peerKey, messageId, {
-              messageId,
-              mediaFileId,
-              mediaMimeType,
-              mediaBackend,
-              connectionId
-            });
-            await enqueueSocialMailboxJob({
-              routeKey,
-              jobType: 'message_attachment',
-              callerKey: messageId,
-              payload: { envelope: attachmentEnvelope, envelopeContext: messageId }
-            });
-          }
-          // The recipient reads the sealed mailbox and the notifications sheet on their Drive.
-
-          const realtimeChannel = channelClientId;
-          emitRealtime(fromPnIdentifier, 'new_message', {
-            messageId,
-            throughway: true,
-            encryptedContent,
-            cryptoVersion: 2,
-            connectionId,
-            timestamp,
-            ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
-          });
-          emitRealtime(toPnIdentifier, 'new_message', {
-            messageId,
-            throughway: true,
-            encryptedContent,
-            cryptoVersion: 2,
-            connectionId,
-            timestamp,
-            ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
-          });
-          emitRealtime(toPnIdentifier, 'mailbox_pending', {
-            jobType: 'message_append',
-            messageId
-          });
-
-          messagingLog.info('[SendMessage] Throughway fan-out (sender outbox is SoT)', {
-            messageId,
-            routeKey: hashIdentifier(routeKey)
-          });
-
-          return res.json({
-            success: true,
-            delivery: 'throughway',
-            message: {
-              messageId,
-              fromPnIdentifier,
-              toPnIdentifier,
-              encryptedContent,
-              cryptoVersion: 2 as const,
-              mediaFileId,
-              mediaMimeType,
-              timestamp,
-              read: false,
-              encrypted: true
-            }
+        }
+        const explicitRoute =
+          (isMailboxRouteKey(bodyRouteKey) && String(bodyRouteKey).trim()) ||
+          (isMailboxRouteKey(mailboxRouteKey) && String(mailboxRouteKey).trim()) ||
+          '';
+        const routeKey =
+          explicitRoute || (await getMailboxRouteKeyForOwner(toPnIdentifier)) || '';
+        if (!routeKey) {
+          return res.status(400).json({
+            error: 'routeKey required',
+            message:
+              'Recipient has no claimed opaque mailbox route. They must unlock once to claim an inbox route.'
           });
         }
 
-        return res.status(503).json({
-          error: 'device_cloud_custody_required',
-          message:
-            'Messaging requires device cloud custody (sender outbox SoT). Set DEVICE_CLOUD_CUSTODY=1.'
+        const clientMessageId =
+          typeof req.body?.messageId === 'string' ? req.body.messageId.trim() : '';
+        const messageId =
+          clientMessageId ||
+          `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const timestamp =
+          (typeof req.body?.timestamp === 'string' && req.body.timestamp) ||
+          new Date().toISOString();
+        const connectionId = connectionIdFromBody || `conn_pending_${messageId}`;
+
+        const { sealSocialEnvelope } = await import('@par-noir/dm-crypto');
+        const db = (await import('../utils/database')).getDatabasePool();
+        const keyRow = await db.query(
+          `SELECT ml_kem_public_key FROM user_profiles WHERE pn_identifier = $1`,
+          [toPnIdentifier]
+        );
+        const peerKey = keyRow.rows[0]?.ml_kem_public_key;
+        if (typeof peerKey !== 'string' || !peerKey) {
+          return res.status(409).json({
+            error: 'peer_key_missing',
+            message: 'Recipient has not published a messaging key.'
+          });
+        }
+        const channelClientId = normalizeChannelClientIdSync(
+          typeof req.body?.channelClientId === 'string' ? req.body.channelClientId : undefined
+        );
+        const messagePlain = {
+          messageId,
+          encryptedContent,
+          cryptoVersion: 2,
+          timestamp,
+          read: false,
+          mediaFileId: mediaFileId || undefined,
+          mediaMimeType: mediaMimeType || undefined,
+          mediaBackend: mediaBackend || undefined,
+          mediaEnvelopesByPn:
+            mediaEnvelopesByPn && typeof mediaEnvelopesByPn === 'object'
+              ? mediaEnvelopesByPn
+              : undefined,
+          connectionId,
+          channelClientId,
+          isConnectionRequest: !!isConnectionRequest,
+          role: 'recipient'
+        };
+        const messageEnvelope = await sealSocialEnvelope(peerKey, messageId, messagePlain);
+        await enqueueSocialMailboxJob({
+          routeKey,
+          jobType: 'message_append',
+          callerKey: messageId,
+          payload: { envelope: messageEnvelope, envelopeContext: messageId }
+        });
+        if (mediaFileId) {
+          const attachmentEnvelope = await sealSocialEnvelope(peerKey, messageId, {
+            messageId,
+            mediaFileId,
+            mediaMimeType,
+            mediaBackend,
+            connectionId
+          });
+          await enqueueSocialMailboxJob({
+            routeKey,
+            jobType: 'message_attachment',
+            callerKey: messageId,
+            payload: { envelope: attachmentEnvelope, envelopeContext: messageId }
+          });
+        }
+        // The recipient reads the sealed mailbox and the notifications sheet on their Drive.
+
+        const realtimeChannel = channelClientId;
+        emitRealtime(fromPnIdentifier, 'new_message', {
+          messageId,
+          throughway: true,
+          encryptedContent,
+          cryptoVersion: 2,
+          connectionId,
+          timestamp,
+          ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
+        });
+        emitRealtime(toPnIdentifier, 'new_message', {
+          messageId,
+          throughway: true,
+          encryptedContent,
+          cryptoVersion: 2,
+          connectionId,
+          timestamp,
+          ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
+        });
+        emitRealtime(toPnIdentifier, 'mailbox_pending', {
+          jobType: 'message_append',
+          messageId
         });
 
+        messagingLog.info('[SendMessage] Throughway fan-out (sender outbox is SoT)', {
+          messageId,
+          routeKey: hashIdentifier(routeKey)
+        });
+
+        return res.json({
+          success: true,
+          delivery: 'throughway',
+          message: {
+            messageId,
+            fromPnIdentifier,
+            toPnIdentifier,
+            encryptedContent,
+            cryptoVersion: 2 as const,
+            mediaFileId,
+            mediaMimeType,
+            timestamp,
+            read: false,
+            encrypted: true
+          }
+        });
 
       } catch (error: any) {
         const { fromPnIdentifier: reqFromPnIdentifier, toPnIdentifier: reqToPnIdentifier } = req.body || {};

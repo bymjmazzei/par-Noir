@@ -28,27 +28,13 @@ app.post('/api/engagement/:fileId/like', async (req: Request, res: Response) => 
       return res.status(400).json({ error: 'userPnIdentifier is required' });
     }
 
-    // Use pn identifier directly (already normalized)
-    const pnIdentifier = userPnIdentifier;
-
-    const { isDeviceCloudCustodyEnabled } = await import(
-      './socialMailboxService'
-    );
-    if (isDeviceCloudCustodyEnabled()) {
-      if (typeof req.body?.liked !== 'boolean') {
-        return res.status(400).json({ error: 'liked boolean is required' });
-      }
-      const liked = req.body.liked as boolean;
-      await EngagementService.toggleLikePublicCount(fileId, liked);
-      const publicStats = await EngagementService.getEngagementStats(fileId);
-      return res.json({ liked, count: publicStats.likes, delivery: 'public' });
+    if (typeof req.body?.liked !== 'boolean') {
+      return res.status(400).json({ error: 'liked boolean is required' });
     }
-
-    return res.status(503).json({
-      error: 'device_cloud_custody_required',
-      message: 'Engagement requires device cloud custody. Set DEVICE_CLOUD_CUSTODY=1.'
-    });
-
+    const liked = req.body.liked as boolean;
+    await EngagementService.toggleLikePublicCount(fileId, liked);
+    const publicStats = await EngagementService.getEngagementStats(fileId);
+    return res.json({ liked, count: publicStats.likes, delivery: 'public' });
 
   } catch (error: any) {
     console.error('Error toggling like:', error);
@@ -68,7 +54,6 @@ app.get('/api/engagement/:fileId/like', async (_req: Request, res: Response) => 
 app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) => {
   try {
     const { EngagementService } = await import('./engagementService');
-    const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
     const { fileId } = req.params;
     const { userPnIdentifier } = req.body;
 
@@ -76,24 +61,16 @@ app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) 
       return res.status(400).json({ error: 'userPnIdentifier is required' });
     }
 
-    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
-    if (isDeviceCloudCustodyEnabled()) {
-      if (typeof req.body?.disliked !== 'boolean') {
-        return res.status(400).json({ error: 'disliked boolean is required' });
-      }
-      const disliked = req.body.disliked as boolean;
-      await EngagementService.toggleDislikePublicCount(fileId, disliked);
-      const publicStats = await EngagementService.getEngagementStats(fileId);
-      return res.json({
-        disliked,
-        count: publicStats.likes,
-        delivery: 'public'
-      });
+    if (typeof req.body?.disliked !== 'boolean') {
+      return res.status(400).json({ error: 'disliked boolean is required' });
     }
-
-    return res.status(503).json({
-      error: 'device_cloud_custody_required',
-      message: 'Engagement requires device cloud custody. Set DEVICE_CLOUD_CUSTODY=1.'
+    const disliked = req.body.disliked as boolean;
+    await EngagementService.toggleDislikePublicCount(fileId, disliked);
+    const publicStats = await EngagementService.getEngagementStats(fileId);
+    return res.json({
+      disliked,
+      count: publicStats.likes,
+      delivery: 'public'
     });
   } catch (error: any) {
     console.error('Failed to toggle dislike:', error);
@@ -133,39 +110,29 @@ app.post('/api/engagement/:fileId/comment', async (req: Request, res: Response) 
     // Use pn identifier directly (already normalized)
     const pnIdentifier = userPnIdentifier;
 
-    const { isDeviceCloudCustodyEnabled } = await import(
-      './socialMailboxService'
+    // Public aggregator only — no mailbox jobs for comments.
+    const comment = await EngagementService.addComment(
+      fileId,
+      pnIdentifier,
+      content,
+      authorName,
+      fileOwnerDid,
+      parentCommentId,
+      postReply
     );
-    if (isDeviceCloudCustodyEnabled()) {
-      // Public aggregator only — no mailbox jobs for comments.
-      const comment = await EngagementService.addComment(
-        fileId,
-        pnIdentifier,
-        content,
-        authorName,
-        fileOwnerDid,
-        parentCommentId,
-        postReply
-      );
-      // Denormalize top-10 + sync comment count on aggregator metadata (feed tile).
-      try {
-        await AggregatorMetadataServiceDB.getInstance().refreshEngagementTopComments(fileId, {
-          bumpCommentCount: true,
-          userPnIdentifier: pnIdentifier,
-        });
-      } catch (err) {
-        console.warn('[engagement] refreshEngagementTopComments after comment failed:', err);
-      }
-      return res.json({
-        success: true,
-        delivery: 'public',
-        comment
+    // Denormalize top-10 + sync comment count on aggregator metadata (feed tile).
+    try {
+      await AggregatorMetadataServiceDB.getInstance().refreshEngagementTopComments(fileId, {
+        bumpCommentCount: true,
+        userPnIdentifier: pnIdentifier,
       });
+    } catch (err) {
+      console.warn('[engagement] refreshEngagementTopComments after comment failed:', err);
     }
-
-    return res.status(503).json({
-      error: 'device_cloud_custody_required',
-      message: 'Engagement requires device cloud custody. Set DEVICE_CLOUD_CUSTODY=1.'
+    return res.json({
+      success: true,
+      delivery: 'public',
+      comment
     });
 
   } catch (error: any) {

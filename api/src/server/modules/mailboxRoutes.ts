@@ -18,7 +18,6 @@ import {
   enqueueSocialMailboxJob,
   getMailboxRouteKeyForOwner,
   getRecipientMlKemPublicKey,
-  isDeviceCloudCustodyEnabled,
   isMailboxRouteKey,
   listPendingMailboxJobs,
   lookupMailboxJob,
@@ -196,7 +195,6 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       const jobs = await listPendingMailboxJobs(routeKey, limit, types);
       return res.json({
         success: true,
-        deviceCloudCustody: isDeviceCloudCustodyEnabled(),
         model: 'opaque_route_throughway',
         jobs: jobs.map((j) => ({
           id: j.id,
@@ -506,7 +504,6 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
   app.get('/api/mailbox/status', async (_req: Request, res: Response) => {
     return res.json({
       success: true,
-      deviceCloudCustody: isDeviceCloudCustodyEnabled(),
       model: 'opaque_route_throughway'
     });
   });

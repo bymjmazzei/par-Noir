@@ -480,7 +480,7 @@ export class StorageCredentialsService {
 
   /**
    * Strip long-lived cloud secrets; keep layout / provider enum metadata only.
-   * Under DEVICE_CLOUD_CUSTODY, upsertCredentials applies this on every write.
+   * upsertCredentials applies this on every write.
    */
   stripCloudSecrets(credentials: Record<string, unknown>): Record<string, unknown> {
     const stripAccount = (acct: Record<string, unknown> | undefined): Record<string, unknown> | undefined => {
@@ -568,13 +568,6 @@ export class StorageCredentialsService {
       rewritten += 1;
     }
     return rewritten;
-  }
-
-  async purgeCloudSecrets(identityId: string): Promise<StoredCredentialsRecord | null> {
-    const existing = await this.getCredentials(identityId);
-    if (!existing?.credentials) return null;
-    const stripped = this.stripCloudSecrets(existing.credentials as Record<string, unknown>);
-    return this.upsertCredentials(identityId, stripped, existing.cid ?? undefined);
   }
 
   /** Pinned Drive folder id (par Noir root) if stored in credentials blob. */

@@ -14,7 +14,6 @@ import {
   freshAccessTokenFromEnvelope,
   loadLocalCloudCredentials,
   materializeMailboxJob,
-  migrateServerSecretsToDevice,
   persistCloudCredentials,
   promoteLocalOutbox,
   publishCloudDriveReady,
@@ -208,19 +207,6 @@ export async function migrateAndFlushOnUnlock(opts: {
       authToken: opts.authToken,
       buildAuthHeaders: async (method, path, body) => deviceProofHeaders(method, path, body)
     });
-
-    await migrateServerSecretsToDevice({
-      apiBaseUrl: API_ENDPOINT,
-      authToken: opts.authToken,
-      identityId: opts.identityId,
-      sealAndStore: async (credentials) => {
-        await sealAndStoreCloudCredentials({
-          identityId: opts.identityId,
-          credentials: credentials as StorageCredentialsEnvelope,
-          session: opts.session
-        });
-      }
-    }).catch(() => undefined);
 
     await promoteAndReconcileOutbox(opts);
 

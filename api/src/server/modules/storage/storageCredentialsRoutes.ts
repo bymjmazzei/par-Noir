@@ -60,17 +60,7 @@ export function setupStorageCredentialsRoutes(app: Application) {
         }
 
         const { storageCredentialsService } = await import('../storageCredentialsService');
-        const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
         let credentialsToStore = credentials;
-        if (isDeviceCloudCustodyEnabled()) {
-          // Prefer layout-only persistence; clients seal secrets on device.
-          credentialsToStore = storageCredentialsService.stripCloudSecrets(
-            credentials as Record<string, unknown>
-          );
-          console.log(
-            `[StorageCredentials PUT] DEVICE_CLOUD_CUSTODY=1 — stripped cloud secrets for identity`
-          );
-        }
 
         // Merge with existing so reconnect/layout updates cannot wipe pnDriveIndex / sheet IDs
         // while Drive remains linked. Explicit empty googleDriveAccounts (disconnect) must
@@ -121,53 +111,17 @@ export function setupStorageCredentialsRoutes(app: Application) {
         // SECURITY: Use sanitized identityId in logs
         console.log(`[StorageCredentials PUT] Successfully saved credentials for identityId: ${sanitizedIdentityId}`);
 
-        let directoryBuilt = true;
-        let folderInitError: string | null = null;
-
-        // Initialize Google Drive folder structure if this is a new Google Drive connection
+        // Drive layout is built on the device with its own Google token.
         const hasGoogleDrive = !!(credentials?.googleDriveAccounts?.length > 0 || credentials?.googleDrive);
-        const deviceCustody = isDeviceCloudCustodyEnabled();
-        let clientSideLayoutRequired = false;
-        if (hasGoogleDrive) {
-          try {
-            const googleDriveAccounts = credentials.googleDriveAccounts ||
-              (credentials.googleDrive ? [credentials.googleDrive] : []);
-
-            if (googleDriveAccounts.length > 0) {
-              if (deviceCustody) {
-                // OAuth secrets are device-held — server POST /storage/initialize cannot run.
-                // Dashboard must discover/build Drive layout with the local Google token.
-                clientSideLayoutRequired = true;
-                directoryBuilt = true;
-                console.log(
-                  `[StorageCredentials PUT] DEVICE_CLOUD_CUSTODY — client-side Drive layout required for identityId: ${sanitizedIdentityId}`
-                );
-              } else {
-                // Credentials are saved. The full Drive layout build is a long, multi-minute
-                // operation that must run inside a request that is actually awaited by the client.
-                // The dashboard always calls POST /api/storage/initialize right after this PUT and
-                // awaits it, so we do NOT fire-and-forget here (that races and can be abandoned when
-                // the HTTP response returns). Just report that init still needs to run.
-                console.log(`[StorageCredentials PUT] Credentials saved; Drive layout build deferred to /storage/initialize for identityId: ${sanitizedIdentityId}`);
-                directoryBuilt = false;
-              }
-            }
-          } catch (err: any) {
-            directoryBuilt = false;
-            folderInitError = err?.message || String(err);
-            console.warn(`[StorageCredentials PUT] Failed to prepare folder init for identityId: ${sanitizedIdentityId}`, folderInitError);
-          }
-        }
 
         return res.json({
           success: true,
           identityId: record.identityId,
           cid: record.cid ?? null,
           updatedAt: record.updatedAt,
-          directoryBuilt,
-          initInProgress: hasGoogleDrive && !directoryBuilt && !clientSideLayoutRequired,
-          ...(clientSideLayoutRequired && { clientSideLayoutRequired: true }),
-          ...(folderInitError != null && { folderInitError })
+          directoryBuilt: true,
+          initInProgress: false,
+          ...(hasGoogleDrive && { clientSideLayoutRequired: true })
         });
       } catch (error: any) {
         console.error('Error saving storage credentials:', error);

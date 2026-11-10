@@ -22,10 +22,6 @@ jest.mock('../../../utils/logger', () => ({
   },
 }));
 
-jest.mock('../socialMailboxService', () => ({
-  isDeviceCloudCustodyEnabled: jest.fn(() => true),
-}));
-
 process.env.STORAGE_CREDENTIALS_SECRET =
   process.env.STORAGE_CREDENTIALS_SECRET || 'test-storage-credentials-secret-for-custody';
 
@@ -33,14 +29,11 @@ import {
   credentialsContainCloudSecrets,
   storageCredentialsService,
 } from '../storageCredentialsService';
-import { isDeviceCloudCustodyEnabled } from '../socialMailboxService';
 
-const mockCustody = isDeviceCloudCustodyEnabled as jest.Mock;
 
 describe('device custody — no server-held cloud secrets', () => {
   beforeEach(() => {
     mockQuery.mockReset();
-    mockCustody.mockReset().mockReturnValue(true);
   });
 
   describe('credentialsContainCloudSecrets / stripCloudSecrets', () => {
@@ -93,7 +86,7 @@ describe('device custody — no server-held cloud secrets', () => {
     });
   });
 
-  describe('upsertCredentials under custody', () => {
+  describe('upsertCredentials', () => {
     it('strips Google + Dropbox + OneDrive secrets before encrypt/persist', async () => {
       mockQuery.mockResolvedValue({
         rows: [

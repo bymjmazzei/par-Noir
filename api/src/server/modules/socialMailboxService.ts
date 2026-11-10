@@ -68,15 +68,6 @@ const STRIP_PAYLOAD_KEYS = new Set([
   'memberPnIdentifier'
 ]);
 
-/**
- * Device cloud custody is the product path. Opt out only with DEVICE_CLOUD_CUSTODY=0|false|no.
- */
-export function isDeviceCloudCustodyEnabled(): boolean {
-  const v = (process.env.DEVICE_CLOUD_CUSTODY || '1').toLowerCase();
-  if (v === '0' || v === 'false' || v === 'no' || v === 'off') return false;
-  return true;
-}
-
 export function isMailboxRouteKey(value: unknown): boolean {
   return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value.trim());
 }

@@ -276,19 +276,4 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       });
     }
   });
-
-  /** Purge provider secrets left from before device custody, once the device has sealed them. */
-  app.post('/api/storage/credentials/:identityId/purge-secrets', async (req: Request, res: Response) => {
-    try {
-      const pnIdentifier = ownerPn(req.params.identityId);
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
-      const record = await storageCredentialsService.purgeCloudSecrets(pnIdentifier);
-      return res.json({ success: true, purged: !!record, identityId: pnIdentifier });
-    } catch (error: unknown) {
-      return res.status(500).json({
-        error: 'Failed to purge cloud secrets',
-        message: safeClientErrorMessage(error, nodeEnv === 'production')
-      });
-    }
-  });
 }

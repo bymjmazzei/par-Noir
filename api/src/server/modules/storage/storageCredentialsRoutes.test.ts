@@ -55,10 +55,6 @@ jest.mock('../storageCredentialsService', () => ({
   },
 }));
 
-jest.mock('../socialMailboxService', () => ({
-  isDeviceCloudCustodyEnabled: jest.fn(() => false),
-}));
-
 jest.mock('../driveInitCoordinator', () => ({
   runDriveInitOnce: jest.fn(async (_pn: string, fn: () => Promise<unknown>) => fn()),
   isDriveInitInFlight: jest.fn(() => false),
@@ -90,7 +86,6 @@ import {
 } from './storageCredentialsRoutes';
 import { storageCredentialsService } from '../storageCredentialsService';
 import { isPnRevokedForNetwork } from '../identitySuccessionService';
-import { isDeviceCloudCustodyEnabled } from '../socialMailboxService';
 import { getDriveInitProgress, isDriveInitProgressActive } from '../driveInitProgress';
 import { cloudVaultService, looksLikePlaintextCloudSecrets } from '../cloudVaultService';
 import {
@@ -104,7 +99,6 @@ const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock
 const mockUpsertCredentials = storageCredentialsService.upsertCredentials as jest.Mock;
 const mockStripCloudSecrets = storageCredentialsService.stripCloudSecrets as jest.Mock;
 const mockIsRevoked = isPnRevokedForNetwork as jest.Mock;
-const mockCustodyEnabled = isDeviceCloudCustodyEnabled as jest.Mock;
 const mockGetProgress = getDriveInitProgress as jest.Mock;
 const mockProgressActive = isDriveInitProgressActive as jest.Mock;
 const mockGetSealedVault = cloudVaultService.getSealedVault as jest.Mock;
@@ -159,7 +153,6 @@ describe('storage credentials routes', () => {
       .mockReset()
       .mockImplementation((c: Record<string, unknown>) => ({ ...c, stripped: true }));
     mockIsRevoked.mockReset().mockReturnValue(false);
-    mockCustodyEnabled.mockReset().mockReturnValue(false);
     mockGetProgress.mockReset().mockReturnValue(null);
     mockProgressActive.mockReset().mockReturnValue(false);
     mockGetSealedVault.mockReset().mockResolvedValue(null);
@@ -238,28 +231,12 @@ describe('storage credentials routes', () => {
       expect(stored.pnDriveIndex).toEqual({ rootFolderId: 'keep-me' });
     });
 
-    it('defers the Drive layout build to /storage/initialize', async () => {
+    it('leaves the Drive layout build to the device', async () => {
       const res = await request(buildApp())
         .put(`/api/storage/credentials/${PN}`)
         .send({ credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] } })
         .expect(200);
 
-      expect(res.body.success).toBe(true);
-      expect(res.body.directoryBuilt).toBe(false);
-      expect(res.body.initInProgress).toBe(true);
-      expect(res.body.clientSideLayoutRequired).toBeUndefined();
-    });
-
-    it('strips cloud secrets and requires a client-side layout under device custody', async () => {
-      mockCustodyEnabled.mockReturnValue(true);
-
-      const res = await request(buildApp())
-        .put(`/api/storage/credentials/${PN}`)
-        .send({ credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] } })
-        .expect(200);
-
-      expect(mockStripCloudSecrets).toHaveBeenCalled();
-      expect(mockUpsertCredentials.mock.calls[0][1]).toMatchObject({ stripped: true });
       expect(res.body.clientSideLayoutRequired).toBe(true);
       expect(res.body.directoryBuilt).toBe(true);
       expect(res.body.initInProgress).toBe(false);

@@ -5,7 +5,6 @@
 import {
   ackMailboxJobs,
   enqueueSocialMailboxJob,
-  isDeviceCloudCustodyEnabled,
   isMailboxRouteKey,
   mailboxOwnerHash,
   sanitizeMailboxPayload,
@@ -16,31 +15,6 @@ import { getDatabasePool } from '../utils/database';
 jest.mock('../utils/database', () => ({
   getDatabasePool: jest.fn(),
 }));
-
-describe('DEVICE_CLOUD_CUSTODY flag', () => {
-  const original = process.env.DEVICE_CLOUD_CUSTODY;
-
-  afterEach(() => {
-    if (original === undefined) delete process.env.DEVICE_CLOUD_CUSTODY;
-    else process.env.DEVICE_CLOUD_CUSTODY = original;
-  });
-
-  it('defaults to enabled when unset', () => {
-    delete process.env.DEVICE_CLOUD_CUSTODY;
-    expect(isDeviceCloudCustodyEnabled()).toBe(true);
-  });
-
-  it('opts out only on 0/false/no/off', () => {
-    for (const value of ['0', 'false', 'FALSE', 'no', 'off']) {
-      process.env.DEVICE_CLOUD_CUSTODY = value;
-      expect(isDeviceCloudCustodyEnabled()).toBe(false);
-    }
-    for (const value of ['1', 'true', 'yes', 'anything-else']) {
-      process.env.DEVICE_CLOUD_CUSTODY = value;
-      expect(isDeviceCloudCustodyEnabled()).toBe(true);
-    }
-  });
-});
 
 describe('MAILBOX_ROUTE_PEPPER fail-closed', () => {
   const original = process.env.MAILBOX_ROUTE_PEPPER;
