@@ -147,47 +147,14 @@ async function processFileUpload(
       mimeType: file.type,
     })).id;
     mainFileIsEncrypted = false;
-
-    const thumbnailBlob = isVideo ? await generateThumbnailForFile(file, false) : null;
-    if (thumbnailBlob) {
-      const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-      const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-      const encryptedThumbnail = await workerManager.encrypt(thumbnailData, session.did, publicKey);
-      const thumbnailPackage: EncryptedFilePackage = {
-        encrypted: encryptedThumbnail.encrypted,
-        iv: encryptedThumbnail.iv,
-        salt: encryptedThumbnail.salt,
-        metadata: {
-          originalName: `thumb_${file.name}`,
-          originalSize: thumbnailBlob.size,
-          originalMimeType: 'image/jpeg',
-        },
-      };
-      try {
-        const encryptionService = getEncryptionService();
-        thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
-          id: session.did,
-          publicKey: publicKey
-        });
-      } catch (tokenError) {
-        if (task.metadata?.isPublic) {
-          throw tokenError instanceof Error
-            ? tokenError
-            : new Error('Thumbnail share token generation failed');
-        }
-        if (import.meta.env.DEV) console.warn('Thumbnail share token generation failed:', tokenError);
-      }
-      const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
-      thumbnailFileId = (await uploadFile(thumbnailBase64, `thumb_${file.name}.encrypted`, accessToken, task.accountId)).id;
-    }
   } else {
     const fileArrayBuffer = await file.arrayBuffer();
     const fileData = new Uint8Array(fileArrayBuffer);
 
     const [encrypted, thumbnailBlob] = await Promise.all([
       workerManager.encrypt(fileData, session.did, publicKey),
-      isImage || isVideo
-        ? generateThumbnailForFile(file, isImage)
+      isImage
+        ? generateImageThumbnail(file)
         : Promise.resolve<Blob | null>(null)
     ]);
 
@@ -1031,13 +998,9 @@ async function processPDFUpload(
 /**
  * Helper: Generate thumbnail for file
  */
-async function generateThumbnailForFile(file: File, isImage: boolean): Promise<Blob | null> {
-  if (isImage) {
-    const arrayBuffer = await file.arrayBuffer();
-    return workerManager.createImageThumbnail(arrayBuffer, 800, 800);
-  }
-  // Video thumbnails will be handled on main thread for now
-  return null;
+async function generateImageThumbnail(file: File): Promise<Blob | null> {
+  const arrayBuffer = await file.arrayBuffer();
+  return workerManager.createImageThumbnail(arrayBuffer, 800, 800);
 }
 
 /**

@@ -25,6 +25,15 @@ interface DiscoveryPageProps {
   onCreatorClick: (creatorId: string) => void;
 }
 
+function isCollection(file: IndexedFile): boolean {
+  const collectionFileIds = file.metadata?.collection?.collectionFileIds;
+  return (
+    file.metadata.fileType === 'collection' &&
+    Array.isArray(collectionFileIds) &&
+    collectionFileIds.length > 0
+  );
+}
+
 type TopFeedOption = 'all' | 'trending' | 'featured' | 'classics' | 'new-creators';
 type NicheFeedOption = string | null; // Feed category ID
 
@@ -45,9 +54,6 @@ export function DiscoveryPage({
   const [showInfo, setShowInfo] = useState<string | null>(null);
   // Use ref to track fetched creators to avoid re-fetching (persists across renders)
   const fetchedCreatorsRef = useRef<Set<string>>(new Set());
-  // Track blob URLs we create for cleanup
-  const createdBlobUrlsRef = useRef<Set<string>>(new Set());
-  // Track which thumbnail fileIds we've already processed (to avoid duplicates)
   const processedThumbnailsRef = useRef<Set<string>>(new Set());
   const [failedThumbnails, setFailedThumbnails] = useState<Set<string>>(new Set());
   
@@ -67,122 +73,47 @@ export function DiscoveryPage({
     }
   }, [externalThumbnails]);
 
-  // Load thumbnails for all thumbnail files in the feed (same logic as FullScreenFeed)
+  // Every tile (image, video, note, template) shows its CDN poster, keyed by its own fileId.
+  // Collections render member posters instead. Session cache owns blob URL revoke.
   useEffect(() => {
-    if (import.meta.env.DEV) {
-      console.log('[DiscoveryPage] Thumbnail loading useEffect triggered, files:', files.length);
-    }
-    const loadThumbnails = async () => {
-      // Process ALL files to find thumbnail files
-      const thumbnailFiles = files.filter((indexedFile) => {
-        const fileName = (indexedFile.metadata?.name || indexedFile.metadata?.title || '').toLowerCase();
-        return fileName.startsWith('thumb_');
+    const markFailed = (fileId: string) => {
+      setFailedThumbnails((prev) => {
+        if (prev.has(fileId)) return prev;
+        const next = new Set(prev);
+        next.add(fileId);
+        return next;
       });
+    };
 
-      if (import.meta.env.DEV) {
-        console.log(`[DiscoveryPage] Found ${thumbnailFiles.length} thumbnail files out of ${files.length} total files`);
-        if (files.length > 0) {
-          console.log('[DiscoveryPage] All file names:', files.map(f => ({
-            fileId: f.metadata.fileId,
-            fileName: f.metadata.name || f.metadata.title,
-            fileType: f.metadata.fileType
-          })));
-        }
-        if (thumbnailFiles.length > 0) {
-          console.log('[DiscoveryPage] Thumbnail files:', thumbnailFiles.map(f => ({
-            fileId: f.metadata.fileId,
-            fileName: f.metadata.name || f.metadata.title,
-            hasPublicToken: !!(f.publicToken || f.metadata.publicToken)
-          })));
-        }
+    files.forEach((indexedFile) => {
+      if (isCollection(indexedFile)) return;
+      const file = indexedFile.metadata;
+      const fileId = file.fileId;
+      if (processedThumbnailsRef.current.has(fileId)) return;
+      processedThumbnailsRef.current.add(fileId);
+      if (externalThumbnails?.has(fileId)) return;
+
+      if (!hasFeedPreviewPlayback(file)) {
+        if (import.meta.env.DEV) console.warn(`[DiscoveryPage] ${fileId} has no feed poster`);
+        markFailed(fileId);
+        return;
       }
 
-      // Load each thumbnail file
-      await Promise.all(thumbnailFiles.map(async (indexedFile) => {
-        const file = indexedFile.metadata;
-        const fileId = file.fileId;
-        const fileName = file.name || file.title || '';
-        
-        // Skip if already processed, in external thumbnails, or in current thumbnails state
-        if (processedThumbnailsRef.current.has(fileId)) {
-          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Skipping ${fileId} - already processed`);
-          return;
-        }
-        if (externalThumbnails && externalThumbnails.has(fileId)) {
-          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Skipping ${fileId} - already in externalThumbnails`);
-          processedThumbnailsRef.current.add(fileId);
-          return;
-        }
-        
-        // Check if already in thumbnails state using functional update
-        let alreadyInState = false;
-        setThumbnails(prev => {
-          if (prev.has(fileId)) {
-            alreadyInState = true;
-            return prev;
-          }
-          return prev;
-        });
-        
-        if (alreadyInState) {
-          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Skipping ${fileId} - already in thumbnails state`);
-          processedThumbnailsRef.current.add(fileId);
-          return;
-        }
-
-        // CDN poster only
-        if (!hasFeedPreviewPlayback(file)) {
-          if (import.meta.env.DEV) console.warn(`[DiscoveryPage] Thumbnail ${fileId} (${fileName}) has no feed preview`);
-          processedThumbnailsRef.current.add(fileId);
-          setFailedThumbnails((prev) => {
-            if (prev.has(fileId)) return prev;
-            const next = new Set(prev);
-            next.add(fileId);
-            return next;
-          });
-          return;
-        }
-
-        try {
-          const thumbnailUrlObj = await resolvePublicMediaObjectUrl(fileId, 'poster');
-          // Session cache owns revoke — do not track for Discovery unmount cleanup.
-          
-          setThumbnails(prev => {
+      resolvePublicMediaObjectUrl(fileId, 'poster')
+        .then((posterUrl) => {
+          setThumbnails((prev) => {
+            if (prev.get(fileId) === posterUrl) return prev;
             const newMap = new Map(prev);
-            newMap.set(fileId, thumbnailUrlObj);
+            newMap.set(fileId, posterUrl);
             return newMap;
           });
-        } catch (err) {
-          if (import.meta.env.DEV) console.error(`[DiscoveryPage] Failed CDN thumbnail for ${fileId} (${fileName}):`, err);
-          setFailedThumbnails((prev) => {
-            if (prev.has(fileId)) return prev;
-            const next = new Set(prev);
-            next.add(fileId);
-            return next;
-          });
-        } finally {
-          processedThumbnailsRef.current.add(fileId);
-        }
-      }));
-    };
-
-    loadThumbnails();
-  }, [files, externalThumbnails, thumbnails]); // Include thumbnails like FullScreenFeed - checks thumbnails.has() before loading so won't reload
-
-  // Cleanup blob URLs on unmount
-  useEffect(() => {
-    return () => {
-      // Revoke all blob URLs we created when component unmounts
-      createdBlobUrlsRef.current.forEach((url) => {
-        try {
-          URL.revokeObjectURL(url);
-        } catch (err) {
-          // Ignore errors during cleanup
-        }
-      });
-      createdBlobUrlsRef.current.clear();
-    };
-  }, []);
+        })
+        .catch((err) => {
+          if (import.meta.env.DEV) console.error(`[DiscoveryPage] Failed CDN poster for ${fileId}:`, err);
+          markFailed(fileId);
+        });
+    });
+  }, [files, externalThumbnails]);
 
   // Helper to check if file should be shown based on NSFW preference
   // LOCKED USERS: Never show NSFW content, period
@@ -347,88 +278,8 @@ export function DiscoveryPage({
     return onlyPenTemplates(files.filter((file) => shouldShowFile(file))).slice(0, 24);
   }, [files, userState.isUnlocked, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18]);
 
-  // Helper to check if file is a collection
-  const isCollection = (file: IndexedFile): boolean => {
-    const collectionData = file.metadata?.collection;
-    return Boolean(
-      file.metadata.fileType === 'collection' &&
-        collectionData?.collectionFileIds &&
-        Array.isArray(collectionData.collectionFileIds) &&
-        collectionData.collectionFileIds.length > 0
-    );
-  };
-
-  // Helper to get thumbnail URL for a file
-  const getThumbnail = (file: IndexedFile): string => {
-    const fileId = file.metadata.fileId;
-    const fileName = file.metadata.name || file.metadata.title || '';
-    
-    // First, check if thumbnail is already loaded for this file
-    if (thumbnails.has(fileId)) {
-      return thumbnails.get(fileId)!;
-    }
-    
-    // If this is a note file (fileType: 'text'), try to find its corresponding thumbnail file
-    const fileType = file.metadata.fileType || '';
-    const isNote = fileType === 'text' || 
-                     fileType === 'note' ||
-                     !!(file.metadata as any).textPost ||
-                     !!(file.metadata as any).thought;
-    
-    if (isNote) {
-      // Look for the corresponding note thumbnail (note- / historical thought-)
-      // Thumbnail: thumb_note-123.png or thumb_thought-123.png
-      // Note: note-123.note|.png or thought-123.thought|.png
-      const fileNameLower = fileName.toLowerCase();
-      const noteNameMatch = fileNameLower.match(/^(?:note|thought)-(\d+)/);
-      
-      if (noteNameMatch) {
-        const noteId = noteNameMatch[1];
-        const thumbnailPrefixes = [`thumb_note-${noteId}`, `thumb_thought-${noteId}`];
-        
-        // Find the thumbnail file in the files array
-        const thumbnailFile = files.find((f) => {
-          const thumbFileName = (f.metadata.name || f.metadata.title || '').toLowerCase();
-          return thumbnailPrefixes.some((prefix) => thumbFileName.startsWith(prefix));
-        });
-        
-        if (thumbnailFile) {
-          const thumbnailFileId = thumbnailFile.metadata.fileId;
-          
-          // If already loaded, return it
-          if (thumbnails.has(thumbnailFileId)) {
-            return thumbnails.get(thumbnailFileId)!;
-          }
-          
-          // If not loaded yet, trigger immediate loading (don't wait for useEffect)
-          if (!processedThumbnailsRef.current.has(thumbnailFileId)) {
-            if (hasFeedPreviewPlayback(thumbnailFile.metadata)) {
-              (async () => {
-                try {
-                  const thumbnailUrlObj = await resolvePublicMediaObjectUrl(thumbnailFileId, 'poster');
-                  processedThumbnailsRef.current.add(thumbnailFileId);
-                  
-                  setThumbnails(prev => {
-                    const newMap = new Map(prev);
-                    newMap.set(thumbnailFileId, thumbnailUrlObj);
-                    return newMap;
-                  });
-                } catch (err) {
-                  if (import.meta.env.DEV) console.error(`[DiscoveryPage] Failed to immediately load thumbnail for ${thumbnailFileId}:`, err);
-                }
-              })();
-            }
-          }
-          
-          // Return thumbnail property if available, otherwise placeholder
-          return thumbnailFile.thumbnail || '/placeholder-thumbnail.png';
-        }
-      }
-    }
-    
-    // Fallback to file.thumbnail or placeholder
-    return file.thumbnail || '/placeholder-thumbnail.png';
-  };
+  const getThumbnail = (file: IndexedFile): string =>
+    thumbnails.get(file.metadata.fileId) || file.thumbnail || '/placeholder-thumbnail.png';
 
   // Helper to get thumbnails for collection files
   const getCollectionThumbnails = (file: IndexedFile): string[] => {
