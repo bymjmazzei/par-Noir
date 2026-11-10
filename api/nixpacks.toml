@@ -5,6 +5,7 @@
 # This file applies only when Railway Root Directory is set to `api` (packages must still be in context).
 [phases.setup]
 nixPkgs = ["nodejs_22", "npm-9_x", "ffmpeg"]
+aptPkgs = []
 
 [phases.install]
 cmds = ["npm ci --production=false --ignore-scripts"]
