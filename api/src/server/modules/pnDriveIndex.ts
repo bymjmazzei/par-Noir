@@ -78,33 +78,6 @@ export class DriveIndexError extends Error {
   }
 }
 
-/** True when indexed pN / _metadata folders still exist on Drive. */
-export async function pnDriveFoldersExistOnDrive(
-  accessToken: string,
-  pnFolderId: string,
-  metadataFolderId: string
-): Promise<boolean> {
-  for (const folderId of [pnFolderId, metadataFolderId]) {
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,trashed`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (res.status === 401 || res.status === 403) {
-      // Do not treat auth failure as "folders missing" (that clears pnDriveIndex).
-      throw new DriveIndexError(
-        'Google Drive access token rejected. Forward a fresh X-PN-Cloud-Access-Token.',
-        'CLOUD_TOKEN_REQUIRED'
-      );
-    }
-    if (res.status === 404) return false;
-    if (res.ok) {
-      const data = (await res.json()) as { trashed?: boolean };
-      if (data.trashed) return false;
-    }
-  }
-  return true;
-}
-
 /** Remove stale pnDriveIndex from stored credentials (e.g. after Drive folders deleted). */
 export async function clearPnDriveIndex(pnIdentifier: string): Promise<void> {
   const normalized = normalizePnIdentifier(pnIdentifier);

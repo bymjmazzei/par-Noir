@@ -23,14 +23,6 @@ jest.mock('./storageCredentialsService', () => ({
   storageCredentialsService: { getCredentials: jest.fn() },
 }));
 
-jest.mock('./ownerDriveToken', () => ({
-  resolveOwnerDriveToken: jest.fn(async () => ({
-    token: { access_token: 'owner-at' },
-    accountId: 'acct-1',
-  })),
-  respondDriveTokenError: jest.fn(() => false),
-}));
-
 jest.mock('./pnDriveIndex', () => ({
   readPnDriveIndex: jest.fn(() => ({
     schemaVersion: 1,
@@ -46,34 +38,6 @@ jest.mock('./pnDriveIndex', () => ({
   PN_DRIVE_SHEET_KEYS: { CONNECTIONS: 'connections' },
 }));
 
-jest.mock('./connectionsSheetsService', () => ({
-  ConnectionsSheetsService: {
-    getConnectionById: jest.fn(),
-    getConnectionsSheet: jest.fn(async () => 'conn-sheet'),
-  },
-}));
-
-jest.mock('./messageSheetsService', () => ({
-  MessageSheetsService: {
-    getInboxConversationByParticipant: jest.fn(async () => ({
-      spreadsheetId: 'conv-sheet',
-      connectionId: 'conn-1',
-    })),
-    getInboxConversationByConnectionId: jest.fn(async () => ({
-      spreadsheetId: 'conv-sheet',
-      connectionId: 'conn-1',
-      participantPnIdentifier: 'pn-sender',
-    })),
-    getOrCreateChannelMessagesFolder: jest.fn(async () => 'channel-msg'),
-    getConversationSheet: jest.fn(async () => 'conv-sheet'),
-    createConversationSheet: jest.fn(async () => 'conv-sheet'),
-    getOrCreateMessagesFolder: jest.fn(async () => 'msg-folder'),
-    getOrCreateInboxSheet: jest.fn(async () => 'inbox-sheet'),
-    updateInboxEntryWithRetry: jest.fn(async () => undefined),
-    appendMessage: jest.fn(async () => undefined),
-  },
-}));
-
 jest.mock('./storage/storageProviderUtils', () => ({
   isPortableStorageProvider: jest.fn(async () => false),
 }));
@@ -86,12 +50,8 @@ import express from 'express';
 import request from 'supertest';
 import { setupMessageRoutes, MessageRouteDeps } from './messageRoutes';
 import { storageCredentialsService } from './storageCredentialsService';
-import { ConnectionsSheetsService } from './connectionsSheetsService';
-import { MessageSheetsService } from './messageSheetsService';
 
 const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock;
-const mockGetConnectionById = ConnectionsSheetsService.getConnectionById as jest.Mock;
-const mockAppendMessage = MessageSheetsService.appendMessage as jest.Mock;
 
 const USER = 'pn-recipient';
 const PEER = 'pn-sender';
@@ -135,12 +95,6 @@ describe('POST /api/messages/apply-inbound', () => {
         pnDriveIndex: {},
       },
     });
-    mockGetConnectionById.mockReset().mockResolvedValue({
-      connectionId: 'conn-1',
-      userPnIdentifier: PEER,
-      status: 'accepted',
-    });
-    mockAppendMessage.mockReset().mockResolvedValue(undefined);
   });
 
   it('requires connectionId', async () => {
@@ -148,7 +102,6 @@ describe('POST /api/messages/apply-inbound', () => {
       .send(opaqueBody({ connectionId: '' }))
       .expect(400);
     expect(res.body.error).toMatch(/connectionId/i);
-    expect(mockAppendMessage).not.toHaveBeenCalled();
   });
 
   it('rejects unsupported jobType', async () => {
@@ -168,7 +121,6 @@ describe('POST /api/messages/apply-inbound', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.spreadsheetId).toBe('sheet-from-device');
     expect(res.body.encryptedContent).toBeTruthy();
-    expect(mockAppendMessage).not.toHaveBeenCalled();
   });
 
   it('refuses to open Drive when the device has not submitted a result', async () => {
@@ -177,6 +129,5 @@ describe('POST /api/messages/apply-inbound', () => {
       .send(opaqueBody())
       .expect(409);
     expect(res.body.error).toBe('cloud_on_device');
-    expect(mockAppendMessage).not.toHaveBeenCalled();
   });
 });

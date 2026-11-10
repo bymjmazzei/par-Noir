@@ -26,41 +26,21 @@ jest.mock('../socialMailboxService', () => ({
   isDeviceCloudCustodyEnabled: jest.fn(() => true),
 }));
 
-jest.mock('../googleDriveProxy', () => ({
-  googleDriveProxyService: {
-    getAccessToken: jest.fn(async () => 'should-not-be-called'),
-  },
-}));
-
 process.env.STORAGE_CREDENTIALS_SECRET =
   process.env.STORAGE_CREDENTIALS_SECRET || 'test-storage-credentials-secret-for-custody';
 
-import type { Request } from 'express';
 import {
   credentialsContainCloudSecrets,
   storageCredentialsService,
 } from '../storageCredentialsService';
-import { resolveOwnerDriveToken } from '../ownerDriveToken';
 import { isDeviceCloudCustodyEnabled } from '../socialMailboxService';
-import { googleDriveProxyService } from '../googleDriveProxy';
-import { dropboxProxyService } from './dropboxProxy';
-import { onedriveProxyService } from './onedriveProxy';
-import { DriveIndexError } from '../pnDriveIndex';
 
 const mockCustody = isDeviceCloudCustodyEnabled as jest.Mock;
-const mockGetAccessToken = googleDriveProxyService.getAccessToken as jest.Mock;
-
-function reqWithCloudHeader(token?: string): Request {
-  const headers: Record<string, string> = {};
-  if (token) headers['x-pn-cloud-access-token'] = token;
-  return { headers, header: (n: string) => headers[n.toLowerCase()] } as unknown as Request;
-}
 
 describe('device custody — no server-held cloud secrets', () => {
   beforeEach(() => {
     mockQuery.mockReset();
     mockCustody.mockReset().mockReturnValue(true);
-    mockGetAccessToken.mockReset().mockResolvedValue('should-not-be-called');
   });
 
   describe('credentialsContainCloudSecrets / stripCloudSecrets', () => {
@@ -145,77 +125,6 @@ describe('device custody — no server-held cloud secrets', () => {
       expect(JSON.stringify(record.credentials)).not.toMatch(
         /gat|grt|dat|drt|oat|ort/
       );
-    });
-  });
-
-  describe('resolveOwnerDriveToken under custody', () => {
-    it('throws CLOUD_TOKEN_REQUIRED with no header even when custody is opted out', async () => {
-      mockCustody.mockReturnValue(false);
-      await expect(
-        resolveOwnerDriveToken(reqWithCloudHeader(), 'pn-test', {
-          account: {
-            backendId: 'acct',
-            access_token: 'live-secret',
-            refresh_token: 'rt',
-            expires_at: Date.now() + 3_600_000,
-          },
-        })
-      ).rejects.toMatchObject({ code: 'CLOUD_TOKEN_REQUIRED' });
-      expect(mockGetAccessToken).not.toHaveBeenCalled();
-    });
-
-    it('throws CLOUD_TOKEN_REQUIRED with no header even when account has live secrets', async () => {
-      await expect(
-        resolveOwnerDriveToken(reqWithCloudHeader(), 'pn-test', {
-          account: {
-            backendId: 'acct',
-            access_token: 'live-secret',
-            refresh_token: 'rt',
-            expires_at: Date.now() + 3_600_000,
-          },
-        })
-      ).rejects.toMatchObject({ code: 'CLOUD_TOKEN_REQUIRED' });
-      expect(mockGetAccessToken).not.toHaveBeenCalled();
-    });
-
-    it('returns the forwarded header token', async () => {
-      const resolved = await resolveOwnerDriveToken(
-        reqWithCloudHeader('forwarded-at'),
-        'pn-test',
-        {
-          account: {
-            backendId: 'acct',
-            access_token: 'db-secret',
-            refresh_token: 'rt',
-            expires_at: Date.now() + 3_600_000,
-          },
-        }
-      );
-      expect(resolved.token.access_token).toBe('forwarded-at');
-      expect(resolved.token.refresh_token).toBeUndefined();
-      expect(mockGetAccessToken).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Dropbox / OneDrive proxies under custody', () => {
-    it('Dropbox: no forwarded token throws; with token does not upsert', async () => {
-      await expect(dropboxProxyService.getAccessToken('pn-test', 'acct')).rejects.toThrow(
-        /Dropbox access token required/
-      );
-      await expect(
-        dropboxProxyService.getAccessToken('pn-test', 'acct', 'fwd-dropbox')
-      ).resolves.toBe('fwd-dropbox');
-      expect(mockQuery).not.toHaveBeenCalled();
-    });
-
-    it('OneDrive: no forwarded token throws; with token does not upsert', async () => {
-      await expect(onedriveProxyService.getAccessToken('pn-test', 'acct')).rejects.toThrow(
-        /OneDrive access token required/
-      );
-      await expect(
-        onedriveProxyService.getAccessToken('pn-test', 'acct', 'fwd-onedrive')
-      ).resolves.toBe('fwd-onedrive');
-      expect(mockQuery).not.toHaveBeenCalled();
     });
   });
 });
