@@ -4,9 +4,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, X, Copy, ExternalLink } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, X } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
+import { ShareMenu } from './ShareMenu';
 
 interface EngagementOverlayProps {
   file: IndexedFile;
@@ -44,7 +45,7 @@ export function EngagementOverlay({
 
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('[data-engagement-overlay]')) {
+      if (!target.closest('[data-engagement-overlay], [data-share-menu]')) {
         onClose();
       }
     };
@@ -64,19 +65,6 @@ export function EngagementOverlay({
       document.body.style.overflow = '';
     };
   }, [isOpen]);
-
-  const shareVia = async (mode: 'copy' | 'sheet') => {
-    const { sharePostLink } = await import('../utils/postLink');
-    const result = await sharePostLink(file, mode);
-    if (result === 'copied' || result === 'shared') {
-      onShare();
-      setShareMenuOpen(false);
-      onClose();
-    }
-  };
-
-  const handleCopyLink = () => shareVia('copy');
-  const handleExternalShare = () => shareVia('sheet');
 
   if (!isOpen) return null;
 
@@ -156,7 +144,7 @@ export function EngagementOverlay({
           {/* Share */}
           <div className="space-y-2">
             <button
-              onClick={() => setShareMenuOpen(!shareMenuOpen)}
+              onClick={() => setShareMenuOpen(true)}
               className="w-full flex items-center space-x-4 p-4 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors"
             >
               <div className="w-12 h-12 rounded-full bg-neutral-700 flex items-center justify-center">
@@ -168,24 +156,16 @@ export function EngagementOverlay({
               </div>
             </button>
 
-            {/* Share submenu */}
             {shareMenuOpen && (
-              <div className="ml-16 space-y-2">
-                <button
-                  onClick={handleExternalShare}
-                  className="w-full flex items-center space-x-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors text-left"
-                >
-                  <ExternalLink className="h-5 w-5 text-neutral-400" />
-                  <span className="text-white text-sm">Share</span>
-                </button>
-                <button
-                  onClick={handleCopyLink}
-                  className="w-full flex items-center space-x-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors text-left"
-                >
-                  <Copy className="h-5 w-5 text-neutral-400" />
-                  <span className="text-white text-sm">Copy Link</span>
-                </button>
-              </div>
+              <ShareMenu
+                file={file}
+                onClose={() => setShareMenuOpen(false)}
+                onShared={() => {
+                  onShare();
+                  setShareMenuOpen(false);
+                  onClose();
+                }}
+              />
             )}
           </div>
 

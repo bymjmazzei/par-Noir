@@ -1,5 +1,5 @@
 /**
- * App shell: header chrome, upload status, queue overlay, toasts, bottom nav.
+ * App shell: header chrome, upload status, queue overlay, bottom nav.
  * Renders {children} as the main content.
  */
 
@@ -7,12 +7,10 @@ import React from 'react';
 import { LockButtonWithContext } from './LockButtonWithContext';
 import { UploadStatusCircle } from './UploadStatusCircle';
 import { UploadQueueOverlay } from './UploadQueueOverlay';
-import { ToastContainer } from './Toast';
 import { BottomNav } from './BottomNav';
 import { ContentNoticesBanner } from './ContentNoticesBanner';
 import type { AppContext } from '../hooks/useAppContext';
 import type { Feed } from '../types/aggregator';
-import type { Toast } from './Toast';
 
 export interface AppLayoutProps {
   /** Messaging standalone build: hide upload chrome and bottom nav (inbox silo) */
@@ -27,8 +25,6 @@ export interface AppLayoutProps {
   activeContext: AppContext | null;
   availableContexts: AppContext[];
   setActiveContext: (c: AppContext | null) => void;
-  toasts: Toast[];
-  removeToast: (id: string) => void;
   setViewMode: (m: 'grid' | 'feed') => void;
   setShowInbox: (v: boolean) => void;
   setShowSearch: (v: boolean) => void;
@@ -53,8 +49,6 @@ export function AppLayout({
   activeContext,
   availableContexts,
   setActiveContext,
-  toasts,
-  removeToast,
   setViewMode,
   setShowInbox,
   setShowSearch,
@@ -81,7 +75,6 @@ export function AppLayout({
       />
       <ContentNoticesBanner isUnlocked={userState.isUnlocked} enabled={fetchContentNotices} />
       {children}
-      <ToastContainer toasts={toasts} onClose={removeToast} />
       {!messagingOnly && (
         <BottomNav
           activeTab={activeBottomTab}

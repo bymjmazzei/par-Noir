@@ -11,7 +11,6 @@ import { useUserState } from '../contexts/UserStateContext';
 import { sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection, resolveConnectionStatusFromCache } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
 import { useToast } from '../hooks/useToast';
-import { ToastContainer } from './Toast';
 import {
   ensureLocalMessagingKeysForAccept,
   reportConnectionAcceptError,
@@ -37,7 +36,7 @@ interface ProfileActionMenuProps {
 
 export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexedFiles = [], isOwner = false, iconPx = 22 }: ProfileActionMenuProps) {
   const { userState, getDisplayName, updateDisplayName, setUserDisplayName } = useUserState();
-  const { success, error: showError, toasts, removeToast } = useToast();
+  const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -775,7 +774,6 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
         </div>,
         document.body
       )}
-      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 }, (prevProps, nextProps) => {

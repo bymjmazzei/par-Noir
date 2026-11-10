@@ -82,7 +82,7 @@ export function ToastContainer({ toasts, onClose }: ToastContainerProps) {
 
   return (
     <div
-      className="fixed right-4 z-50 flex flex-col space-y-2"
+      className="fixed right-4 z-[200] flex flex-col space-y-2"
       style={{ top: 'calc(1rem + env(safe-area-inset-top, 0px))' }}
     >
       {toasts.map((toast) => (

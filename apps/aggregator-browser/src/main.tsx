@@ -9,6 +9,7 @@ import './index.css';
 import { UserStateProvider } from './contexts/UserStateContext';
 import { SoftRefreshProvider } from './contexts/SoftRefreshContext';
 import { RealtimeSyncProvider } from './contexts/RealtimeSyncContext';
+import { ToastProvider } from './contexts/ToastContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 initBrowserSentry();
@@ -24,7 +25,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <UserStateProvider>
         <SoftRefreshProvider>
           <RealtimeSyncProvider>
-            <App />
+            <ToastProvider>
+              <App />
+            </ToastProvider>
           </RealtimeSyncProvider>
         </SoftRefreshProvider>
       </UserStateProvider>

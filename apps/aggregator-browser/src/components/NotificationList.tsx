@@ -9,7 +9,6 @@ import { NotificationService, Notification } from '../services/notificationServi
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useToast } from '../hooks/useToast';
-import { ToastContainer } from './Toast';
 import {
   acceptConnectionRequest,
   rejectConnectionRequest,
@@ -32,7 +31,7 @@ export function NotificationList({
   onConnectionRequestHandled,
   onNavigateToRequests,
 }: NotificationListProps) {
-  const { success, error: showError, toasts, removeToast } = useToast();
+  const { success, error: showError } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -224,8 +223,6 @@ export function NotificationList({
 
   return (
     <div className="h-full flex flex-col relative">
-      <ToastContainer toasts={toasts} onClose={removeToast} />
-
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-neutral-700">
         <div className="flex items-center space-x-3">

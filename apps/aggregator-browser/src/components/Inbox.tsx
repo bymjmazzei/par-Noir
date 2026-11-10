@@ -32,9 +32,10 @@ interface InboxProps {
   onCreatorClick?: (creatorId: string) => void;
   /** L5 embed: restrict inbox to this OAuth client_id channel. */
   channelClientId?: string;
+  onOpenPost?: (creatorId: string, fileId: string) => void;
 }
 
-export function Inbox({ initialThread = null, onCreatorClick, channelClientId }: InboxProps) {
+export function Inbox({ initialThread = null, onCreatorClick, channelClientId, onOpenPost }: InboxProps) {
   const { userState } = useUserState();
   const [activeView, setActiveView] = useState<'messages' | 'notifications' | 'requests' | 'activity' | 'connections'>('messages');
   const [selectedThread, setSelectedThread] = useState<SelectedInboxThread | null>(
@@ -93,6 +94,7 @@ export function Inbox({ initialThread = null, onCreatorClick, channelClientId }:
           spreadsheetId={selectedThread.spreadsheetId}
           preloadedMessages={selectedThread.preloadedMessages}
           onBack={() => setSelectedThread(null)}
+          onOpenPost={onOpenPost}
         />
       );
     }
@@ -107,6 +109,7 @@ export function Inbox({ initialThread = null, onCreatorClick, channelClientId }:
         wrappedMessageRootKey={selectedThread.wrappedMessageRootKey}
         spreadsheetId={selectedThread.spreadsheetId}
         channelClientId={selectedThread.channelClientId || channelClientId || 'platform'}
+        onOpenPost={onOpenPost}
       />
     );
   }

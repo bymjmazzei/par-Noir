@@ -8,8 +8,8 @@ import { Heart, MessageCircle, Share2, Lock, Plus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNConnect } from './PNConnect';
 import { IndexedFile } from '../types/aggregator';
-import { useToast } from '../hooks/useToast';
 import { LikersListModal } from './LikersListModal';
+import { ShareMenu } from './ShareMenu';
 
 interface EngagementActionsProps {
   file: IndexedFile;
@@ -33,9 +33,9 @@ export function EngagementActions({
   onCreatorClick,
 }: EngagementActionsProps) {
   const { userState } = useUserState();
-  const { success, error } = useToast();
   const [showConnectPrompt, setShowConnectPrompt] = useState(false);
   const [showLikers, setShowLikers] = useState(false);
+  const [shareAnchor, setShareAnchor] = useState<DOMRect | null | undefined>(undefined);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
   const LONG_PRESS_MS = 450;
@@ -43,14 +43,10 @@ export function EngagementActions({
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
 
-  const handleShare = async (e: React.MouseEvent) => {
+  const handleShare = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     e.preventDefault();
-    const { sharePostLink } = await import('../utils/postLink');
-    const result = await sharePostLink(file);
-    if (result === 'copied') success('Link copied to clipboard!');
-    if (result === 'failed') error('Failed to copy link. Please try again.');
-    if (result === 'copied' || result === 'shared') onShare?.();
+    setShareAnchor(e.currentTarget.getBoundingClientRect());
   };
 
   const handleAction = (e: React.MouseEvent, action: 'like' | 'comment', callback?: () => void) => {
@@ -118,6 +114,16 @@ export function EngagementActions({
       />
     ) : null;
 
+  const shareMenu =
+    shareAnchor !== undefined ? (
+      <ShareMenu
+        file={file}
+        anchorRect={shareAnchor}
+        onClose={() => setShareAnchor(undefined)}
+        onShared={() => onShare?.()}
+      />
+    ) : null;
+
   if (compact) {
     return (
       <div className="flex items-center space-x-4" onClick={(e) => e.stopPropagation()}>
@@ -160,6 +166,7 @@ export function EngagementActions({
           </button>
         )}
         {likersModal}
+        {shareMenu}
       </div>
     );
   }
@@ -227,6 +234,7 @@ export function EngagementActions({
         )}
       </div>
       {likersModal}
+      {shareMenu}
 
       {showConnectPrompt && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">

@@ -8,7 +8,7 @@ vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => isNativ
 vi.mock('@capacitor/share', () => ({ Share: { share: (o: unknown) => nativeShare(o) } }));
 vi.mock('./clipboard', () => ({ copyToClipboard: (t: string) => copyToClipboard(t) }));
 
-import { postShareUrl, sharePostLink } from './postLink';
+import { canOpenShareSheet, parsePostLink, postShareUrl, sharePostLink } from './postLink';
 import type { IndexedFile } from '../types/aggregator';
 
 const file = {
@@ -48,30 +48,70 @@ describe('postShareUrl', () => {
   });
 });
 
+describe('parsePostLink', () => {
+  const origin = 'https://pn.parnoir.com';
+
+  it('reads creator and file from a same-origin post link', () => {
+    expect(parsePostLink(`${origin}/?creator=pn-d8f74864&file=abc123`, origin)).toEqual({
+      creator: 'pn-d8f74864',
+      fileId: 'abc123',
+    });
+    expect(parsePostLink(`${origin}/?file=abc123`, origin)).toEqual({ fileId: 'abc123' });
+  });
+
+  it('rejects other origins, links without a file, and non-URLs', () => {
+    expect(parsePostLink('https://evil.example/?creator=a&file=b', origin)).toBeNull();
+    expect(parsePostLink(`${origin}/?creator=a`, origin)).toBeNull();
+    expect(parsePostLink('not a url', origin)).toBeNull();
+  });
+});
+
+describe('canOpenShareSheet', () => {
+  it('is false on a desktop browser without Web Share', () => {
+    stubBrowser({ coarse: false });
+    expect(canOpenShareSheet()).toBe(false);
+  });
+
+  it('is true with Web Share or in the native app', () => {
+    stubBrowser({ coarse: false, webShare: async () => undefined });
+    expect(canOpenShareSheet()).toBe(true);
+    vi.unstubAllGlobals();
+    stubBrowser({ coarse: false });
+    isNativePlatform.mockReturnValue(true);
+    expect(canOpenShareSheet()).toBe(true);
+  });
+});
+
 describe('sharePostLink', () => {
-  it('copies on desktop even when Web Share exists', async () => {
+  it('copy mode copies the canonical link and never opens the sheet', async () => {
     const webShare = vi.fn(async () => undefined);
-    stubBrowser({ coarse: false, webShare });
-    await expect(sharePostLink(file)).resolves.toBe('copied');
+    stubBrowser({ coarse: true, webShare });
+    await expect(sharePostLink(file, 'copy')).resolves.toBe('copied');
     expect(copyToClipboard).toHaveBeenCalledWith('https://pn.parnoir.com/?creator=pn-d8f74864&file=abc123');
     expect(webShare).not.toHaveBeenCalled();
   });
 
-  it('uses the share sheet on touch devices and reports cancel', async () => {
+  it('sheet mode uses Web Share and reports cancel', async () => {
     const abort = Object.assign(new Error('Share canceled'), { name: 'AbortError' });
     const webShare = vi.fn(async () => {
       throw abort;
     });
-    stubBrowser({ coarse: true, webShare });
-    await expect(sharePostLink(file)).resolves.toBe('cancelled');
+    stubBrowser({ coarse: false, webShare });
+    await expect(sharePostLink(file, 'sheet')).resolves.toBe('cancelled');
     expect(copyToClipboard).not.toHaveBeenCalled();
   });
 
-  it('uses the native sheet in the app', async () => {
+  it('sheet mode uses the native sheet in the app', async () => {
     isNativePlatform.mockReturnValue(true);
     stubBrowser({ coarse: false });
-    await expect(sharePostLink(file)).resolves.toBe('shared');
+    await expect(sharePostLink(file, 'sheet')).resolves.toBe('shared');
     expect(nativeShare).toHaveBeenCalled();
+  });
+
+  it('sheet mode fails without a share sheet instead of silently copying', async () => {
+    stubBrowser({ coarse: false });
+    await expect(sharePostLink(file, 'sheet')).resolves.toBe('failed');
+    expect(copyToClipboard).not.toHaveBeenCalled();
   });
 
   it('reports failed when the clipboard write fails', async () => {

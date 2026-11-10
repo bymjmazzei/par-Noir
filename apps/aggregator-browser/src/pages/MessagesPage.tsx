@@ -30,6 +30,7 @@ export interface MessagesPageProps {
   onNotificationClick: (notification: Notification) => void;
   /** L5 embed channel filter. */
   channelClientId?: string;
+  onOpenPost?: (creatorId: string, fileId: string) => void;
 }
 
 export function MessagesPage({
@@ -37,6 +38,7 @@ export function MessagesPage({
   onCreatorClick,
   onNotificationClick,
   channelClientId,
+  onOpenPost,
 }: MessagesPageProps) {
   const { userState } = useUserState();
   const [showDmUnlock, setShowDmUnlock] = useState(false);
@@ -121,6 +123,7 @@ export function MessagesPage({
             onCreatorClick={onCreatorClick}
             onNotificationClick={onNotificationClick}
             channelClientId={channelClientId}
+            onOpenPost={onOpenPost}
           />
         )}
       </div>

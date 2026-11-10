@@ -13,8 +13,8 @@ import { ProfileActionMenu } from './ProfileActionMenu';
 import { useToast } from '../hooks/useToast';
 import { isFileSaved } from '../services/savedFeedService';
 import { uploadQueueService } from '../services/uploadQueueService';
-import { sharePostLink } from '../utils/postLink';
 import { LikersListModal } from './LikersListModal';
+import { ShareMenu } from './ShareMenu';
 import { viewsForFeedPage, type FeedPagePosition } from '../utils/feedPageViews';
 
 interface FeedEngagementSidebarProps {
@@ -73,6 +73,7 @@ export function FeedEngagementSidebar({
   const [isSaved, setIsSaved] = useState(false);
   const [isCheckingSaved, setIsCheckingSaved] = useState(false);
   const [showLikers, setShowLikers] = useState(false);
+  const [shareAnchor, setShareAnchor] = useState<DOMRect | null | undefined>(undefined);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
   const railRef = useRef<HTMLDivElement>(null);
@@ -169,13 +170,10 @@ export function FeedEngagementSidebar({
     });
   };
 
-  const handleShare = async (e: React.MouseEvent) => {
+  const handleShare = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     e.preventDefault();
-    const result = await sharePostLink(file);
-    if (result === 'copied') success('Link copied to clipboard!');
-    if (result === 'failed') error('Failed to copy link. Please try again.');
-    if (result === 'copied' || result === 'shared') onShare?.();
+    setShareAnchor(e.currentTarget.getBoundingClientRect());
   };
 
   const handleAction = (e: React.MouseEvent, action: 'like' | 'comment' | 'bookmark', callback?: () => void) => {
@@ -289,6 +287,14 @@ export function FeedEngagementSidebar({
           onCreatorClick={onCreatorClick}
         />
       ) : null}
+      {shareAnchor !== undefined && (
+        <ShareMenu
+          file={file}
+          anchorRect={shareAnchor}
+          onClose={() => setShareAnchor(undefined)}
+          onShared={() => onShare?.()}
+        />
+      )}
 
       {/* Comment Button */}
       <button

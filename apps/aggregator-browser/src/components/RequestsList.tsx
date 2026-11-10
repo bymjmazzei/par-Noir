@@ -12,7 +12,6 @@ import { getPendingRequests as getConnectionPendingRequests, acceptConnectionReq
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
-import { ToastContainer } from './Toast';
 import {
   ensureLocalMessagingKeysForAccept,
   reportConnectionAcceptError,
@@ -25,7 +24,7 @@ interface RequestsListProps {
 
 export function RequestsList({ onRequestAccept }: RequestsListProps) {
   const { userState } = useUserState();
-  const { success, error: showError, toasts, removeToast } = useToast();
+  const { success, error: showError } = useToast();
   const [requests, setRequests] = useState<MessageRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
@@ -198,7 +197,6 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
 
   return (
     <div className="h-full flex flex-col bg-neutral-900 relative">
-      <ToastContainer toasts={toasts} onClose={removeToast} />
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (

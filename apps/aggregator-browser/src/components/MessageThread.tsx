@@ -33,7 +33,6 @@ import {
 } from '../services/groupService';
 import { getUserProfile } from '../services/profileService';
 import { useToast } from '../hooks/useToast';
-import { ToastContainer } from './Toast';
 import { GroupSettingsModal } from './GroupSettingsModal';
 import { MessageMediaPickerModal } from './MessageMediaPickerModal';
 import { MessageMediaAttachment } from './MessageMediaAttachment';
@@ -52,6 +51,8 @@ import { isMessagingKeysError, requestMessagingReconnect } from '../services/mes
 import { takeCorrespondenceDraftBody } from '../utils/penCorrespondenceHandoff';
 import { BOTTOM_NAV_PADDING } from '../constants/layout';
 import { getCachedPeerMailboxRouteKey } from '../services/peerMailboxRouteCache';
+import { splitTextLinks } from '../utils/linkify';
+import { parsePostLink } from '../utils/postLink';
 
 interface MessageThreadProps {
   participantPnIdentifier?: string;
@@ -68,6 +69,41 @@ interface MessageThreadProps {
   accessRole?: GroupAccessRole;
   wrappedChatKey?: string;
   channelClientId?: string;
+  /** Opens a shared par Noir post link in-app; without it, post links open in a new tab. */
+  onOpenPost?: (creatorId: string, fileId: string) => void;
+}
+
+function MessageContent({
+  text,
+  onOpenPost,
+}: {
+  text: string;
+  onOpenPost?: (creatorId: string, fileId: string) => void;
+}) {
+  return (
+    <p className="text-sm whitespace-pre-wrap break-words">
+      {splitTextLinks(text).map((part, i) => {
+        if (part.kind === 'text') return <span key={i}>{part.text}</span>;
+        const post = onOpenPost ? parsePostLink(part.href) : null;
+        return (
+          <a
+            key={i}
+            href={part.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 break-all"
+            onClick={(e) => {
+              if (!post?.creator || !onOpenPost) return;
+              e.preventDefault();
+              onOpenPost(post.creator, post.fileId);
+            }}
+          >
+            {part.text}
+          </a>
+        );
+      })}
+    </p>
+  );
 }
 
 export function MessageThread({
@@ -85,10 +121,11 @@ export function MessageThread({
   accessRole = 'readWrite',
   wrappedChatKey = '',
   channelClientId = 'platform',
+  onOpenPost,
 }: MessageThreadProps) {
   const isGroup = !!groupId;
   const { userState } = useUserState();
-  const { error: showError, toasts, removeToast } = useToast();
+  const { error: showError } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -714,7 +751,6 @@ export function MessageThread({
 
   return (
     <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: BOTTOM_NAV_PADDING }}>
-      <ToastContainer toasts={toasts} onClose={removeToast} />
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-neutral-700">
         <div className="flex items-center space-x-3">
@@ -846,7 +882,7 @@ export function MessageThread({
                         message.fromPnIdentifier.slice(0, 12) + '…'}
                     </p>
                   )}
-                  <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                  <MessageContent text={message.content} onOpenPost={onOpenPost} />
                   {message.mediaFileId && threadContext && (
                     <MessageMediaAttachment
                       mediaFileId={message.mediaFileId}

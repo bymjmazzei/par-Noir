@@ -189,7 +189,7 @@ function App() {
   const loadedEngagementFileIdsRef = useRef<Set<string>>(new Set()); // Track which fileIds have had engagement stats loaded
 
   const { toggleLike, toggleDislike, share, getLikeCount, isLiked, isDisliked, getComments, loadComments, getShareCount, loadBulkEngagementStats } = useEngagement();
-  const { toasts, removeToast, success, error: showErrorToast } = useToast();
+  const { success, error: showErrorToast } = useToast();
   const { getParam, setParam } = useURLParams();
 
   // (handleMeClick lives in useAuthAndSession)
@@ -1224,8 +1224,6 @@ function App() {
         activeContext={activeContext}
         availableContexts={availableContexts}
         setActiveContext={setActiveContext}
-        toasts={toasts}
-        removeToast={removeToast}
         setViewMode={setViewMode}
         setShowInbox={setShowInbox}
         setShowSearch={setShowSearch}
@@ -1260,6 +1258,11 @@ function App() {
         <MessagesPage
           initialThread={initialThread}
           onCreatorClick={handleCreatorClick}
+          onOpenPost={MESSAGING_ONLY ? undefined : (creatorId, fileId) => {
+            setShowInbox(false);
+            setActiveBottomTab('home');
+            openPostOnCreatorFeed(creatorId, fileId);
+          }}
           onNotificationClick={(notification) => {
             if (MESSAGING_ONLY) {
               setShowInbox(true);
