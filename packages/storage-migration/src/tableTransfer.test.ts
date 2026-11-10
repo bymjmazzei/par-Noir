@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TableSchema } from '@par-noir/user-owned-storage';
 import { transferTable } from './tableTransfer.js';
-import { indexEntryToRow, rowToIndexEntry } from './indexRows.js';
+import { indexEntryToRow, rowToIndexEntry } from '@par-noir/user-owned-storage';
 
 const schema: TableSchema = {
   id: 'test',

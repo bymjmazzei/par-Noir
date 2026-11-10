@@ -1,10 +1,9 @@
 /**
- * Connection, inbox, group, and public-index sheets on the device.
+ * Connection, inbox, and group sheets on the device.
  * Column layouts match the sheets the API used to write.
  */
 
 import { appendSheetValues, readSheetValues, writeSheetValues } from './deviceSheet.js';
-import { upsertDevicePublicIndexFile } from './deviceIndexes.js';
 import type { DeviceDriveLayout } from './deviceDriveLayout.js';
 import { ensureDeviceDriveLayout, isDeviceDriveLayoutComplete } from './deviceDriveLayout.js';
 import { ensureDriveChildSpreadsheet, writeSheetHeaders, type SpreadsheetSpec } from './driveChild.js';
@@ -452,15 +451,6 @@ export async function appendDeviceGroupRow(
     ]],
     fetchImpl
   );
-}
-
-export async function appendPublicIndexRow(
-  accessToken: string,
-  spreadsheetId: string,
-  entry: Record<string, unknown>,
-  fetchImpl?: typeof fetch
-): Promise<void> {
-  await upsertDevicePublicIndexFile(accessToken, spreadsheetId, entry, fetchImpl);
 }
 
 export async function ensureSessionDriveIndex(args: {

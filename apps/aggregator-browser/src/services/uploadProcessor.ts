@@ -1058,13 +1058,9 @@ async function createMetadata(fileId: string, metadata: any, _accessToken: strin
     const session = PNOAuthService.loadSession();
     const pnIdentifier = session?.pnIdentifier;
     if (pnIdentifier) {
-      const { appendPublicIndexRow } = await import('@par-noir/device-cloud-credentials');
-      const { sessionDriveFor } = await import('./sessionDrive');
-      const drive = await sessionDriveFor(pnIdentifier);
-      const indexId = drive.index.sheetIds['public-file-index'];
-      if (indexId) {
-        await appendPublicIndexRow(drive.accessToken, indexId, { fileId, ...metadata });
-      }
+      const { deviceFileIndex } = await import('@par-noir/device-cloud-credentials');
+      const { sessionSocialFor } = await import('./sessionSocial');
+      await deviceFileIndex(await sessionSocialFor(pnIdentifier), 'public').upsert({ fileId, ...metadata });
     }
   }
   const response = await ownerFetch('PUT', `/api/aggregator/metadata-index/${fileId}`, metadata);

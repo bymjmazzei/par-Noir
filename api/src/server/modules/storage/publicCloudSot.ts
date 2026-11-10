@@ -3,15 +3,14 @@
  *
  * LIVE public post ⇔ metadata.publicContentRef is complete and the envelope
  * is still fetchable OAuth-less via publicUrl (see publicBlobAccess.fetchPublicBytes).
- * Postgres / Sheets / R2 are cache — purge when SoT is gone.
+ * Postgres and R2 are cache — purge when SoT is gone. The owner's device prunes its
+ * own index rows; the API never opens the owner's cloud.
  */
 
 import {
   isPublicContentRef,
   type PublicContentRef,
 } from '@par-noir/aggregator-domain';
-import type { DriveToken } from './fileIndexHelpers';
-import { removeFromOwnerIndex, removeFromPublicIndex } from './fileIndexHelpers';
 import { hashIdentifier, safeLogger } from '../../../utils/logger';
 
 export type PublicEnvelopeProbeResult = 'ok' | 'missing' | 'error';
@@ -61,34 +60,18 @@ export async function probePublicEnvelope(
 export interface PurgePublicCacheResult {
   postgresRemoved: number;
   postgresErrors: number;
-  sheetsAttempted: number;
-  sheetsErrors: number;
 }
 
-/**
- * One cascade for dead public posts.
- * Postgres (+ feed_posts via removeMetadata) always.
- * Sheets only when owner Drive token + metadataFolderId are provided.
- */
+/** One cascade for dead public posts: the Postgres row (and feed_posts via removeMetadata). */
 export async function purgePublicCacheForFileIds(params: {
   fileIds: string[];
   pnIdentifier?: string;
-  token?: DriveToken;
-  metadataFolderId?: string;
-  accountId?: string;
 }): Promise<PurgePublicCacheResult> {
   const uniqueIds = [
     ...new Set(params.fileIds.filter((id) => typeof id === 'string' && id.length > 0)),
   ];
   let postgresRemoved = 0;
   let postgresErrors = 0;
-  let sheetsAttempted = 0;
-  let sheetsErrors = 0;
-
-  const canSheets =
-    !!params.token?.access_token &&
-    !!params.metadataFolderId &&
-    !!params.pnIdentifier;
 
   for (const fileId of uniqueIds) {
     try {
@@ -102,41 +85,7 @@ export async function purgePublicCacheForFileIds(params: {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-
-    if (canSheets) {
-      sheetsAttempted++;
-      try {
-        await removeFromOwnerIndex(
-          params.token!,
-          params.pnIdentifier!,
-          params.metadataFolderId!,
-          fileId,
-          params.accountId
-        );
-      } catch (err) {
-        sheetsErrors++;
-        safeLogger.warn('[publicCloudSot] removeFromOwnerIndex failed', {
-          fileIdHash: hashIdentifier(fileId),
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-      try {
-        await removeFromPublicIndex(
-          params.token!,
-          params.pnIdentifier!,
-          params.metadataFolderId!,
-          fileId,
-          params.accountId
-        );
-      } catch (err) {
-        sheetsErrors++;
-        safeLogger.warn('[publicCloudSot] removeFromPublicIndex failed', {
-          fileIdHash: hashIdentifier(fileId),
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
   }
 
-  return { postgresRemoved, postgresErrors, sheetsAttempted, sheetsErrors };
+  return { postgresRemoved, postgresErrors };
 }

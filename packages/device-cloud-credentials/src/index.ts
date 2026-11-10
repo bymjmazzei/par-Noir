@@ -60,6 +60,17 @@ export {
 } from './deviceBlobStore.js';
 export { createDeviceTableStore, deviceTableStoreForSession, setSqlJsWasmUrl } from './deviceTables.js';
 export {
+  resolveDeviceSocialContext,
+  type DeviceSocialContext,
+  type GoogleDriveSession,
+} from './social/socialContext.js';
+export {
+  deviceFileIndex,
+  indexEntryFromSheetRow,
+  type DeviceFileIndex,
+  type FileIndexKind,
+} from './social/fileIndex.js';
+export {
   createApiSocialApplier,
   createApiOnlyApplyJob,
   type ApiSocialApplierOptions
@@ -264,7 +275,6 @@ export {
   resolveOwnConversationSheet,
   listDeviceGroups,
   appendDeviceGroupRow,
-  appendPublicIndexRow,
   ensureSessionDriveIndex,
 } from './deviceSocial.js';
 export type { DeviceConnection, DeviceInboxThread, DeviceMessage, DeviceGroupRow } from './deviceSocial.js';

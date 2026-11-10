@@ -4,6 +4,5 @@ export * from './portableCopy.js';
 export * from './tableCopy.js';
 export * from './jsonBlobCopy.js';
 export * from './indexCopy.js';
-export * from './indexRows.js';
 export * from './tableTransfer.js';
 export * from './migrationCatalog.js';

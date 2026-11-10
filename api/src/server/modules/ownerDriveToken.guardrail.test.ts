@@ -53,13 +53,11 @@ describe('owner Drive token custody guardrail', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('storageIndexRoutes uses resolveOwnerDriveToken (no empty-shell builder)', () => {
+  it('storageIndexRoutes never resolves an owner cloud token', () => {
     const file = join(MODULES_DIR, 'storage', 'storageIndexRoutes.ts');
     expect(existsSync(file)).toBe(true);
     const text = readFileSync(file, 'utf8');
-    expect(text).toMatch(/resolveOwnerDriveToken/);
-    expect(text).not.toMatch(/function buildDriveTokenFromAccount/);
-    expect(SHELL_TOKEN_RE.test(text)).toBe(false);
+    expect(text).not.toMatch(/resolveOwnerDriveToken|access_token|OwnerStorageContext/);
   });
 
   it('recoveryDriveContext refuses empty access tokens (throws CLOUD_TOKEN_REQUIRED)', () => {

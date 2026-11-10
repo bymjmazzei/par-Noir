@@ -4,7 +4,6 @@
  * No direct googleapis.com Drive or OAuth fetches from the dashboard client.
  */
 
-import { API_ENDPOINT } from '../../config/api';
 import { ownerFetch } from '../ownerApiService';
 import { resolveOwnerApiToken } from '../ownerApiToken';
 
@@ -406,33 +405,29 @@ export class GoogleDriveMetadataService {
     /* no-op: API creates owner/public index Sheets on connect */
   }
 
-  /**
-   * Get public file index (merged content-class + root) from the API (Sheets).
-   */
+  /** This pN's public file index, read from its own cloud on this device. */
   static async getPublicFileIndex(
     _accessToken: string,
     _metadataFolderId: string,
     pnIdentifier: string,
     _skipCleanup: boolean = false
   ): Promise<PublicFileIndex | null> {
+    const ownerToken = resolveOwnerApiToken(pnIdentifier);
+    if (!ownerToken) return null;
     try {
-      const res = await fetch(`${API_ENDPOINT}/api/storage/public-index/${encodeURIComponent(pnIdentifier)}`);
-      if (!res.ok) return null;
-      const data = await res.json();
+      const { readDevicePublicIndex } = await import('./deviceOwnerIndex');
+      const files = await readDevicePublicIndex(pnIdentifier, ownerToken);
       return {
-        identifier: data.identifier ?? pnIdentifier,
-        files: data.files ?? [],
-        updatedAt: data.updatedAt ?? new Date().toISOString(),
+        identifier: pnIdentifier,
+        files: files as PublicFileIndex['files'],
+        updatedAt: new Date().toISOString(),
       };
     } catch {
       return null;
     }
   }
 
-  /**
-   * Get owner file index (merged content-class + root) from the API (Sheets).
-   * Under device custody the route may return 409; callers treat null as Drive listFiles.
-   */
+  /** Null when the index cannot be read; callers then list the cloud directly. */
   static async getOwnerFileIndexFromContentClasses(
     pnIdentifier: string,
     ownerApiToken?: string | null
@@ -458,9 +453,7 @@ export class GoogleDriveMetadataService {
     }
   }
 
-  /**
-   * Update owner file index via API (Sheets). `_accessToken` ignored.
-   */
+  /** `_accessToken` is unused; the device session supplies cloud access. */
   static async updateOwnerFileIndex(
     _accessToken: string,
     pnIdentifier: string,
@@ -474,9 +467,7 @@ export class GoogleDriveMetadataService {
     await writeDeviceOwnerIndexEntry(pnIdentifier, ownerToken, fileMetadata);
   }
 
-  /**
-   * Update public file index via API (Sheets). `_accessToken` ignored.
-   */
+  /** `_accessToken` is unused; the device session supplies cloud access. */
   static async updatePublicFileIndex(
     _accessToken: string,
     pnIdentifier: string,
@@ -486,16 +477,11 @@ export class GoogleDriveMetadataService {
     if (!ownerToken) {
       throw new Error('par Noir API session not ready');
     }
-    const res = await ownerFetch(
+    const { writeDevicePublicIndexEntry } = await import('./deviceOwnerIndex');
+    await writeDevicePublicIndexEntry(
+      pnIdentifier,
       ownerToken,
-      'POST',
-      `/api/storage/public-index/${encodeURIComponent(pnIdentifier)}/entries`,
-      { entry: fileMetadata },
-      { pnIdentifier }
+      fileMetadata as unknown as Record<string, unknown>
     );
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Failed to update public index: ${res.status} ${err}`);
-    }
   }
 }

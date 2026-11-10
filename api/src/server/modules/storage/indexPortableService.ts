@@ -1,5 +1,5 @@
 import { contentClassIndexPath, type TableSchema } from '@par-noir/user-owned-storage';
-import { indexEntryToRow } from '@par-noir/storage-migration';
+import { indexEntryToRow } from '@par-noir/user-owned-storage';
 import type { IndexFileEntry } from '../indexSheetsService';
 import {
   portableTableAppend,

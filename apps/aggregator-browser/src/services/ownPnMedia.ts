@@ -1,9 +1,9 @@
 /**
- * Media rows from the device owner-file-index sheet.
+ * Media rows from the pN's owner file index on its own cloud.
  */
-import { listDeviceOwnerFiles } from '@par-noir/device-cloud-credentials';
+import { deviceFileIndex } from '@par-noir/device-cloud-credentials';
 import { isMediaMimeType } from './messagingMediaService';
-import { sessionDriveFor } from './sessionDrive';
+import { sessionSocialFor } from './sessionSocial';
 
 export interface OwnPnMediaEntry {
   fileId: string;
@@ -16,18 +16,16 @@ export interface OwnPnMediaEntry {
 
 export async function loadOwnPnMedia(pnIdentifier: string): Promise<OwnPnMediaEntry[]> {
   const pn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-  const drive = await sessionDriveFor(pn);
-  const sheetId = drive.index.sheetIds['owner-file-index'];
-  if (!sheetId) return [];
-  const rows = await listDeviceOwnerFiles(drive.accessToken, sheetId);
+  const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+  const rows = await deviceFileIndex(await sessionSocialFor(pn), 'owner').list();
   return rows
     .map((row) => ({
-      fileId: row.fileId,
-      googleDriveFileId: row.googleDriveFileId || undefined,
-      fileName: typeof row.entry.fileName === 'string' ? row.entry.fileName : undefined,
-      originalName: typeof row.entry.originalName === 'string' ? row.entry.originalName : undefined,
-      mimeType: typeof row.entry.mimeType === 'string' ? row.entry.mimeType : undefined,
-      thumbnail: typeof row.entry.thumbnail === 'string' ? row.entry.thumbnail : undefined,
+      fileId: String(row.fileId),
+      googleDriveFileId: text(row.googleDriveFileId),
+      fileName: text(row.fileName),
+      originalName: text(row.originalName),
+      mimeType: text(row.mimeType),
+      thumbnail: text(row.thumbnail),
     }))
     .filter((file) => {
       const id = file.googleDriveFileId || file.fileId;

@@ -3,19 +3,12 @@
  */
 
 const removeMetadata = jest.fn();
-const removeOwner = jest.fn();
-const removePublic = jest.fn();
 const fetchPublicBytes = jest.fn();
 
 jest.mock('../aggregatorMetadataServiceDB', () => ({
   AggregatorMetadataServiceDB: {
     getInstance: () => ({ removeMetadata: (...a: unknown[]) => removeMetadata(...a) }),
   },
-}));
-
-jest.mock('./fileIndexHelpers', () => ({
-  removeFromOwnerIndex: (...a: unknown[]) => removeOwner(...a),
-  removeFromPublicIndex: (...a: unknown[]) => removePublic(...a),
 }));
 
 jest.mock('../publicBlobAccess', () => {
@@ -47,8 +40,6 @@ import { PublicBlobAccessError } from '../publicBlobAccess';
 describe('publicCloudSot foundation', () => {
   beforeEach(() => {
     removeMetadata.mockReset().mockResolvedValue(true);
-    removeOwner.mockReset().mockResolvedValue(undefined);
-    removePublic.mockReset().mockResolvedValue(undefined);
     fetchPublicBytes.mockReset();
   });
 
@@ -79,19 +70,10 @@ describe('publicCloudSot foundation', () => {
     expect(fetchPublicBytes).toHaveBeenCalled();
   });
 
-  it('purgePublicCacheForFileIds always hits Postgres; Sheets only with token', async () => {
-    await purgePublicCacheForFileIds({ fileIds: ['f1'] });
-    expect(removeMetadata).toHaveBeenCalledWith('f1');
-    expect(removeOwner).not.toHaveBeenCalled();
-
-    await purgePublicCacheForFileIds({
-      fileIds: ['f2'],
-      pnIdentifier: 'pn-x',
-      token: { access_token: 'tok' },
-      metadataFolderId: 'meta',
-    });
-    expect(removeOwner).toHaveBeenCalled();
-    expect(removePublic).toHaveBeenCalled();
+  it('purgePublicCacheForFileIds removes the Postgres rows only', async () => {
+    const result = await purgePublicCacheForFileIds({ fileIds: ['f1', 'f1', 'f2'], pnIdentifier: 'pn-x' });
+    expect(removeMetadata.mock.calls).toEqual([['f1'], ['f2']]);
+    expect(result).toEqual({ postgresRemoved: 2, postgresErrors: 0 });
   });
 
   it('reconcile purges on missing ref and on envelope NOT_FOUND; ignores backendFileId', async () => {

@@ -1,13 +1,11 @@
 import {
   TABLE_PATHS,
+  indexEntryToRow,
   messagesPath,
+  portableRowsToIndexEntries,
   type TableRow,
   type TableSchema
 } from '@par-noir/user-owned-storage';
-import {
-  indexEntryToRow,
-  portableRowsToIndexEntries
-} from '@par-noir/storage-migration';
 import type { IndexFileEntry } from '../indexSheetsService';
 import type { DriveTableContext } from './sheetsTableBridge';
 

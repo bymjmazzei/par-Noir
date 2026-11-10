@@ -9,7 +9,7 @@ import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 import {
   serializeSlimIndexEntryJson,
   type IndexSheetKind,
-} from '@par-noir/storage-migration';
+} from '@par-noir/user-owned-storage';
 
 export interface IndexFileEntry {
   fileId: string;

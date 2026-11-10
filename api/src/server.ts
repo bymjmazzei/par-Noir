@@ -48,9 +48,6 @@ import {
   setupStorageCloudVaultRoutes,
 } from './server/modules/storage/storageCredentialsRoutes';
 import { setupStorageIndexRoutes } from './server/modules/storage/storageIndexRoutes';
-import {
-  scheduleDriveIndexUpdates,
-} from './server/modules/storage/fileIndexHelpers';
 import { registerMailboxRoutes } from './server/modules/mailboxRoutes';
 import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPeriodRoutes';
 import { registerCoreRoutes } from './server/modules/coreRoutes';
@@ -828,10 +825,7 @@ class ProductionServer {
       extractAccountId: (account) => this.extractAccountId(account),
     });
 
-    setupStorageIndexRoutes(this.app, {
-      extractAccountId: (account) => this.extractAccountId(account),
-      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
-    });
+    setupStorageIndexRoutes(this.app);
 
     // GET /api/storage/accounts/:identityId — registered in storageRoutes (multi-provider)
 

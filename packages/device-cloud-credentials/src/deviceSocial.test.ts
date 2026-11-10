@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { appendPublicIndexRow, listDeviceConnections, listDeviceGroups, listDeviceInbox, upsertDeviceConnection } from './deviceSocial.js';
+import { upsertDevicePublicIndexFile } from './deviceIndexes.js';
+import { listDeviceConnections, listDeviceGroups, listDeviceInbox, upsertDeviceConnection } from './deviceSocial.js';
 import { listDeviceNotifications } from './deviceProduct.js';
 
 describe('device connection sheet', () => {
@@ -112,7 +113,7 @@ describe('device connection sheet', () => {
       expect(JSON.parse(body.values[0][4]).fileId).toBe('file-1');
       return new Response('{}', { status: 200 });
     });
-    await appendPublicIndexRow(
+    await upsertDevicePublicIndexFile(
       'google-token',
       'sheet-public',
       { fileId: 'file-1', isPublic: true },
