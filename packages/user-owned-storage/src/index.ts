@@ -8,4 +8,5 @@ export * from './table/DelegateTableAdapter.js';
 export * from './table/SnapshotJsonTableAdapter.js';
 export * from './table/tableSchemas.js';
 export * from './table/indexRows.js';
+export * from './table/inboxRows.js';
 export { TableConcurrencyError } from './table/tableErrors.js';

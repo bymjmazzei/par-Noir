@@ -63,9 +63,23 @@ export type { DeviceTableStore } from './deviceTables.js';
 export { initializeDevicePortableLayout } from './social/portableLayout.js';
 export {
   resolveDeviceSocialContext,
+  socialReceipt,
   type DeviceSocialContext,
   type GoogleDriveSession,
 } from './social/socialContext.js';
+export { deviceConnections, type DeviceConnectionStore } from './social/connections.js';
+export { deviceInbox, type DeviceInboxEntry, type DeviceInboxStore } from './social/inbox.js';
+export {
+  deviceConversation,
+  resolveDmConversation,
+  groupConversationIdFor,
+  type DeviceConversation,
+  type DeviceConversationMessage,
+  type ConversationRowUpdate,
+  type DmConversationArgs,
+} from './social/conversations.js';
+export { deviceGroups, type DeviceGroupStore, type GroupKeyRotation } from './social/groups.js';
+export { deviceMessageRequests, type DeviceMessageRequestStore } from './social/requests.js';
 export {
   deviceFileIndex,
   indexEntryFromSheetRow,

@@ -1,7 +1,7 @@
 import type { StorageProviderId, UserOwnedTableStore } from '@par-noir/user-owned-storage';
 import { resolveSocialCloudProvider } from '@par-noir/user-owned-storage';
 import type { DeviceDriveLayout } from '../deviceDriveLayout.js';
-import { createDeviceBlobStore, type DeviceBlobStore } from '../deviceBlobStore.js';
+import { createDeviceBlobStore, layoutRootFor, type DeviceBlobStore } from '../deviceBlobStore.js';
 import { createDeviceTableStore } from '../deviceTables.js';
 import { getSessionCloudCredentials } from '../sessionMemory.js';
 
@@ -11,7 +11,14 @@ import { getSessionCloudCredentials } from '../sessionMemory.js';
  */
 export type DeviceSocialContext =
   | { kind: 'google_drive'; accessToken: string; index: DeviceDriveLayout }
-  | { kind: 'tables'; provider: StorageProviderId; tables: UserOwnedTableStore; blobs: DeviceBlobStore };
+  | {
+      kind: 'tables';
+      provider: StorageProviderId;
+      tables: UserOwnedTableStore;
+      blobs: DeviceBlobStore;
+      /** Layout root every blob key starts with, e.g. `par-noir-pn-x/`. */
+      layoutRoot: string;
+    };
 
 export type GoogleDriveSession = () => Promise<{ accessToken: string; index: DeviceDriveLayout }>;
 
@@ -32,5 +39,10 @@ export async function resolveDeviceSocialContext(
     fetchImpl: opts.fetchImpl,
   });
   const tables = await createDeviceTableStore(pnIdentifier, credentials, { fetchImpl: opts.fetchImpl });
-  return { kind: 'tables', provider, tables, blobs };
+  return { kind: 'tables', provider, tables, blobs, layoutRoot: layoutRootFor(pnIdentifier, credentials) };
+}
+
+/** deviceCloudResult for an API route that records a write this device already made. */
+export function socialReceipt(ctx: DeviceSocialContext, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return ctx.kind === 'google_drive' ? { provider: 'google', ...extra } : { provider: ctx.provider, ...extra };
 }

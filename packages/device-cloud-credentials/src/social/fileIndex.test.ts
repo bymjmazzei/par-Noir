@@ -12,6 +12,7 @@ function tablesContext(): DeviceSocialContext {
     provider: 'aws_s3',
     tables: new SqliteBlobTableAdapter(blobs, 'par-noir-pn-abc/'),
     blobs: blobs as unknown as DeviceBlobStore,
+    layoutRoot: 'par-noir-pn-abc/',
   };
 }
 

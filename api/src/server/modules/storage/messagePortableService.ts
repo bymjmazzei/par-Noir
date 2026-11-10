@@ -11,7 +11,9 @@ import {
   portableTableGetByKey,
   portableTableScan
 } from './portableTableService';
-import { INBOX_SCHEMA } from '@par-noir/user-owned-storage';
+import { INBOX_SCHEMA, normalizeInboxRow, type InboxRow } from '@par-noir/user-owned-storage';
+
+export type { InboxRow };
 import {
   PLATFORM_CHANNEL_CLIENT_ID,
   dmInboxRowKey,
@@ -190,40 +192,6 @@ export async function countUnreadMessagesPortable(
   const messages = await readConversationLines(pnIdentifier, sheetId, accountId);
   const self = normalizePn(forPn);
   return messages.filter((m) => !m.read && normalizePn(m.toPnIdentifier) === self).length;
-}
-
-export interface InboxRow {
-  /** Storage key: groupId, peer (legacy/platform), or peer|channel. */
-  inboxRowKey?: string;
-  threadType?: 'dm' | 'group';
-  participantPnIdentifier: string;
-  spreadsheetId: string;
-  connectionId: string;
-  lastMessageAt: string;
-  lastMessagePreview?: string;
-  kemCiphertext?: string;
-  wrappedMessageRootKey?: string;
-  groupId?: string;
-  channelClientId?: string;
-}
-
-function normalizeInboxRow(r: InboxRow): InboxRow {
-  const threadType = r.threadType ?? 'dm';
-  if (threadType === 'group') {
-    return {
-      ...r,
-      threadType: 'group',
-      channelClientId: undefined,
-      inboxRowKey: r.inboxRowKey || r.groupId || r.participantPnIdentifier,
-    };
-  }
-  const channelClientId = normalizeChannelClientId(r.channelClientId);
-  return {
-    ...r,
-    threadType: 'dm',
-    channelClientId,
-    inboxRowKey: r.inboxRowKey || dmInboxRowKey(r.participantPnIdentifier, channelClientId),
-  };
 }
 
 export async function updateInboxEntryPortable(
