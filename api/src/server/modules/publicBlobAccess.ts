@@ -1,7 +1,7 @@
 /**
  * Public cloud ciphertext access for the public-link feed model.
  *
- * ensure/revoke: caller's own cloud token only (resolveOwnerDriveToken at route layer).
+ * ensurePortablePublicReadable: validates an owner-supplied public URL (no cloud call).
  * fetchPublicBytes: OAuth-less — publicUrl and/or platform GOOGLE_DRIVE_API_KEY.
  * Never builds a Drive token from another user's stored credentials row.
  */
@@ -26,55 +26,6 @@ export function drivePublicDownloadUrl(fileId: string): string {
 /** Final Drive download host (avoids uc→usercontent redirect RTT). */
 export function driveUsercontentDownloadUrl(fileId: string): string {
   return `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download`;
-}
-
-export async function ensureDrivePublicReadable(
-  accessToken: string,
-  fileId: string
-): Promise<PublicContentRef> {
-  const { setPublicPermissionWithRetry } = await import('./googleApiRetry');
-  await setPublicPermissionWithRetry(accessToken, fileId, 'public-media');
-  return {
-    backend: 'google_drive',
-    objectId: fileId,
-    publicUrl: drivePublicDownloadUrl(fileId),
-  };
-}
-
-export async function revokeDrivePublicReadable(accessToken: string, fileId: string): Promise<void> {
-  // List permissions and delete type=anyone
-  const listRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions?fields=permissions(id,type,role)`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (listRes.status === 404) {
-    throw new PublicBlobAccessError('File not found', 'NOT_FOUND', 404);
-  }
-  if (!listRes.ok) {
-    const text = await listRes.text().catch(() => '');
-    throw new PublicBlobAccessError(
-      `Failed to list permissions: ${listRes.status} ${text.slice(0, 120)}`,
-      'FETCH_FAILED',
-      502
-    );
-  }
-  const body = (await listRes.json()) as { permissions?: Array<{ id: string; type?: string }> };
-  const anyone = (body.permissions || []).filter((p) => p.type === 'anyone');
-  for (const perm of anyone) {
-    const del = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions/${encodeURIComponent(perm.id)}`,
-      { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (!del.ok && del.status !== 404) {
-      const text = await del.text().catch(() => '');
-      safeLogger.warn('[PublicBlobAccess] revoke anyone permission failed', {
-        status: del.status,
-        fileHash: hashIdentifier(fileId),
-        detail: text.slice(0, 80),
-      });
-      throw new PublicBlobAccessError('Failed to revoke public permission', 'FETCH_FAILED', 502);
-    }
-  }
 }
 
 /**
