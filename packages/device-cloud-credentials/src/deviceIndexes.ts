@@ -137,6 +137,25 @@ export async function upsertDeviceOwnerFile(
   await writeSheetValues(accessToken, spreadsheetId, 'Files!A2:E', rows, fetchImpl);
 }
 
+/** Removes rows by fileId from an owner/public index sheet (Files!A:E). Returns how many were removed. */
+export async function removeDeviceIndexFiles(
+  accessToken: string,
+  spreadsheetId: string,
+  fileIds: readonly string[],
+  fetchImpl?: typeof fetch
+): Promise<number> {
+  const drop = new Set(fileIds.filter(Boolean));
+  if (drop.size === 0) return 0;
+  const rows = await readSheetValues(accessToken, spreadsheetId, 'Files!A2:E', fetchImpl);
+  const kept = rows.filter((row) => !drop.has(row[0]));
+  const removed = rows.length - kept.length;
+  if (removed === 0) return 0;
+  // Blank the tail: a shorter write leaves the old trailing rows in place.
+  const padded = [...kept, ...Array.from({ length: removed }, () => ['', '', '', '', ''])];
+  await writeSheetValues(accessToken, spreadsheetId, 'Files!A2:E', padded, fetchImpl);
+  return removed;
+}
+
 /** Public-file-index row (Files!A:E — same layout as IndexSheetsService.addFile). */
 export function publicIndexRowFromEntry(entry: Record<string, unknown>): string[] {
   const fileId = typeof entry.fileId === 'string' ? entry.fileId : '';

@@ -1,18 +1,19 @@
 /**
  * File deletion (single + bulk) and the selection state it runs on.
  *
- * Deletion prefers the par Noir API endpoint because it removes the file, its
- * thumbnail, and its metadata in one call. If that endpoint is unreachable or
- * the owner token has expired, it falls back to deleting straight through the
- * storage backend so the file never gets stranded.
+ * Indexed posts: the API removes the public index row and returns the file ids;
+ * the device then deletes those files, their companion sheets, and their index
+ * rows from the owner's cloud. Unindexed files are deleted on the device only.
  */
 import React from 'react';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { ownerFetch } from '../../../services/ownerApiService';
+import { deleteDeviceOwnerFiles } from '../../../services/storage/deviceOwnerIndex';
 import { AggregatedFile } from '../../../types/aggregator';
 import type { DriveAccountState } from '../FileStorageAggregatorTypes';
 
 export interface UseDriveFileDeletionParams {
+  cloudPnIdentifier: string | null;
   aggregatorService: FileAggregatorService | null;
   driveAccounts: DriveAccountState[];
   filesByBackend: Map<string, AggregatedFile[]>;
@@ -27,6 +28,7 @@ export interface UseDriveFileDeletionParams {
 }
 
 export function useDriveFileDeletion({
+  cloudPnIdentifier,
   aggregatorService,
   driveAccounts,
   filesByBackend,
@@ -160,7 +162,16 @@ export function useDriveFileDeletion({
       const deleteIndexed = async (): Promise<boolean> => {
         const deletePath = `/api/aggregator/metadata-index/${encodeURIComponent(metadataIndexFileId)}${accountIdParam}`;
         const response = await ownerFetch(accessToken, 'DELETE', deletePath);
-        return response.ok || response.status === 404;
+        if (response.status === 404) return true;
+        if (!response.ok) return false;
+        const body = (await response.json().catch(() => ({}))) as { deviceCleanupFileIds?: string[] };
+        if (!cloudPnIdentifier) throw new Error('Cloud storage is not unlocked on this device');
+        await deleteDeviceOwnerFiles(
+          cloudPnIdentifier,
+          accessToken,
+          body.deviceCleanupFileIds || [metadataIndexFileId]
+        );
+        return true;
       };
 
       try {

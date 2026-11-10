@@ -94,6 +94,7 @@ export function useDriveFileActions({
     selectAllFiles,
     handleDelete,
   } = useDriveFileDeletion({
+    cloudPnIdentifier,
     aggregatorService,
     driveAccounts,
     filesByBackend,

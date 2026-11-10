@@ -677,144 +677,21 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         }
       }
 
-      // STEP 2: Delete files from Google Drive
-      if (userIdentifier && filesToDelete.length > 0) {
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
-        
-        for (const driveFileId of filesToDelete) {
-          try {
-            await googleDriveProxyService.deleteFile(userIdentifier, driveFileId, accountId);
-            console.log(`✅ [MetadataIndex DELETE] Deleted file ${driveFileId} from Google Drive`);
-          } catch (driveError: any) {
-            const errorMsg = driveError?.message || String(driveError);
-            // 404 is okay - file might already be deleted
-            if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
-              console.error(`❌ [MetadataIndex DELETE] Failed to delete ${driveFileId} from Google Drive:`, errorMsg);
-            } else {
-              console.log(`ℹ️ [MetadataIndex DELETE] File ${driveFileId} not found in Google Drive (may already be deleted)`);
-            }
-          }
-        }
-      }
-
-      // STEP 3: Delete companion metadata spreadsheet + purge Sheets owner/public indexes
-      if (userIdentifier && pnIdentifier) {
-        try {
-          const { googleDriveProxyService } = await import('./googleDriveProxy');
-          const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-          const { storageCredentialsService } = await import('./storageCredentialsService');
-          
-          // Get credentials to build token object
-          const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
-          if (credentialsRecord?.credentials) {
-            const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-              (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-            if (googleDriveAccounts.length > 0) {
-              const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-              const accountIdForToken = deps.extractAccountId(account);
-              let token;
-              try {
-                const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-                token = resolved.token;
-              } catch (error) {
-                throw error;
-              }
-              const accessToken = token.access_token;
-              
-              // Get metadata folder
-              const pnFolderName = `par Noir - ${pnIdentifier}`;
-              const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-              const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-              
-              const folderResponse = await fetch(folderSearchUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-              });
-              
-              if (folderResponse.ok) {
-                const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                if (folderData.files && folderData.files.length > 0) {
-                  const pnFolderId = folderData.files[0].id;
-                  
-                  // Get metadata folder
-                  const metadataFolderName = '_metadata';
-                  const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                  const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                  
-                  const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                  });
-                  
-                  if (metadataFolderResponse.ok) {
-                    const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                    if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                      const metadataFolderId = metadataFolderData.files[0].id;
-
-                      // Find companion metadata spreadsheet
-                      const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
-                        token,
-                        metadataFolderId,
-                        actualFileId,
-                        pnIdentifier,
-                        accountIdForToken
-                      );
-                  
-                      if (spreadsheetId) {
-                        try {
-                          await googleDriveProxyService.deleteFile(userIdentifier, spreadsheetId, accountId);
-                          console.log(`✅ [MetadataIndex DELETE] Deleted companion metadata spreadsheet: ${spreadsheetId}`);
-                        } catch (spreadsheetError: any) {
-                          const errorMsg = spreadsheetError?.message || String(spreadsheetError);
-                          if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
-                            console.error(`❌ [MetadataIndex DELETE] Failed to delete companion metadata spreadsheet:`, errorMsg);
-                          } else {
-                            console.log(`ℹ️ [MetadataIndex DELETE] Companion metadata spreadsheet not found (may already be deleted)`);
-                          }
-                        }
-                      } else {
-                        console.log(`ℹ️ [MetadataIndex DELETE] Companion metadata spreadsheet not found for ${actualFileId}`);
-                      }
-
-                      // Sheets owner/public indexes must be purged too (not only Postgres).
-                      const { purgeInventoryForFileIds } = await import('./storage/purgeInventoryForFileIds');
-                      await purgeInventoryForFileIds({
-                        token,
-                        pnIdentifier,
-                        metadataFolderId,
-                        fileIds: filesToDelete,
-                        accountId: accountIdForToken,
-                        removePostgres: false,
-                      });
-                      console.log(
-                        `✅ [MetadataIndex DELETE] Purged owner/public Sheets for ${filesToDelete.length} id(s)`
-                      );
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } catch (companionError: any) {
-          console.warn(`⚠️ [MetadataIndex DELETE] Failed companion/Sheets cleanup:`, companionError?.message || companionError);
-          // Continue even if companion metadata / Sheets purge fails
-        }
-      }
-
-      // STEP 4: Remove thumbnail metadata from database (actualFileId is already resolved to thumbnail)
+      // The device deletes these from the owner's cloud (files, companion sheets, index rows).
       const removed = await service.removeMetadata(actualFileId);
 
       if (removed) {
-        return res.json({ 
-          success: true, 
+        const { feedR2Delete } = await import('./feedPreviewR2');
+        for (const field of ['feedPoster', 'feedPreviewSd', 'feedPreviewHd'] as const) {
+          const key = (metadata as any)?.[field]?.r2Key;
+          if (typeof key === 'string' && key) {
+            await feedR2Delete(key).catch(() => undefined);
+          }
+        }
+        return res.json({
+          success: true,
           fileId: actualFileId,
-          deletedFiles: filesToDelete.length,
-          deletedFromDrive: filesToDelete
+          deviceCleanupFileIds: filesToDelete
         });
       } else {
         return res.status(404).json({ error: 'File not found in index' });
@@ -1027,110 +904,6 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         message: safeClientErrorMessage(error, NODE_ENV === 'production'),
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
-    }
-  });
-
-  // GET /api/aggregator/metadata-index/:fileId/companion-check - Check companion metadata visibility vs database isPublic
-  app.get('/api/aggregator/metadata-index/:fileId/companion-check', async (req: Request, res: Response) => {
-    try {
-      const { fileId } = req.params;
-      const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-      const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-      const service = AggregatorMetadataServiceDB.getInstance();
-
-      // Get auth token
-      const tokenPayload = getBearerTokenPayload(req);
-      if (!tokenPayload) {
-        return res.status(401).json({ error: 'Invalid or expired access token' });
-      }
-
-      const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-      const identifierCandidates: string[] = [];
-      if (tokenPayload.pnIdentifier) identifierCandidates.push(tokenPayload.pnIdentifier);
-      if (tokenPayload.did) {
-        identifierCandidates.push(tokenPayload.did);
-        if (isPnDid(tokenPayload.did)) {
-          const keyPart = pnIdentifierFromDid(tokenPayload.did);
-          if (keyPart) identifierCandidates.push(keyPart);
-        }
-      }
-
-      // Get database metadata
-      const dbMetadata = await service.getFileMetadata(fileId);
-      if (!dbMetadata) {
-        return res.status(404).json({ error: 'File not found in database' });
-      }
-
-      // Try to read companion metadata
-      const accountId = req.query.accountId as string | undefined;
-      const { storageCredentialsService } = await import('./storageCredentialsService');
-      const credentialsRecord = await storageCredentialsService.getCredentials(userIdentifier);
-      let companionMetadata = null;
-      let companionError = null;
-      
-      if (credentialsRecord?.credentials) {
-        const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-          (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-        if (googleDriveAccounts.length > 0) {
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountIdForToken = deps.extractAccountId(account);
-          let token;
-          try {
-            const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-            token = resolved.token;
-          } catch (error) {
-                        throw error;
-          }
-          const accessToken = token.access_token;
-          const backendFileId = dbMetadata.metadata.backendFileId || fileId;
-          
-          const driveResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=name='${backendFileId}.metadata' and mimeType='application/vnd.google-apps.spreadsheet'&fields=files(id,name)`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } }
-          );
-
-          if (driveResponse.ok) {
-            const driveData = await driveResponse.json() as { files?: Array<{ id: string }> };
-            if (driveData.files && driveData.files.length > 0) {
-              const spreadsheetId = driveData.files[0].id;
-              try {
-                companionMetadata = await CompanionMetadataSheets.readMetadata(token, spreadsheetId, userIdentifier, accountIdForToken);
-              } catch (error: any) {
-                companionError = error.message;
-              }
-            }
-          }
-        }
-      }
-
-      return res.json({
-        fileId,
-        database: {
-          isPublic: dbMetadata.metadata.isPublic,
-          backend: dbMetadata.metadata.backend,
-          backendFileId: dbMetadata.metadata.backendFileId
-        },
-        companionMetadata: companionMetadata ? {
-          visibility: companionMetadata.visibility,
-          fileId: companionMetadata.fileId,
-          googleDriveFileId: companionMetadata.googleDriveFileId
-        } : null,
-        companionError,
-        mismatch: companionMetadata ? (companionMetadata.visibility === 'public') !== dbMetadata.metadata.isPublic : null,
-        recommendation: companionMetadata && (companionMetadata.visibility === 'public') !== dbMetadata.metadata.isPublic
-          ? `Database has isPublic=${dbMetadata.metadata.isPublic} but companion metadata has visibility=${companionMetadata.visibility}. They should match.`
-          : companionMetadata ? 'Values match' : 'Could not read companion metadata'
-      });
-    } catch (error: any) {
-      console.error('❌ Companion check error:', error);
-      return res.status(500).json({ error: 'Failed to check companion metadata', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
     }
   });
 
