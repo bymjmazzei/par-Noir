@@ -6,8 +6,9 @@
  * move-to-another-cloud and composes `useEditFileMetadata` and `useDriveFileDeletion`.
  */
 import React from 'react';
+import type { StorageProviderId } from '@par-noir/user-owned-storage';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
-import { ownerFetch } from '../../../services/ownerApiService';
+import { resolveLocalGoogleAccessTokenAsync } from '../../../services/deviceApiService';
 import { AggregatedFile, PublicMetadata } from '../../../types/aggregator';
 import {
   type DriveAccountState,
@@ -109,14 +110,13 @@ export function useDriveFileActions({
   });
 
   const handleMoveToCloud = async () => {
-    const ownerToken = resolveOwnerApiToken();
-    if (!cloudPnIdentifier || !ownerToken || !moveDestKey) {
+    if (!cloudPnIdentifier || !moveDestKey) {
       setError('Select a destination cloud and unlock your identity.');
       return;
     }
     const sep = moveDestKey.indexOf('|||');
     if (sep < 0) return;
-    const destProvider = moveDestKey.slice(0, sep);
+    const destProvider = moveDestKey.slice(0, sep) as StorageProviderId;
     const destAccountId = moveDestKey.slice(sep + 3);
     const fileIds = Array.from(selectedFiles);
     if (fileIds.length === 0) return;
@@ -124,27 +124,36 @@ export function useDriveFileActions({
     setIsLoading(true);
     setError(null);
     try {
-      const res = await ownerFetch(
-        ownerToken,
-        'POST',
-        '/api/storage/migrate/files/start',
-        {
-          pnIdentifier: cloudPnIdentifier,
-          fileIds,
-          destProvider,
-          destAccountId,
-          mode: 'move'
-        }
+      const { resolveDeviceSocialContext, getSessionDriveIndex, moveOwnedFilesOnDevice } = await import(
+        '@par-noir/device-cloud-credentials'
       );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || data.error || 'Move failed');
+      const pn = cloudPnIdentifier;
+      const social = await resolveDeviceSocialContext(pn, async () => {
+        const accessToken = await resolveLocalGoogleAccessTokenAsync(pn);
+        const index = getSessionDriveIndex(pn);
+        if (!accessToken || !index) throw new Error('Reconnect Google Drive on this device first.');
+        return { accessToken, index };
+      });
+      const results = await moveOwnedFilesOnDevice({
+        pnIdentifier: pn,
+        social,
+        fileIds,
+        destProvider,
+        destAccountId,
+      });
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length === fileIds.length) {
+        throw new Error(failed[0]?.error || 'Move failed');
       }
       setSelectedFiles(new Set());
       setIsBulkDeleteMode(false);
       setMoveDestKey('');
       await loadFiles({ verifyWithDrive: true });
-      setSuccessMessage(`Moved ${fileIds.length} file(s) to ${destProvider}.`);
+      setSuccessMessage(
+        failed.length
+          ? `Moved ${fileIds.length - failed.length} of ${fileIds.length} file(s) to ${destProvider}.`
+          : `Moved ${fileIds.length} file(s) to ${destProvider}.`
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Move failed');
     } finally {

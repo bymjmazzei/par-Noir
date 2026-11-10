@@ -9,7 +9,6 @@ jest.mock('../deviceCapabilityService', () => ({
   gateOwnerRoute: jest.fn(async () => ({ pnIdentifier: 'pn-test' })),
 }));
 
-jest.mock('./migrationRoutes', () => ({ registerMigrationRoutes: jest.fn() }));
 
 const stored: { credentials: Record<string, unknown> | null } = { credentials: null };
 

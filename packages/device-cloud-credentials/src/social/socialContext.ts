@@ -1,4 +1,4 @@
-import type { StorageProviderId, UserOwnedTableStore } from '@par-noir/user-owned-storage';
+import type { StorageCredentialsEnvelope, StorageProviderId, UserOwnedTableStore } from '@par-noir/user-owned-storage';
 import { resolveSocialCloudProvider } from '@par-noir/user-owned-storage';
 import type { DeviceDriveLayout } from '../deviceDriveLayout.js';
 import { createDeviceBlobStore, layoutRootFor, type DeviceBlobStore } from '../deviceBlobStore.js';
@@ -30,7 +30,15 @@ export async function resolveTablesSocialContext(
   opts: { fetchImpl?: typeof fetch } = {}
 ): Promise<TablesSocialContext | null> {
   const credentials = getSessionCloudCredentials(pnIdentifier);
-  if (!credentials) return null;
+  return credentials ? tablesSocialContextFor(pnIdentifier, credentials, opts) : null;
+}
+
+/** Tables on the envelope's social cloud provider and account; null for Google Drive. */
+export async function tablesSocialContextFor(
+  pnIdentifier: string,
+  credentials: StorageCredentialsEnvelope,
+  opts: { fetchImpl?: typeof fetch } = {}
+): Promise<TablesSocialContext | null> {
   const provider = resolveSocialCloudProvider(credentials);
   if (provider === 'google_drive') return null;
   const blobs = createDeviceBlobStore(pnIdentifier, credentials, {

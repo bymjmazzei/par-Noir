@@ -11,7 +11,7 @@
 | Catalog + single-flight upgrade | `api/src/server/modules/storage/cloudLayoutMigrations.ts` |
 | First migration `inbox_channel_client_id_v1` | Google Inbox A–I via `ensureInboxChannelColumn`; portable `migrateInboxChannelClientIdPortable` |
 | Routes | `GET/POST /api/storage/:identityId/layout/status\|upgrade` in `storageCredentialsRoutes.ts` |
-| Stamp on init | `driveInitSteps.ts`, `storageInitService.ts` |
+| Stamp on init | `driveInitSteps.ts`, `initializeDevicePortableLayout` (device) |
 | Inbox create seeds A–I | `messageSheetsService.getOrCreateInboxSheet` |
 | Dashboard Complete update | `CloudLayoutUpdateBanner` in Storage Secure Cloud + unlock CTA |
 | Browser CTA (no upgrade POST) | `AggregatorCloudReconnectHost` + messaging soft-block in `MessagesPage` |

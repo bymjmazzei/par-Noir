@@ -64,6 +64,7 @@ export { initializeDevicePortableLayout } from './social/portableLayout.js';
 export {
   resolveDeviceSocialContext,
   resolveTablesSocialContext,
+  tablesSocialContextFor,
   socialReceipt,
   type DeviceSocialContext,
   type TablesSocialContext,
@@ -88,6 +89,15 @@ export {
 export { deviceGroups, type DeviceGroupStore, type GroupKeyRotation } from './social/groups.js';
 export { deviceMessageRequests, type DeviceMessageRequestStore } from './social/requests.js';
 export { rekeyConnectionOnDevice, rewrapInboxRootOnDevice } from './social/identityRekey.js';
+export {
+  migrateSocialCloudOnDevice,
+  socialMigrationDirection,
+  SOCIAL_MIGRATION_NOT_CARRIED,
+  type SocialMigrationItem,
+  type SocialMigrationOutcome,
+} from './social/migrateSocialCloud.js';
+export { openSocialCloudMove, type SocialCloudMove } from './social/socialCloudMove.js';
+export { moveOwnedFilesOnDevice, type FileMoveResult } from './social/moveOwnedFiles.js';
 export {
   deviceFileIndex,
   indexEntryFromSheetRow,

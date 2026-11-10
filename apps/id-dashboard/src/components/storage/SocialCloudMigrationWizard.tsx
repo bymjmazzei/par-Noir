@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Loader2, X } from 'lucide-react';
+import type { StorageProviderId } from '@par-noir/user-owned-storage';
 import { ownerFetch } from '../../services/ownerApiService';
+import { resolveLocalGoogleAccessTokenAsync } from '../../services/deviceApiService';
 import { SectionInfo } from '../common/SectionInfo';
 
 interface StorageAccount {
@@ -19,6 +21,21 @@ interface SocialCloudMigrationWizardProps {
   onComplete: () => void;
 }
 
+type Preview = { sourceProvider: string; direction: string; notCarried: readonly string[] };
+type ItemResult = { path: string; outcome: string; error?: string };
+
+const DIRECTION_LABEL: Record<string, string> = {
+  google_to_portable: 'Google Sheets → portable',
+  portable_to_google: 'Portable → Google Sheets',
+  portable_to_portable: 'Portable → portable',
+};
+
+async function okOrThrow(res: Response, fallback: string) {
+  if (res.ok) return;
+  const data = await res.json().catch(() => ({}));
+  throw new Error(data.message || data.error || fallback);
+}
+
 export function SocialCloudMigrationWizard({
   pnIdentifier,
   authToken,
@@ -29,115 +46,110 @@ export function SocialCloudMigrationWizard({
   onComplete
 }: SocialCloudMigrationWizardProps) {
   const [step, setStep] = useState<'preview' | 'running' | 'done' | 'error'>('preview');
-  const [preview, setPreview] = useState<{
-    inventoryCount?: number;
-    estimatedBytes?: number;
-    blockers?: string[];
-    sourceProvider?: string;
-  } | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [artifactResults, setArtifactResults] = useState<
-    Array<{ path: string; outcome: string; error?: string }>
-  >([]);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [artifactResults, setArtifactResults] = useState<ItemResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
     void (async () => {
-      setLoading(true);
-      try {
-        const res = await ownerFetch(
-          authToken,
-          'POST',
-          '/api/storage/migrate/social-cloud/preview',
-          { pnIdentifier, targetProvider, targetAccountId }
-        );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || data.error || 'Preview failed');
-        setPreview(data);
-        if (data.blockers?.length) {
-          const hard = data.blockers.filter((b: string) => b.includes('same provider'));
-          if (hard.length) {
-            setStep('error');
-            setError(hard.join('; '));
-          }
-        }
-      } catch (e) {
+      const { getSessionCloudCredentials, socialMigrationDirection, SOCIAL_MIGRATION_NOT_CARRIED } =
+        await import('@par-noir/device-cloud-credentials');
+      const { resolveSocialCloudProvider } = await import('@par-noir/user-owned-storage');
+      const credentials = getSessionCloudCredentials(pnIdentifier);
+      if (!credentials) {
         setStep('error');
-        setError(e instanceof Error ? e.message : 'Preview failed');
-      } finally {
-        setLoading(false);
+        setError('Unlock your cloud storage on this device first.');
+        return;
       }
+      const sourceProvider = resolveSocialCloudProvider(credentials);
+      const direction = socialMigrationDirection(
+        sourceProvider === 'google_drive' ? 'google_drive' : 'tables',
+        targetProvider === 'google_drive' ? 'google_drive' : 'tables'
+      );
+      setPreview({
+        sourceProvider,
+        direction,
+        notCarried: direction === 'portable_to_portable' ? [] : SOCIAL_MIGRATION_NOT_CARRIED
+      });
     })();
-  }, [authToken, pnIdentifier, targetProvider, targetAccountId]);
+  }, [pnIdentifier, targetProvider]);
 
   const runMigration = async () => {
     setLoading(true);
     setStep('running');
     setError(null);
     try {
-      const startRes = await ownerFetch(
-        authToken,
-        'POST',
-        '/api/storage/migrate/social-cloud/start',
-        { pnIdentifier, targetProvider, targetAccountId }
-      );
-      const startData = await startRes.json();
-      if (!startRes.ok) throw new Error(startData.message || startData.error || 'Start failed');
-      const id = startData.jobId as string;
-      setJobId(id);
+      const {
+        getSessionCloudCredentials,
+        setSessionCloudCredentials,
+        setSessionDriveIndex,
+        openSocialCloudMove,
+        migrateSocialCloudOnDevice
+      } = await import('@par-noir/device-cloud-credentials');
+      const credentials = getSessionCloudCredentials(pnIdentifier);
+      if (!credentials) throw new Error('Unlock your cloud storage on this device first.');
+      const googleAccessToken = (await resolveLocalGoogleAccessTokenAsync(pnIdentifier)) || undefined;
+      const move = await openSocialCloudMove({
+        pnIdentifier,
+        credentials,
+        targetProvider: targetProvider as StorageProviderId,
+        targetAccountId,
+        googleAccessToken
+      });
 
-      let jobStatus = 'running';
-      while (jobStatus === 'running') {
-        const pollRes = await ownerFetch(
+      const results: ItemResult[] = [];
+      await migrateSocialCloudOnDevice(move.source, move.target, {
+        identityId: pnIdentifier,
+        onItem: (item) => {
+          results.push(item);
+          setArtifactResults([...results]);
+        }
+      });
+      const failed = results.filter((r) => r.outcome === 'failed');
+      if (failed.length) {
+        throw new Error(`Could not copy ${failed.map((r) => r.path).join(', ')}. Your social cloud was not changed.`);
+      }
+
+      await okOrThrow(
+        await ownerFetch(
           authToken,
-          'GET',
-          `/api/storage/migrate/social-cloud/${id}`
+          'PUT',
+          `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/social-cloud`,
+          { provider: targetProvider, accountId: targetAccountId, migrated: true }
+        ),
+        'Social cloud update failed'
+      );
+
+      const switched = {
+        ...credentials,
+        socialCloudProvider: targetProvider as StorageProviderId,
+        primaryProvider: targetProvider as StorageProviderId,
+        socialCloudAccountId: targetAccountId
+      };
+      if ('pnDriveIndex' in move.targetLayout) {
+        const { pnDriveIndex } = move.targetLayout;
+        await okOrThrow(
+          await ownerFetch(authToken, 'POST', `/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`, {
+            pnDriveIndex
+          }),
+          'Drive layout save failed'
         );
-        const pollData = await pollRes.json();
-        if (pollRes.ok) {
-          jobStatus = pollData.status ?? 'running';
-          const progress =
-            pollData.progress_json ?? pollData.progress ?? {};
-          const results = progress.results ?? progress.report?.items;
-          if (Array.isArray(results)) {
-            setArtifactResults(
-              results.map((r: { path: string; outcome: string; error?: string }) => ({
-                path: r.path,
-                outcome: r.outcome,
-                error: r.error
-              }))
-            );
-          }
-        }
-        if (jobStatus === 'running') {
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-        }
-      }
-      if (jobStatus === 'failed') {
-        throw new Error('Migration job failed');
-      }
-
-      const completeRes = await ownerFetch(
-        authToken,
-        'POST',
-        `/api/storage/migrate/social-cloud/${id}/complete`,
-        { pnIdentifier, targetProvider, targetAccountId }
-      );
-      if (!completeRes.ok) {
-        const errData = await completeRes.json();
-        throw new Error(errData.message || errData.error || 'Complete failed');
-      }
-
-      const socialRes = await ownerFetch(
-        authToken,
-        'PUT',
-        `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/social-cloud`,
-        { provider: targetProvider, accountId: targetAccountId, migrated: true }
-      );
-      if (!socialRes.ok) {
-        const errData = await socialRes.json();
-        throw new Error(errData.message || errData.error || 'Social cloud update failed');
+        setSessionCloudCredentials(pnIdentifier, switched);
+        setSessionDriveIndex(pnIdentifier, pnDriveIndex);
+      } else {
+        const cachedLayout = { pathPrefix: move.targetLayout.pathPrefix };
+        await okOrThrow(
+          await ownerFetch(
+            authToken,
+            'POST',
+            `/api/storage/layout/${encodeURIComponent(pnIdentifier)}`,
+            { cachedLayout, portableLayoutInitialized: true },
+            { pnIdentifier }
+          ),
+          'Storage layout save failed'
+        );
+        setSessionCloudCredentials(pnIdentifier, { ...switched, cachedLayout, cachedFolderIds: undefined });
       }
 
       setStep('done');
@@ -162,8 +174,9 @@ export function SocialCloudMigrationWizard({
             <h3 className="text-lg font-semibold text-white">Social Cloud Migration</h3>
             <SectionInfo title="Social Cloud Migration">
               <p>
-                Migrate tables, indexes, and JSON metadata to <strong className="text-white">{targetLabel}</strong>.
-                Encrypted files on other connected clouds stay where they are.
+                This device copies your tables, indexes, and conversations to{' '}
+                <strong className="text-white">{targetLabel}</strong>. Encrypted files on other connected clouds
+                stay where they are.
               </p>
             </SectionInfo>
           </div>
@@ -175,7 +188,7 @@ export function SocialCloudMigrationWizard({
         {loading && step !== 'done' && (
           <div className="flex items-center gap-2 text-text-secondary text-sm mb-4">
             <Loader2 className="h-4 w-4 animate-spin" />
-            {step === 'running' ? 'Migrating…' : 'Loading preview…'}
+            Migrating…
           </div>
         )}
 
@@ -194,20 +207,15 @@ export function SocialCloudMigrationWizard({
           <ul className="text-sm text-text-secondary mb-4 space-y-1">
             <li>Source: {preview.sourceProvider}</li>
             <li>Target: {targetProvider}</li>
-            <li>Direction: {preview.sourceProvider === 'google_drive' ? 'Google Sheets → portable' : targetProvider === 'google_drive' ? 'Portable → Google Sheets' : 'Portable → portable'}</li>
-            <li>Items: ~{preview.inventoryCount ?? 0}</li>
-            <li>Estimated size: {preview.estimatedBytes ?? 0} bytes</li>
-            {preview.blockers?.length ? (
-              <li className="text-amber-400">Notes: {preview.blockers.join('; ')}</li>
+            <li>Direction: {DIRECTION_LABEL[preview.direction] ?? preview.direction}</li>
+            {preview.notCarried.length ? (
+              <li className="text-amber-400">Not carried over: {preview.notCarried.join('; ')}</li>
             ) : null}
           </ul>
         )}
 
         {step === 'done' && (
-          <p className="text-green-400 text-sm mb-4">
-            Migration complete. Social cloud is now {targetProvider}.
-            {jobId ? ` Job: ${jobId.slice(0, 8)}…` : ''}
-          </p>
+          <p className="text-green-400 text-sm mb-4">Migration complete. Social cloud is now {targetProvider}.</p>
         )}
 
         {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
@@ -223,7 +231,7 @@ export function SocialCloudMigrationWizard({
           {step === 'preview' && !error && (
             <button
               type="button"
-              disabled={loading}
+              disabled={loading || !preview}
               onClick={runMigration}
               className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm disabled:opacity-50"
             >

@@ -41,7 +41,6 @@
     "@par-noir/public-names": "file:../packages/public-names",
     "@par-noir/recovery-crypto": "file:../packages/recovery-crypto",
     "@par-noir/standard-data-points": "file:../packages/standard-data-points",
-    "@par-noir/storage-migration": "file:../packages/storage-migration",
     "@par-noir/user-owned-storage": "file:../packages/user-owned-storage",
     "@par-noir/zk-protocol-v1": "file:../packages/zk-protocol-v1",
     "@par-noir/zk-protocol-v2": "file:../packages/zk-protocol-v2",

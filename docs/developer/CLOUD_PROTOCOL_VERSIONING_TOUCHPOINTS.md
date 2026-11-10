@@ -54,7 +54,7 @@ Under **device cloud custody**, the API cannot silently push layout changes. Upg
 | Full Google init | `api/src/server/modules/pnDriveInit.ts`, `driveInitSteps.ts` | Find-or-create entire tree; sole writer of complete index |
 | Init race guard | `api/src/server/modules/driveInitCoordinator.ts` | `runDriveInitOnce` |
 | Folder helpers | `api/src/server/modules/pnDriveLayout.ts` | `findOrCreateFolderUnderParent` (TOCTOU duplicate risk if concurrent) |
-| Portable tables | `api/src/server/modules/storage/storageInitService.ts` | `PORTABLE_TABLES`, `initializePortableStorage` |
+| Portable tables | `packages/device-cloud-credentials/src/social/portableLayout.ts` | `PORTABLE_LAYOUT_TABLES`, `initializeDevicePortableLayout` |
 | Provider migrate catalog | `packages/storage-migration/src/migrationCatalog.ts` | Social-cloud / file moves — **not** layout version bumps |
 | Docs | `docs/developer/USER_STORAGE_LAYOUT.md`, `docs/developer/GOOGLE_DRIVE_STRUCTURE.md`, `docs/DRIVE_INDEX.md` | Layout contracts |
 
@@ -115,7 +115,7 @@ Channel-thread work is mostly **schema**, not new root folders. See [ADR_MESSAGI
 **Google Inbox columns (canonical A–I):**  
 `participantPnIdentifier`, `spreadsheetId`, `connectionId`, `lastMessageAt`, `lastMessagePreview`, `kemCiphertext`, `threadType`, `wrappedMessageRootKey`, `channelClientId`
 
-**Portable vs Google:** Google evolves via lazy header/data rewrites; portable via JSON field presence + `dmInboxRowKey`. Provider migrators in `migrationTransformers.ts` / `googlePortableMigrator.ts` copy **conversation ciphertext**, not Inbox row/channel keys.
+**Portable vs Google:** Google evolves via lazy header/data rewrites; portable via JSON field presence + `dmInboxRowKey`. The device migrator (`migrateSocialCloudOnDevice`) copies conversation ciphertext and rewrites Inbox rows through the social stores.
 
 ### Other lazy mutators (catalog under B or fold into layout version)
 

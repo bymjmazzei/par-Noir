@@ -21,17 +21,24 @@ import {
 import { getBearerTokenPayload } from '../../middleware/authMiddleware';
 import { gateOwnerRoute, DEVICE_CAPABILITIES } from '../deviceCapabilityService';
 import { listStorageAccounts } from './storageAccountsService';
-import { assignSocialCloudIfUnset } from './storageInitService';
 import { credentialsContainCloudSecrets, storageCredentialsService } from '../storageCredentialsService';
 import { safeClientErrorMessage } from '../../utils/safeError';
-import { registerMigrationRoutes } from './migrationRoutes';
 
 function ownerPn(identityId: string): string {
   return identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 }
 
+/** The first connected cloud becomes the social cloud. */
+function assignSocialCloudIfUnset(
+  credentials: StorageCredentialsEnvelope,
+  provider: StorageProviderId,
+  accountId?: string
+): StorageCredentialsEnvelope {
+  if (credentials.socialCloudProvider != null || credentials.primaryProvider != null) return credentials;
+  return { ...credentials, socialCloudProvider: provider, primaryProvider: provider, socialCloudAccountId: accountId };
+}
+
 export function registerStorageRoutes(app: Application, nodeEnv: string): void {
-  registerMigrationRoutes(app, nodeEnv);
   app.get('/api/storage/accounts/:identityId', async (req: Request, res: Response) => {
     try {
       const { identityId } = req.params;
