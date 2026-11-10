@@ -3,7 +3,7 @@
  */
 
 const queries: Array<{ sql: string; params: unknown[] }> = [];
-let verifiedRow: { legal_name_hmac: string | null } | null = null;
+let flagActive = true;
 
 jest.mock('../utils/database', () => ({
   getDatabasePool: () => ({
@@ -12,63 +12,79 @@ jest.mock('../utils/database', () => ({
       if (sql.includes('FROM feeds')) {
         return { rows: params[1] === 'pn-owner' ? [{ feed_id: params[0] }] : [] };
       }
-      if (sql.includes('SELECT legal_name_hmac FROM verified_identities')) {
-        return { rows: verifiedRow ? [verifiedRow] : [] };
+      if (sql.includes('SELECT 1 FROM verified_identities')) {
+        return { rows: flagActive ? [{ '?column?': 1 }] : [] };
       }
       return { rows: [] };
     })
   })
 }));
+jest.mock('../utils/cache', () => ({ getCacheClient: () => null }));
+jest.mock('./identitySuccessionService', () => ({
+  isPnRevokedForNetwork: () => false,
+  isDidRevokedForNetwork: () => false,
+  isSuccessorOf: () => false
+}));
 
-import { VerificationIntegrationService } from './verificationIntegrationService';
-import { VerifiedNameService, legalNameHmac } from './verifiedNameService';
+import { VerificationCredentialService } from './verificationCredentialService';
+import { VerifiedNameService } from './verifiedNameService';
+
+let credential = '';
+
+beforeAll(async () => {
+  jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  ({ credential } = await VerificationCredentialService.issue('pn-owner', {
+    givenName: 'Jane',
+    familyName: 'Doe',
+    birthdate: '1990-01-01'
+  }));
+});
 
 beforeEach(() => {
   queries.length = 0;
-  verifiedRow = null;
-});
-
-describe('legal name HMAC', () => {
-  it('ignores case and spacing', () => {
-    expect(legalNameHmac('  Jane   DOE ')).toBe(legalNameHmac('jane doe'));
-    expect(legalNameHmac('Jane Doe')).not.toBe(legalNameHmac('Jane Roe'));
-  });
-
-  it('stores only the HMAC on verification sync', async () => {
-    jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    await VerificationIntegrationService.syncVerificationStatus('pn-owner', 'v-1', '2026-11-09T00:00:00Z', 'Jane Doe');
-    const insert = queries.find((q) => q.sql.includes('INSERT INTO verified_identities'))!;
-    expect(insert.params).toContain(legalNameHmac('Jane Doe'));
-    expect(JSON.stringify(queries)).not.toMatch(/jane doe/i);
-  });
+  flagActive = true;
 });
 
 describe('feed verified display name', () => {
-  it('sets the label when it matches the verified legal name', async () => {
-    verifiedRow = { legal_name_hmac: legalNameHmac('Jane Doe') };
-    await expect(VerifiedNameService.setFeedVerifiedName('pn-owner', 'feed-1', 'jane  doe')).resolves.toBe('jane doe');
+  it('sets the label when it matches the name in the credential', async () => {
+    await expect(
+      VerifiedNameService.setFeedVerifiedName('pn-owner', 'feed-1', 'jane  doe', credential)
+    ).resolves.toBe('jane doe');
     const update = queries.find((q) => q.sql.includes('UPDATE feeds SET verified_display_name = $2'))!;
     expect(update.params).toEqual(['feed-1', 'jane doe']);
   });
 
   it('rejects a name that does not match', async () => {
-    verifiedRow = { legal_name_hmac: legalNameHmac('Jane Doe') };
-    await expect(VerifiedNameService.setFeedVerifiedName('pn-owner', 'feed-1', 'Taylor Swift')).rejects.toMatchObject({
-      code: 'NAME_MISMATCH'
-    });
+    await expect(
+      VerifiedNameService.setFeedVerifiedName('pn-owner', 'feed-1', 'Taylor Swift', credential)
+    ).rejects.toMatchObject({ code: 'NAME_MISMATCH' });
     expect(queries.some((q) => q.sql.includes('UPDATE feeds'))).toBe(false);
   });
 
-  it('requires a verified owner with a stored legal name', async () => {
-    await expect(VerifiedNameService.setFeedVerifiedName('pn-owner', 'feed-1', 'Jane Doe')).rejects.toMatchObject({
-      code: 'NOT_VERIFIED'
-    });
+  it('requires a credential and a live verified flag', async () => {
+    await expect(
+      VerifiedNameService.setFeedVerifiedName('pn-owner', 'feed-1', 'Jane Doe', undefined)
+    ).rejects.toMatchObject({ code: 'NOT_VERIFIED' });
+    flagActive = false;
+    await expect(
+      VerifiedNameService.setFeedVerifiedName('pn-owner', 'feed-1', 'Jane Doe', credential)
+    ).rejects.toMatchObject({ code: 'NOT_VERIFIED' });
+  });
+
+  it('rejects another pN’s credential', async () => {
+    const other = await VerificationCredentialService.issue('pn-other', { givenName: 'Jane', familyName: 'Doe' });
+    await expect(
+      VerifiedNameService.setFeedVerifiedName('pn-owner', 'feed-1', 'Jane Doe', other.credential)
+    ).rejects.toMatchObject({ code: 'NOT_VERIFIED' });
   });
 
   it('requires owning the feed', async () => {
-    verifiedRow = { legal_name_hmac: legalNameHmac('Jane Doe') };
-    await expect(VerifiedNameService.setFeedVerifiedName('pn-other', 'feed-1', 'Jane Doe')).rejects.toMatchObject({
-      code: 'FEED_NOT_OWNED'
-    });
+    await expect(
+      VerifiedNameService.setFeedVerifiedName('pn-other', 'feed-1', 'Jane Doe', credential)
+    ).rejects.toMatchObject({ code: 'FEED_NOT_OWNED' });
+  });
+
+  it('stores no legal name or credential server-side', () => {
+    expect(JSON.stringify(queries)).not.toMatch(/eyJ/);
   });
 });

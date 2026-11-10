@@ -1,24 +1,16 @@
 /**
- * Verified display name. Identity verification stores only an HMAC of the legal name; a feed
- * owner can opt in to showing a display name on a feed when its HMAC matches. Not unique.
+ * Verified display name. The owner presents its verification credential (user-held, API-signed)
+ * and the feed shows `displayName` only when it matches the name in that credential. The server
+ * stores the chosen label on the feed and nothing about the legal name itself. Not unique.
  */
 
-import { createHmac, timingSafeEqual } from 'crypto';
 import { getDatabasePool } from '../utils/database';
+import { VerificationCredentialService } from './verificationCredentialService';
+import { VerificationIntegrationService } from './verificationIntegrationService';
 
-const DEV_HMAC_KEY = 'par-noir-dev-legal-name-hmac';
 const DISPLAY_NAME_MAX = 120;
 
-function hmacKey(): string {
-  const key = process.env.LEGAL_NAME_HMAC_KEY?.trim();
-  if (key) return key;
-  if (process.env.NODE_ENV === 'production') {
-    throw Object.assign(new Error('legal_name_hmac_key_missing'), { code: 'NOT_CONFIGURED' });
-  }
-  return DEV_HMAC_KEY;
-}
-
-/** Case, accent-mark spacing and whitespace differences do not change the HMAC. */
+/** Case, accent-mark spacing and whitespace differences do not change the comparison. */
 export function normalizeLegalName(name: string): string {
   return String(name || '')
     .normalize('NFKC')
@@ -27,18 +19,8 @@ export function normalizeLegalName(name: string): string {
     .trim();
 }
 
-export function legalNameHmac(name: string): string {
-  return createHmac('sha256', hmacKey()).update(normalizeLegalName(name)).digest('hex');
-}
-
 function fail(code: string): never {
   throw Object.assign(new Error(code), { code });
-}
-
-function sameHex(a: string, b: string): boolean {
-  const x = Buffer.from(a, 'hex');
-  const y = Buffer.from(b, 'hex');
-  return x.length === y.length && x.length > 0 && timingSafeEqual(x, y);
 }
 
 async function ownedFeedId(pn: string, feedId: string): Promise<string> {
@@ -56,18 +38,22 @@ async function ownedFeedId(pn: string, feedId: string): Promise<string> {
 }
 
 export class VerifiedNameService {
-  /** Show `displayName` on the feed when it matches the owner's verified legal name. */
-  static async setFeedVerifiedName(pn: string, feedId: string, displayName: string): Promise<string> {
+  /** Show `displayName` on the feed when it matches the legal name in the owner's credential. */
+  static async setFeedVerifiedName(
+    pn: string,
+    feedId: string,
+    displayName: string,
+    credential: unknown
+  ): Promise<string> {
     const label = String(displayName || '').replace(/\s+/g, ' ').trim();
     if (!label || label.length > DISPLAY_NAME_MAX) fail('INVALID_NAME');
     const id = await ownedFeedId(pn, feedId);
-    const v = await getDatabasePool().query(
-      `SELECT legal_name_hmac FROM verified_identities WHERE identity_id = $1 AND is_active = TRUE LIMIT 1`,
-      [pn]
-    );
-    const stored = v.rows[0]?.legal_name_hmac ? String(v.rows[0].legal_name_hmac) : '';
-    if (!stored) fail('NOT_VERIFIED');
-    if (!sameHex(stored, legalNameHmac(label))) fail('NAME_MISMATCH');
+    const c = VerificationCredentialService.verify(credential);
+    if (!c || c.sub !== pn.trim() || !(await VerificationIntegrationService.isVerified(pn.trim()))) {
+      fail('NOT_VERIFIED');
+    }
+    const legal = normalizeLegalName([c.given_name, c.family_name].filter(Boolean).join(' '));
+    if (!legal || legal !== normalizeLegalName(label)) fail('NAME_MISMATCH');
     await getDatabasePool().query(
       `UPDATE feeds SET verified_display_name = $2, updated_at = NOW() WHERE feed_id = $1`,
       [id, label]

@@ -996,8 +996,8 @@ export function setupFeedRoutes(app: Application) {
   });
 
   /**
-   * POST /api/feeds/:feedId/verified-name { displayName }
-   * Show a display name on the feed when it matches the owner's verified legal name (HMAC).
+   * POST /api/feeds/:feedId/verified-name { displayName, credential }
+   * Show a display name on the feed when it matches the legal name in the owner's credential.
    * DELETE clears it.
    */
   const verifiedNameErrors: Record<string, number> = {
@@ -1030,7 +1030,9 @@ export function setupFeedRoutes(app: Application) {
     verifiedNameRoute(async (pn, feedId, req) => {
       const { VerifiedNameService } = await import('./verifiedNameService');
       const displayName = typeof req.body?.displayName === 'string' ? req.body.displayName : '';
-      return { verifiedDisplayName: await VerifiedNameService.setFeedVerifiedName(pn, feedId, displayName) };
+      return {
+        verifiedDisplayName: await VerifiedNameService.setFeedVerifiedName(pn, feedId, displayName, req.body?.credential)
+      };
     })
   );
   app.delete(

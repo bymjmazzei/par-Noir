@@ -207,7 +207,7 @@ describe('monetizationReadiness', () => {
   it('reports presence only and lists what is missing', () => {
     const keep = { ...process.env };
     for (const k of Object.keys(process.env)) {
-      if (/^(STRIPE_|VERIFF_|VERIFICATION_DEDUPE|LEGAL_NAME_HMAC|CREATOR_FUND_CRON)/.test(k)) delete process.env[k];
+      if (/^(STRIPE_|VERIFF_|CREATOR_FUND_CRON)/.test(k)) delete process.env[k];
     }
     process.env.STRIPE_SECRET_KEY = 'sk_test_secret_value';
     process.env.VERIFF_API_KEY = '  ';
@@ -218,6 +218,7 @@ describe('monetizationReadiness', () => {
     expect(out.env.STRIPE_SECRET_KEY).toBe(true);
     expect(out.env.VERIFF_API_KEY).toBe(false);
     expect(out.missing).toContain('VERIFF_SHARED_SECRET');
+    expect(out.missing).not.toContain('VERIFICATION_DEDUPE_SECRET');
     expect(JSON.stringify(out)).not.toContain('sk_test_secret_value');
   });
 });

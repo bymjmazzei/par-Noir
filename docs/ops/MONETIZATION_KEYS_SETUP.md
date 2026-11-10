@@ -20,8 +20,6 @@ All of these go on the **API service in Railway** (Variables tab), not in any ap
 | `VERIFF_API_KEY` | Veriff Customer Portal → Integrations | Yes |
 | `VERIFF_SHARED_SECRET` | Veriff Customer Portal → Integrations | Yes |
 | `VERIFF_COST_CENTS` | Your Veriff contract price per check, in cents | Yes |
-| `VERIFICATION_DEDUPE_SECRET` | Generate: `openssl rand -hex 32` | Yes |
-| `LEGAL_NAME_HMAC_KEY` | Generate: `openssl rand -hex 32` | Yes (production) |
 | `CREATOR_FUND_CRON_SECRET` | Generate: `openssl rand -hex 32` | Yes |
 | `ADMIN_API_KEY` | Already set if admin routes work; needed for the readiness check | Yes |
 
@@ -32,8 +30,12 @@ Optional (defaults are fine):
 | `CREATOR_FUND_PERIOD_DAYS` | `30` | Length of a fund period |
 | `CREATOR_FUND_PAYOUT_HOLD_DAYS` | `45` | Days after a period closes before earnings are payable (covers refund/dispute window) |
 | `CREATOR_FUND_PERIOD_ATTESTATION_SECRET` | unset | HMAC stamp on each closed period |
+| `VERIFICATION_VALIDITY_DAYS` | `365` | How long a verification (and its credential) stays valid |
+| `CREATOR_FUND_PAIR_WEIGHT_CAP` | `5` | Max engagement weight one engager pN can send to one owner per period (5 comments, or 50 likes) |
 
-**Never change `VERIFICATION_DEDUPE_SECRET` or `LEGAL_NAME_HMAC_KEY` once real users have verified.** They hash stored data; rotating them breaks duplicate-ID detection and name matching for everyone already verified. Store copies in your password manager.
+**No identity data is stored on the server.** When Veriff approves, the API signs a verification credential (with the existing OAuth signing key, checkable via `/.well-known/jwks.json`) and the user keeps it in their pN's encrypted Knowledge docs. The server keeps only "this pN is verified until X". Nothing extra to generate or rotate.
+
+**Each pN verifies and pays separately.** The same real-world ID can verify any number of pNs; each one pays its own Veriff check and membership. The creator fund ignores engagement on your own content and caps how much one pN can send to one owner per period.
 
 ---
 
@@ -73,15 +75,13 @@ Optional (defaults are fine):
 
 ---
 
-## 4. Generated secrets
+## 4. Generated secret
 
 ```bash
-openssl rand -hex 32   # VERIFICATION_DEDUPE_SECRET
-openssl rand -hex 32   # LEGAL_NAME_HMAC_KEY
 openssl rand -hex 32   # CREATOR_FUND_CRON_SECRET
 ```
 
-Save each in your password manager before pasting into Railway.
+Save it in your password manager before pasting into Railway.
 
 ---
 
@@ -141,5 +141,5 @@ Expect `"ready": true`. If not, `missing` lists exactly which variables are abse
 1. Run the bootstrap script again with `sk_live_...` (live mode has its own products, prices, and webhooks).
 2. Replace in Railway: `STRIPE_SECRET_KEY`, `STRIPE_MONETIZATION_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`.
 3. Switch to the live Veriff integration: replace `VERIFF_API_KEY`, `VERIFF_SHARED_SECRET`, set its webhook URLs (step 3), confirm `VERIFF_COST_CENTS`.
-4. **Keep** `VERIFICATION_DEDUPE_SECRET`, `LEGAL_NAME_HMAC_KEY`, and `CREATOR_FUND_CRON_SECRET` as they are (unless no real user has verified yet).
+4. **Keep** `CREATOR_FUND_CRON_SECRET` as it is, and don't rotate the OAuth signing key without publishing the old key in JWKS (held verification credentials are checked against it).
 5. Re-check `/api/monetization/readiness`, then run `./deploy.sh` from the repo root so the dashboard picks up the latest build.

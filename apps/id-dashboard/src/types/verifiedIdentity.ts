@@ -15,6 +15,9 @@ export interface VerifiedIdentityData {
   fraudPrevention: FraudPreventionResult;
   provider: 'veriff' | 'jumio' | 'onfido' | 'mock';
   metadata: VerificationMetadata;
+  /** API-signed verification credential (JWT) the pN holds in its own Knowledge docs. */
+  credential?: string;
+  credentialExpiresAt?: string;
 }
 
 export interface VerifiedDataPoint {

@@ -235,6 +235,40 @@ export async function attestIssuedProof(
   await writeIssuedProof(await knowledgeTarget(keys.pnIdentifier, authToken), keys, proof);
 }
 
+/** The API-signed verification credential (JWT) is held as a single-claim doc under this id. */
+export const VERIFICATION_CREDENTIAL_DATA_POINT = 'identity_verification_credential';
+const CREDENTIAL_PROOF_TYPE = 'jwt';
+
+export async function saveVerificationCredential(params: {
+  keys: AttestationKeys;
+  authToken: string;
+  credential: string;
+  expiresAt?: string;
+}): Promise<void> {
+  await attestIssuedProof({
+    keys: params.keys,
+    authToken: params.authToken,
+    dataPointId: VERIFICATION_CREDENTIAL_DATA_POINT,
+    proofType: CREDENTIAL_PROOF_TYPE,
+    zkpProof: params.credential,
+    verificationLevel: 'verified',
+    provider: 'parnoir-api',
+    expiresAt: params.expiresAt,
+  });
+}
+
+/** Most recent held verification credential, or null. */
+export async function findHeldVerificationCredential(
+  pnIdentifier: string,
+  authToken: string
+): Promise<string | null> {
+  const held = (await listHeldKnowledgeClaims(pnIdentifier, authToken)) || [];
+  const latest = held
+    .filter((c) => c.dataPointId === VERIFICATION_CREDENTIAL_DATA_POINT && c.zkpProof)
+    .sort((a, b) => String(b.verifiedAt).localeCompare(String(a.verifiedAt)))[0];
+  return latest?.zkpProof ?? null;
+}
+
 /** Held proofs across the pN's Knowledge docs; null when the Drive layout has no pN folder yet. */
 export async function listHeldKnowledgeClaims(
   pnIdentifier: string,
@@ -249,7 +283,8 @@ export async function listHeldKnowledgeClaims(
  * Identity re-key: every Knowledge doc is rewritten under the successor (new genesis signature,
  * proofs re-bound to the successor ML-DSA key, docKey wrapped for the successor ML-KEM key).
  * The predecessor ML-KEM key opens the old `source` section. Issued proofs (Veriff queue)
- * land as single-claim docs.
+ * land as single-claim docs. The API-signed verification credential is carried over unchanged;
+ * the successor swaps it for its own via the credential reissue endpoint once succession is live.
  */
 export async function reissueKnowledgeClaims(params: {
   authToken: string;
@@ -266,11 +301,28 @@ export async function reissueKnowledgeClaims(params: {
   };
   const issuedIds = new Set((params.issued || []).map((p) => p.dataPointId));
   const byDoc = new Map<string, DeviceKnowledgeClaim[]>();
+  const credentials: DeviceKnowledgeClaim[] = [];
   for (const claim of await listDeviceKnowledgeClaims(target)) {
     if (issuedIds.has(claim.sourceDataPointId)) continue;
+    if (claim.dataPointId === VERIFICATION_CREDENTIAL_DATA_POINT) {
+      credentials.push(claim);
+      continue;
+    }
     byDoc.set(claim.docId, [...(byDoc.get(claim.docId) || []), claim]);
   }
   let written = 0;
+  for (const c of credentials) {
+    await writeIssuedProof(target, params.successor, {
+      dataPointId: c.dataPointId,
+      proofType: c.proofType,
+      zkpProof: c.zkpProof,
+      verificationLevel: c.verificationLevel,
+      provider: c.provider,
+      verifiedAt: c.verifiedAt,
+      expiresAt: c.expiresAt,
+    });
+    written += 1;
+  }
   for (const claims of byDoc.values()) {
     const head = claims[0]!;
     const reissued = new Map(

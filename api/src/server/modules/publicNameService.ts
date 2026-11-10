@@ -23,6 +23,7 @@ import { HandleReceiptService, type Queryable } from './handleReceiptService';
 import { verifyRootSignedStatement } from './ownedAssetService';
 import { ProtectedNameService, proofSatisfiesProtected, type ProtectedName } from './protectedNameService';
 import { fetchDomainRegistrationDate } from './rdapService';
+import { activeVerifiedSql } from './verificationIntegrationService';
 
 export type PublicNameProofType = HandleProofType;
 export type PublicNameStatus =
@@ -250,7 +251,7 @@ async function feedHasVanity(q: Queryable, feedId: string): Promise<boolean> {
 async function isOwnerVerified(q: Queryable, pn: string): Promise<boolean> {
   try {
     const r = await q.query(
-      `SELECT 1 FROM verified_identities WHERE identity_id = $1 AND is_active = TRUE LIMIT 1`,
+      `SELECT 1 FROM verified_identities WHERE identity_id = $1 AND ${activeVerifiedSql()} LIMIT 1`,
       [pn]
     );
     return r.rows.length > 0;
@@ -1232,7 +1233,7 @@ export class PublicNameService {
        FROM public_names pn LEFT JOIN feeds f ON f.feed_id = pn.feed_id
        WHERE pn.proof_type = 'claim' AND pn.status = 'listed'
          AND NOT EXISTS (
-           SELECT 1 FROM verified_identities v WHERE v.identity_id = pn.pn_identifier AND v.is_active = TRUE
+           SELECT 1 FROM verified_identities v WHERE v.identity_id = pn.pn_identifier AND ${activeVerifiedSql('v')}
          )`
     );
     let expired = 0;

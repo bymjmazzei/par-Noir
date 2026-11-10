@@ -360,6 +360,29 @@ export function AppModals(props: AppModalsProps) {
     mapDataPointIdToProofType
   } = props;
 
+  const resolveApiAttestationKeys = async () => {
+    if (!apiToken || !authenticatedUser?.id) return null;
+    const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
+    let stored = await getEncryptedIdentityForApiToken?.(identityKey);
+    if (!stored && authenticatedUser.publicKey && authenticatedUser.publicKey !== authenticatedUser.id) {
+      stored = await getEncryptedIdentityForApiToken?.(authenticatedUser.id);
+    }
+    const { resolveAttestationKeys } = await import('../services/knowledgeAttestation');
+    return resolveAttestationKeys({
+      identityId: authenticatedUser.id,
+      publicKey: authenticatedUser.publicKey,
+      encryptedIdentity: stored
+        ? {
+            publicKey: (stored as { publicKey?: string }).publicKey || authenticatedUser.publicKey || identityKey,
+            encryptedData: stored.encryptedData,
+            iv: stored.iv,
+            salt: stored.salt,
+            mlKemPublicKey: (stored as { mlKemPublicKey?: string }).mlKemPublicKey
+          }
+        : null
+    });
+  };
+
   return (
     <>
         {/* Recovery Modal */}
@@ -771,37 +794,22 @@ export function AppModals(props: AppModalsProps) {
             updatedVerifiedDataPoints.add(dataPointId);
           });
 
+          const authToken = apiToken;
+          const keys = await resolveApiAttestationKeys();
+          const { attestFromTemplate, attestIssuedProof, saveVerificationCredential } = await import(
+            '../services/knowledgeAttestation'
+          );
+          if (authToken && keys && verifiedData.credential) {
+            await saveVerificationCredential({
+              keys,
+              authToken,
+              credential: verifiedData.credential,
+              expiresAt: verifiedData.credentialExpiresAt
+            });
+          }
+
           try {
-            const authToken = apiToken;
-            if (authToken && authenticatedUser?.id) {
-              const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
-              let stored = await getEncryptedIdentityForApiToken?.(identityKey);
-              if (
-                !stored &&
-                authenticatedUser.publicKey &&
-                authenticatedUser.publicKey !== authenticatedUser.id
-              ) {
-                stored = await getEncryptedIdentityForApiToken?.(authenticatedUser.id);
-              }
-              const { attestFromTemplate, attestIssuedProof, resolveAttestationKeys } = await import(
-                '../services/knowledgeAttestation'
-              );
-              const keys = await resolveAttestationKeys({
-                identityId: authenticatedUser.id,
-                publicKey: authenticatedUser.publicKey,
-                encryptedIdentity: stored
-                  ? {
-                      publicKey:
-                        (stored as { publicKey?: string }).publicKey ||
-                        authenticatedUser.publicKey ||
-                        identityKey,
-                      encryptedData: stored.encryptedData,
-                      iv: stored.iv,
-                      salt: stored.salt,
-                      mlKemPublicKey: (stored as { mlKemPublicKey?: string }).mlKemPublicKey
-                    }
-                  : null
-              });
+            if (authToken && keys) {
               const extracted = (verifiedData as { extracted?: Record<string, string> }).extracted || {};
               const firstName =
                 extracted.firstName ||
@@ -877,6 +885,12 @@ export function AppModals(props: AppModalsProps) {
           setAttestedDataPoints(updatedAttestedDataPoints);
           setVerifiedDataPoints(updatedVerifiedDataPoints);
           setShowVerificationModal(false);
+        }}
+        syncHeldCredential={async (serverVerified) => {
+          const keys = await resolveApiAttestationKeys();
+          if (!keys || !apiToken) return false;
+          const { syncHeldVerificationCredential } = await import('../services/verificationCredential');
+          return syncHeldVerificationCredential({ keys, authToken: apiToken, serverVerified });
         }}
         identityId={authenticatedUser?.id ?? selectedStoredIdentity?.id ?? 'default'}
         accessToken={apiToken}

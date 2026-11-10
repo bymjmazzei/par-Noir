@@ -88,6 +88,20 @@ export function isDidRevokedForNetwork(did?: string | null): boolean {
   return revokedDidCache.has(did);
 }
 
+/** True when `candidate` is `predecessor`'s successor, directly or through a chain of successions. */
+export function isSuccessorOf(predecessor: string, candidate: string): boolean {
+  if (!predecessor?.trim() || !candidate?.trim()) return false;
+  const target = normalizePn(candidate);
+  let cur = normalizePn(predecessor);
+  for (let hops = 0; hops < 16; hops++) {
+    const next = successorByPredecessorPn.get(cur);
+    if (!next) return false;
+    if (next === target) return true;
+    cur = next;
+  }
+  return false;
+}
+
 export async function getSuccessorPublicInfo(pnIdentifier: string): Promise<{
   revoked: boolean;
   successorPnIdentifier?: string;

@@ -35,10 +35,20 @@ export interface MonetizationStatusResponse {
   creatorFundPaidOutCents?: number;
 }
 
+export interface VeriffSessionResponse {
+  url: string;
+  sessionId: string;
+  /** API-signed (session, pN) binding; the only link between this pN and the Veriff session. */
+  state: string;
+}
+
 export interface VeriffDecisionResponse {
-  /** none | created | started | submitted | approved | declined | resubmission_requested | expired | abandoned | review | duplicate */
+  /** pending | approved | declined | resubmission_requested | expired | abandoned | review */
   status: string;
-  sessionId: string | null;
+  sessionId: string;
+  /** API-signed verification credential (approved only); store it in the pN's own Knowledge docs. */
+  credential?: string;
+  expiresAt?: string;
   person?: { firstName: string | null; lastName: string | null; dateOfBirth: string | null };
   document?: {
     number: string | null;
@@ -179,29 +189,69 @@ export class MonetizationService {
     };
   }
 
-  /** Veriff hosted-flow URL for the token's pN (membership required). */
-  static async createVeriffSession(accessToken: string, returnUrl: string): Promise<string> {
+  /** Veriff hosted flow for the token's pN (membership required). Keep `state` to finalize. */
+  static async createVeriffSession(accessToken: string, returnUrl: string): Promise<VeriffSessionResponse> {
     const res = await fetch(`${API_ENDPOINT}/api/verification/veriff/session`, {
       method: 'POST',
       headers: authHeaders(accessToken),
       body: JSON.stringify({ return_url: returnUrl })
     });
-    const data = (await res.json().catch(() => ({}))) as { url?: string; error_description?: string };
+    const data = (await res.json().catch(() => ({}))) as Partial<VeriffSessionResponse> & {
+      error_description?: string;
+    };
     if (!res.ok) {
       throw new Error(data.error_description || `Veriff session failed (${res.status})`);
     }
-    if (!data.url) throw new Error('Veriff session missing redirect URL');
-    return data.url;
+    if (!data.url || !data.state || !data.sessionId) throw new Error('Veriff session response incomplete');
+    return { url: data.url, sessionId: data.sessionId, state: data.state };
   }
 
-  static async getVeriffDecision(accessToken: string): Promise<VeriffDecisionResponse> {
+  static async getVeriffDecision(accessToken: string, state: string): Promise<VeriffDecisionResponse> {
     const res = await fetch(`${API_ENDPOINT}/api/verification/veriff/decision`, {
-      headers: authHeaders(accessToken)
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ state })
     });
-    const data = (await res.json().catch(() => ({}))) as VeriffDecisionResponse & { error_description?: string };
+    const data = (await res.json().catch(() => ({}))) as VeriffDecisionResponse & {
+      error?: string;
+      error_description?: string;
+    };
     if (!res.ok) {
-      throw new Error(data.error_description || `Veriff decision failed (${res.status})`);
+      throw Object.assign(new Error(data.error_description || `Veriff decision failed (${res.status})`), {
+        code: data.error
+      });
     }
     return data;
   }
+
+  /** Restore this pN's server-side verified flag from the credential it holds. */
+  static async presentVerificationCredential(
+    accessToken: string,
+    credential: string
+  ): Promise<{ verified: true; expiresAt: string }> {
+    return credentialCall(accessToken, '/api/verification/credential/present', credential);
+  }
+
+  /** Exchange a predecessor pN's credential for one issued to this (successor) pN. */
+  static async reissueVerificationCredential(
+    accessToken: string,
+    credential: string
+  ): Promise<{ credential: string; expiresAt: string }> {
+    return credentialCall(accessToken, '/api/verification/credential/reissue', credential);
+  }
+}
+
+async function credentialCall<T>(accessToken: string, path: string, credential: string): Promise<T> {
+  const res = await fetch(`${API_ENDPOINT}${path}`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ credential })
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || `Verification credential request failed (${res.status})`), {
+      code: data.error
+    });
+  }
+  return data;
 }

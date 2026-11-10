@@ -4,7 +4,9 @@
 const mockState = {
   gParams: [] as unknown[],
   periodInsert: [] as unknown[],
-  allocations: [] as Array<{ recipient: string; bucket: string; cents: number }>
+  allocations: [] as Array<{ recipient: string; bucket: string; cents: number }>,
+  weightSql: '',
+  weightParams: [] as unknown[]
 };
 
 const mockClientQuery = jest.fn(async (sql: string, params: unknown[] = []) => {
@@ -37,10 +39,12 @@ const mockClientQuery = jest.fn(async (sql: string, params: unknown[] = []) => {
       ]
     };
   }
-  if (s.includes('FROM verified_identities WHERE is_active IS TRUE')) {
+  if (s.includes('FROM verified_identities WHERE is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())')) {
     return { rows: [{ pn: 'pn-owner' }, { pn: 'pn-commenter' }] };
   }
   if (s.startsWith('WITH base AS')) {
+    mockState.weightSql = s;
+    mockState.weightParams = params;
     return {
       rows: [
         { file_id: 'f1', cnt: 2, dual_monetizable: true, orphan_library: false, owner_pn: 'pn-owner', post_metadata: null },
@@ -62,13 +66,27 @@ jest.mock('../utils/database', () => ({
   getDatabasePool: () => ({ connect: async () => ({ query: mockClientQuery, release: jest.fn() }) })
 }));
 
-import { CreatorFundPeriodService } from './creatorFundPeriodService';
+import { CreatorFundPeriodService, pairWeightCap } from './creatorFundPeriodService';
 
 describe('creator fund period close', () => {
   beforeEach(() => {
     process.env.CREATOR_FUND_PERIOD_TZ = 'UTC';
     delete process.env.CREATOR_FUND_PERIOD_KMS_KEY_VERSION;
+    delete process.env.CREATOR_FUND_PAIR_WEIGHT_CAP;
     mockState.allocations = [];
+  });
+
+  it('caps each engager-owner pair at CREATOR_FUND_PAIR_WEIGHT_CAP (default 5)', async () => {
+    expect(pairWeightCap()).toBe(5);
+    process.env.CREATOR_FUND_PAIR_WEIGHT_CAP = 'nope';
+    expect(pairWeightCap()).toBe(5);
+    process.env.CREATOR_FUND_PAIR_WEIGHT_CAP = '2.5';
+    expect(pairWeightCap()).toBe(2.5);
+
+    await CreatorFundPeriodService.closeIfDue();
+    expect(mockState.weightParams[2]).toBe(2.5);
+    expect(mockState.weightSql).toContain('PARTITION BY actor_id, pair_owner');
+    expect(mockState.weightSql).toContain('LEAST(1.0, $3::double precision / NULLIF(pair_total, 0))');
   });
 
   it('nets refunds into G, splits 25/75, and allocates the whole fund to verified buckets', async () => {

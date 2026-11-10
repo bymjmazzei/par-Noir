@@ -13,6 +13,7 @@ import { appendAuditEvent } from './auditService';
 import { securityFlags, isProduction } from '../utils/securityFlags';
 import { appendSecurityAuditEvent } from './auditService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { activeVerifiedSql } from './verificationIntegrationService';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -292,7 +293,7 @@ export function registerAdminDeveloperRoutes(app: Application): void {
                 SELECT 1
                 FROM verified_identities vi
                 WHERE vi.identity_id = up.pn_identifier
-                  AND vi.is_active = TRUE
+                  AND ${activeVerifiedSql('vi')}
               )
             ) AS verified_users
           FROM user_profiles
@@ -404,7 +405,7 @@ export function registerAdminDeveloperRoutes(app: Application): void {
         cohortRes,
       ] = await Promise.all([
         db.query(`SELECT COUNT(*)::bigint AS total_users FROM user_profiles`),
-        db.query(`SELECT COUNT(DISTINCT identity_id)::bigint AS verified_users FROM verified_identities WHERE is_active = TRUE`),
+        db.query(`SELECT COUNT(DISTINCT identity_id)::bigint AS verified_users FROM verified_identities WHERE ${activeVerifiedSql()}`),
         db.query(`SELECT COUNT(DISTINCT pn_identifier)::bigint AS connected_users FROM oauth_refresh_tokens WHERE pn_identifier IS NOT NULL`),
         db.query(`SELECT COUNT(*)::bigint AS total_posts FROM feed_posts`),
         db.query(`SELECT COUNT(DISTINCT user_did)::bigint AS first_engagers FROM engagement`),

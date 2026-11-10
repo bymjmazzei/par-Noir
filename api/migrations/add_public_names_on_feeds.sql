@@ -98,6 +98,3 @@ CREATE TABLE IF NOT EXISTS public_name_receipts (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_public_name_receipts_owner ON public_name_receipts (owner_pn_identifier);
-
--- Verified legal name: keyed hash only, never the name.
-ALTER TABLE IF EXISTS verified_identities ADD COLUMN IF NOT EXISTS legal_name_hmac VARCHAR(128);

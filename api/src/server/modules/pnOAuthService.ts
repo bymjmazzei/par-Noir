@@ -178,6 +178,8 @@ function resolveOauthSigningKeys(): { privateKey: string; publicKey: string; kid
 
 const oauthSigningKeys = resolveOauthSigningKeys();
 
+export type AttestationTyp = 'pn-verified+jwt' | 'veriff-state+jwt';
+
 interface RefreshTokenRecord {
   refresh_token: string;
   did: string;
@@ -248,8 +250,8 @@ export class PNOAuthService {
     return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
   }
 
-  private static async signJwt(payload: Record<string, unknown>): Promise<string> {
-    const header: JwtHeader = { alg: 'RS256', typ: 'JWT', kid: this.JWT_KID };
+  private static async signJwt(payload: Record<string, unknown>, typ = 'JWT'): Promise<string> {
+    const header: JwtHeader = { alg: 'RS256', typ, kid: this.JWT_KID };
     if (this.KMS_KEY_VERSION) {
       return this.signJwtWithKms(payload, header);
     }
@@ -270,6 +272,41 @@ export class PNOAuthService {
     const { gcpKmsAsymmetricSignSha256Digest } = await import('../utils/gcpKmsAsymmetricSign');
     const sig = await gcpKmsAsymmetricSignSha256Digest(kmsKey, digest);
     return `${signingInput}.${Buffer.from(sig, 'base64').toString('base64url')}`;
+  }
+
+  /**
+   * Statements the API vouches for (verification credentials, Veriff state), signed with the
+   * session key so anyone can check them via `/.well-known/jwks.json`. `typ` is both the JOSE
+   * header and the audience, so an attestation never validates as an access token or as
+   * another attestation type.
+   */
+  static async signAttestation(
+    typ: AttestationTyp,
+    claims: Record<string, unknown>,
+    ttlSeconds: number
+  ): Promise<string> {
+    const iat = Math.floor(Date.now() / 1000);
+    return this.signJwt(
+      { iat, exp: iat + Math.max(1, Math.floor(ttlSeconds)), ...claims, iss: this.TOKEN_ISSUER, aud: typ },
+      typ
+    );
+  }
+
+  /** Claims of a valid, unexpired attestation of `typ`, or null. */
+  static verifyAttestation(token: string, typ: AttestationTyp): (JwtPayload & Record<string, unknown>) | null {
+    if (!token || !this.JWT_PUBLIC_KEY) return null;
+    try {
+      const decoded = jwt.verify(token, this.JWT_PUBLIC_KEY, {
+        algorithms: ['RS256'],
+        issuer: this.TOKEN_ISSUER,
+        audience: typ,
+        complete: true,
+      });
+      if (decoded.header.typ !== typ || typeof decoded.payload !== 'object') return null;
+      return decoded.payload as JwtPayload & Record<string, unknown>;
+    } catch {
+      return null;
+    }
   }
 
   static getJwks(): { keys: Array<Record<string, unknown>> } {

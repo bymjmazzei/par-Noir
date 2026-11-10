@@ -7,6 +7,7 @@
 import { getDatabasePool } from '../utils/database';
 import { cacheActorId } from '../utils/cacheActor';
 import { BotDetectionService } from './botDetectionService';
+import { activeVerifiedSql } from './verificationIntegrationService';
 
 export interface EngagementRow {
   engagement_id: string;
@@ -64,6 +65,18 @@ export interface EngagementMetrics {
   recommendationScore: number;
 }
 
+/** Same pN across `pn-<hash>` / `did:pn:<hash>` spellings. Engagement on your own content never earns. */
+export function isSamePn(a: string | null | undefined, b: string | null | undefined): boolean {
+  const bare = (v: string | null | undefined) =>
+    String(v ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/^did:pn:/, '')
+      .replace(/^pn-/, '');
+  const x = bare(a);
+  return x.length > 0 && x === bare(b);
+}
+
 export class EngagementService {
   /**
    * Check if user is verified
@@ -71,11 +84,10 @@ export class EngagementService {
   private static async isUserVerified(userPnIdentifier: string): Promise<boolean> {
     const db = getDatabasePool();
     try {
-      const result = await db.query(`
-        SELECT 1 FROM verified_identities 
-        WHERE identity_id = $1 AND is_active = TRUE
-        LIMIT 1
-      `, [userPnIdentifier]);
+      const result = await db.query(
+        `SELECT 1 FROM verified_identities WHERE identity_id = $1 AND ${activeVerifiedSql()} LIMIT 1`,
+        [userPnIdentifier]
+      );
       return result.rows.length > 0;
     } catch {
       return false;
@@ -141,8 +153,8 @@ export class EngagementService {
     actorPn: string,
     fileId: string
   ): Promise<{ actor: boolean; owner: boolean }> {
-    const actor = await this.eligibleForFundAtWitness(actorPn);
     const ownerPn = await this.resolveContentOwnerPnForFile(fileId);
+    const actor = !isSamePn(actorPn, ownerPn) && (await this.eligibleForFundAtWitness(actorPn));
     const owner = ownerPn ? await this.eligibleForFundAtWitness(ownerPn) : false;
     return { actor, owner };
   }
@@ -1020,7 +1032,7 @@ export class EngagementService {
     const db = getDatabasePool();
     try {
       const result = await db.query(
-        `SELECT 1 FROM verified_identities WHERE identity_id = $1 AND is_active = TRUE LIMIT 1`,
+        `SELECT 1 FROM verified_identities WHERE identity_id = $1 AND ${activeVerifiedSql()} LIMIT 1`,
         [pnIdentifier.trim()]
       );
       return result.rows.length > 0;

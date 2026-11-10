@@ -7,6 +7,11 @@
  * content_rights / music / publisher). Implied licensing only contributes claims;
  * unconditional free/paid → 0 claim from that root.
  *
+ * Collusion limits: engagement on your own content is never fund-eligible (set at witness time),
+ * and one engager can send one owner at most `CREATOR_FUND_PAIR_WEIGHT_CAP` weight per period
+ * (default 5 = five comments or fifty likes); over the cap, that pair's rows scale down evenly.
+ * The same person may verify several pNs, so each extra pN only moves a capped amount.
+ *
  * Window boundaries: `CREATOR_FUND_PERIOD_DAYS` (default 30). Set `CREATOR_FUND_PERIOD_TZ=UTC`
  * for legacy contiguous UTC windows; otherwise an IANA zone (default **America/New_York**).
  *
@@ -26,9 +31,17 @@ import {
 } from './creatorFundMicroAllocate';
 import { buildPayeeAliasMap, mergeResolvedWeights } from './creatorFundPayeeResolve';
 import { CREATOR_FUND_G_EVENT_TYPES } from './creatorFundRevenue';
+import { activeVerifiedSql } from './verificationIntegrationService';
 
 const DEFAULT_WINDOW_DAYS = 30;
 const DEFAULT_FUND_PERIOD_TZ = 'America/New_York';
+const DEFAULT_PAIR_WEIGHT_CAP = 5;
+
+/** Max engagement weight one engager can send one owner per period (comment 1, share/save 0.25, like 0.1). */
+export function pairWeightCap(): number {
+  const n = Number(process.env.CREATOR_FUND_PAIR_WEIGHT_CAP?.trim());
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_PAIR_WEIGHT_CAP;
+}
 
 function periodDays(): number {
   const raw = process.env.CREATOR_FUND_PERIOD_DAYS?.trim();
@@ -193,7 +206,7 @@ function allocateProportional(
  */
 async function loadPayeeAliasMap(client: PoolClient): Promise<Map<string, string>> {
   const res = await client.query(
-    `SELECT identity_id AS pn FROM verified_identities WHERE is_active IS TRUE
+    `SELECT identity_id AS pn FROM verified_identities WHERE ${activeVerifiedSql()}
      UNION
      SELECT pn_identifier AS pn FROM monetization_subscriptions WHERE status = 'active'`
   );
@@ -260,20 +273,32 @@ async function allocateCreatorBountyShares(
                  (registry_track_id IS NOT NULL AND track_status = 'active'
                    AND track_owner_pn IS NOT NULL AND LENGTH(TRIM(track_owner_pn)) > 0)
                  OR (music_pen_doc_id IS NOT NULL AND LENGTH(TRIM(music_pen_doc_id)) > 0)
-               )) AS orphan_library
+               )) AS orphan_library,
+              (CASE engagement_type
+                 WHEN 'comment' THEN 1.0
+                 WHEN 'share' THEN 0.25
+                 WHEN 'save' THEN 0.25
+                 WHEN 'like' THEN 0.1
+                 ELSE 0
+               END)::double precision AS w,
+              COALESCE(
+                NULLIF(TRIM(owner_pn), ''),
+                NULLIF(TRIM(track_owner_pn), ''),
+                NULLIF(TRIM(music_pen_doc_id), ''),
+                file_id
+              ) AS pair_owner
        FROM base
+     ),
+     counted AS (
+       SELECT keyed.*,
+              SUM(w) OVER (PARTITION BY actor_id, pair_owner) AS pair_total
+       FROM keyed
+       WHERE (dual_monetizable IS TRUE AND owner_pn IS NOT NULL AND LENGTH(TRIM(owner_pn)) > 0)
+          OR orphan_library IS TRUE
      ),
      per_file AS (
        SELECT file_id,
-              SUM(
-                CASE engagement_type
-                  WHEN 'comment' THEN 1.0
-                  WHEN 'share' THEN 0.25
-                  WHEN 'save' THEN 0.25
-                  WHEN 'like' THEN 0.1
-                  ELSE 0
-                END
-              )::double precision AS cnt,
+              SUM(w * LEAST(1.0, $3::double precision / NULLIF(pair_total, 0)))::double precision AS cnt,
               bool_or(dual_monetizable) AS dual_monetizable,
               bool_or(orphan_library) AS orphan_library,
               MAX(NULLIF(TRIM(owner_pn), '')) AS owner_pn,
@@ -283,13 +308,11 @@ async function allocateCreatorBountyShares(
               MAX(track_status) AS track_status,
               (array_agg(splits_metadata ORDER BY registry_track_id NULLS LAST))[1] AS splits_metadata,
               (array_agg(post_metadata ORDER BY file_id))[1] AS post_metadata
-       FROM keyed
-       WHERE (dual_monetizable IS TRUE AND owner_pn IS NOT NULL AND LENGTH(TRIM(owner_pn)) > 0)
-          OR orphan_library IS TRUE
+       FROM counted
        GROUP BY file_id
      )
      SELECT * FROM per_file`,
-    [periodStartIso, periodEndIso]
+    [periodStartIso, periodEndIso, pairWeightCap()]
   );
 
   const commentRes = await client.query(

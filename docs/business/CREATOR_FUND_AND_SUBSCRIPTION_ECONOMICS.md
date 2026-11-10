@@ -274,6 +274,13 @@ Include in **`E`** (creator-facing / “**keep the platform online**” spend):
 - **Verification + monthly subscription** increases **marginal cost per coordinated identity**, making **many** ring/sybil strategies **economically irrational** at typical fee and bounty densities.
 - **Residual risks** (not “impossible”): account takeover, very **high bounty density** changing ROI, **non-bounty** value of verified access (e.g. API abuse), determined adversaries. **Monitoring and policy** scale with **payout attractiveness**.
 
+### Multiple pNs per person (allowed)
+
+- The **same real-world ID can verify any number of pNs** (e.g. a person keeping several pNs for self-recovery). **Each pN pays its own Veriff check and its own membership**; verification never carries across pNs except through identity succession.
+- **No identity data on the server:** approval issues an API-signed verification credential the user holds in their pN's encrypted Knowledge docs. The server keeps only "pN verified until X" (`VERIFICATION_VALIDITY_DAYS`, default 365) and a billed-session list with no pN link, so there is no document dedupe.
+- **Own-content exclusion:** engagement where the engager pN is the content owner never counts toward the fund (decided at write time).
+- **Per-pair cap:** within a fund period, one engager pN can contribute at most `CREATOR_FUND_PAIR_WEIGHT_CAP` weight (default **5**; comment 1.0, share/save 0.25, like 0.1) to one owner. Above the cap, that pair's events are scaled down proportionally. Farming an owner through your own extra pNs therefore costs a membership per pN for a bounded share of the pool.
+
 ---
 
 ## Ledger transparency (no blockchain)

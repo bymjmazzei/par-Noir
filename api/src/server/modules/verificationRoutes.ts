@@ -1,5 +1,6 @@
 /**
- * Identity verification API (Veriff sessions, signed decision webhook, owner decision fetch).
+ * Identity verification API: Veriff sessions, signed webhook, owner decision fetch (issues the
+ * user-held credential), and credential present / reissue.
  */
 
 import type { Application, Request, Response } from 'express';
@@ -7,6 +8,15 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddle
 import { safeClientErrorMessage } from '../utils/safeError';
 import { requireAdminApiKey } from './adminDeveloperRoutes';
 import { VeriffService, veriffConfig } from './veriffService';
+import { VerificationCredentialService } from './verificationCredentialService';
+
+const CREDENTIAL_ERRORS: Record<string, number> = {
+  INVALID_CREDENTIAL: 400,
+  CREDENTIAL_SUBJECT_MISMATCH: 403,
+  NOT_SUCCESSOR: 403,
+  CREDENTIAL_REVOKED: 403,
+  CREDENTIAL_EXPIRED: 400
+};
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const DEFAULT_RETURN_URL = 'https://pn.parnoir.com/?verification=veriff_return';
@@ -48,7 +58,7 @@ export function registerVerificationRoutes(app: Application): void {
     if (!veriffConfig()) return notConfigured(res);
     try {
       const out = await VeriffService.createSession(pn, returnUrlFromBody(req));
-      return res.json({ url: out.url, reused: out.reused });
+      return res.json({ url: out.url, sessionId: out.sessionId, state: out.state });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '';
       if (msg === 'membership_required') {
@@ -71,7 +81,7 @@ export function registerVerificationRoutes(app: Application): void {
     }
   });
 
-  app.get('/api/verification/veriff/decision', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/verification/veriff/decision', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     const pn = pnFromReq(req);
     if (!pn) {
       return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
@@ -79,9 +89,12 @@ export function registerVerificationRoutes(app: Application): void {
     if (!veriffConfig()) return notConfigured(res);
     try {
       res.setHeader('Cache-Control', 'no-store');
-      return res.json(await VeriffService.getDecisionForPn(pn));
+      return res.json(await VeriffService.decisionFromState(pn, req.body?.state));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '';
+      if (msg === 'invalid_state') {
+        return res.status(400).json({ error: 'invalid_state', error_description: 'Unknown or expired verification session' });
+      }
       if (msg === 'veriff_upstream_error') {
         return res.status(502).json({ error: 'upstream_error', error_description: 'Failed to fetch Veriff decision' });
       }
@@ -108,10 +121,46 @@ export function registerVerificationRoutes(app: Application): void {
       if (msg === 'invalid_signature') {
         return res.status(401).json({ ok: false });
       }
-      console.error('[Veriff] webhook:', e);
+      console.error('[Veriff] webhook:', e instanceof Error ? e.message : 'unknown');
       return res.status(500).json({ ok: false });
     }
   });
+
+  const credentialRoute =
+    (handler: (pn: string, credential: unknown) => Promise<unknown>) =>
+    async (req: AuthenticatedRequest, res: Response) => {
+      const pn = pnFromReq(req);
+      if (!pn) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
+      }
+      try {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json(await handler(pn, req.body?.credential));
+      } catch (e: unknown) {
+        const code = (e as { code?: string }).code || '';
+        const status = CREDENTIAL_ERRORS[code];
+        if (status) return res.status(status).json({ error: code.toLowerCase() });
+        console.error('[verification] credential:', e instanceof Error ? e.message : 'unknown');
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+        });
+      }
+    };
+
+  /** Restore this pN's verified flag from the credential it holds. */
+  app.post(
+    '/api/verification/credential/present',
+    requireAuth,
+    credentialRoute((pn, credential) => VerificationCredentialService.present(pn, credential))
+  );
+
+  /** Successor pN exchanges its predecessor's credential for one issued to itself. */
+  app.post(
+    '/api/verification/credential/reissue',
+    requireAuth,
+    credentialRoute((pn, credential) => VerificationCredentialService.reissue(pn, credential))
+  );
 }
 
 /** POST /api/verification/sync - Sync verification status to engagement system (admin only). */
@@ -119,7 +168,7 @@ export function registerVerificationSyncRoute(app: Application): void {
   app.post('/api/verification/sync', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const { VerificationIntegrationService } = await import('./verificationIntegrationService');
-      const { identityId, verificationId, verifiedAt, legalName } = req.body;
+      const { identityId, verificationId, verifiedAt, expiresAt } = req.body;
 
       if (!identityId || !verificationId || !verifiedAt) {
         return res.status(400).json({ error: 'identityId, verificationId, and verifiedAt are required' });
@@ -129,7 +178,7 @@ export function registerVerificationSyncRoute(app: Application): void {
         identityId,
         verificationId,
         verifiedAt,
-        typeof legalName === 'string' ? legalName : undefined
+        typeof expiresAt === 'string' ? expiresAt : null
       );
 
       return res.json({ success: true, message: 'Verification status synced' });

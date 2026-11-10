@@ -1372,10 +1372,10 @@ export async function initializeDatabase(): Promise<void> {
       const path = await import('path');
       const veriffPath = path.join(__dirname, '../../migrations/add_veriff_sessions.sql');
       await db.query(fs.readFileSync(veriffPath, 'utf-8'));
-      console.log('✅ veriff_sessions migration executed');
+      console.log('✅ veriff verification migration executed');
     } catch (migrationError: unknown) {
       console.debug(
-        'ℹ️ veriff_sessions migration error (may already be applied):',
+        'ℹ️ veriff verification migration error (may already be applied):',
         migrationError instanceof Error ? migrationError.message : migrationError
       );
     }
