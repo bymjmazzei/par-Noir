@@ -45,16 +45,17 @@ export function HomePage() {
   }, [ctx]);
   useRegisterSoftRefresh(ctx ? softRefreshHome : null);
 
-  const pendingDiscoverFileIdRef = useRef<string | null>(null);
+  // Templates live only on the pen-templates feed; social posts open on the creator's feed.
+  const pendingTemplateFileIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const id = pendingDiscoverFileIdRef.current;
+    const id = pendingTemplateFileIdRef.current;
     if (!id || !ctx) return;
-    if (ctx.activeFeedId !== 'pen-templates' && ctx.activeFeedId !== 'public') return;
+    if (ctx.activeFeedId !== 'pen-templates') return;
     const i = ctx.filteredFilesByFeed.findIndex((f) => f.metadata.fileId === id);
     if (i !== -1) {
       ctx.setCurrentFeedIndex(i);
-      pendingDiscoverFileIdRef.current = null;
+      pendingTemplateFileIdRef.current = null;
     }
   }, [ctx, ctx?.filteredFilesByFeed, ctx?.activeFeedId]);
 
@@ -114,12 +115,14 @@ export function HomePage() {
     handleShare,
     handleReportCopyright,
     handleCreatorClick,
+    openFileOnCreatorFeed,
     handleNextFeed,
     handlePreviousFeed,
     prefetchFeedMedia,
     setViewingCreatorId,
     setViewingBrandedFeed,
     setMePageTab,
+    setVisibleFileId,
     setShowCreateFeedModal,
     setShowUploadModal,
     setShowSettings,
@@ -350,9 +353,15 @@ export function HomePage() {
               const isTemplate = Boolean(
                 (file.metadata as { penTemplateKind?: string | null })?.penTemplateKind
               );
-              pendingDiscoverFileIdRef.current = file.metadata.fileId;
-              setActiveFeedId(isTemplate ? 'pen-templates' : 'public');
+              if (!isTemplate) {
+                openFileOnCreatorFeed(file);
+                return;
+              }
+              pendingTemplateFileIdRef.current = file.metadata.fileId;
+              // Holds off App's feed-change index reset so the template index sticks.
+              setVisibleFileId(file.metadata.fileId);
               isManualFeedChangeRef.current = true;
+              setActiveFeedId('pen-templates');
             }}
             onFeedClick={(feed) => setViewingBrandedFeed(feed)}
             onCreatorClick={(creatorId) => { setViewingCreatorId(creatorId); setViewMode('feed'); setMePageTab('all'); }}

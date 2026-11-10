@@ -71,6 +71,7 @@ export interface HomePageContextValue {
   handleShare: (fileId: string) => void;
   handleReportCopyright?: (file: IndexedFile, link?: string) => void;
   handleCreatorClick: (creatorId: string) => void;
+  openFileOnCreatorFeed: (file: IndexedFile) => void;
   handleNextFeed: () => void;
   handlePreviousFeed: () => void;
   prefetchFeedMedia: (feedId: string) => void;

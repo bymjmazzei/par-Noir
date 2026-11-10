@@ -1019,6 +1019,20 @@ function App() {
     mePageData.setMePageTab('all');
   }, []);
 
+  const openFileOnCreatorFeed = useCallback((file: IndexedFile) => {
+    if (MESSAGING_ONLY) return;
+    const creatorId = getCreatorIdentifier(file)?.trim();
+    if (!creatorId) {
+      if (import.meta.env.DEV) console.error('No creator ID found for file:', file.metadata.fileId);
+      return;
+    }
+    mePageData.isNavigatingToFileRef.current = true;
+    setVisibleFileId(file.metadata.fileId);
+    setViewingCreatorId(creatorId);
+    setViewMode('feed');
+    mePageData.setMePageTab('all');
+  }, []);
+
   // Memoize file props per fileId to prevent re-renders
   const filePropsMapRef = useRef<Map<string, { file: IndexedFile; isLiked: boolean; isOwner: boolean }>>(new Map());
   const getFileProps = useCallback((indexedFile: IndexedFile) => {
@@ -1136,6 +1150,7 @@ function App() {
     handleShare,
     handleReportCopyright,
     handleCreatorClick,
+    openFileOnCreatorFeed,
     handleNextFeed,
     handlePreviousFeed,
     prefetchFeedMedia,
@@ -1331,14 +1346,7 @@ function App() {
           }}
           onFileClick={(file) => {
             setShowSearch(false);
-            const creatorIdRaw = getCreatorIdentifier(file);
-            if (!creatorIdRaw) { console.error('No creator ID found for file:', file.metadata.fileId); return; }
-            const creatorId = creatorIdRaw.trim();
-            mePageData.isNavigatingToFileRef.current = true;
-            setVisibleFileId(file.metadata.fileId);
-            setViewingCreatorId(creatorId);
-            setViewMode('feed');
-            mePageData.setMePageTab('all');
+            openFileOnCreatorFeed(file);
           }}
         />
       ) : viewingCreatorId ? (
