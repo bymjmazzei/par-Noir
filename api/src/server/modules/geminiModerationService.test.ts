@@ -20,10 +20,10 @@ describe('resolveGeminiModelName', () => {
     resetGeminiModerationServiceForTests();
   });
 
-  it('defaults to gemini-2.0-flash when GEMINI_MODEL is unset', () => {
+  it('defaults to the rolling flash alias when GEMINI_MODEL is unset', () => {
     delete process.env.GEMINI_MODEL;
     expect(resolveGeminiModelName()).toBe(DEFAULT_GEMINI_MODEL);
-    expect(resolveGeminiModelName()).toBe('gemini-2.0-flash');
+    expect(resolveGeminiModelName()).toBe('gemini-flash-latest');
   });
 
   it('reads GEMINI_MODEL from env when set', () => {

@@ -45,8 +45,11 @@ Lanes (mutually exclusive):
 If ANY clip is prohibited, return lane "prohibited". Else if ANY clip is nsfw, return "nsfw". Else "public".
 Do NOT use copyright criteria. Return JSON only: {"lane": "public"|"nsfw"|"prohibited", "reason": string, "confidence": number (0-1)}.`;
 
-/** Default flash model for DMCA checks (override with GEMINI_MODEL on Railway). */
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+/**
+ * Default flash model for DMCA checks (override with GEMINI_MODEL on Railway).
+ * Google's rolling alias: pinned versions are retired, and a retired model turns every check into fail-open.
+ */
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
 
 export function resolveGeminiModelName(): string {
   const fromEnv = process.env.GEMINI_MODEL?.trim();
@@ -98,8 +101,9 @@ export class GeminiModerationService {
     if (this.modelErrorLogged) return;
     this.modelErrorLogged = true;
     const msg = error instanceof Error ? error.message : String(error);
+    const status = msg.match(/\[(\d{3}[^\]]*)\]/)?.[1] ?? 'no HTTP status';
     console.warn(
-      `⚠️ [GeminiModerationService] model "${this.modelName}" unavailable (${msg.slice(0, 120)}); checks fail open. Set GEMINI_MODEL on Railway if needed.`
+      `⚠️ [GeminiModerationService] model "${this.modelName}" unavailable (${status}: ${msg.replace(/^.*?\]\s*/, '').slice(0, 200)}); checks fail open. Set GEMINI_MODEL on Railway if needed.`
     );
   }
 
