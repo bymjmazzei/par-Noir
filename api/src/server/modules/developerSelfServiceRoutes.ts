@@ -11,7 +11,7 @@ import { appendAuditEvent, listAuditEventsBySubject } from './auditService';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { isPlatformRegistryConfigured } from './platformOperatorService';
 import { submitOAuthClientApplication } from './platformRegistryApplicationService';
-import { PlatformCommercialLicenseService } from './platformRegistrySyncService';
+import { PlatformCommercialLicenseService } from './platformCommercialLicenseService';
 import { normalizePermissionManifest, validatePermissionManifest } from '@par-noir/standard-data-points';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';

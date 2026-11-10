@@ -12,12 +12,6 @@ function getOperatorIds(): string[] {
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-export function getPlatformRegistryPnIdentifier(): string | null {
-  const raw = process.env.PLATFORM_REGISTRY_PN_IDENTIFIER?.trim();
-  if (!raw) return null;
-  return normalizePnId(raw);
-}
-
 export function isPlatformOperator(pnIdentifier: string | undefined): boolean {
   if (!pnIdentifier) return false;
   const normalized = normalizePnId(pnIdentifier);
@@ -25,5 +19,5 @@ export function isPlatformOperator(pnIdentifier: string | undefined): boolean {
 }
 
 export function isPlatformRegistryConfigured(): boolean {
-  return getPlatformRegistryPnIdentifier() != null && getOperatorIds().length > 0;
+  return getOperatorIds().length > 0;
 }

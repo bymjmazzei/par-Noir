@@ -62,7 +62,7 @@ Under **device cloud custody**, the API cannot silently push layout changes. Upg
 
 **Required `sheetIds` keys** (`REQUIRED_PN_DRIVE_SHEET_KEYS`): connections, third-party-permissions, devices, groups, notifications, activity_ledger, messaging_ledger, message_requests, data-point-requests, zkp-data-points, preferences, engagement, prism_ledger, public-file-index, owner-file-index, followers, following. **`owned-assets` is optional** at completeness check (lazy + patch).
 
-**Not in `PN_DRIVE_SHEET_KEYS`:** `recovery.xlsx`, operator `platform-registry.xlsx`, per-conversation sheets (in `conversationSheets`), content-class indexes (created at init but not stored as sheet keys).
+**Not in `PN_DRIVE_SHEET_KEYS`:** `recovery.xlsx`, per-conversation sheets (in `conversationSheets`), content-class indexes (created at init but not stored as sheet keys).
 
 **Gap (closed for owner A+B):** `cloudLayoutVersion` + `appliedMigrations`, `/storage/.../layout/status|upgrade`, unlock/Storage CTA, and Inbox channel migration are shipped. See [PLAN_OWNER_CLOUD_LAYOUT_UPGRADE.md](../architecture/PLAN_OWNER_CLOUD_LAYOUT_UPGRADE.md). Remaining gaps: L5 `protocolVersion` (domain D), `/api/v2` (domain C).
 

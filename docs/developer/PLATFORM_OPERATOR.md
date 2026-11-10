@@ -7,20 +7,19 @@ Operator-only section in the developer portal for OAuth approval and commercial 
 On the **API** (production):
 
 ```bash
-PLATFORM_REGISTRY_PN_IDENTIFIER=pn-<hash>   # whose Drive holds platform-registry.xlsx
 PLATFORM_OPERATOR_PN_IDS=pn-<hash>,pn-<hash> # who sees Platform nav + /api/developer/platform/*
 ```
 
-The registry pN must connect Google Drive to the API (same as any user — dashboard Storage settings).
+The registry (applications, approved OAuth clients, commercial licenses) lives in API Postgres (`platform_applications`, `oauth_clients`, `platform_commercial_licenses`). No operator cloud or Drive token is involved.
 
 ## Operator workflow
 
 1. Sign in to [developers.parnoir.com](https://developers.parnoir.com) with an allowlisted pN.
 2. Open **Platform** in the nav.
-3. **Initialize Drive registry** (creates `_metadata/platform-registry.xlsx` on operator Drive).
-4. Review **Applications** → approve or reject integrator OAuth client requests.
-5. Issue **Commercial licenses** for integrators needing elevated API limits or `cloud:app` / ZKP scopes.
-6. **Sync to API cache** after changes (also runs every 5 minutes on the API).
+3. Review **Applications** → approve or reject integrator OAuth client requests.
+4. Issue **Commercial licenses** for integrators needing elevated API limits or `cloud:app` / ZKP scopes.
+
+Changes take effect immediately.
 
 ## Integrator workflow
 

@@ -6,12 +6,7 @@ import type { Application, Response, NextFunction } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware';
 import { requireDeveloperPortalClient } from './developerSelfServiceRoutes';
 import { isPlatformOperator, isPlatformRegistryConfigured } from './platformOperatorService';
-import { PlatformRegistryNotConfiguredError } from './platformRegistryContext';
 import { PlatformRegistryStorage } from './platformRegistryStorage';
-import {
-  PlatformRegistrySyncService,
-  getLastPlatformRegistrySyncResult
-} from './platformRegistrySyncService';
 import type {
   PlatformApplication,
   PlatformCommercialLicense,
@@ -19,7 +14,6 @@ import type {
 } from './platformRegistryTypes';
 import { appendAuditEvent } from './auditService';
 import { safeClientErrorMessage } from '../utils/safeError';
-import { getDatabasePool } from '../utils/database';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -53,35 +47,15 @@ export function registerPlatformRegistryRoutes(app: Application): void {
       if (!ownerPn) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'No pN identifier on session.' });
       }
-      if (!isPlatformRegistryConfigured()) {
-        return res.json({ applications: [] });
-      }
       const applications = await PlatformRegistryStorage.listApplications({
         ownerPnId: ownerPn.startsWith('pn-') ? ownerPn : `pn-${ownerPn}`
       });
       return res.json({ applications });
     } catch (error: unknown) {
-      if (error instanceof PlatformRegistryNotConfiguredError) {
-        return res.json({ applications: [] });
-      }
       console.error('[platform] applications/mine:', error);
       return res.status(500).json({
         error: 'server_error',
         error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to list applications'
-      });
-    }
-  });
-
-  app.post('/api/developer/platform/registry/initialize', ...opChain, async (_req: AuthenticatedRequest, res: Response) => {
-    try {
-      // Touch registry (creates empty portable doc or ensures Google sheet via first list)
-      await PlatformRegistryStorage.listApplications();
-      return res.json({ initialized: true, message: 'Platform registry ready on operator social cloud.' });
-    } catch (error: unknown) {
-      console.error('[platform] registry initialize:', error);
-      return res.status(500).json({
-        error: 'server_error',
-        error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to initialize registry'
       });
     }
   });
@@ -91,20 +65,10 @@ export function registerPlatformRegistryRoutes(app: Application): void {
       const applications = await PlatformRegistryStorage.listApplications();
       const clients = await PlatformRegistryStorage.listOAuthClients();
       const licenses = await PlatformRegistryStorage.listCommercialLicenses();
-      const pool = getDatabasePool();
-      const syncMeta = await pool.query(`SELECT * FROM platform_registry_sync_meta WHERE id = 1`);
-      const lastSync = getLastPlatformRegistrySyncResult();
       return res.json({
         pendingApplications: applications.filter((a) => a.status === 'pending').length,
         activeClients: clients.filter((c) => c.status === 'active').length,
-        activeLicenses: licenses.filter((l) => l.status === 'active').length,
-        lastSync: lastSync ?? (syncMeta.rows[0]
-          ? {
-              syncedAt: syncMeta.rows[0].last_sync_at,
-              oauthClientsUpserted: syncMeta.rows[0].oauth_clients_upserted,
-              licensesUpserted: syncMeta.rows[0].licenses_upserted
-            }
-          : null)
+        activeLicenses: licenses.filter((l) => l.status === 'active').length
       });
     } catch (error: unknown) {
       console.error('[platform] overview:', error);
@@ -173,8 +137,6 @@ export function registerPlatformRegistryRoutes(app: Application): void {
       };
       await PlatformRegistryStorage.upsertOAuthClient(clientRow);
 
-      const syncResult = await PlatformRegistrySyncService.syncFromDrive();
-
       await appendAuditEvent({
         eventType: 'oauth_client.application_approved',
         actorHint: 'platform_operator',
@@ -182,7 +144,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         metadata: { clientId: app.clientId, applicationId: app.applicationId, verified: verified === true }
       });
 
-      return res.json({ application: reviewedApp, client: clientRow, sync: syncResult });
+      return res.json({ application: reviewedApp, client: clientRow });
     } catch (error: unknown) {
       console.error('[platform] approve application:', error);
       return res.status(500).json({
@@ -248,8 +210,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         updatedAt: new Date().toISOString()
       };
       await PlatformRegistryStorage.upsertOAuthClient(updated);
-      const syncResult = await PlatformRegistrySyncService.syncFromDrive();
-      return res.json({ client: updated, sync: syncResult });
+      return res.json({ client: updated });
     } catch (error: unknown) {
       console.error('[platform] patch oauth-client:', error);
       return res.status(500).json({ error: 'server_error' });
@@ -296,14 +257,13 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         updatedAt: now
       };
       await PlatformRegistryStorage.upsertCommercialLicense(license);
-      const syncResult = await PlatformRegistrySyncService.syncFromDrive();
       await appendAuditEvent({
         eventType: 'platform_license.issued',
         actorHint: 'platform_operator',
         subjectPnIdentifier: license.granteePnId,
         metadata: { licenseId: license.licenseId }
       });
-      return res.status(201).json({ license, sync: syncResult });
+      return res.status(201).json({ license });
     } catch (error: unknown) {
       console.error('[platform] create license:', error);
       return res.status(500).json({ error: 'server_error' });
@@ -329,24 +289,10 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         updatedAt: new Date().toISOString()
       };
       await PlatformRegistryStorage.upsertCommercialLicense(updated);
-      const syncResult = await PlatformRegistrySyncService.syncFromDrive();
-      return res.json({ license: updated, sync: syncResult });
+      return res.json({ license: updated });
     } catch (error: unknown) {
       console.error('[platform] patch license:', error);
       return res.status(500).json({ error: 'server_error' });
-    }
-  });
-
-  app.post('/api/developer/platform/registry/sync', ...opChain, async (_req: AuthenticatedRequest, res: Response) => {
-    try {
-      const syncResult = await PlatformRegistrySyncService.syncFromDrive();
-      return res.json({ sync: syncResult });
-    } catch (error: unknown) {
-      console.error('[platform] manual sync:', error);
-      return res.status(500).json({
-        error: 'server_error',
-        error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Sync failed'
-      });
     }
   });
 }

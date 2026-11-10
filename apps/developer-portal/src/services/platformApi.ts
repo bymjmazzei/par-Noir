@@ -81,11 +81,3 @@ export async function patchPlatformOAuthClient(clientId: string, body: Record<st
     body: JSON.stringify(body)
   });
 }
-
-export async function initializePlatformRegistry() {
-  return platformFetch('/api/developer/platform/registry/initialize', { method: 'POST' });
-}
-
-export async function syncPlatformRegistry() {
-  return platformFetch('/api/developer/platform/registry/sync', { method: 'POST' });
-}

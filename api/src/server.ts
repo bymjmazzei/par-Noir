@@ -29,7 +29,6 @@ import { registerRecoveryRoutes } from './server/modules/recoveryRoutes';
 import { registerRecoveryFailsafeRoutes } from './server/modules/recoveryFailsafeRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerPlatformRegistryRoutes } from './server/modules/platformRegistryRoutes';
-import { PlatformRegistrySyncService } from './server/modules/platformRegistrySyncService';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerAgentRoutes } from './server/modules/agentRoutes';
 import { registerAgentConnectorRoutes } from './server/modules/agentConnectorOAuth';
@@ -964,13 +963,6 @@ class ProductionServer {
         })();
         (async () => {
           try {
-            PlatformRegistrySyncService.startPeriodicSync(5 * 60 * 1000);
-          } catch (e) {
-            console.warn('[PlatformRegistrySync] Could not schedule sync:', e);
-          }
-        })();
-        (async () => {
-          try {
             const { PublicNameService } = await import('./server/modules/publicNameService');
             const { ProtectedNameService } = await import('./server/modules/protectedNameService');
             PublicNameService.startExpirySweep();
@@ -1006,12 +998,6 @@ class ProductionServer {
     } catch (error) {
       console.warn('Failed to stop public name timers:', error);
     }
-    try {
-      PlatformRegistrySyncService.stopPeriodicSync();
-    } catch (error) {
-      console.warn('Failed to stop platform registry sync:', error);
-    }
-
     // Close database connections
     try {
       const { closeDatabasePool } = await import('./server/utils/database');

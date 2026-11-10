@@ -1,330 +1,238 @@
 /**
- * Platform registry storage facade — Sheets on Google operator social cloud,
- * JSON blob on portable operator social cloud.
+ * Platform registry: developer applications, OAuth clients and commercial
+ * licenses. Server-owned records, kept in Postgres.
  */
 
-import { METADATA_DIR } from '@par-noir/user-owned-storage';
-import { getPlatformRegistryPnIdentifier, isPlatformRegistryConfigured } from './platformOperatorService';
-import { getOwnerStorageContext } from './storage/ownerStorageContext';
-import { isPortableStorageProvider } from './storage/storageProviderUtils';
-import { readPortableJsonBlob, writePortableJsonBlob } from './storage/portableJsonBlob';
-import { PlatformRegistrySheetsService } from './platformRegistrySheetsService';
-import { getUserDriveMetadataContext } from './driveMetadataHelper';
-import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { normalizePermissionManifest } from '@par-noir/standard-data-points';
+import { getDatabasePool } from '../utils/database';
+import { isFirstPartyClient } from './integratorStoragePaths';
+import { getThirdPartyIndexersService } from './thirdPartyIndexersService';
 import type {
+  OAuthClientRegistryStatus,
   PlatformApplication,
   PlatformCommercialLicense,
   PlatformOAuthClientRow
 } from './platformRegistryTypes';
 
-const REGISTRY_REL = `${METADATA_DIR}/platform-registry.json`;
-
-type PortableRegistryDoc = {
-  applications: PlatformApplication[];
-  oauthClients: PlatformOAuthClientRow[];
-  commercialLicenses: PlatformCommercialLicense[];
-  updatedAt?: string;
-};
-
-function emptyDoc(): PortableRegistryDoc {
-  return { applications: [], oauthClients: [], commercialLicenses: [], updatedAt: new Date().toISOString() };
+function normalizePn(pn: string): string {
+  return pn.startsWith('pn-') ? pn : `pn-${pn}`;
 }
 
-export type PlatformRegistryContext =
-  | {
-      kind: 'google_drive';
-      accessToken: string;
-      metadataFolderId: string;
-      normalizedPnIdentifier: string;
-      accountId?: string;
-    }
-  | {
-      kind: 'portable';
-      pnIdentifier: string;
-      accountId?: string;
-    };
-
-export class PlatformRegistryNotConfiguredError extends Error {
-  constructor(
-    message = 'Platform registry is not configured (PLATFORM_REGISTRY_PN_IDENTIFIER and operator storage connection required)'
-  ) {
-    super(message);
-    this.name = 'PlatformRegistryNotConfiguredError';
-  }
+function iso(value: unknown): string | undefined {
+  if (!value) return undefined;
+  return value instanceof Date ? value.toISOString() : String(value);
 }
 
-export async function getPlatformRegistryContext(): Promise<PlatformRegistryContext | null> {
-  if (!isPlatformRegistryConfigured()) return null;
-  const registryPn = getPlatformRegistryPnIdentifier();
-  if (!registryPn) return null;
+function jsonArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : [];
+}
 
-  // Portable operator cloud — no Google AT required.
-  if (await isPortableStorageProvider(registryPn)) {
-    return { kind: 'portable', pnIdentifier: registryPn, accountId: undefined };
-  }
-
-  // Google path: require dedicated operator AT (env). Never soft-null via bare layout probe.
-  const operatorAt = String(process.env.PLATFORM_REGISTRY_CLOUD_ACCESS_TOKEN || '').trim();
-  if (!operatorAt) {
-    safeLogger.warn('[PlatformRegistry] Missing PLATFORM_REGISTRY_CLOUD_ACCESS_TOKEN under custody', {
-      reason: 'cloud_token_required',
-      pnIdHash: hashIdentifier(registryPn),
-    });
-    return null;
-  }
-
-  const drive = await getUserDriveMetadataContext(registryPn, { accessToken: operatorAt });
-  if (!drive) {
-    const owner = await getOwnerStorageContext(registryPn, { accessToken: operatorAt });
-    if (owner?.kind === 'portable') {
-      return { kind: 'portable', pnIdentifier: owner.pnIdentifier, accountId: owner.accountId };
-    }
-    return null;
-  }
+function clientFromRow(row: Record<string, any>): PlatformOAuthClientRow {
+  const status: OAuthClientRegistryStatus =
+    row.registry_status === 'suspended' || row.registry_status === 'revoked'
+      ? row.registry_status
+      : row.is_active
+        ? 'active'
+        : 'suspended';
   return {
-    kind: 'google_drive',
-    accessToken: drive.accessToken,
-    metadataFolderId: drive.metadataFolderId,
-    normalizedPnIdentifier: drive.normalizedPnIdentifier,
-    accountId: drive.accountId
+    clientId: row.client_id,
+    name: row.name,
+    description: row.description ?? undefined,
+    redirectUris: jsonArray(row.redirect_uris),
+    scopes: jsonArray(row.scopes),
+    permissionManifest: row.permission_manifest ?? undefined,
+    ownerPnId: row.owner_pn_id ?? '',
+    status,
+    verified: Boolean(row.verified),
+    commercialLicenseId: row.commercial_license_id ?? undefined,
+    approvedAt: iso(row.approved_at),
+    updatedAt: iso(row.updated_at) ?? new Date().toISOString(),
+    notes: row.registry_notes ?? undefined
   };
 }
 
-export async function requirePlatformRegistryContext(): Promise<PlatformRegistryContext> {
-  const ctx = await getPlatformRegistryContext();
-  if (!ctx) throw new PlatformRegistryNotConfiguredError();
-  return ctx;
+function licenseFromRow(row: Record<string, any>): PlatformCommercialLicense {
+  return {
+    licenseId: row.license_id,
+    granteePnId: row.grantee_pn_id,
+    granteeClientId: row.grantee_client_id ?? undefined,
+    tier: row.tier === 'free' ? 'free' : 'commercial',
+    type: row.license_type === 'perpetual' ? 'perpetual' : 'annual',
+    scopes: jsonArray(row.scopes),
+    rateLimits: { requestsPerMinute: Number(row.requests_per_minute), requestsPerDay: Number(row.requests_per_day) },
+    status: row.status,
+    issuedAt: iso(row.issued_at) ?? new Date().toISOString(),
+    expiresAt: iso(row.expires_at),
+    notes: row.notes ?? undefined,
+    updatedAt: iso(row.updated_at) ?? new Date().toISOString()
+  };
 }
 
-/** @deprecated use requirePlatformRegistryContext */
-export async function requirePlatformRegistryDriveContext() {
-  const ctx = await requirePlatformRegistryContext();
-  if (ctx.kind !== 'google_drive') {
-    // Callers that still expect Drive fields should migrate to PlatformRegistryStorage
-    throw new PlatformRegistryNotConfiguredError(
-      'Operator registry is on portable social cloud; use PlatformRegistryStorage'
-    );
-  }
-  return ctx;
-}
-
-async function readPortable(ctx: Extract<PlatformRegistryContext, { kind: 'portable' }>): Promise<PortableRegistryDoc> {
-  const doc = await readPortableJsonBlob<PortableRegistryDoc>(ctx.pnIdentifier, REGISTRY_REL, ctx.accountId);
-  return doc ?? emptyDoc();
-}
-
-async function writePortable(
-  ctx: Extract<PlatformRegistryContext, { kind: 'portable' }>,
-  doc: PortableRegistryDoc
-): Promise<void> {
-  await writePortableJsonBlob(
-    ctx.pnIdentifier,
-    REGISTRY_REL,
-    { ...doc, updatedAt: new Date().toISOString() },
-    ctx.accountId
+async function saveApplication(application: PlatformApplication): Promise<void> {
+  await getDatabasePool().query(
+    `INSERT INTO platform_applications (application_id, client_id, owner_pn_id, status, application, submitted_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, NOW())
+     ON CONFLICT (application_id) DO UPDATE SET
+       client_id = EXCLUDED.client_id,
+       owner_pn_id = EXCLUDED.owner_pn_id,
+       status = EXCLUDED.status,
+       application = EXCLUDED.application,
+       updated_at = NOW()`,
+    [
+      application.applicationId,
+      application.clientId,
+      normalizePn(application.ownerPnId),
+      application.status,
+      JSON.stringify(application),
+      application.submittedAt || new Date().toISOString()
+    ]
   );
 }
 
-function driveToken(accessToken: string) {
-  return { access_token: accessToken };
-}
-
-async function ensureGoogleSheet(ctx: Extract<PlatformRegistryContext, { kind: 'google_drive' }>): Promise<string> {
-  const token = driveToken(ctx.accessToken);
-  try {
-    return await PlatformRegistrySheetsService.getSpreadsheetId(
-      token,
-      ctx.metadataFolderId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
-  } catch {
-    await PlatformRegistrySheetsService.createPlatformRegistrySheet(
-      token,
-      ctx.metadataFolderId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
-    return PlatformRegistrySheetsService.getSpreadsheetId(
-      token,
-      ctx.metadataFolderId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
-  }
-}
-
 export class PlatformRegistryStorage {
-  static async listApplications(
-    filter?: { ownerPnId?: string }
-  ): Promise<PlatformApplication[]> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      let apps = (await readPortable(ctx)).applications;
-      if (filter?.ownerPnId) {
-        const o = filter.ownerPnId.startsWith('pn-') ? filter.ownerPnId : `pn-${filter.ownerPnId}`;
-        apps = apps.filter((a) => a.ownerPnId === o);
-      }
-      return apps;
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    return PlatformRegistrySheetsService.listApplications(
-      driveToken(ctx.accessToken),
-      sheetId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId,
-      filter
-    );
+  static async listApplications(filter?: { ownerPnId?: string }): Promise<PlatformApplication[]> {
+    const pool = getDatabasePool();
+    const result = filter?.ownerPnId
+      ? await pool.query(
+          `SELECT application FROM platform_applications WHERE owner_pn_id = $1 ORDER BY submitted_at DESC`,
+          [normalizePn(filter.ownerPnId)]
+        )
+      : await pool.query(`SELECT application FROM platform_applications ORDER BY submitted_at DESC`);
+    return result.rows.map((r) => r.application as PlatformApplication);
   }
 
   static async appendApplication(application: PlatformApplication): Promise<void> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      const doc = await readPortable(ctx);
-      doc.applications.push(application);
-      await writePortable(ctx, doc);
-      return;
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    await PlatformRegistrySheetsService.appendApplication(
-      driveToken(ctx.accessToken),
-      sheetId,
-      application,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
+    await saveApplication(application);
   }
 
-  static async updateApplication(
-    applicationId: string,
-    patch: Partial<PlatformApplication>
-  ): Promise<void> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      const doc = await readPortable(ctx);
-      const i = doc.applications.findIndex((a) => a.applicationId === applicationId);
-      if (i < 0) throw new Error('Application not found');
-      doc.applications[i] = { ...doc.applications[i], ...patch };
-      await writePortable(ctx, doc);
-      return;
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    const existing = await PlatformRegistrySheetsService.getApplicationById(
-      driveToken(ctx.accessToken),
-      sheetId,
-      applicationId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
+  static async updateApplication(applicationId: string, patch: Partial<PlatformApplication>): Promise<void> {
+    const existing = await this.getApplicationById(applicationId);
     if (!existing) throw new Error('Application not found');
-    await PlatformRegistrySheetsService.updateApplication(
-      driveToken(ctx.accessToken),
-      sheetId,
-      { ...existing, ...patch },
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
+    await saveApplication({ ...existing, ...patch, applicationId });
   }
 
   static async getApplicationById(applicationId: string): Promise<PlatformApplication | null> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      return (await readPortable(ctx)).applications.find((a) => a.applicationId === applicationId) ?? null;
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    return PlatformRegistrySheetsService.getApplicationById(
-      driveToken(ctx.accessToken),
-      sheetId,
-      applicationId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
+    const result = await getDatabasePool().query(
+      `SELECT application FROM platform_applications WHERE application_id = $1`,
+      [applicationId]
     );
+    return (result.rows[0]?.application as PlatformApplication | undefined) ?? null;
   }
 
   static async clientIdTaken(clientId: string): Promise<boolean> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      const doc = await readPortable(ctx);
-      return (
-        doc.applications.some((a) => a.clientId === clientId) ||
-        doc.oauthClients.some((c) => c.clientId === clientId)
-      );
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    return PlatformRegistrySheetsService.clientIdTaken(
-      driveToken(ctx.accessToken),
-      sheetId,
-      clientId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
+    const result = await getDatabasePool().query(
+      `SELECT 1 FROM oauth_clients WHERE client_id = $1
+       UNION ALL SELECT 1 FROM platform_applications WHERE client_id = $1
+       LIMIT 1`,
+      [clientId]
     );
+    return result.rows.length > 0;
   }
 
+  /** Clients the operator approved; seeded first-party clients are not listed. */
   static async listOAuthClients(): Promise<PlatformOAuthClientRow[]> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      return (await readPortable(ctx)).oauthClients;
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    return PlatformRegistrySheetsService.listOAuthClients(
-      driveToken(ctx.accessToken),
-      sheetId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
+    const result = await getDatabasePool().query(
+      `SELECT * FROM oauth_clients WHERE registry_source = 'registry' ORDER BY updated_at DESC`
     );
+    return result.rows.map(clientFromRow);
   }
 
   static async upsertOAuthClient(row: PlatformOAuthClientRow): Promise<void> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      const doc = await readPortable(ctx);
-      const i = doc.oauthClients.findIndex((c) => c.clientId === row.clientId);
-      if (i >= 0) doc.oauthClients[i] = row;
-      else doc.oauthClients.push(row);
-      await writePortable(ctx, doc);
-      return;
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    await PlatformRegistrySheetsService.upsertOAuthClient(
-      driveToken(ctx.accessToken),
-      sheetId,
-      row,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
+    const isActive = row.status === 'active';
+    const permissionManifest = normalizePermissionManifest(row.permissionManifest, row.scopes);
+    await getDatabasePool().query(
+      `INSERT INTO oauth_clients (
+        client_id, name, description, redirect_uris, scopes, permission_manifest, is_active, owner_pn_id,
+        verified, commercial_license_id, registry_source, registry_status, approved_at, registry_notes, updated_at
+      ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8, $9, $10, 'registry', $11, $12, $13, NOW())
+      ON CONFLICT (client_id) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        redirect_uris = EXCLUDED.redirect_uris,
+        scopes = EXCLUDED.scopes,
+        permission_manifest = EXCLUDED.permission_manifest,
+        is_active = CASE
+          WHEN oauth_clients.registry_source = 'seed' THEN oauth_clients.is_active
+          ELSE EXCLUDED.is_active
+        END,
+        owner_pn_id = EXCLUDED.owner_pn_id,
+        verified = EXCLUDED.verified,
+        commercial_license_id = EXCLUDED.commercial_license_id,
+        registry_source = CASE
+          WHEN oauth_clients.registry_source = 'seed' THEN 'seed'
+          ELSE 'registry'
+        END,
+        registry_status = EXCLUDED.registry_status,
+        approved_at = COALESCE(EXCLUDED.approved_at, oauth_clients.approved_at),
+        registry_notes = EXCLUDED.registry_notes,
+        updated_at = NOW()`,
+      [
+        row.clientId,
+        row.name,
+        row.description ?? null,
+        JSON.stringify(row.redirectUris),
+        JSON.stringify(row.scopes),
+        JSON.stringify(permissionManifest),
+        isActive,
+        row.ownerPnId || null,
+        row.verified,
+        row.commercialLicenseId ?? null,
+        row.status,
+        row.approvedAt ?? null,
+        row.notes ?? null
+      ]
     );
+    if (isActive && !isFirstPartyClient(row.clientId)) {
+      await getThirdPartyIndexersService().upsertIndexerFromOAuthClient({
+        clientId: row.clientId,
+        name: row.name,
+        description: row.description,
+        status: 'active'
+      });
+    }
   }
 
   static async listCommercialLicenses(): Promise<PlatformCommercialLicense[]> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      return (await readPortable(ctx)).commercialLicenses;
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    return PlatformRegistrySheetsService.listCommercialLicenses(
-      driveToken(ctx.accessToken),
-      sheetId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
+    const result = await getDatabasePool().query(
+      `SELECT * FROM platform_commercial_licenses ORDER BY updated_at DESC`
     );
+    return result.rows.map(licenseFromRow);
   }
 
-  static async upsertCommercialLicense(row: PlatformCommercialLicense): Promise<void> {
-    const ctx = await requirePlatformRegistryContext();
-    if (ctx.kind === 'portable') {
-      const doc = await readPortable(ctx);
-      const i = doc.commercialLicenses.findIndex((l) => l.licenseId === row.licenseId);
-      if (i >= 0) doc.commercialLicenses[i] = row;
-      else doc.commercialLicenses.push(row);
-      await writePortable(ctx, doc);
-      return;
-    }
-    const sheetId = await ensureGoogleSheet(ctx);
-    await PlatformRegistrySheetsService.upsertCommercialLicense(
-      driveToken(ctx.accessToken),
-      sheetId,
-      row,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
+  static async upsertCommercialLicense(lic: PlatformCommercialLicense): Promise<void> {
+    await getDatabasePool().query(
+      `INSERT INTO platform_commercial_licenses (
+        license_id, grantee_pn_id, grantee_client_id, tier, license_type, scopes,
+        requests_per_minute, requests_per_day, status, issued_at, expires_at, notes, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)
+      ON CONFLICT (license_id) DO UPDATE SET
+        grantee_pn_id = EXCLUDED.grantee_pn_id,
+        grantee_client_id = EXCLUDED.grantee_client_id,
+        tier = EXCLUDED.tier,
+        license_type = EXCLUDED.license_type,
+        scopes = EXCLUDED.scopes,
+        requests_per_minute = EXCLUDED.requests_per_minute,
+        requests_per_day = EXCLUDED.requests_per_day,
+        status = EXCLUDED.status,
+        issued_at = EXCLUDED.issued_at,
+        expires_at = EXCLUDED.expires_at,
+        notes = EXCLUDED.notes,
+        updated_at = EXCLUDED.updated_at`,
+      [
+        lic.licenseId,
+        lic.granteePnId,
+        lic.granteeClientId ?? null,
+        lic.tier,
+        lic.type,
+        JSON.stringify(lic.scopes),
+        lic.rateLimits.requestsPerMinute,
+        lic.rateLimits.requestsPerDay,
+        lic.status,
+        lic.issuedAt || new Date().toISOString(),
+        lic.expiresAt ?? null,
+        lic.notes ?? null,
+        lic.updatedAt || new Date().toISOString()
+      ]
     );
   }
 }
