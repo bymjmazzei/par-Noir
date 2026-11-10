@@ -1,13 +1,8 @@
 /**
- * Prism API client
- * Queue fetch and vote submission
- *
- * Drive-backed calls (preview) go through prismOwnerFetch: mint cloud AT and
- * fail closed. Queue / vote / admin / reputation / apply are Postgres-backed
- * and use bearer-only headers.
+ * Prism API client. Every call is bearer-only; previews come from the public
+ * feed preview, never an owner's cloud.
  */
 
-import { omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 
 /** Last unlocked pN for prism API calls that omit pnIdentifier. */
@@ -25,30 +20,6 @@ function bearerHeaders(accessToken: string): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   return headers;
-}
-
-function toUrl(pathOrUrl: string): string {
-  return /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${API_ENDPOINT}${pathOrUrl}`;
-}
-
-/**
- * Prism request. Bearer only. Provider access tokens stay on the device.
- */
-export async function prismOwnerFetch(
-  pathOrUrl: string,
-  accessToken: string,
-  init?: RequestInit & { pnIdentifier?: string | null }
-): Promise<Response> {
-  const { pnIdentifier: _pn, headers: initHeaders, ...rest } = init ?? {};
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  return fetch(toUrl(pathOrUrl), {
-    ...rest,
-    headers: {
-      ...headers,
-      ...omitCloudAccessHeader(initHeaders as Record<string, string> | undefined)
-    }
-  });
 }
 
 export interface PrismQueueItem {
@@ -166,28 +137,16 @@ export async function submitRayApply(
   return data;
 }
 
+/** The public feed preview of a queued file; Rays never read the owner's cloud. */
 export async function fetchPreviewBlobUrl(
   ownerPn: string,
   fileId: string,
-  accessToken: string,
-  thumbnail = true,
-  pnIdentifier?: string | null
+  accessToken: string
 ): Promise<string> {
-  void ownerPn;
-  void thumbnail;
-  const { deviceDriveCall, getCloudAccessTokenFromSession } = await import(
-    '@par-noir/device-cloud-credentials'
-  );
-  const googleToken = getCloudAccessTokenFromSession(pnIdentifier);
-  if (!googleToken) {
-    throw new Error('cloud_on_device');
-  }
-  const res = await deviceDriveCall(
-    'GET',
-    `/api/drive/files/${encodeURIComponent(fileId)}?download=true`,
-    undefined,
-    { accessToken: googleToken }
-  );
+  const qs = new URLSearchParams({ ownerPn, fileId });
+  const res = await fetch(`${API_ENDPOINT}/api/prism/preview?${qs}`, {
+    headers: bearerHeaders(accessToken)
+  });
   if (!res.ok) throw new Error('Failed to load preview');
   const blob = await res.blob();
   return URL.createObjectURL(blob);

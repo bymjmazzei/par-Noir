@@ -951,6 +951,10 @@ export async function initializeDatabase(): Promise<void> {
       ALTER TABLE prism_review_queue
       ADD COLUMN IF NOT EXISTS report_type VARCHAR(50)
     `);
+    await db.query(`
+      ALTER TABLE prism_review_queue
+      ADD COLUMN IF NOT EXISTS reported_url TEXT
+    `);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS prism_votes (

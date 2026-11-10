@@ -45,7 +45,6 @@ const isPrismAdmin = jest.fn(() => false);
 const isBootstrapMode = jest.fn(() => false);
 const executeTakedown = jest.fn(async () => ({ ok: true }));
 const markContentProhibited = jest.fn(async () => undefined);
-const recordPrismEntry = jest.fn(async () => undefined);
 
 jest.mock('../middleware/authMiddleware', () => ({
   getBearerTokenPayload: () =>
@@ -68,9 +67,6 @@ jest.mock('./aggregatorMetadataServiceDB', () => ({
   },
 }));
 
-jest.mock('./prismLedgerService', () => ({
-  recordPrismEntry: (...args: unknown[]) => recordPrismEntry(...args),
-}));
 
 jest.mock('./prismAdminService', () => ({
   isPrismAdmin: (...args: unknown[]) => isPrismAdmin(...args),
@@ -90,16 +86,9 @@ jest.mock('./publishSafetyGate', () => ({
   markContentProhibited: (...args: unknown[]) => markContentProhibited(...args),
 }));
 
-jest.mock('./ownerDriveToken', () => ({
-  extractCloudAccessToken: () => '',
-  resolveOwnerDriveToken: jest.fn(),
-  respondDriveTokenError: () => false,
-}));
-
-jest.mock('./googleDriveProxy', () => ({
-  googleDriveProxyService: {
-    downloadFile: jest.fn(),
-  },
+const loadModerationPreview = jest.fn();
+jest.mock('./moderationPreview', () => ({
+  loadModerationPreview: (...args: unknown[]) => loadModerationPreview(...args),
 }));
 
 import { setupPrismRoutes } from './prismRoutes';
@@ -327,10 +316,21 @@ describe('Prism workflows and routes (headless)', () => {
       expect(res.status).toBe(400);
     });
 
-    it('409 without cloud access token', async () => {
-      const res = await request(app).get('/api/prism/preview?ownerPn=other-pn&fileId=f1');
-      expect(res.status).toBe(409);
-      expect(res.body.error).toBe('cloud_token_required');
+    it('serves the public feed preview bytes', async () => {
+      loadModerationPreview.mockResolvedValueOnce({ kind: 'image', buffer: Buffer.from('jpg'), mimeType: 'image/jpeg' });
+      const res = await request(app).get('/api/prism/preview?ownerPn=pn-owner-pn&fileId=f1');
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('image/jpeg');
+      expect(loadModerationPreview).toHaveBeenCalledWith(expect.objectContaining({ name: 'demo.mp4' }));
+    });
+
+    it('404 when the file belongs to someone else or has no preview', async () => {
+      const other = await request(app).get('/api/prism/preview?ownerPn=other-pn&fileId=f1');
+      expect(other.status).toBe(404);
+      loadModerationPreview.mockResolvedValueOnce({ kind: 'audio' });
+      const audio = await request(app).get('/api/prism/preview?ownerPn=owner-pn&fileId=f1');
+      expect(audio.status).toBe(404);
+      expect(audio.body).toMatchObject({ error: 'no_preview', kind: 'audio' });
     });
   });
 

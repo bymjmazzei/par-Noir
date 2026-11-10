@@ -1,17 +1,7 @@
 /**
- * Prism API client unit tests (hermetic; fetch + cloud headers mocked).
+ * Prism API client unit tests (hermetic; fetch mocked).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('@par-noir/device-cloud-credentials', () => ({
-  omitCloudAccessHeader: (headers?: Record<string, string> | null) => {
-    if (!headers) return {};
-    const out = { ...headers };
-    delete out['X-PN-Cloud-Access-Token'];
-    delete out['x-pn-cloud-access-token'];
-    return out;
-  },
-}));
 
 vi.mock('../config/api', () => ({
   API_ENDPOINT: 'https://api.test.parnoir',
@@ -20,10 +10,10 @@ vi.mock('../config/api', () => ({
 import {
   fetchAdminCheck,
   fetchAdminStats,
+  fetchPreviewBlobUrl,
   fetchQueue,
   fetchReputation,
   getPrismPnIdentifier,
-  prismOwnerFetch,
   seedDemoQueue,
   setPrismPnIdentifier,
   submitRayApply,
@@ -143,18 +133,15 @@ describe('prismApi', () => {
     });
   });
 
-  describe('prismOwnerFetch', () => {
-    it('sends the bearer and drops a provider access token', async () => {
-      setPrismPnIdentifier('pn-owner');
-      fetchMock.mockResolvedValue(new Response('ok', { status: 200 }));
-      const res = await prismOwnerFetch('/api/prism/preview?fileId=1', 'tok', {
-        pnIdentifier: 'pn-owner',
-        headers: { 'X-PN-Cloud-Access-Token': 'ga-token' },
-      });
-      expect(res.status).toBe(200);
-      const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
-      expect(init.headers.Authorization).toBe('Bearer tok');
-      expect(init.headers['X-PN-Cloud-Access-Token']).toBeUndefined();
+  describe('fetchPreviewBlobUrl', () => {
+    it('reads the public preview from the API with the bearer only', async () => {
+      fetchMock.mockResolvedValue({ ok: true, blob: async () => new Blob(['x']) });
+      vi.stubGlobal('URL', { ...URL, createObjectURL: () => 'blob:preview' });
+      await expect(fetchPreviewBlobUrl('pn-owner', 'f1', 'tok')).resolves.toBe('blob:preview');
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.test.parnoir/api/prism/preview?ownerPn=pn-owner&fileId=f1',
+        expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer tok' }) })
+      );
     });
   });
 });

@@ -33,9 +33,6 @@ jest.mock('./aggregatorMetadataServiceDB', () => ({
   },
 }));
 
-jest.mock('./prismLedgerService', () => ({
-  recordPrismEntry: jest.fn(async () => undefined),
-}));
 
 jest.mock('./prismAdminService', () => ({
   isPrismAdmin: () => false,

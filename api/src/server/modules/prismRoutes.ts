@@ -49,17 +49,6 @@ export function setupPrismRoutes(app: any): void {
             ? { reportedUrl: reason.trim().slice(0, 2048) }
             : {}),
         });
-        try {
-          const { recordPrismEntry } = await import('./prismLedgerService');
-          await recordPrismEntry(payload.pnIdentifier, {
-            user_pn_identifier: payload.pnIdentifier,
-            activity_type: 'report',
-            target_file_id: fileId,
-            target_owner_pn_identifier: ownerPn
-          });
-        } catch (ledgerErr) {
-          console.warn('[Prism] Ledger write failed:', ledgerErr);
-        }
       }
       return res.json({ success: true });
     } catch (err: any) {
@@ -123,18 +112,6 @@ export function setupPrismRoutes(app: any): void {
 
       const result = await submitVote(queueItemId, payload.pnIdentifier, vote);
       const item = await getQueueItemById(queueItemId);
-      try {
-        const { recordPrismEntry } = await import('./prismLedgerService');
-        await recordPrismEntry(payload.pnIdentifier, {
-          user_pn_identifier: payload.pnIdentifier,
-          activity_type: 'ray_vote',
-          target_file_id: item?.file_id,
-          vote,
-          metadata: JSON.stringify({ queueItemId, resolved: result.resolved, status: result.status })
-        });
-      } catch (ledgerErr) {
-        console.warn('[Prism] Vote ledger write failed:', ledgerErr);
-      }
       if (result.resolved && result.status === 'denied' && item) {
         const { executeTakedown } = await import('./dmcaTakedownService');
         const isUnsafeLink = item.report_type === 'unsafe_link';
@@ -167,8 +144,7 @@ export function setupPrismRoutes(app: any): void {
 
   /**
    * GET /api/prism/preview
-   * Proxy content/thumbnail for review (ownerPn, fileId, thumbnail=true)
-   * Requires Ray auth
+   * The public feed preview Rays review (ownerPn, fileId). Never the owner's cloud original.
    */
   app.get('/api/prism/preview', async (req: Request, res: Response) => {
     try {
@@ -179,16 +155,24 @@ export function setupPrismRoutes(app: any): void {
 
       const ownerPn = req.query.ownerPn as string;
       const fileId = req.query.fileId as string;
-      const thumbnail = req.query.thumbnail === 'true';
-
       if (!ownerPn || !fileId) {
         return res.status(400).json({ error: 'ownerPn and fileId required' });
       }
 
-      void thumbnail;
-      const { respondCloudOnDevice } = await import('./deviceCloudResult');
-      respondCloudOnDevice(res);
-      return;
+      const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+      const entry = await AggregatorMetadataServiceDB.getInstance().getFileMetadata(fileId);
+      const bare = (pn: string) => pn.replace(/^pn-/, '');
+      if (!entry || bare(entry.pnIdentifier || '') !== bare(ownerPn)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      const { loadModerationPreview } = await import('./moderationPreview');
+      const preview = await loadModerationPreview(entry.metadata as Parameters<typeof loadModerationPreview>[0]);
+      if (preview.kind !== 'image' && preview.kind !== 'video') {
+        return res.status(404).json({ error: 'no_preview', kind: preview.kind });
+      }
+      res.setHeader('Content-Type', preview.mimeType);
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.send(preview.buffer);
     } catch (err: any) {
       console.error('[Prism] Preview error:', err);
       return res.status(500).json({ error: err?.message || 'Failed to fetch preview' });

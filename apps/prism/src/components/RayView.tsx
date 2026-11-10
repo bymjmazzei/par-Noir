@@ -47,12 +47,7 @@ export function RayView() {
     const item = items[index];
     setPreviewFailed(false);
     let url: string | null = null;
-    fetchPreviewBlobUrl(
-      item.owner_pn_identifier,
-      item.thumbnailFileId || item.file_id,
-      session.accessToken,
-      true
-    )
+    fetchPreviewBlobUrl(item.owner_pn_identifier, item.file_id, session.accessToken)
       .then((u) => {
         setPreviewUrl(u);
         setPreviewFailed(false);

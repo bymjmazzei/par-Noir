@@ -27,6 +27,7 @@ export interface PrismQueueItem {
   updated_at: string;
   min_required_reputation?: number | null;
   report_type?: string | null;
+  reported_url?: string | null;
 }
 
 export interface AddToQueueParams {
@@ -46,31 +47,12 @@ export async function addToPrismQueue(params: AddToQueueParams): Promise<string>
   const db = getDatabasePool();
   const { fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier, reportType, reportedUrl } = params;
   const result = await db.query(
-    `INSERT INTO prism_review_queue (file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, report_type)
-     VALUES ($1, $2, $3, $4, 'pending', $5)
+    `INSERT INTO prism_review_queue (file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, report_type, reported_url)
+     VALUES ($1, $2, $3, $4, 'pending', $5, $6)
      RETURNING id`,
-    [fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier ?? null, reportType ?? null]
+    [fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier ?? null, reportType ?? null, reportedUrl ?? null]
   );
-  const queueItemId = result.rows[0]?.id ?? '';
-  try {
-    const { recordPrismEntry } = await import('./prismLedgerService');
-    const ledgerPn = reporterPnIdentifier || ownerPnIdentifier;
-    await recordPrismEntry(ledgerPn, {
-      user_pn_identifier: ledgerPn,
-      activity_type: 'flagged',
-      target_file_id: fileId,
-      target_owner_pn_identifier: ownerPnIdentifier,
-      metadata: JSON.stringify({
-        flagSource,
-        queueItemId,
-        reportType: reportType ?? null,
-        ...(reportedUrl ? { reportedUrl } : {})
-      })
-    });
-  } catch (ledgerErr) {
-    console.warn('[Prism] Flag ledger write failed:', ledgerErr);
-  }
-  return queueItemId;
+  return result.rows[0]?.id ?? '';
 }
 
 /**
