@@ -46,7 +46,14 @@ describe('color picker', () => {
     const controls = src('components/PanelValueControls.tsx');
     expect(controls).not.toMatch(/ColorSliders/);
     expect(controls).not.toMatch(/max=\{360\}/);
-    expect(controls).toMatch(/export function ColorOpacityPicker[\s\S]*type="color"/);
+    const picker = controls.slice(
+      controls.indexOf('export function ColorOpacityPicker'),
+      controls.indexOf('const RANGE_CLASS')
+    );
+    expect(picker).toMatch(/<ColorBox\s+label="Color"/);
+    expect(picker).toMatch(/<ValueRow\s+label="Opacity"/);
+    expect(picker).not.toMatch(/type="range"/);
+    expect(src('components/LayerObjectToolbar.tsx')).toMatch(/import \{ ColorBox, ValueRow \} from '\.\/PanelValueControls'/);
     expect(src('components/ribbon/RibbonChrome.tsx')).toMatch(/<ColorOpacityPicker/);
   });
 });

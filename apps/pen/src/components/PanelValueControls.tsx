@@ -52,7 +52,7 @@ export function formatRgba(rgb: { r: number; g: number; b: number }, alpha: numb
   return `rgba(${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}, ${a})`;
 }
 
-/** Full color picker with a transparency slider directly under it. */
+/** Color row with a swatch, then an Opacity row whose slider opens on click. */
 export function ColorOpacityPicker({
   label,
   value,
@@ -62,39 +62,89 @@ export function ColorOpacityPicker({
   value: string;
   onChange: (next: string) => void;
 }) {
+  const [sliderOpen, setSliderOpen] = useState(false);
   const parsed = parseCssColor(value);
   const alpha = Math.round(parsed.a * 100);
   function emit(hex: string, nextAlpha: number) {
-    const rgb = parseCssColor(hex);
-    onChange(formatRgba(rgb, nextAlpha / 100));
+    onChange(formatRgba(parseCssColor(hex), nextAlpha / 100));
   }
   return (
-    <div className="space-y-2">
-      <label className="block text-[11px]">
-        <span className="mb-1 block font-semibold uppercase tracking-wide text-stone-400">{label}</span>
+    <div className="space-y-1">
+      <ColorBox
+        label="Color"
+        ariaLabel={`${label} color`}
+        value={value}
+        onChange={(hex) => emit(hex, alpha || 100)}
+      />
+      <ValueRow
+        label="Opacity"
+        ariaLabel={`${label} opacity`}
+        value={alpha}
+        min={0}
+        max={100}
+        display={`${alpha}%`}
+        open={sliderOpen}
+        onToggle={() => setSliderOpen((v) => !v)}
+        onChange={(next) => emit(colorToHex(value), next)}
+      />
+    </div>
+  );
+}
+
+const RANGE_CLASS =
+  'mt-1 h-1 w-full cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-1 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:bg-stone-500';
+
+/** Label on the left, value on the right; clicking the value opens a slider under the row. */
+export function ValueRow({
+  label,
+  ariaLabel,
+  value,
+  min,
+  max,
+  display,
+  open,
+  onToggle,
+  onChange
+}: {
+  label: string;
+  ariaLabel?: string;
+  value: number;
+  min: number;
+  max: number;
+  display: string;
+  open: boolean;
+  onToggle: () => void;
+  onChange: (next: number) => void;
+}) {
+  const span = max - min || 1;
+  const pct = Math.min(100, Math.max(0, ((value - min) / span) * 100));
+  const name = ariaLabel ?? label;
+  return (
+    <div>
+      <div className="flex h-5 items-center gap-1">
+        <span className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500">{label}</span>
+        <button
+          type="button"
+          aria-label={name}
+          aria-expanded={open}
+          className="text-[13px] tabular-nums text-stone-700"
+          onClick={onToggle}
+        >
+          {display}
+        </button>
+      </div>
+      {open ? (
         <input
-          aria-label={`${label} color`}
-          type="color"
-          value={colorToHex(value)}
-          onChange={(event) => emit(event.target.value, alpha || 100)}
-          className="h-8 w-full cursor-pointer rounded border border-stone-300 bg-white p-0.5"
-        />
-      </label>
-      <label className="block text-[11px]">
-        <span className="mb-1 flex justify-between text-stone-500">
-          <span>Opacity</span>
-          <span>{alpha}%</span>
-        </span>
-        <input
-          aria-label={`${label} opacity`}
+          aria-label={`${name} slider`}
           type="range"
-          min={0}
-          max={100}
-          value={alpha}
-          onChange={(event) => emit(colorToHex(value), Number(event.target.value))}
-          className="w-full"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={RANGE_CLASS}
+          style={{ background: `linear-gradient(to right, #a8a29e ${pct}%, #e7e5e4 ${pct}%)` }}
         />
-      </label>
+      ) : null}
     </div>
   );
 }

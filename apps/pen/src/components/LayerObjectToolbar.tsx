@@ -19,7 +19,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { ActionBindStrip } from './ActionBindStrip';
 import { LayerTitleControl } from './LayerTitleControl';
-import { ColorBox } from './PanelValueControls';
+import { ColorBox, ValueRow } from './PanelValueControls';
 import { GradientPicker } from './GradientPicker';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
@@ -83,68 +83,11 @@ const BLEND_MODES = [
   'exclusion'
 ] as const;
 
-const RANGE_CLASS =
-  'mt-1 h-1 w-full cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-1 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:bg-stone-500';
-
 function modeLabel(mode: string): string {
   return mode
     .split('-')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-}
-
-function ValueRow({
-  label,
-  ariaLabel,
-  value,
-  min,
-  max,
-  display,
-  open,
-  onToggle,
-  onChange
-}: {
-  label: string;
-  ariaLabel?: string;
-  value: number;
-  min: number;
-  max: number;
-  display: string;
-  open: boolean;
-  onToggle: () => void;
-  onChange: (next: number) => void;
-}) {
-  const span = max - min || 1;
-  const pct = Math.min(100, Math.max(0, ((value - min) / span) * 100));
-  const name = ariaLabel ?? label;
-  return (
-    <div>
-      <div className="flex h-5 items-center gap-1">
-        <span className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500">{label}</span>
-        <button
-          type="button"
-          aria-label={name}
-          aria-expanded={open}
-          className="text-[13px] tabular-nums text-stone-700"
-          onClick={onToggle}
-        >
-          {display}
-        </button>
-      </div>
-      {open ? (
-        <input
-          aria-label={`${name} slider`}
-          type="range"
-          min={min}
-          max={max}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className={RANGE_CLASS}
-          style={{ background: `linear-gradient(to right, #a8a29e ${pct}%, #e7e5e4 ${pct}%)` }}
-        />
-      ) : null}
-    </div>
-  );
 }
 
 function ChoiceLine({
