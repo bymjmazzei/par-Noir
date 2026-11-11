@@ -40,6 +40,13 @@ describe('compose bands include text', () => {
     expect(raster).toMatch(/<style>\$\{fontCss\}<\/style>/);
   });
 
+  it('SVG images load from data: urls; a blob: foreignObject SVG taints the canvas in Chrome', () => {
+    expect(raster).not.toMatch(/createObjectURL/);
+    expect(raster.match(/i\.src = /g)).toHaveLength(1);
+    expect(raster).toMatch(/i\.src = svgImageUrl\(svg\)/);
+    expect(raster).toMatch(/sanitizeCloneForRaster\(clone\);\s*await inlineBlobUrls\(clone\);/);
+  });
+
   it('a fallback to the safe still is logged', () => {
     const fnStart = encode.indexOf('async function rasterizeBand');
     const fn = encode.slice(fnStart, fnStart + 1200);

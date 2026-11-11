@@ -298,27 +298,31 @@ export async function snippetStillDataUrl(html: string, w: number, h: number): P
   parsed.documentElement.setAttribute('style', `width:${w}px;height:${h}px;`);
   const xhtml = new XMLSerializer().serializeToString(parsed.documentElement);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${xhtml}</foreignObject></svg>`;
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error('snippet_raster_failed'));
-      i.src = url;
-    });
-    const canvas = document.createElement('canvas');
-    canvas.width = w * 2;
-    canvas.height = h * 2;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('canvas_unavailable');
-    ctx.scale(2, 2);
-    ctx.drawImage(img, 0, 0, w, h);
-    const data = canvas.toDataURL('image/png');
-    snippetStills.set(key, data);
-    return data;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  const img = await loadSvgImage(svg, 'snippet_raster_failed');
+  const canvas = document.createElement('canvas');
+  canvas.width = w * 2;
+  canvas.height = h * 2;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas_unavailable');
+  ctx.scale(2, 2);
+  ctx.drawImage(img, 0, 0, w, h);
+  const data = canvas.toDataURL('image/png');
+  snippetStills.set(key, data);
+  return data;
+}
+
+/** A data: URL, not blob: — Chrome taints the canvas for a foreignObject SVG loaded from a blob URL. */
+export function svgImageUrl(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function loadSvgImage(svg: string, error: string): Promise<HTMLImageElement> {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error(error));
+    i.src = svgImageUrl(svg);
+  });
 }
 
 /** Sandboxed snippet frames cannot be serialized; swap each for a still of its markup. */
@@ -374,6 +378,53 @@ export function sanitizeCloneForRaster(clone: HTMLElement): void {
       node.style.backgroundImage = 'none';
     }
   });
+}
+
+const blobDataUrls = new Map<string, Promise<string>>();
+
+function blobUrlAsData(url: string): Promise<string> {
+  let job = blobDataUrls.get(url);
+  if (!job) {
+    job = fetch(url)
+      .then((res) => res.blob())
+      .then(blobToDataUrl)
+      .catch(() => {
+        blobDataUrls.delete(url);
+        return '';
+      });
+    blobDataUrls.set(url, job);
+  }
+  return job;
+}
+
+/** An SVG image cannot load blob: urls, so images and backgrounds carry their bytes as data: urls. */
+export async function inlineBlobUrls(clone: HTMLElement): Promise<void> {
+  const jobs: Promise<void>[] = [];
+  clone.querySelectorAll('img').forEach((img) => {
+    const src = img.getAttribute('src') || '';
+    if (!src.startsWith('blob:')) return;
+    jobs.push(
+      blobUrlAsData(src).then((data) => {
+        if (data) img.setAttribute('src', data);
+        else img.removeAttribute('src');
+      })
+    );
+  });
+  clone.querySelectorAll<HTMLElement>('*').forEach((node) => {
+    const bg = node.style?.backgroundImage || '';
+    const urls = [...bg.matchAll(/url\(\s*['"]?(blob:[^'")\s]+)['"]?\s*\)/g)].map((m) => m[1]!);
+    if (!urls.length) return;
+    jobs.push(
+      Promise.all(urls.map(blobUrlAsData)).then((datas) => {
+        if (datas.some((data) => !data)) {
+          node.style.backgroundImage = 'none';
+          return;
+        }
+        node.style.backgroundImage = urls.reduce((next, url, i) => next.split(url).join(datas[i]!), bg);
+      })
+    );
+  });
+  await Promise.all(jobs);
 }
 
 /** Layout px, unaffected by ancestor transforms; the clone is laid out from computed styles in these units. */
@@ -452,6 +503,7 @@ export async function rasterizeElementToPosterBlob(
   if (punchVideos) punchVideoHolesFromLive(el, clone);
   await inlineHtmlSnippets(el, clone);
   sanitizeCloneForRaster(clone);
+  await inlineBlobUrls(clone);
   // An SVG drawn as an image cannot fetch, so the font files ride inside it.
   const fontCss = await embeddedFontCss(el);
 
@@ -476,23 +528,12 @@ export async function rasterizeElementToPosterBlob(
     host.remove();
   }
 
-  const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(svgBlob);
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error('rasterize_image_failed'));
-      i.src = url;
-    });
-    if (!transparent) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, cw, ch);
-    }
-    ctx.drawImage(img, 0, 0);
-  } finally {
-    URL.revokeObjectURL(url);
+  const img = await loadSvgImage(svg, 'rasterize_image_failed');
+  if (!transparent) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cw, ch);
   }
+  ctx.drawImage(img, 0, 0);
 
   return new Promise<Blob>((resolve, reject) => {
     try {
@@ -508,20 +549,10 @@ export async function rasterizeElementToPosterBlob(
 }
 
 /** A CSS gradient drawn alone through SVG; it loads nothing external, so it cannot taint. */
-async function cssBackgroundImage(value: string, w: number, h: number): Promise<HTMLImageElement> {
+function cssBackgroundImage(value: string, w: number, h: number): Promise<HTMLImageElement> {
   const escaped = value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;background-image:${escaped}"></div></foreignObject></svg>`;
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-  try {
-    return await new Promise<HTMLImageElement>((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error('rasterize_gradient_failed'));
-      i.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  return loadSvgImage(svg, 'rasterize_gradient_failed');
 }
 
 /**
