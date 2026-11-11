@@ -651,6 +651,7 @@ export function patchLayerStyle(
       | 'backgroundVideo'
       | 'backgroundGradient'
       | 'textShadow'
+      | 'textVerticalAlign'
       | 'shadowColor'
       | 'shadowBlur'
       | 'shadowOffsetX'

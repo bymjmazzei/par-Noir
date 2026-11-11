@@ -63,7 +63,7 @@ import {
   PAGE_AUDIO_CHANNELS,
   PAGE_AUDIO_SAMPLE_RATE
 } from './mixPageAudio';
-import { setPlayheadSec } from './playheadStore';
+import { getPlayheadSec, setPlayheadSec } from './playheadStore';
 import { playbackMode } from './playbackMode';
 import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
 
@@ -434,6 +434,7 @@ export async function composePageStill(
   opts?: { mime?: 'image/jpeg' | 'image/png'; skipIds?: ReadonlySet<string> }
 ): Promise<Blob> {
   const mime = opts?.mime ?? 'image/jpeg';
+  const editorPlayhead = getPlayheadSec();
   const srcW = Math.max(2, Math.round(root.offsetWidth || 360));
   const srcH = Math.max(2, Math.round(root.offsetHeight || 640));
   const { cw, ch } = rasterOutputSize(srcW, srcH);
@@ -462,7 +463,7 @@ export async function composePageStill(
     return await canvasBlob(canvas, mime, mime === 'image/jpeg' ? 0.9 : undefined);
   } finally {
     sampler.dispose();
-    setPlayheadSec(0);
+    setPlayheadSec(editorPlayhead);
   }
 }
 
@@ -543,6 +544,7 @@ export async function encodePageVideo(
   }
 ): Promise<ComposePageVideoResult> {
   if (typeof VideoEncoder === 'undefined') throw new Error(VIDEO_ENCODER_UNAVAILABLE);
+  const editorPlayhead = getPlayheadSec();
   const tier = opts?.tier ?? getPublishTier(PEN_PUBLISH_PLAN_ID);
   const section = normalizeSection(page.section);
   const hasBackgroundVideo = pageHasBackgroundVideo(page.manifest);
@@ -681,7 +683,7 @@ export async function encodePageVideo(
     }
   } finally {
     sampler.dispose();
-    setPlayheadSec(0);
+    setPlayheadSec(editorPlayhead);
   }
 
   if (pending.length || !done.sd || !poster) {

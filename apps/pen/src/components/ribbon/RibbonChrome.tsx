@@ -1,10 +1,11 @@
 import {
-  useEffect,
+  useCallback,
   useRef,
   useState,
   type ReactNode
 } from 'react';
-import { ColorSliders, parseCssColor } from '../PanelValueControls';
+import { AnchoredPanel } from '../AnchoredPanel';
+import { ColorOpacityPicker, parseCssColor } from '../PanelValueControls';
 
 export function RibbonSep() {
   return <span className="pen-ribbon-sep" aria-hidden />;
@@ -50,15 +51,7 @@ export function RibbonMenu({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
 
   return (
     <div className="pen-ribbon-menu-wrap" ref={rootRef}>
@@ -75,11 +68,14 @@ export function RibbonMenu({
           ▾
         </span>
       </button>
-      {open && (
-        <div className={`pen-ribbon-menu-panel ${wide ? 'is-wide' : ''}`}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
+      <AnchoredPanel
+        open={open}
+        anchorRef={rootRef}
+        onClose={close}
+        className={`pen-ribbon-menu-panel ${wide ? 'is-wide' : ''}`}
+      >
+        {children(close)}
+      </AnchoredPanel>
     </div>
   );
 }
@@ -96,12 +92,14 @@ export function ColorAButton({
   title: string;
 }) {
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
   const parsed = parseCssColor(color);
   const safe = color && color !== 'transparent' ? color : mode === 'highlight' ? '#fef08a' : '#1c1917';
   const swatch = parsed.a > 0 ? safe : mode === 'highlight' ? '#fef08a' : '#1c1917';
 
   return (
-    <span className="relative inline-flex">
+    <span className="relative inline-flex" ref={anchorRef}>
       <button
         type="button"
         title={title}
@@ -117,11 +115,14 @@ export function ColorAButton({
       >
         <span className="pen-ribbon-a-glyph">A</span>
       </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-stone-200 bg-white p-2 shadow-lg">
-          <ColorSliders label={title} value={safe} onChange={onChange} />
-        </div>
-      ) : null}
+      <AnchoredPanel
+        open={open}
+        anchorRef={anchorRef}
+        onClose={close}
+        className="w-48 rounded-md border border-stone-200 bg-white p-2 shadow-lg"
+      >
+        <ColorOpacityPicker label={title} value={safe} onChange={onChange} />
+      </AnchoredPanel>
     </span>
   );
 }

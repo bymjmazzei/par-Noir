@@ -89,6 +89,23 @@ describe('PenLayerFace', () => {
     expect(rich.textContent).toBe('Vote');
   });
 
+  it('text sits at its vertical alignment in the box', () => {
+    const at = (textVerticalAlign?: PenPageLayer['textVerticalAlign']) => {
+      const el = render({
+        layer: { ...box, id: 'va', kind: 'text', textDoc: styledDoc, textVerticalAlign } as PenPageLayer
+      });
+      const rich = el.querySelector('.pen-rich-html') as HTMLElement;
+      return { valign: rich.dataset.penValign, inner: rich.firstElementChild as HTMLElement };
+    };
+    expect(at().valign).toBe('top');
+    expect(at().inner.style.marginTop).toBe('');
+    expect(at('middle').inner.style.marginTop).toBe('auto');
+    expect(at('middle').inner.style.marginBottom).toBe('auto');
+    expect(at('bottom').inner.style.marginTop).toBe('auto');
+    expect(at('bottom').inner.style.marginBottom).toBe('');
+    expect(at('bottom').inner.textContent).toBe('Vote');
+  });
+
   it('time shows the caption', () => {
     const el = render({
       layer: { ...box, id: 'tm', kind: 'text', widgetElement: 'time', timeFace: 'clock', clockTime: '09:30' } as PenPageLayer

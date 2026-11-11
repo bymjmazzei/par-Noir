@@ -25,6 +25,7 @@ import {
   publishCurrentToPast,
   publishPlaybackSrc,
   setTextLayerDoc,
+  patchLayerStyle,
   signPromoteLink,
   attachNotary,
   adjacentPageSlug,
@@ -69,6 +70,7 @@ import {
   resolveTimelineDuration,
   isSectionTimelineActive,
   feedLiveLayerIds,
+  layerSettledSec,
   sectionSettledSec,
   sectionIsFeedPage,
   isGooglePenFont,
@@ -83,6 +85,7 @@ import {
   type PenRole,
   type PenSuggestion,
   type PenTipTapNode,
+  type PenTextVerticalAlign,
   type PenLicensingRoot
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../../services/penSession';
@@ -111,7 +114,7 @@ import { ActionBindStrip } from '../../components/ActionBindStrip';
 import { IconLayers } from '../../components/icons/PenIcons';
 import { MediaEditorPanel } from '../../components/MediaEditorPanel';
 import { SectionTimeline } from '../../components/SectionTimeline';
-import { setPlayheadSec } from '../../services/playheadStore';
+import { getPlayheadSec, setPlayheadSec } from '../../services/playheadStore';
 import { findComposeExportRoot } from '../../services/penGalleryPreview';
 import { composedMaster, type ComposePageVideoResult } from '../../services/composePageVideoEncode';
 import {
@@ -656,14 +659,25 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
 
   const introPlayKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!bundle || !section) return;
-    if (!isWidgetDoc && !widgetEditorLayer) return;
+    if (!bundle || !section || !isWidgetDoc) return;
     const key = `${bundle.manifest.docId}:${section.slug}:${widgetEditorLayer?.id || 'page'}`;
     if (introPlayKey.current === key) return;
     introPlayKey.current = key;
     setPlayheadSec(0);
     setTimelinePlaying(true);
   }, [bundle, section, isWidgetDoc, widgetEditorLayer]);
+
+  const settledLayerKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!bundle || !section || isWidgetDoc || isPageLayerId(activeLayerId)) return;
+    const key = `${bundle.manifest.docId}:${section.slug}:${activeLayerId}`;
+    if (settledLayerKey.current === key) return;
+    settledLayerKey.current = key;
+    const layer = section.layers?.find((item) => item.id === activeLayerId);
+    if (!layer) return;
+    const settled = layerSettledSec(section, layer);
+    if (getPlayheadSec() < settled) setPlayheadSec(settled);
+  }, [bundle, section, isWidgetDoc, activeLayerId]);
 
   const settledPageKey = useRef<string | null>(null);
   useEffect(() => {
@@ -875,6 +889,21 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         return;
       }
     }
+    persist({
+      ...bundle,
+      sections: bundle.sections.map((s) => (s.slug === updated.slug ? updated : s)),
+      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+    });
+  }
+
+  const activeTextLayer = useMemo(() => {
+    if (!section || !writingEnabled || isPageLayerId(activeLayerId)) return null;
+    return section.layers?.find((l) => l.id === activeLayerId && l.kind === 'text') || null;
+  }, [section, writingEnabled, activeLayerId]);
+
+  function setActiveTextVerticalAlign(next: PenTextVerticalAlign) {
+    if (!section || !bundle || !activeTextLayer) return;
+    const updated = patchLayerStyle(section, activeTextLayer.id, { textVerticalAlign: next });
     persist({
       ...bundle,
       sections: bundle.sections.map((s) => (s.slug === updated.slug ? updated : s)),
@@ -2438,6 +2467,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     activeMediaLayer,
     activeSlug,
     activeSlugRef,
+    activeTextLayer,
     activeWritingDoc,
     addComment,
     applyHistorySnapshot,
@@ -2498,6 +2528,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     persist,
     persistSection,
     persistWritingDoc,
+    setActiveTextVerticalAlign,
     previewLayoutRef,
     previewPaneEl,
     previewPaneSize,

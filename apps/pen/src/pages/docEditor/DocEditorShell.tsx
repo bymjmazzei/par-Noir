@@ -236,6 +236,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     activeMediaLayer,
     activeSlug,
     activeSlugRef,
+    activeTextLayer,
     activeWritingDoc,
     addComment,
     applyHistorySnapshot,
@@ -295,6 +296,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     persist,
     persistSection,
     persistWritingDoc,
+    setActiveTextVerticalAlign,
     previewLayoutRef,
     previewPaneEl,
     previewPaneSize,
@@ -1160,6 +1162,8 @@ export function DocEditorShell(state: DocEditorReadyState) {
                   accessToken={session.accessToken}
                   pnIdentifier={session.pnIdentifier}
                   excludeDocId={bundle.manifest.docId}
+                  verticalAlign={activeTextLayer?.textVerticalAlign}
+                  onVerticalAlign={activeTextLayer ? setActiveTextVerticalAlign : undefined}
                 />
               ) : null}
             </div>

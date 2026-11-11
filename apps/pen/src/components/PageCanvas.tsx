@@ -17,7 +17,8 @@ import {
   type PenFontIndexEntry,
   type PenPageLayout,
   type PenSectionContent,
-  type PenTextLook
+  type PenTextLook,
+  type PenTextVerticalAlign
 } from '@par-noir/pen-protocol';
 import { LAYERS_TEXT_LOOK_PRESETS } from './layersAddMenu';
 import { PageSheetColumn } from './PageSheetColumn';
@@ -47,10 +48,13 @@ import {
   RibbonSep
 } from './ribbon/RibbonChrome';
 import {
+  IconAlignBottom,
   IconAlignCenter,
   IconAlignJustify,
   IconAlignLeft,
+  IconAlignMiddle,
   IconAlignRight,
+  IconAlignTop,
   IconBulletList,
   IconClear,
   IconIndent,
@@ -61,6 +65,16 @@ import {
   IconSearch,
   IconTable
 } from './icons/PenIcons';
+
+const VERTICAL_ALIGNS: Array<{
+  value: PenTextVerticalAlign;
+  title: string;
+  Icon: typeof IconAlignTop;
+}> = [
+  { value: 'top', title: 'Align top', Icon: IconAlignTop },
+  { value: 'middle', title: 'Align middle', Icon: IconAlignMiddle },
+  { value: 'bottom', title: 'Align bottom', Icon: IconAlignBottom }
+];
 
 function currentFontSize(editor: Editor): string {
   const attrs = editor.getAttributes('textStyle');
@@ -98,7 +112,9 @@ export function FormatRibbon({
   accessToken,
   onImageInserted,
   pnIdentifier,
-  excludeDocId
+  excludeDocId,
+  verticalAlign,
+  onVerticalAlign
 }: {
   editor: Editor | null;
   accessToken?: string;
@@ -107,6 +123,9 @@ export function FormatRibbon({
   pnIdentifier?: string;
   /** Current doc — excluded from embed picker (no self-embed). */
   excludeDocId?: string;
+  /** Text layer box alignment. The buttons show only when a handler is passed. */
+  verticalAlign?: PenTextVerticalAlign;
+  onVerticalAlign?: (next: PenTextVerticalAlign) => void;
 }) {
   const [cloudFiles, setCloudFiles] = useState<CloudImageItem[] | null>(null);
   const [cloudError, setCloudError] = useState<string | null>(null);
@@ -577,6 +596,22 @@ export function FormatRibbon({
       >
         <IconAlignJustify />
       </RibbonIconBtn>
+      {onVerticalAlign ? (
+        <>
+          <RibbonSep />
+          {VERTICAL_ALIGNS.map(({ value, title, Icon }) => (
+            <RibbonIconBtn
+              key={value}
+              active={(verticalAlign || 'top') === value}
+              title={title}
+              onClick={() => onVerticalAlign(value)}
+            >
+              <Icon />
+            </RibbonIconBtn>
+          ))}
+          <RibbonSep />
+        </>
+      ) : null}
       <RibbonIconBtn
         active={ed.isActive('bulletList')}
         title="Bullet list"
@@ -1003,7 +1038,8 @@ export function PageCanvas({
   focusBlockIndex = null,
   focusBlockKey,
   frameStartBlocks,
-  collab
+  collab,
+  surface
 }: {
   section: PenSectionContent;
   /** Writing tree label — Body section title or selected overlay object name. */
@@ -1036,6 +1072,8 @@ export function PageCanvas({
     /** Peer cursors and selections in this text. */
     presence?: { awareness: Awareness; user: { name: string; color: string } };
   };
+  /** Compact editor background, so light text stays readable while editing. */
+  surface?: string;
 }) {
   const editor = useEditor({
     extensions: [
@@ -1139,7 +1177,7 @@ export function PageCanvas({
 
   if (compact) {
     return (
-      <div className="pen-compact-prose bg-white px-3 py-2">
+      <div className="pen-compact-prose px-3 py-2" style={{ background: surface || '#ffffff' }}>
         <EditorContent editor={editor} />
       </div>
     );

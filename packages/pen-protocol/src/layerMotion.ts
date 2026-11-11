@@ -557,12 +557,17 @@ export function sectionSettledSec(
   let settled = 0;
   for (const layer of section.layers || []) {
     if (layer.kind === 'guide' || layer.visible === false) continue;
-    const spec = readLayerAnimation(layer.motion?.animation);
-    if (!spec.in && !spec.both) continue;
-    const { start, inDur } = slotDurations(layer, spec, layerClockSpan(section, layer));
-    settled = Math.max(settled, start + inDur);
+    settled = Math.max(settled, layerSettledSec(section, layer));
   }
   return Math.min(settled, span);
+}
+
+/** Time this layer's intro finishes; 0 when it has none. */
+export function layerSettledSec(section: PenSectionContent, layer: PenPageLayer): number {
+  const spec = readLayerAnimation(layer.motion?.animation);
+  if (!spec.in && !spec.both) return 0;
+  const { start, inDur } = slotDurations(layer, spec, layerClockSpan(section, layer));
+  return start + inDur;
 }
 
 /** True when the preview must sample layers every playhead tick (motion, loops, audio lanes). */
@@ -570,10 +575,9 @@ export function sectionNeedsPlayheadDrive(
   section: PenSectionContent | null | undefined
 ): boolean {
   if (!section) return false;
-  if (sectionHasMotion(section)) return true;
   for (const layer of section.layers || []) {
     if (layer.kind === 'guide') continue;
-    if (layer.motion?.loop && (layer.motion?.keys?.length || 0) > 0) return true;
+    if (layerHasMotion(layer)) return true;
     if (layer.audioTracks && layer.audioTracks.length > 0) return true;
   }
   return false;

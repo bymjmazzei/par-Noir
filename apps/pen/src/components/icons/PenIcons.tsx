@@ -5,6 +5,9 @@ import {
   AlignJustify,
   AlignLeft,
   AlignRight,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignVerticalJustifyStart,
   Check,
   ChevronDown,
   Pencil,
@@ -91,6 +94,15 @@ export function IconAlignRight(p: SVGProps<SVGSVGElement>) {
 }
 export function IconAlignJustify(p: SVGProps<SVGSVGElement>) {
   return <AlignJustify {...sz} {...p} />;
+}
+export function IconAlignTop(p: SVGProps<SVGSVGElement>) {
+  return <AlignVerticalJustifyStart {...sz} {...p} />;
+}
+export function IconAlignMiddle(p: SVGProps<SVGSVGElement>) {
+  return <AlignVerticalJustifyCenter {...sz} {...p} />;
+}
+export function IconAlignBottom(p: SVGProps<SVGSVGElement>) {
+  return <AlignVerticalJustifyEnd {...sz} {...p} />;
 }
 export function IconBulletList(p: SVGProps<SVGSVGElement>) {
   return <List {...sz} {...p} />;

@@ -2,7 +2,8 @@
  * Compact panel controls. The slider and color picker stay inside the popover.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { AnchoredPanel } from './AnchoredPanel';
 
 type Rgb = { r: number; g: number; b: number; a: number };
 
@@ -36,44 +37,14 @@ export function parseCssColor(value: string | undefined): Rgb {
   return { r: 0, g: 0, b: 0, a: 1 };
 }
 
-function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
-  const rn = r / 255;
-  const gn = g / 255;
-  const bn = b / 255;
-  const max = Math.max(rn, gn, bn);
-  const min = Math.min(rn, gn, bn);
-  const l = (max + min) / 2;
-  if (max === min) return { h: 0, s: 0, l: l * 100 };
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h = 0;
-  if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0);
-  else if (max === gn) h = (bn - rn) / d + 2;
-  else h = (rn - gn) / d + 4;
-  return { h: h * 60, s: s * 100, l: l * 100 };
-}
-
-function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
-  const sn = s / 100;
-  const ln = l / 100;
-  const c = (1 - Math.abs(2 * ln - 1)) * sn;
-  const hp = ((h % 360) + 360) % 360 / 60;
-  const x = c * (1 - Math.abs((hp % 2) - 1));
-  const m = ln - c / 2;
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  if (hp < 1) [r, g, b] = [c, x, 0];
-  else if (hp < 2) [r, g, b] = [x, c, 0];
-  else if (hp < 3) [r, g, b] = [0, c, x];
-  else if (hp < 4) [r, g, b] = [0, x, c];
-  else if (hp < 5) [r, g, b] = [x, 0, c];
-  else [r, g, b] = [c, 0, x];
-  return {
-    r: Math.round((r + m) * 255),
-    g: Math.round((g + m) * 255),
-    b: Math.round((b + m) * 255)
+/** Relative luminance, 0 (black) to 1 (white). */
+export function colorLuminance(value: string | undefined): number {
+  const { r, g, b } = parseCssColor(value);
+  const lin = (n: number) => {
+    const c = n / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
 export function formatRgba(rgb: { r: number; g: number; b: number }, alpha: number): string {
@@ -81,8 +52,8 @@ export function formatRgba(rgb: { r: number; g: number; b: number }, alpha: numb
   return `rgba(${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}, ${a})`;
 }
 
-/** Hue slider with a transparency slider directly under it. */
-export function ColorSliders({
+/** Full color picker with a transparency slider directly under it. */
+export function ColorOpacityPicker({
   label,
   value,
   onChange
@@ -92,11 +63,9 @@ export function ColorSliders({
   onChange: (next: string) => void;
 }) {
   const parsed = parseCssColor(value);
-  const hsl = rgbToHsl(parsed.r, parsed.g, parsed.b);
   const alpha = Math.round(parsed.a * 100);
-  function emit(hue: number, nextAlpha: number, hueMoved: boolean) {
-    const sat = hueMoved && hsl.s < 1 ? 100 : hsl.s;
-    const rgb = hslToRgb(hue, sat, hsl.l);
+  function emit(hex: string, nextAlpha: number) {
+    const rgb = parseCssColor(hex);
     onChange(formatRgba(rgb, nextAlpha / 100));
   }
   return (
@@ -105,15 +74,10 @@ export function ColorSliders({
         <span className="mb-1 block font-semibold uppercase tracking-wide text-stone-400">{label}</span>
         <input
           aria-label={`${label} color`}
-          type="range"
-          min={0}
-          max={360}
-          value={Math.round(hsl.h)}
-          onChange={(event) => emit(Number(event.target.value), alpha, true)}
-          className="w-full"
-          style={{
-            background: 'linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)'
-          }}
+          type="color"
+          value={colorToHex(value)}
+          onChange={(event) => emit(event.target.value, alpha || 100)}
+          className="h-8 w-full cursor-pointer rounded border border-stone-300 bg-white p-0.5"
         />
       </label>
       <label className="block text-[11px]">
@@ -127,7 +91,7 @@ export function ColorSliders({
           min={0}
           max={100}
           value={alpha}
-          onChange={(event) => emit(hsl.h, Number(event.target.value), false)}
+          onChange={(event) => emit(colorToHex(value), Number(event.target.value))}
           className="w-full"
         />
       </label>
@@ -195,31 +159,24 @@ export function ColorBlock({
 
 function Popover({
   open,
+  anchorRef,
   onClose,
   children
 }: {
   open: boolean;
+  anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (ref.current?.contains(e.target as Node)) return;
-      onClose();
-    }
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open, onClose]);
-  if (!open) return null;
   return (
-    <div
-      ref={ref}
-      className="absolute left-0 top-full z-50 mt-1 w-52 rounded-md border border-stone-200 bg-white p-3 shadow-lg"
+    <AnchoredPanel
+      open={open}
+      anchorRef={anchorRef}
+      onClose={onClose}
+      className="w-52 rounded-md border border-stone-200 bg-white p-3 shadow-lg"
     >
       {children}
-    </div>
+    </AnchoredPanel>
   );
 }
 
@@ -244,8 +201,10 @@ export function ValueSliderButton({
   row?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
   return (
-    <div className={`relative ${row ? 'w-full' : ''}`}>
+    <div ref={anchorRef} className={`relative ${row ? 'w-full' : ''}`}>
       <button
         type="button"
         aria-label={label}
@@ -261,7 +220,7 @@ export function ValueSliderButton({
         {row ? <span className="font-medium text-stone-600">{label}</span> : null}
         <span className={row ? 'font-semibold' : 'max-w-[4.5rem] truncate'}>{display}</span>
       </button>
-      <Popover open={open} onClose={() => setOpen(false)}>
+      <Popover open={open} anchorRef={anchorRef} onClose={close}>
         <div className="space-y-2 text-[11px]">
           <div className="flex justify-between font-semibold uppercase tracking-wide text-stone-400">
             <span>{label}</span>
@@ -296,10 +255,12 @@ export function ColorSwatchButton({
   row?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
   const parsed = parseCssColor(value);
   const swatch = formatRgba(parsed, parsed.a);
   return (
-    <div className={`relative ${row ? 'w-full' : ''}`}>
+    <div ref={anchorRef} className={`relative ${row ? 'w-full' : ''}`}>
       <button
         type="button"
         aria-label={label}
@@ -325,8 +286,8 @@ export function ColorSwatchButton({
           ) : null}
         </span>
       </button>
-      <Popover open={open} onClose={() => setOpen(false)}>
-        <ColorSliders label={label} value={swatch} onChange={onChange} />
+      <Popover open={open} anchorRef={anchorRef} onClose={close}>
+        <ColorOpacityPicker label={label} value={swatch} onChange={onChange} />
       </Popover>
     </div>
   );

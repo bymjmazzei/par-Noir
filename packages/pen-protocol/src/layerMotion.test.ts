@@ -13,6 +13,7 @@ import {
   applyVideoFileDuration,
   isSectionTimelineActive,
   joinLayerToTrack,
+  layerSettledSec,
   layerClips,
   layerMediaTime,
   reorderTimelineLayer,
@@ -211,12 +212,28 @@ describe('sampleLayerAt', () => {
   });
 });
 
+describe('layerSettledSec', () => {
+  it('is when the layer intro finishes, and 0 without an intro', () => {
+    const drop = layer({ id: 'd', motion: { animation: { in: 'drop', durationSec: 0.8 } } });
+    const still = layer({ id: 's' });
+    const doc = section([drop, still]);
+    expect(layerSettledSec(doc, drop)).toBeCloseTo(0.8, 6);
+    expect(layerSettledSec(doc, still)).toBe(0);
+  });
+});
+
 describe('sectionNeedsPlayheadDrive', () => {
   it('is false for video-only sections without keys', () => {
     const doc = section([
       layer({ id: 'clip', kind: 'video', videoSrc: 'https://example.com/a.mp4' })
     ]);
     expect(sectionNeedsPlayheadDrive(doc)).toBe(false);
+  });
+
+  it('is true for an intro animation without keys', () => {
+    expect(
+      sectionNeedsPlayheadDrive(section([layer({ id: 'a', motion: { animation: { in: 'drop' } } })]))
+    ).toBe(true);
   });
 
   it('is true when any layer has motion keys', () => {

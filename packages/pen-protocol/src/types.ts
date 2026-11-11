@@ -113,6 +113,8 @@ export interface PenClipTransition {
 }
 
 /** Layer on a section page — rects are CSS px in the Body content box. */
+export type PenTextVerticalAlign = 'top' | 'middle' | 'bottom';
+
 export interface PenPageLayer {
   id: string;
   kind: PenPageLayerKind;
@@ -131,6 +133,8 @@ export interface PenPageLayer {
   parentGroupId?: string | null;
   /** text layers */
   textDoc?: PenTipTapNode;
+  /** Where text sits inside its box. Unset is top. */
+  textVerticalAlign?: PenTextVerticalAlign;
   /** image layers */
   imageSrc?: string;
   /** video layers */

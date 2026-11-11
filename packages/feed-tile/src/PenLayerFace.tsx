@@ -254,10 +254,19 @@ export function PenLayerFace({
         <MediaFill media={media} src={mediaSrc} kind="video" playback={playback} />
       ) : null}
       <div
-        className={`pen-rich-html relative h-full w-full p-2 text-sm ${editor ? 'overflow-auto' : 'overflow-hidden'}`}
+        className={`pen-rich-html relative flex h-full w-full flex-col p-2 text-sm ${editor ? 'overflow-auto' : 'overflow-hidden'}`}
         style={{ fontFamily: fontFamily || undefined }}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+        data-pen-valign={layer.textVerticalAlign || 'top'}
+      >
+        <div style={verticalAlignStyle(layer)} dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
     </div>
   );
+}
+
+/** Auto margins, not justify-content, so overflowing text still starts at the top. */
+function verticalAlignStyle(layer: PenPageLayer): CSSProperties | undefined {
+  if (layer.textVerticalAlign === 'middle') return { marginTop: 'auto', marginBottom: 'auto' };
+  if (layer.textVerticalAlign === 'bottom') return { marginTop: 'auto' };
+  return undefined;
 }

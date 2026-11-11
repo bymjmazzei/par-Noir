@@ -30,11 +30,17 @@ import {
   type PenPageLayer,
   type PenPageLayout,
   type PenSectionContent,
+  type PenTipTapNode,
   type PenWidgetElement
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from './PageCanvas';
-import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
+import {
+  ColorSwatchButton,
+  ValueSliderButton,
+  colorLuminance,
+  parseCssColor
+} from './PanelValueControls';
 import { SectionTimeline } from './SectionTimeline';
 import { WidgetArtFillEditor } from './WidgetArtFillEditor';
 
@@ -47,6 +53,31 @@ const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'html', label: 'HTML snippet' },
   { element: 'score', label: 'Score' }
 ];
+
+function firstTextColor(node: PenTipTapNode | undefined): string | undefined {
+  if (!node) return undefined;
+  for (const mark of node.marks || []) {
+    const color = mark.type === 'textStyle' ? mark.attrs?.color : undefined;
+    if (typeof color === 'string' && color.trim()) return color;
+  }
+  for (const child of node.content || []) {
+    const found = firstTextColor(child);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+const DARK_SURFACE = '#1c1917';
+const LIGHT_INK_LUMINANCE = 0.6;
+const SOLID_FILL_ALPHA = 0.6;
+
+/** The layer's own fill when solid; otherwise dark behind light text, white behind dark text. */
+export function textEditorSurface(layer: PenPageLayer): string {
+  const fill = (layer.backgroundColor || '').trim();
+  if (fill && fill !== 'transparent' && parseCssColor(fill).a >= SOLID_FILL_ALPHA) return fill;
+  const ink = firstTextColor(getTextLayerDoc(layer)) || layer.textColor;
+  return ink && colorLuminance(ink) > LIGHT_INK_LUMINANCE ? DARK_SURFACE : '#ffffff';
+}
 
 function WidgetTextEditor({
   layer,
@@ -90,9 +121,17 @@ function WidgetTextEditor({
         accessToken={accessToken}
         pnIdentifier={pnIdentifier}
         excludeDocId={excludeDocId}
+        verticalAlign={layer.textVerticalAlign}
+        onVerticalAlign={
+          layer.kind === 'text'
+            ? (next) =>
+                onSectionChange(patchLayerStyle(sectionRef.current, layer.id, { textVerticalAlign: next }))
+            : undefined
+        }
       />
       <PageCanvas
         compact
+        surface={textEditorSurface(layer)}
         section={{ ...section, doc: getTextLayerDoc(layer) }}
         sectionTitle={layer.label || layer.name || 'Text'}
         pageLayout={pageLayout || 'flow'}
