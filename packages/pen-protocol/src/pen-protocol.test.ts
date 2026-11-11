@@ -477,6 +477,14 @@ describe('classes + templates', () => {
     expect(docToHtml(sec.doc)).toContain('<em>italic</em>');
   });
 
+  it('keeps page body vertical alignment through normalize', async () => {
+    const { normalizeSection, emptySection } = await import('./index.js');
+    const base = emptySection('body');
+    expect(normalizeSection({ ...base, bodyVerticalAlign: 'middle' }).bodyVerticalAlign).toBe('middle');
+    expect(normalizeSection({ ...base, bodyVerticalAlign: 'bottom' }).bodyVerticalAlign).toBe('bottom');
+    expect('bodyVerticalAlign' in normalizeSection({ ...base, bodyVerticalAlign: 'top' })).toBe(false);
+  });
+
   it('quotes font family names CSS would otherwise reject', async () => {
     const { docToHtml } = await import('./index.js');
     const html = docToHtml({

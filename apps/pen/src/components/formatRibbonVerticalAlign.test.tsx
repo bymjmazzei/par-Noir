@@ -26,27 +26,49 @@ afterEach(() => {
   host.remove();
 });
 
-describe('FormatRibbon vertical alignment', () => {
-  it('shows top, middle and bottom for a text layer and reports the choice', () => {
+function openMenu(title: string): HTMLButtonElement[] {
+  const trigger = host.querySelector(`button[title="${title}"]`) as HTMLButtonElement;
+  expect(trigger).toBeTruthy();
+  act(() => trigger.click());
+  return [...document.body.querySelectorAll<HTMLButtonElement>('.pen-ribbon-menu-item')];
+}
+
+function item(items: HTMLButtonElement[], text: string): HTMLButtonElement {
+  const found = items.find((el) => el.textContent?.trim() === text);
+  expect(found).toBeTruthy();
+  return found!;
+}
+
+describe('FormatRibbon alignment menus', () => {
+  it('horizontal align is one dropdown with left, center, right and justify', () => {
+    act(() => {
+      root.render(<FormatRibbon editor={editor as never} />);
+    });
+    expect(host.querySelector('button[title="Align left"]')).toBeNull();
+    const items = openMenu('Horizontal align');
+    expect(items.map((el) => el.textContent?.trim())).toEqual(['Left', 'Center', 'Right', 'Justify']);
+    act(() => item(items, 'Center').click());
+    expect(editor.isActive({ textAlign: 'center' })).toBe(true);
+  });
+
+  it('vertical align is one dropdown with top, middle and bottom', () => {
     const picked: PenTextVerticalAlign[] = [];
     act(() => {
       root.render(
         <FormatRibbon editor={editor as never} verticalAlign="middle" onVerticalAlign={(v) => picked.push(v)} />
       );
     });
-    const top = host.querySelector('button[title="Align top"]') as HTMLButtonElement;
-    const middle = host.querySelector('button[title="Align middle"]') as HTMLButtonElement;
-    const bottom = host.querySelector('button[title="Align bottom"]') as HTMLButtonElement;
-    expect(top && middle && bottom).toBeTruthy();
-    expect(middle.getAttribute('aria-pressed')).toBe('true');
-    act(() => bottom.click());
+    const items = openMenu('Vertical align');
+    expect(items.map((el) => el.textContent?.trim())).toEqual(['Top', 'Middle', 'Bottom']);
+    expect(item(items, 'Middle').className).toContain('is-active');
+    act(() => item(items, 'Bottom').click());
     expect(picked).toEqual(['bottom']);
   });
 
-  it('hides them where there is no text box to align', () => {
+  it('hides vertical align where nothing can be aligned', () => {
     act(() => {
       root.render(<FormatRibbon editor={editor as never} />);
     });
-    expect(host.querySelector('button[title="Align top"]')).toBeNull();
+    expect(host.querySelector('button[title="Vertical align"]')).toBeNull();
   });
 });

@@ -63,6 +63,8 @@ export interface PenSectionContent {
   timelineDurationSec?: number;
   /** Measured length of manifest page background video (no object layer). */
   pageBackgroundDurationSec?: number;
+  /** Where body text sits on a fixed-size page. Unset is top. */
+  bodyVerticalAlign?: PenTextVerticalAlign;
 }
 
 export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 'interactive' | 'guide';

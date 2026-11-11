@@ -66,14 +66,19 @@ import {
   IconTable
 } from './icons/PenIcons';
 
-const VERTICAL_ALIGNS: Array<{
-  value: PenTextVerticalAlign;
-  title: string;
-  Icon: typeof IconAlignTop;
-}> = [
-  { value: 'top', title: 'Align top', Icon: IconAlignTop },
-  { value: 'middle', title: 'Align middle', Icon: IconAlignMiddle },
-  { value: 'bottom', title: 'Align bottom', Icon: IconAlignBottom }
+type AlignOption<T extends string> = { value: T; title: string; Icon: typeof IconAlignTop };
+
+const HORIZONTAL_ALIGNS: Array<AlignOption<'left' | 'center' | 'right' | 'justify'>> = [
+  { value: 'left', title: 'Left', Icon: IconAlignLeft },
+  { value: 'center', title: 'Center', Icon: IconAlignCenter },
+  { value: 'right', title: 'Right', Icon: IconAlignRight },
+  { value: 'justify', title: 'Justify', Icon: IconAlignJustify }
+];
+
+const VERTICAL_ALIGNS: Array<AlignOption<PenTextVerticalAlign>> = [
+  { value: 'top', title: 'Top', Icon: IconAlignTop },
+  { value: 'middle', title: 'Middle', Icon: IconAlignMiddle },
+  { value: 'bottom', title: 'Bottom', Icon: IconAlignBottom }
 ];
 
 function currentFontSize(editor: Editor): string {
@@ -123,7 +128,7 @@ export function FormatRibbon({
   pnIdentifier?: string;
   /** Current doc — excluded from embed picker (no self-embed). */
   excludeDocId?: string;
-  /** Text layer box alignment. The buttons show only when a handler is passed. */
+  /** Text box or page body alignment. The menu shows only when a handler is passed. */
   verticalAlign?: PenTextVerticalAlign;
   onVerticalAlign?: (next: PenTextVerticalAlign) => void;
 }) {
@@ -191,6 +196,10 @@ export function FormatRibbon({
   const color = String(ed.getAttributes('textStyle').color || '#1c1917');
   const highlight = String(ed.getAttributes('highlight').color || '');
   const hLabel = headingLabel(ed);
+  const horizontal =
+    HORIZONTAL_ALIGNS.find((item) => ed.isActive({ textAlign: item.value })) || HORIZONTAL_ALIGNS[0]!;
+  const vertical =
+    VERTICAL_ALIGNS.find((item) => item.value === (verticalAlign || 'top')) || VERTICAL_ALIGNS[0]!;
   const imageSelected = ed.isActive('image');
   const videoSelected = ed.isActive('video');
   const mediaSelected = imageSelected || videoSelected;
@@ -568,50 +577,47 @@ export function FormatRibbon({
 
       <RibbonSep />
 
-      <RibbonIconBtn
-        active={ed.isActive({ textAlign: 'left' })}
-        title="Align left"
-        onClick={() => ed.chain().focus().setTextAlign('left').run()}
-      >
-        <IconAlignLeft />
-      </RibbonIconBtn>
-      <RibbonIconBtn
-        active={ed.isActive({ textAlign: 'center' })}
-        title="Align center"
-        onClick={() => ed.chain().focus().setTextAlign('center').run()}
-      >
-        <IconAlignCenter />
-      </RibbonIconBtn>
-      <RibbonIconBtn
-        active={ed.isActive({ textAlign: 'right' })}
-        title="Align right"
-        onClick={() => ed.chain().focus().setTextAlign('right').run()}
-      >
-        <IconAlignRight />
-      </RibbonIconBtn>
-      <RibbonIconBtn
-        active={ed.isActive({ textAlign: 'justify' })}
-        title="Justify"
-        onClick={() => ed.chain().focus().setTextAlign('justify').run()}
-      >
-        <IconAlignJustify />
-      </RibbonIconBtn>
-      {onVerticalAlign ? (
-        <>
-          <RibbonSep />
-          {VERTICAL_ALIGNS.map(({ value, title, Icon }) => (
-            <RibbonIconBtn
+      <RibbonMenu label={<horizontal.Icon />} title="Horizontal align">
+        {(close) =>
+          HORIZONTAL_ALIGNS.map(({ value, title, Icon }) => (
+            <RibbonItem
               key={value}
-              active={(verticalAlign || 'top') === value}
-              title={title}
-              onClick={() => onVerticalAlign(value)}
+              active={horizontal.value === value}
+              onClick={() => {
+                ed.chain().focus().setTextAlign(value).run();
+                close();
+              }}
             >
-              <Icon />
-            </RibbonIconBtn>
-          ))}
-          <RibbonSep />
-        </>
+              <span className="inline-flex items-center gap-2">
+                <Icon />
+                {title}
+              </span>
+            </RibbonItem>
+          ))
+        }
+      </RibbonMenu>
+      {onVerticalAlign ? (
+        <RibbonMenu label={<vertical.Icon />} title="Vertical align">
+          {(close) =>
+            VERTICAL_ALIGNS.map(({ value, title, Icon }) => (
+              <RibbonItem
+                key={value}
+                active={vertical.value === value}
+                onClick={() => {
+                  onVerticalAlign(value);
+                  close();
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Icon />
+                  {title}
+                </span>
+              </RibbonItem>
+            ))
+          }
+        </RibbonMenu>
       ) : null}
+      <RibbonSep />
       <RibbonIconBtn
         active={ed.isActive('bulletList')}
         title="Bullet list"

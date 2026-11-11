@@ -59,6 +59,7 @@ import {
   type PenPageOrientation,
   type PenPageView,
   type PenPagePresentation,
+  type PenTextVerticalAlign,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { type LayoutItem } from '../layout';
@@ -132,6 +133,13 @@ export function bodyMarginStyle(presentation: PenPagePresentation): CSSPropertie
     color: presentation.textColor || '#111111',
     textAlign: presentation.textAlign || 'left'
   };
+}
+
+/** Body content block inside the flex-column page body. */
+export function bodyVerticalAlignStyle(align: PenTextVerticalAlign | undefined): CSSProperties {
+  if (align === 'middle') return { marginTop: 'auto', marginBottom: 'auto' };
+  if (align === 'bottom') return { marginTop: 'auto' };
+  return {};
 }
 
 export function opaqueWrapShell(layer: PenPageLayer): CSSProperties {

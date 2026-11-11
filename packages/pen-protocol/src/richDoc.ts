@@ -145,6 +145,11 @@ function timelineFields(sec: PenSectionContent): Pick<
   return out;
 }
 
+function bodyFields(sec: PenSectionContent): Pick<PenSectionContent, 'bodyVerticalAlign'> {
+  const align = sec.bodyVerticalAlign;
+  return align === 'middle' || align === 'bottom' ? { bodyVerticalAlign: align } : {};
+}
+
 /** Normalize any stored section to TipTap-doc SoT. */
 export function normalizeSection(raw: LegacySection | PenSectionContent): PenSectionContent {
   const sec = raw as PenSectionContent;
@@ -152,8 +157,9 @@ export function normalizeSection(raw: LegacySection | PenSectionContent): PenSec
   const layerGeom = sec.layerGeom === 'px' ? 'px' : undefined;
   const story = storyFields(sec);
   const timeline = timelineFields(sec);
+  const body = bodyFields(sec);
   if (raw && isTipTapDoc(sec.doc)) {
-    return { slug: raw.slug, doc: sec.doc, layers, layerGeom, ...story, ...timeline };
+    return { slug: raw.slug, doc: sec.doc, layers, layerGeom, ...story, ...timeline, ...body };
   }
   const legacy = raw as LegacySection;
   if (Array.isArray(legacy.blocks)) {
@@ -163,10 +169,11 @@ export function normalizeSection(raw: LegacySection | PenSectionContent): PenSec
       layers,
       layerGeom,
       ...story,
-      ...timeline
+      ...timeline,
+      ...body
     };
   }
-  return { ...emptySection(raw?.slug || 'body'), layers, layerGeom, ...story, ...timeline };
+  return { ...emptySection(raw?.slug || 'body'), layers, layerGeom, ...story, ...timeline, ...body };
 }
 
 export function normalizeSections(

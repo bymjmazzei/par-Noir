@@ -88,11 +88,19 @@ describe('playhead', () => {
 });
 
 describe('vertical alignment', () => {
-  it('ribbon offers top, middle and bottom for text layers', () => {
-    expect(src('components/PageCanvas.tsx')).toMatch(/onVerticalAlign \? \([\s\S]*VERTICAL_ALIGNS\.map/);
+  it('ribbon offers top, middle and bottom for text layers and the page body', () => {
     expect(src('components/WidgetEditorPanel.tsx')).toMatch(/textVerticalAlign: next/);
     expect(src('pages/docEditor/DocEditorShell.tsx')).toMatch(
-      /onVerticalAlign=\{activeTextLayer \? setActiveTextVerticalAlign : undefined\}/
+      /onVerticalAlign=\{canVerticalAlign \? setActiveVerticalAlign : undefined\}/
     );
+    const controller = src('pages/docEditor/useDocEditorController.ts');
+    expect(controller).toMatch(/!flowsBody && isPageLayerId\(activeLayerId\)/);
+    expect(controller).toMatch(/bodyVerticalAlign: next === 'top' \? undefined : next/);
+  });
+
+  it('page body renders its vertical alignment in the baked DOM', () => {
+    const preview = src('components/EditablePagePreview.tsx');
+    expect(preview).toMatch(/data-pen-page-body[\s\S]*flex flex-col/);
+    expect(preview).toMatch(/<div style=\{bodyVerticalAlignStyle\(bodyVerticalAlign\)\}>/);
   });
 });

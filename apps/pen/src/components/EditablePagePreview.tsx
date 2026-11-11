@@ -90,6 +90,7 @@ import {
   BodyWrapObject,
   layerToItem,
   bodyMarginStyle,
+  bodyVerticalAlignStyle,
   opaqueWrapShell
 } from './editablePagePreview/editablePagePreviewParts';
 import { ResolvedPageBackground } from './editablePagePreview/ResolvedPageBackground';
@@ -541,6 +542,7 @@ export function EditablePagePreview({
   }
   const bodyHtml = docToHtml(prepared.doc);
   const bodyStyle = bodyMarginStyle(presentation);
+  const bodyVerticalAlign = prepared.bodyVerticalAlign;
   const chrome = showToolbar ? (
     <>
       <div
@@ -872,7 +874,8 @@ export function EditablePagePreview({
           <div
             ref={bodyRef}
             data-pen-page-body
-            className={`pen-rich-html relative z-0 ${scrollWithParent ? 'h-full overflow-hidden' : ''} ${fontsReady ? '' : 'opacity-90'}`}
+            data-pen-valign={bodyVerticalAlign}
+            className={`pen-rich-html relative z-0 flex flex-col ${scrollWithParent ? 'h-full overflow-hidden' : ''} ${fontsReady ? '' : 'opacity-90'}`}
             style={{
               ...bodyStyle,
               minHeight: scrollWithParent ? undefined : sheet.pageHeightPx || box.height + 2 * pad
@@ -882,30 +885,32 @@ export function EditablePagePreview({
               selectLayer(PAGE_LAYER_ID);
             }}
           >
-            {wrapLayers.map((layer) => (
-              <BodyWrapObject
-                key={layer.id}
-                layer={layer}
-                allLayers={layers}
-                presentation={presentation}
-                selected={activeLayerId === layer.id}
-                contentW={box.width}
-                contentH={box.height}
-                onSelect={() => selectLayer(layer.id)}
-                inputValues={inputValues}
-                onInputValue={onInputValue}
-                onCommit={(patch) => onWrapCommit(layer.id, patch)}
-                docId={manifest.docId}
-                session={session}
-                onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
+            <div style={bodyVerticalAlignStyle(bodyVerticalAlign)}>
+              {wrapLayers.map((layer) => (
+                <BodyWrapObject
+                  key={layer.id}
+                  layer={layer}
+                  allLayers={layers}
+                  presentation={presentation}
+                  selected={activeLayerId === layer.id}
+                  contentW={box.width}
+                  contentH={box.height}
+                  onSelect={() => selectLayer(layer.id)}
+                  inputValues={inputValues}
+                  onInputValue={onInputValue}
+                  onCommit={(patch) => onWrapCommit(layer.id, patch)}
+                  docId={manifest.docId}
+                  session={session}
+                  onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
+                />
+              ))}
+              <div
+                style={{ display: 'contents' }}
+                dangerouslySetInnerHTML={{
+                  __html: bodyHtml || '<p class="text-neutral-400">Start writing…</p>'
+                }}
               />
-            ))}
-            <div
-              style={{ display: 'contents' }}
-              dangerouslySetInnerHTML={{
-                __html: bodyHtml || '<p class="text-neutral-400">Start writing…</p>'
-              }}
-            />
+            </div>
 
             {/* Layers cover the whole page. Body text keeps the margin. */}
             {showAbsoluteLayers && !scrollWithParent && guideLayers.length > 0 && (

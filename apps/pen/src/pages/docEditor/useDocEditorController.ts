@@ -901,9 +901,19 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     return section.layers?.find((l) => l.id === activeLayerId && l.kind === 'text') || null;
   }, [section, writingEnabled, activeLayerId]);
 
-  function setActiveTextVerticalAlign(next: PenTextVerticalAlign) {
-    if (!section || !bundle || !activeTextLayer) return;
-    const updated = patchLayerStyle(section, activeTextLayer.id, { textVerticalAlign: next });
+  const pageBodyAligns = Boolean(section && writingEnabled && !flowsBody && isPageLayerId(activeLayerId));
+  const activeVerticalAlign: PenTextVerticalAlign | undefined = activeTextLayer
+    ? activeTextLayer.textVerticalAlign
+    : pageBodyAligns
+      ? section?.bodyVerticalAlign
+      : undefined;
+  const canVerticalAlign = Boolean(activeTextLayer) || pageBodyAligns;
+
+  function setActiveVerticalAlign(next: PenTextVerticalAlign) {
+    if (!section || !bundle || !canVerticalAlign) return;
+    const updated = activeTextLayer
+      ? patchLayerStyle(section, activeTextLayer.id, { textVerticalAlign: next })
+      : { ...section, bodyVerticalAlign: next === 'top' ? undefined : next };
     persist({
       ...bundle,
       sections: bundle.sections.map((s) => (s.slug === updated.slug ? updated : s)),
@@ -2467,7 +2477,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     activeMediaLayer,
     activeSlug,
     activeSlugRef,
-    activeTextLayer,
+    activeVerticalAlign,
     activeWritingDoc,
     addComment,
     applyHistorySnapshot,
@@ -2528,7 +2538,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     persist,
     persistSection,
     persistWritingDoc,
-    setActiveTextVerticalAlign,
+    setActiveVerticalAlign,
+    canVerticalAlign,
     previewLayoutRef,
     previewPaneEl,
     previewPaneSize,
