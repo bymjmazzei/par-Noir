@@ -4,10 +4,12 @@
 
 import { normalizeSection } from './richDoc.js';
 import {
+  layerHasMotion,
   resolveTimelineDuration,
   sampleSectionLayers,
   type PenTimelineContext
 } from './layerMotion.js';
+import { layerMediaSource } from './layerPaint.js';
 import { partitionLayersForCompose } from './actionPartition.js';
 import { layerVisibleInViewer, revealTargetIds, type PenViewerState } from './penViewerOverlay.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
@@ -33,14 +35,37 @@ export type PenFeedPagePayload = {
   actionSection: PenFeedActionSection;
 };
 
-/** Action layers plus parent group stubs required for motion sampling. */
+/**
+ * A still layer that animates (intro, outro, keyframes). The feed draws it live so the
+ * motion plays; a baked still would freeze it at one pose. Video and sound stay in the bake.
+ */
+function isFeedMotionLayer(layer: PenPageLayer): boolean {
+  if (layer.kind === 'group' || layer.kind === 'guide' || layer.kind === 'video') return false;
+  if (layer.visible === false) return false;
+  if (layer.audioTracks?.length) return false;
+  if (layerMediaSource(layer)?.kind === 'video') return false;
+  return layerHasMotion(layer);
+}
+
+/** Layers the feed draws live over the baked page: interactive ones and animated stills. */
+export function feedLiveLayerIds(layers: PenPageLayer[] | null | undefined): Set<string> {
+  const all = layers || [];
+  const ids = new Set(partitionLayersForCompose(all).action.map((layer) => layer.id));
+  for (const layer of all) {
+    if (isFeedMotionLayer(layer)) ids.add(layer.id);
+  }
+  return ids;
+}
+
+/** Live layers plus parent group stubs required for motion sampling. */
 export function exportActionSectionForFeed(
   section: PenSectionContent,
   ctx?: PenTimelineContext
 ): PenFeedActionSection {
   const sec = normalizeSection(section);
   const all = sec.layers || [];
-  const { action } = partitionLayersForCompose(all);
+  const liveIds = feedLiveLayerIds(all);
+  const action = all.filter((layer) => liveIds.has(layer.id));
   const want = new Set<string>();
   for (const layer of action) {
     want.add(layer.id);
@@ -111,6 +136,7 @@ export function buildActionOverlayAtTime(
     if (!layerVisibleInViewer(layer, all, state)) return false;
     const { action } = partitionLayersForCompose([layer]);
     if (action.length > 0) return true;
+    if (isFeedMotionLayer(layer)) return true;
     return shown.has(layer.id);
   });
 }

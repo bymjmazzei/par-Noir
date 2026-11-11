@@ -68,6 +68,8 @@ import {
   partitionSectionsForPublish,
   resolveTimelineDuration,
   isSectionTimelineActive,
+  feedLiveLayerIds,
+  sectionSettledSec,
   sectionIsFeedPage,
   isGooglePenFont,
   remapSectionsForAspect,
@@ -243,6 +245,19 @@ export type DocEditorControllerState =
   | { phase: 'loading' }
   | { phase: 'notFound' }
   | DocEditorReadyState;
+
+/** Playhead where every intro on the page has finished: the page as its template preview shows it. */
+function settledPlayheadSec(
+  section: PenSectionContent | undefined,
+  manifest: Pick<PenDocManifest, 'pagePresentation'> | undefined
+): number {
+  if (!section) return 0;
+  const backgroundVideo = manifest?.pagePresentation?.backgroundVideo?.trim();
+  return sectionSettledSec(
+    normalizeSection(section),
+    backgroundVideo ? { pageBackgroundVideo: backgroundVideo } : {}
+  );
+}
 
 export function useDocEditorController(session: PenSession, docId: string): DocEditorControllerState {
   const navigate = useNavigate();
@@ -649,6 +664,16 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setPlayheadSec(0);
     setTimelinePlaying(true);
   }, [bundle, section, isWidgetDoc, widgetEditorLayer]);
+
+  const settledPageKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!bundle || !section || isWidgetDoc || !isSocialActive) return;
+    const key = `${bundle.manifest.docId}:${section.slug}`;
+    if (settledPageKey.current === key) return;
+    settledPageKey.current = key;
+    const settled = settledPlayheadSec(section, bundle.manifest);
+    if (settled > 0) setPlayheadSec(settled);
+  }, [bundle, section, isWidgetDoc, isSocialActive]);
 
   useEffect(() => {
     if (!section) return;
@@ -1824,7 +1849,13 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     setGalleryComposeCapture(false);
     setCaptureLayers(false);
     setActiveSlug(prevSlug);
-    setPlayheadSec(0);
+    const current = bundleRef.current || bundle;
+    setPlayheadSec(
+      settledPlayheadSec(
+        current?.sections.find((item) => item.slug === prevSlug),
+        current?.manifest
+      )
+    );
   }
 
   function sharePublishErrorMessage(e: unknown): string {
@@ -1871,29 +1902,47 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     return { section, manifest: current.manifest };
   }
 
-  /** One image of a page's non-action layers: the feed background of a page without video. */
-  async function flattenPage(slug: string, mime?: 'image/jpeg' | 'image/png'): Promise<Blob> {
+  /** Layers a feed post draws live (buttons, animated layers); its bake leaves them out. */
+  function feedLiveIds(slug: string, forFeed?: boolean): Set<string> | undefined {
+    return forFeed ? feedLiveLayerIds(pageContext(slug).section.layers) : undefined;
+  }
+
+  /**
+   * One image of a page's non-action layers. A feed post's image is the background
+   * under the live layers; a download keeps every layer at its rest pose.
+   */
+  async function flattenPage(
+    slug: string,
+    opts?: { mime?: 'image/jpeg' | 'image/png'; forFeed?: boolean }
+  ): Promise<Blob> {
     const root = await capturePageRoot(slug);
-    return composePageStill(root, pageContext(slug), { mime });
+    return composePageStill(root, pageContext(slug), {
+      mime: opts?.mime,
+      skipIds: feedLiveIds(slug, opts?.forFeed)
+    });
   }
 
   /** One timeline video of a page's non-action layers, with its sound mixed in. */
   async function encodePage(
     slug: string,
-    onProgress?: (pct: number) => void
+    onProgress?: (pct: number) => void,
+    forFeed?: boolean
   ): Promise<ComposePageVideoResult> {
     setPlaybackMode('publish');
     try {
       const root = await capturePageRoot(slug);
-      return await encodePageVideo(root, pageContext(slug), { onProgress });
+      return await encodePageVideo(root, pageContext(slug), {
+        onProgress,
+        skipIds: feedLiveIds(slug, forFeed)
+      });
     } finally {
       setPlaybackMode('edit');
     }
   }
 
   const pageExport: PageExport = {
-    flattenSection: (slug) => flattenPage(slug),
-    encodeSection: encodePage
+    flattenSection: (slug) => flattenPage(slug, { forFeed: true }),
+    encodeSection: (slug, onProgress) => encodePage(slug, onProgress, true)
   };
 
   async function downloadFlattened() {
@@ -1916,12 +1965,12 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         const slug =
           bundle.sections.find((item) => sectionIsFeedPage(item))?.slug || bundle.sections[0]?.slug;
         if (!slug) throw new Error('compose_export_root_missing');
-        saveDownload(await flattenPage(slug, 'image/png'), `${name}.png`);
+        saveDownload(await flattenPage(slug, { mime: 'image/png' }), `${name}.png`);
       } else {
         const pages = bundle.sections.filter((item) => sectionIsFeedPage(item));
         const targets = pages.length ? pages : bundle.sections;
         const blobs: Blob[] = [];
-        for (const page of targets) blobs.push(await flattenPage(page.slug, 'image/png'));
+        for (const page of targets) blobs.push(await flattenPage(page.slug, { mime: 'image/png' }));
         saveDownload(await pngBlobsToPdf(blobs), `${name}.pdf`);
       }
       setStatus(null);
@@ -2072,7 +2121,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
                       onProgress
                     })
                   }
-                : { image: { slug: page.slug, posterBlob: await flattenPage(page.slug) } };
+                : { image: { slug: page.slug, posterBlob: await flattenPage(page.slug, { forFeed: true }) } };
             }
             setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
             publishResult = await publishPostToOwnerCloud({

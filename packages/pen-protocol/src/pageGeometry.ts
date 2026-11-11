@@ -51,7 +51,8 @@ export type PageSheetDims = {
 };
 
 export function resolvePagePaddingPx(padding?: number | null): number {
-  return Math.max(8, Math.min(72, Number(padding) || DEFAULT_PAGE_PADDING_PX));
+  const px = Number(padding ?? DEFAULT_PAGE_PADDING_PX);
+  return Number.isFinite(px) ? Math.max(0, Math.min(72, px)) : DEFAULT_PAGE_PADDING_PX;
 }
 
 export function isFlowWorkspaceOpen(widthPx?: number | null): boolean {

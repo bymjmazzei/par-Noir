@@ -9,7 +9,7 @@ import {
   pagePaintOrder,
   splitPaintBands
 } from './encodePageVideo';
-import { safeBackgroundImage } from './rasterizePagePoster';
+import { embeddableFontFaces, safeBackgroundImage } from './rasterizePagePoster';
 
 function layer(id: string, zIndex: number, over: Partial<PenPageLayer> = {}): PenPageLayer {
   return { id, kind: 'text', x: 0, y: 0, w: 10, h: 10, zIndex, ...over } as PenPageLayer;
@@ -61,6 +61,28 @@ describe('paint bands', () => {
       { backgroundVideo: false }
     );
     expect(order.map((entry) => entry.id)).toEqual([PAGE_BACKGROUND_ID, PAGE_BODY_ID, 'art']);
+  });
+
+  it('leaves out layers the feed draws live', () => {
+    const order = pagePaintOrder([layer('art', 1), layer('intro', 2)], {
+      backgroundVideo: false,
+      skipIds: new Set(['intro'])
+    });
+    expect(order.map((entry) => entry.id)).toEqual([PAGE_BACKGROUND_ID, PAGE_BODY_ID, 'art']);
+  });
+});
+
+describe('embeddableFontFaces', () => {
+  it('keeps the Latin faces of a Google sheet and drops other scripts', () => {
+    const css = [
+      "/* cyrillic */\n@font-face { font-family: 'A'; src: url(https://f/cy.woff2) format('woff2'); }",
+      "/* latin-ext */\n@font-face { font-family: 'A'; src: url(https://f/le.woff2) format('woff2'); }",
+      "/* latin */\n@font-face { font-family: 'A'; src: url(https://f/la.woff2) format('woff2'); }"
+    ].join('\n');
+    const faces = embeddableFontFaces(css);
+    expect(faces).toContain('https://f/la.woff2');
+    expect(faces).toContain('https://f/le.woff2');
+    expect(faces).not.toContain('https://f/cy.woff2');
   });
 });
 

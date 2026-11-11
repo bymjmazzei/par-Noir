@@ -33,4 +33,16 @@ describe('compose bands include text', () => {
     expect(raster).toMatch(/SHOW_TEXT/);
     expect(raster).toMatch(/fillText/);
   });
+
+  it('baked text keeps its font: files are embedded, not swapped for system-ui', () => {
+    expect(raster).not.toMatch(/forceSystemFonts/);
+    expect(raster).toMatch(/const fontCss = await embeddedFontCss\(el\)/);
+    expect(raster).toMatch(/<style>\$\{fontCss\}<\/style>/);
+  });
+
+  it('a fallback to the safe still is logged', () => {
+    const fnStart = encode.indexOf('async function rasterizeBand');
+    const fn = encode.slice(fnStart, fnStart + 1200);
+    expect(fn).toMatch(/console\.warn\('\[pen\] page raster fell back to the safe still'/);
+  });
 });

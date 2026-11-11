@@ -40,6 +40,7 @@ import {
   partitionLayersForCompose,
   resolveTimelineDuration,
   sampleSectionLayers,
+  sectionSettledSec,
   type PenPageLayer,
   type PenPagePresentation,
   type PenSectionContent
@@ -107,14 +108,15 @@ export function splitPaintBands(entries: PaintEntry[]): { bands: string[][]; vid
 
 /**
  * Bottom-up paint order of a sampled page: page background, background video,
- * wrapped objects, body text, then free layers by zIndex. Action layers are left out.
+ * wrapped objects, body text, then free layers by zIndex. Action layers and `skipIds`
+ * (layers the feed draws live) are left out.
  */
 export function pagePaintOrder(
   layers: PenPageLayer[],
-  opts: { backgroundVideo: boolean }
+  opts: { backgroundVideo: boolean; skipIds?: ReadonlySet<string> }
 ): PaintEntry[] {
   const shown = partitionLayersForCompose(layers).inert.filter(
-    (layer) => layer.visible !== false && layer.kind !== 'guide'
+    (layer) => layer.visible !== false && layer.kind !== 'guide' && !opts.skipIds?.has(layer.id)
   );
   const entries: PaintEntry[] = [{ id: PAGE_BACKGROUND_ID, video: false }];
   if (opts.backgroundVideo) entries.push({ id: BACKGROUND_VIDEO_ID, video: true });
@@ -185,7 +187,9 @@ async function rasterizeBand(
     let blob: Blob;
     try {
       blob = await rasterizeElementToPosterBlob(root, { ...size, punchVideos: true, mime: 'image/png' });
-    } catch {
+    } catch (e) {
+      // The safe still keeps fills, blob images and text only; shapes and art drop out.
+      console.warn('[pen] page raster fell back to the safe still', e instanceof Error ? e.message : e);
       blob = await rasterizeElementSafeStill(root, size);
     }
     return await createImageBitmap(blob);
@@ -333,7 +337,8 @@ class PageSampler {
     private readonly section: PenSectionContent,
     private readonly hasBackgroundVideo: boolean,
     private readonly width: number,
-    private readonly height: number
+    private readonly height: number,
+    private readonly skipIds?: ReadonlySet<string>
   ) {}
 
   async sample(t: number): Promise<void> {
@@ -343,7 +348,7 @@ class PageSampler {
       flushSync(() => setPlayheadSec(t));
       await settle();
       const { bands, videos } = splitPaintBands(
-        pagePaintOrder(layers, { backgroundVideo: this.hasBackgroundVideo })
+        pagePaintOrder(layers, { backgroundVideo: this.hasBackgroundVideo, skipIds: this.skipIds })
       );
       const ready = await waitForVideos(this.root, videos, VIDEO_READY_TIMEOUT_MS);
       const byId = new Map(layers.map((layer) => [layer.id, layer]));
@@ -420,27 +425,34 @@ function canvasBlob(canvas: HTMLCanvasElement, mime: string, quality?: number): 
 }
 
 /**
- * The page's flattened background at timeline 0: every non-action layer, each video
- * on its first timeline frame. Same paint path as frame 0 of encodePageVideo.
+ * The page's flattened background once every intro has finished: every non-action
+ * layer at its rest pose. Same paint path as encodePageVideo frames.
  */
 export async function composePageStill(
   root: HTMLElement,
   page: PageEncodeContext,
-  opts?: { mime?: 'image/jpeg' | 'image/png' }
+  opts?: { mime?: 'image/jpeg' | 'image/png'; skipIds?: ReadonlySet<string> }
 ): Promise<Blob> {
   const mime = opts?.mime ?? 'image/jpeg';
   const srcW = Math.max(2, Math.round(root.offsetWidth || 360));
   const srcH = Math.max(2, Math.round(root.offsetHeight || 640));
   const { cw, ch } = rasterOutputSize(srcW, srcH);
+  const section = normalizeSection(page.section);
+  const backgroundVideo = page.manifest.pagePresentation?.backgroundVideo?.trim();
+  const settledSec = sectionSettledSec(
+    section,
+    backgroundVideo ? { pageBackgroundVideo: backgroundVideo } : {}
+  );
   const sampler = new PageSampler(
     root,
-    normalizeSection(page.section),
+    section,
     pageHasBackgroundVideo(page.manifest),
     cw,
-    ch
+    ch,
+    opts?.skipIds
   );
   try {
-    await sampler.sample(0);
+    await sampler.sample(settledSec);
     const canvas = document.createElement('canvas');
     canvas.width = cw;
     canvas.height = ch;
@@ -526,6 +538,8 @@ export async function encodePageVideo(
     /** Publish tier; sizes, duration cap and HD allowance. Defaults to Pen's publish plan. */
     tier?: PublishTierNotch;
     onProgress?: (pct: number) => void;
+    /** Layers the feed draws live; left out of the frames. */
+    skipIds?: ReadonlySet<string>;
   }
 ): Promise<ComposePageVideoResult> {
   if (typeof VideoEncoder === 'undefined') throw new Error(VIDEO_ENCODER_UNAVAILABLE);
@@ -576,7 +590,14 @@ export async function encodePageVideo(
   let poster: EncodedPreview | null = null;
   let audio: AudioBuffer | null | undefined;
 
-  const sampler = new PageSampler(root, section, hasBackgroundVideo, master.w, master.h);
+  const sampler = new PageSampler(
+    root,
+    section,
+    hasBackgroundVideo,
+    master.w,
+    master.h,
+    opts?.skipIds
+  );
   try {
     for (let attempt = 0; attempt < FEED_PREVIEW_ENCODE_ATTEMPTS && pending.length; attempt++) {
       const runs: Array<{

@@ -19,11 +19,26 @@ describe('flatten on publish', () => {
   it('Share and Download flatten through flattenPage / encodePageVideo', () => {
     expect(controller).toMatch(/composePageStill\(root, pageContext\(slug\)/);
     expect(controller).toMatch(/encodePageVideo\(root, pageContext\(slug\)/);
-    expect(controller).toMatch(/flattenSection: \(slug\) => flattenPage\(slug\)/);
-    expect(controller).toMatch(/image: \{ slug: page\.slug, posterBlob: await flattenPage\(page\.slug\) \}/);
-    expect(controller).toMatch(/saveDownload\(await flattenPage\(slug, 'image\/png'\)/);
+    expect(controller).toMatch(/flattenSection: \(slug\) => flattenPage\(slug, \{ forFeed: true \}\)/);
+    expect(controller).toMatch(/encodeSection: \(slug, onProgress\) => encodePage\(slug, onProgress, true\)/);
+    expect(controller).toMatch(
+      /image: \{ slug: page\.slug, posterBlob: await flattenPage\(page\.slug, \{ forFeed: true \}\) \}/
+    );
+    expect(controller).toMatch(/saveDownload\(await flattenPage\(slug, \{ mime: 'image\/png' \}\)/);
     expect(gallery).toMatch(/encodePageVideo\(root, page\)/);
     expect(gallery).toMatch(/composePageStill\(root, page\)/);
+  });
+
+  it('a feed post leaves the layers the feed draws live out of its bake', () => {
+    expect(controller).toMatch(/feedLiveLayerIds\(pageContext\(slug\)\.section\.layers\)/);
+    expect(controller).toMatch(/skipIds: feedLiveIds\(slug, opts\?\.forFeed\)/);
+    expect(controller).toMatch(/skipIds: feedLiveIds\(slug, forFeed\)/);
+    expect(encode).toMatch(/!opts\.skipIds\?\.has\(layer\.id\)/);
+  });
+
+  it('stills bake the settled pose, after every intro', () => {
+    expect(encode).toMatch(/await sampler\.sample\(settledSec\)/);
+    expect(controller).toMatch(/setPlayheadSec\(settled\)/);
   });
 
   it('collection pages are only video or raster', () => {

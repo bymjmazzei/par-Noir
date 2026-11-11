@@ -3,11 +3,11 @@
  *
  * Cross-origin images/CSS/fonts taint canvas.toBlob. We clone the live tree,
  * inline safe computed styles (so ProseMirror CSS is not lost inside SVG),
- * force system fonts, punch transparent video holes, and only keep blob:/data:
- * images before SVG foreignObject.
+ * embed the page's Google font files as data: URLs, punch transparent video holes,
+ * and only keep blob:/data: images before SVG foreignObject.
  */
 
-import { sanitizeWidgetMarkup } from '@par-noir/pen-protocol';
+import { googleFontsCssUrl, isGooglePenFont, sanitizeWidgetMarkup } from '@par-noir/pen-protocol';
 
 const DEFAULT_MAX_EDGE = 1080;
 const JPEG_QUALITY = 0.85;
@@ -102,12 +102,79 @@ function isSafeMediaUrl(src: string): boolean {
   return src.startsWith('blob:') || src.startsWith('data:');
 }
 
-function forceSystemFonts(root: HTMLElement): void {
-  const stack = 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  root.style.fontFamily = stack;
-  root.querySelectorAll<HTMLElement>('*').forEach((node) => {
-    node.style.fontFamily = stack;
+const FONT_FALLBACK = 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+/** Google serves one face per script subset; the bake embeds the Latin ones. */
+const EMBEDDED_SUBSETS = new Set(['latin', 'latin-ext']);
+
+function primaryFamily(stack: string): string {
+  return (stack.split(',')[0] || '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+/** Google families painted inside `root`: the first family of each computed font stack. */
+export function googleFamiliesIn(root: HTMLElement): string[] {
+  const out = new Set<string>();
+  for (const node of [root, ...Array.from(root.querySelectorAll('*'))]) {
+    if (!(node instanceof HTMLElement)) continue;
+    const family = primaryFamily(getComputedStyle(node).fontFamily);
+    if (family && isGooglePenFont(family)) out.add(family);
+  }
+  return [...out].sort();
+}
+
+/** The @font-face blocks of a Google CSS2 sheet for the subsets the bake embeds. */
+export function embeddableFontFaces(css: string): string {
+  const faces: string[] = [];
+  for (const match of css.matchAll(/(?:\/\*\s*([\w-]+)\s*\*\/\s*)?(@font-face\s*\{[^}]*\})/g)) {
+    const subset = match[1];
+    if (!subset || EMBEDDED_SUBSETS.has(subset)) faces.push(match[2]!);
+  }
+  return faces.join('\n');
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('font_read_failed'));
+    reader.readAsDataURL(blob);
   });
+}
+
+async function fetchOk(url: string): Promise<Response> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`font_fetch_${res.status}`);
+  return res;
+}
+
+const familyFaces = new Map<string, Promise<string>>();
+
+/** @font-face rules for one Google family with every file inlined; '' when it cannot load. */
+function familyFontFaces(family: string): Promise<string> {
+  let job = familyFaces.get(family);
+  if (job) return job;
+  job = (async () => {
+    const href = googleFontsCssUrl([family]);
+    if (!href) return '';
+    let css = embeddableFontFaces(await (await fetchOk(href)).text());
+    const urls = new Set([...css.matchAll(/url\((['"]?)(https:[^'")]+)\1\)/g)].map((m) => m[2]!));
+    for (const url of urls) {
+      const data = await blobToDataUrl(await (await fetchOk(url)).blob());
+      css = css.split(url).join(data);
+    }
+    return css;
+  })().catch((e: unknown) => {
+    familyFaces.delete(family);
+    console.warn('[pen] font embed failed', family, e instanceof Error ? e.message : e);
+    return '';
+  });
+  familyFaces.set(family, job);
+  return job;
+}
+
+/** Inlined @font-face rules for the Google fonts painted inside `root`. */
+export async function embeddedFontCss(root: HTMLElement): Promise<string> {
+  const faces = await Promise.all(googleFamiliesIn(root).map(familyFontFaces));
+  return faces.filter(Boolean).join('\n');
 }
 
 function shouldSkipInlineValue(prop: string, val: string): boolean {
@@ -155,7 +222,7 @@ export function inlineSafeComputedStyles(liveRoot: HTMLElement, cloneRoot: HTMLE
     }
     const bgImg = safeBackgroundImage(cs.backgroundImage);
     if (bgImg) parts.push(`background-image:${bgImg}`);
-    parts.push('font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif');
+    parts.push(`font-family:${cs.fontFamily ? `${cs.fontFamily}, ` : ''}${FONT_FALLBACK}`);
     clone.style.cssText = parts.join(';');
     clone.removeAttribute('class');
   }
@@ -307,8 +374,6 @@ export function sanitizeCloneForRaster(clone: HTMLElement): void {
       node.style.backgroundImage = 'none';
     }
   });
-
-  forceSystemFonts(clone);
 }
 
 /** Layout px, unaffected by ancestor transforms; the clone is laid out from computed styles in these units. */
@@ -387,6 +452,8 @@ export async function rasterizeElementToPosterBlob(
   if (punchVideos) punchVideoHolesFromLive(el, clone);
   await inlineHtmlSnippets(el, clone);
   sanitizeCloneForRaster(clone);
+  // An SVG drawn as an image cannot fetch, so the font files ride inside it.
+  const fontCss = await embeddedFontCss(el);
 
   const host = document.createElement('div');
   host.setAttribute('aria-hidden', 'true');
@@ -400,6 +467,7 @@ export async function rasterizeElementToPosterBlob(
     svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}">
       <foreignObject width="100%" height="100%" x="0" y="0">
         <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;transform:scale(${sx},${sy});transform-origin:0 0;background:${transparent ? 'transparent' : '#ffffff'};font-family:system-ui,-apple-system,sans-serif;color:#111111;">
+          ${fontCss ? `<style>${fontCss}</style>` : ''}
           ${serialized}
         </div>
       </foreignObject>
@@ -537,7 +605,7 @@ export async function rasterizeElementSafeStill(
           ctx.fillStyle = cs.color || '#111111';
           ctx.textBaseline = 'top';
           const fontSize = Math.max(8, (parseFloat(cs.fontSize) || 14) * scale);
-          ctx.font = `${cs.fontStyle || 'normal'} ${cs.fontWeight || '400'} ${fontSize}px system-ui, -apple-system, sans-serif`;
+          ctx.font = `${cs.fontStyle || 'normal'} ${cs.fontWeight || '400'} ${fontSize}px ${cs.fontFamily ? `${cs.fontFamily}, ` : ''}${FONT_FALLBACK}`;
           if (rects.length <= 1 && rects[0]) {
             const r = rects[0];
             ctx.fillText(

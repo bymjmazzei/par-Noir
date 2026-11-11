@@ -536,6 +536,35 @@ export function sectionHasMotion(section: PenSectionContent | null | undefined):
   return (section?.layers || []).some((layer) => (layer.motion?.keys?.length || 0) > 0);
 }
 
+/** True when the layer moves on the clock: keyframes or an in, out, or both animation. */
+export function layerHasMotion(layer: PenPageLayer): boolean {
+  if ((layer.motion?.keys?.length || 0) > 0) return true;
+  const spec = readLayerAnimation(layer.motion?.animation);
+  return Boolean(spec.in || spec.out || spec.both);
+}
+
+/**
+ * Page time when every intro has finished, so each layer sits at its rest pose.
+ * Capped at the timeline length; 0 when nothing has an intro.
+ */
+export function sectionSettledSec(
+  section: PenSectionContent | null | undefined,
+  ctx?: PenTimelineContext
+): number {
+  if (!section) return 0;
+  const span = resolveTimelineDuration(section, undefined, ctx);
+  if (!(span > 0)) return 0;
+  let settled = 0;
+  for (const layer of section.layers || []) {
+    if (layer.kind === 'guide' || layer.visible === false) continue;
+    const spec = readLayerAnimation(layer.motion?.animation);
+    if (!spec.in && !spec.both) continue;
+    const { start, inDur } = slotDurations(layer, spec, layerClockSpan(section, layer));
+    settled = Math.max(settled, start + inDur);
+  }
+  return Math.min(settled, span);
+}
+
 /** True when the preview must sample layers every playhead tick (motion, loops, audio lanes). */
 export function sectionNeedsPlayheadDrive(
   section: PenSectionContent | null | undefined
