@@ -39,6 +39,23 @@ describe('firebase.json hosting headers', () => {
     }
   });
 
+  it('app shells revalidate so a deploy is picked up on the next load', () => {
+    // Hashed js/css stay cached for a year; the HTML that names them must not.
+    const config = JSON.parse(readFileSync(FIREBASE, 'utf8')) as {
+      hosting: Array<{
+        target?: string;
+        headers?: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
+      }>;
+    };
+    for (const site of config.hosting || []) {
+      for (const source of ['/', '**/*.html', '**/!(*.*)']) {
+        const rule = (site.headers || []).find((h) => h.source === source);
+        const cache = rule?.headers.find((h) => h.key === 'Cache-Control')?.value;
+        expect(cache, `${site.target} ${source}`).toBe('no-cache');
+      }
+    }
+  });
+
   it('unlock uses COOP unsafe-none so web OAuth popups keep window.opener', () => {
     // Callers use COOP same-origin-allow-popups specifically so they can open an
     // Unlock popup without COOP and retain postMessage. Matching COOP on Unlock
