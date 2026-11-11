@@ -1,4 +1,6 @@
 /** @vitest-environment jsdom */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -103,6 +105,13 @@ describe('PenLayerFace', () => {
     expect(at('middle').rich.style.justifyContent).toBe('center');
     expect(at('bottom').rich.style.justifyContent).toBe('flex-end');
     expect(at('bottom').inner.textContent).toBe('Vote');
+  });
+
+  it('every vertical alignment trims the same paragraph edges', () => {
+    const css = readFileSync(resolve(__dirname, 'penRichHtml.css'), 'utf8');
+    expect(css).toContain('[data-pen-layer] > [data-pen-valign] > div > :first-child {\n  margin-top: 0;');
+    expect(css).toContain('[data-pen-layer] > [data-pen-valign] > div > :last-child {\n  margin-bottom: 0;');
+    expect(css).not.toMatch(/data-pen-valign='(middle|bottom)'/);
   });
 
   it('time shows the caption', () => {

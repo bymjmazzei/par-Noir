@@ -97,13 +97,11 @@
   margin-bottom: 0;
 }
 
-/* Aligned text boxes place the glyphs, not the paragraph margins. */
-[data-pen-valign='middle'] > div > :first-child,
-[data-pen-valign='bottom'] > div > :first-child {
+/* Text boxes align the glyphs, not the paragraph margins, so top, middle and bottom share edges. */
+[data-pen-layer] > [data-pen-valign] > div > :first-child {
   margin-top: 0;
 }
 
-[data-pen-valign='middle'] > div > :last-child,
-[data-pen-valign='bottom'] > div > :last-child {
+[data-pen-layer] > [data-pen-valign] > div > :last-child {
   margin-bottom: 0;
 }
