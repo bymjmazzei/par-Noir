@@ -108,8 +108,5 @@ export function layerChromeStyle(layer: PenPageLayer): PenLayerChrome {
     outline: stroke.outline,
     outlineOffset: stroke.outlineOffset
   };
-  if (layer.kind === 'group') {
-    chrome.border = chrome.border || '1px dashed rgba(0,0,0,0.25)';
-  }
   return chrome;
 }

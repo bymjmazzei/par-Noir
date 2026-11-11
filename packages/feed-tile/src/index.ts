@@ -8,7 +8,7 @@ import './penRichHtml.css';
 
 export { PenFeedPageStage } from './PenFeedPageStage.js';
 export { PenLayerFace, type PenLayerFaceProps } from './PenLayerFace.js';
-export { layerFaceStyle, layerFrameStyle } from './penLayerStyle.js';
+export { editorLayerFrameStyle, layerFaceStyle, layerFrameStyle } from './penLayerStyle.js';
 export { ensureGoogleFontLoaded, ensureGoogleFontsLoaded } from './penGoogleFonts.js';
 export type { ResolveLayerMedia } from './PenFeedPageStage.js';
 export { FeedTileTestOverlay } from './FeedTileTestOverlay.js';

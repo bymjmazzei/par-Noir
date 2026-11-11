@@ -19,21 +19,30 @@ describe('flatten on publish', () => {
   it('Share and Download flatten through flattenPage / encodePageVideo', () => {
     expect(controller).toMatch(/composePageStill\(root, pageContext\(slug\)/);
     expect(controller).toMatch(/encodePageVideo\(root, pageContext\(slug\)/);
-    expect(controller).toMatch(/flattenSection: \(slug\) => flattenPage\(slug, \{ forFeed: true \}\)/);
-    expect(controller).toMatch(/encodeSection: \(slug, onProgress\) => encodePage\(slug, onProgress, true\)/);
-    expect(controller).toMatch(
-      /image: \{ slug: page\.slug, posterBlob: await flattenPage\(page\.slug, \{ forFeed: true \}\) \}/
-    );
+    expect(controller).toMatch(/flattenSection: \(slug\) => flattenPage\(slug\)/);
+    expect(controller).toMatch(/encodeSection: \(slug, onProgress\) => encodePage\(slug, onProgress\)/);
+    expect(controller).toMatch(/image: \{ slug: page\.slug, posterBlob: await flattenPage\(page\.slug\) \}/);
     expect(controller).toMatch(/saveDownload\(await flattenPage\(slug, \{ mime: 'image\/png' \}\)/);
     expect(gallery).toMatch(/encodePageVideo\(root, page\)/);
     expect(gallery).toMatch(/composePageStill\(root, page\)/);
   });
 
-  it('a feed post leaves the layers the feed draws live out of its bake', () => {
-    expect(controller).toMatch(/feedLiveLayerIds\(pageContext\(slug\)\.section\.layers\)/);
-    expect(controller).toMatch(/skipIds: feedLiveIds\(slug, opts\?\.forFeed\)/);
-    expect(controller).toMatch(/skipIds: feedLiveIds\(slug, forFeed\)/);
-    expect(encode).toMatch(/!opts\.skipIds\?\.has\(layer\.id\)/);
+  it('a page that animates a non-action layer publishes as video', () => {
+    const fn = publish.slice(publish.indexOf('export function pagePublishesAsVideo'));
+    expect(fn.slice(0, fn.indexOf('\n}\n'))).toMatch(/sectionHasInertMotion\(section\)/);
+    expect(controller).not.toMatch(/feedLiveLayerIds|skipIds/);
+    expect(encode).not.toMatch(/skipIds/);
+  });
+
+  it('bakes read the offscreen viewer render, never the editor page', () => {
+    const shell = read('pages/docEditor/DocEditorShell.tsx');
+    const preview = read('components/EditablePagePreview.tsx');
+    expect(controller).toMatch(/document\.querySelector\(CAPTURE_EXPORT_ROOT_SELECTOR\)/);
+    expect(controller).not.toMatch(/data-preview-page|captureLayers/);
+    expect(shell).toMatch(/<EditablePagePreview\s+capture\b/);
+    expect(preview).toMatch(/composeExportRoot=\{capture \? 'capture' : true\}/);
+    expect(preview).toMatch(/editor=\{!capture\}/);
+    expect(gallery).toMatch(/document\.querySelector\(CAPTURE_EXPORT_ROOT_SELECTOR\)/);
   });
 
   it('stills bake the settled pose, after every intro', () => {

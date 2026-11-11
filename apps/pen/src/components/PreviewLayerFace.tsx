@@ -28,7 +28,8 @@ export function PreviewLayerFace({
   onInputValue,
   onSelect,
   onNaturalAspect,
-  selected = false
+  selected = false,
+  editor = true
 }: {
   layer: PenPageLayer;
   layers: PenPageLayer[];
@@ -42,6 +43,8 @@ export function PreviewLayerFace({
   onSelect: () => void;
   onNaturalAspect?: (aspect: number) => void;
   selected?: boolean;
+  /** False draws the viewer face: no placeholders, scrollbars or editor outlines. */
+  editor?: boolean;
 }) {
   const source = layerMediaSource(layer);
   const backgroundRef =
@@ -99,7 +102,7 @@ export function PreviewLayerFace({
   return (
     <PenLayerFace
       layer={layer}
-      editor
+      editor={editor}
       fontFamily={presentation.fontFamily}
       runtimeLabel={runtimeLabel}
       caption={caption}

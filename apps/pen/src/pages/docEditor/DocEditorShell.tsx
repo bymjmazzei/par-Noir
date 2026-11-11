@@ -90,6 +90,7 @@ import {
   submitFields,
   syncPollLayers,
   pageTitleFor,
+  pageSheetDims,
   withPageTitle,
   type PenDocComment,
   type PenPageLayout,
@@ -245,7 +246,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     bundle,
     bundleRef,
     canvasSection,
-    captureLayers,
     classTrail,
     commentDraft,
     comments,
@@ -291,7 +291,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     navigate,
     onEditorReady,
     onStoryBlockHeights,
-    pageExportRoot,
     pageLayout,
     persist,
     persistSection,
@@ -316,7 +315,6 @@ export function DocEditorShell(state: DocEditorReadyState) {
     rejectSuggestion,
     rememberPostFileId,
     removeMember,
-    rootForSlug,
     saveDraft,
     savedTick,
     scheduleLedgerPush,
@@ -1545,7 +1543,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
                       previewStrip.docH
                     );
                     const pageManifest =
-                      pageView === 'screen' && !captureLayers
+                      pageView === 'screen'
                         ? {
                             ...bundle.manifest,
                             pagePresentation: {
@@ -1583,7 +1581,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
                             toolbarHost={active ? previewToolbarHost : null}
                             scrollWithParent
                             clearChrome={pageView === 'screen'}
-                            showAbsoluteLayers={pageView !== 'screen' || captureLayers}
+                            showAbsoluteLayers={pageView !== 'screen'}
                             pageView={pageView}
                             pageOrientation={pageOrientation}
                             viewLocked={bundle.manifest.pageViewLocked === true}
@@ -1771,9 +1769,18 @@ export function DocEditorShell(state: DocEditorReadyState) {
         {galleryComposeCapture && section && bundle ? (
           <div
             aria-hidden
-            className="pointer-events-none fixed left-[-12000px] top-0 z-[-1] h-[720px] w-[405px] overflow-hidden opacity-0"
+            className="pointer-events-none fixed left-[-12000px] top-0 z-[-1] opacity-0"
+            style={(() => {
+              const dims = pageSheetDims(bundle.manifest.pageLayout, {
+                widthPx: bundle.manifest.flowWorkspaceWidthPx,
+                heightPx: bundle.manifest.flowWorkspaceHeightPx,
+                sizeId: bundle.manifest.pageSize
+              });
+              return { width: dims.pageWidthPx ?? 405, height: dims.pageHeightPx ?? 720 };
+            })()}
           >
             <EditablePagePreview
+              capture
               manifest={bundle.manifest}
               section={
                 flowsBody && section.storyId

@@ -177,12 +177,16 @@ export async function embeddedFontCss(root: HTMLElement): Promise<string> {
   return faces.filter(Boolean).join('\n');
 }
 
+/** A computed value as the still draws it: hidden nodes stay hidden, scroll areas clip without bars. */
+function inlineValue(prop: string, val: string): string {
+  if (prop.startsWith('overflow') && (val === 'auto' || val === 'scroll')) return 'hidden';
+  return val;
+}
+
 function shouldSkipInlineValue(prop: string, val: string): boolean {
   if (!val) return true;
+  if (prop === 'display' && val === 'none') return false;
   if (val === 'none' || val === 'auto' || val === 'static' || val === 'normal') return true;
-  if (val === '0px' && (prop.startsWith('margin') || prop.startsWith('padding') || prop.startsWith('border'))) {
-    return true;
-  }
   if ((prop === 'opacity' || prop === 'zoom') && val === '1') return true;
   if (prop === 'z-index' && val === 'auto') return true;
   return false;
@@ -216,7 +220,7 @@ export function inlineSafeComputedStyles(liveRoot: HTMLElement, cloneRoot: HTMLE
     const cs = getComputedStyle(live);
     const parts: string[] = [];
     for (const prop of INLINE_STYLE_PROPS) {
-      const val = cs.getPropertyValue(prop);
+      const val = inlineValue(prop, cs.getPropertyValue(prop));
       if (shouldSkipInlineValue(prop, val)) continue;
       parts.push(`${prop}:${val}`);
     }
@@ -471,6 +475,26 @@ export function rasterOutputSize(
 }
 
 /**
+ * The bake's top-left is the page's top-left: drop the margins, offsets and transforms
+ * that place the page in the editor, at the measured layout size.
+ */
+export function placeCloneRootAtOrigin(clone: HTMLElement, w: number, h: number): void {
+  const s = clone.style;
+  s.margin = '0';
+  s.position = 'relative';
+  s.left = '0';
+  s.top = '0';
+  s.right = 'auto';
+  s.bottom = 'auto';
+  s.transform = 'none';
+  s.zoom = '1';
+  s.width = `${w}px`;
+  s.height = `${h}px`;
+  s.boxSizing = 'border-box';
+  s.overflow = 'hidden';
+}
+
+/**
  * Capture an HTMLElement (page preview) to a JPEG blob, including text.
  * Inlines live computed styles so TipTap prose survives without page CSS.
  */
@@ -499,7 +523,7 @@ export async function rasterizeElementToPosterBlob(
 
   const clone = el.cloneNode(true) as HTMLElement;
   inlineSafeComputedStyles(el, clone);
-  clone.style.overflow = 'hidden';
+  placeCloneRootAtOrigin(clone, w, h);
   if (punchVideos) punchVideoHolesFromLive(el, clone);
   await inlineHtmlSnippets(el, clone);
   sanitizeCloneForRaster(clone);
@@ -541,144 +565,6 @@ export async function rasterizeElementToPosterBlob(
         (b) => (b ? resolve(b) : reject(new Error('rasterize_toBlob_failed'))),
         mime,
         mime === 'image/png' ? undefined : quality
-      );
-    } catch (e) {
-      reject(e instanceof Error ? e : new Error('rasterize_canvas_tainted'));
-    }
-  });
-}
-
-/** A CSS gradient drawn alone through SVG; it loads nothing external, so it cannot taint. */
-function cssBackgroundImage(value: string, w: number, h: number): Promise<HTMLImageElement> {
-  const escaped = value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;background-image:${escaped}"></div></foreignObject></svg>`;
-  return loadSvgImage(svg, 'rasterize_gradient_failed');
-}
-
-/**
- * Fallback when foreignObject taints: background + blob images + text via fillText.
- */
-export async function rasterizeElementSafeStill(
-  el: HTMLElement,
-  opts?: RasterSizeOpts & { quality?: number; transparent?: boolean }
-): Promise<Blob> {
-  const quality = opts?.quality ?? JPEG_QUALITY;
-  const transparent = opts?.transparent === true;
-  const { w, h } = measureEl(el);
-  const { cw, ch, sx: layoutSx, sy: layoutSy } = rasterOutputSize(w, h, opts);
-  const scale = Math.min(layoutSx, layoutSy);
-  const zoom = visualScale(el);
-  const sx = layoutSx / zoom;
-  const sy = layoutSy / zoom;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = cw;
-  canvas.height = ch;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('canvas_unavailable');
-
-  const rootStyle = getComputedStyle(el);
-  const fill = rootStyle.backgroundColor;
-  const hasFill = Boolean(fill) && fill !== 'rgba(0, 0, 0, 0)' && fill !== 'transparent';
-  if (hasFill || !transparent) {
-    ctx.fillStyle = hasFill ? fill : '#ffffff';
-    ctx.fillRect(0, 0, cw, ch);
-  }
-  const gradient = safeBackgroundImage(rootStyle.backgroundImage);
-  if (gradient && !/url\s*\(/i.test(gradient)) {
-    try {
-      ctx.drawImage(await cssBackgroundImage(gradient, cw, ch), 0, 0, cw, ch);
-    } catch {
-      /* keep the solid fill */
-    }
-  }
-
-  const rootRect = el.getBoundingClientRect();
-
-  const imgs = Array.from(el.querySelectorAll('img')) as HTMLImageElement[];
-  for (const img of imgs) {
-    const src = img.currentSrc || img.src || '';
-    if (!isSafeMediaUrl(src)) continue;
-    if (getComputedStyle(img).visibility === 'hidden') continue;
-    const r = img.getBoundingClientRect();
-    if (r.width < 2 || r.height < 2) continue;
-    try {
-      const bmp = await createImageBitmap(img);
-      ctx.drawImage(
-        bmp,
-        (r.left - rootRect.left) * sx,
-        (r.top - rootRect.top) * sy,
-        r.width * sx,
-        r.height * sy
-      );
-      bmp.close?.();
-    } catch {
-      /* skip */
-    }
-  }
-
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  let node: Node | null = walker.nextNode();
-  while (node) {
-    const raw = node.textContent || '';
-    const text = raw.replace(/\s+/g, ' ');
-    if (text.trim()) {
-      const parent = node.parentElement;
-      if (
-        parent &&
-        !parent.closest('video, script, style, [data-pen-media-drawable="1"]')
-      ) {
-        const cs = getComputedStyle(parent);
-        if (cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05) {
-          const range = document.createRange();
-          range.selectNodeContents(node);
-          const rects = Array.from(range.getClientRects());
-          ctx.fillStyle = cs.color || '#111111';
-          ctx.textBaseline = 'top';
-          const fontSize = Math.max(8, (parseFloat(cs.fontSize) || 14) * scale);
-          ctx.font = `${cs.fontStyle || 'normal'} ${cs.fontWeight || '400'} ${fontSize}px ${cs.fontFamily ? `${cs.fontFamily}, ` : ''}${FONT_FALLBACK}`;
-          if (rects.length <= 1 && rects[0]) {
-            const r = rects[0];
-            ctx.fillText(
-              text.trim(),
-              (r.left - rootRect.left) * sx,
-              (r.top - rootRect.top) * sy,
-              Math.max(4, r.width * sx)
-            );
-          } else {
-            const words = text.trim().split(' ');
-            let wi = 0;
-            for (const r of rects) {
-              if (wi >= words.length) break;
-              let line = '';
-              while (wi < words.length) {
-                const trial = line ? `${line} ${words[wi]}` : words[wi]!;
-                if (ctx.measureText(trial).width > r.width * sx && line) break;
-                line = trial;
-                wi += 1;
-              }
-              if (line) {
-                ctx.fillText(
-                  line,
-                  (r.left - rootRect.left) * sx,
-                  (r.top - rootRect.top) * sy,
-                  Math.max(4, r.width * sx)
-                );
-              }
-            }
-          }
-        }
-      }
-    }
-    node = walker.nextNode();
-  }
-
-  return new Promise<Blob>((resolve, reject) => {
-    try {
-      canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error('rasterize_toBlob_failed'))),
-        transparent ? 'image/png' : 'image/jpeg',
-        transparent ? undefined : quality
       );
     } catch (e) {
       reject(e instanceof Error ? e : new Error('rasterize_canvas_tainted'));

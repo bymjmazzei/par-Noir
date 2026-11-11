@@ -9,7 +9,6 @@ import {
   sampleSectionLayers,
   type PenTimelineContext
 } from './layerMotion.js';
-import { layerMediaSource } from './layerPaint.js';
 import { partitionLayersForCompose } from './actionPartition.js';
 import { layerVisibleInViewer, revealTargetIds, type PenViewerState } from './penViewerOverlay.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
@@ -36,25 +35,24 @@ export type PenFeedPagePayload = {
 };
 
 /**
- * A still layer that animates (intro, outro, keyframes). The feed draws it live so the
- * motion plays; a baked still would freeze it at one pose. Video and sound stay in the bake.
+ * A non-action layer animates (intro, outro, keyframes), so a still would freeze it:
+ * the page publishes as a video with that motion baked in.
  */
-function isFeedMotionLayer(layer: PenPageLayer): boolean {
-  if (layer.kind === 'group' || layer.kind === 'guide' || layer.kind === 'video') return false;
-  if (layer.visible === false) return false;
-  if (layer.audioTracks?.length) return false;
-  if (layerMediaSource(layer)?.kind === 'video') return false;
-  return layerHasMotion(layer);
+export function sectionHasInertMotion(section: PenSectionContent | null | undefined): boolean {
+  if (!section) return false;
+  const { inert } = partitionLayersForCompose(normalizeSection(section).layers || []);
+  return inert.some(
+    (layer) =>
+      layer.visible !== false &&
+      layer.kind !== 'guide' &&
+      layer.kind !== 'group' &&
+      layerHasMotion(layer)
+  );
 }
 
-/** Layers the feed draws live over the baked page: interactive ones and animated stills. */
+/** Layers the feed draws live over the baked page: the action layers only. */
 export function feedLiveLayerIds(layers: PenPageLayer[] | null | undefined): Set<string> {
-  const all = layers || [];
-  const ids = new Set(partitionLayersForCompose(all).action.map((layer) => layer.id));
-  for (const layer of all) {
-    if (isFeedMotionLayer(layer)) ids.add(layer.id);
-  }
-  return ids;
+  return new Set(partitionLayersForCompose(layers || []).action.map((layer) => layer.id));
 }
 
 /** Live layers plus parent group stubs required for motion sampling. */
@@ -136,7 +134,6 @@ export function buildActionOverlayAtTime(
     if (!layerVisibleInViewer(layer, all, state)) return false;
     const { action } = partitionLayersForCompose([layer]);
     if (action.length > 0) return true;
-    if (isFeedMotionLayer(layer)) return true;
     return shown.has(layer.id);
   });
 }

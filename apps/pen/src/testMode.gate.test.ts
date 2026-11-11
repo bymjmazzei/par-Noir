@@ -34,7 +34,7 @@ describe('test mode', () => {
     const encode = read('services/encodePageVideo.ts');
     const slot = encode.slice(encode.indexOf('function measureSlot'));
     expect(slot.slice(0, slot.indexOf('\n}\n'))).toMatch(/visualScale\(root\)/);
-    expect(read('pages/docEditor/DocEditorShell.tsx')).toMatch(/pageView === 'screen' && !captureLayers/);
+    expect(read('pages/docEditor/DocEditorShell.tsx')).toMatch(/<EditablePagePreview\s+capture\b/);
   });
 
   it('offers Test beside Build in the templates feed and preview modal', () => {

@@ -77,6 +77,7 @@ import { PageSheetColumn } from './PageSheetColumn';
 import {
   PenMediaPlayer,
   PublishedEngagementBar,
+  editorLayerFrameStyle,
   ensureGoogleFontsLoaded,
   layerFrameStyle
 } from '@par-noir/feed-tile';
@@ -129,7 +130,8 @@ export function EditablePagePreview({
   onEnterGroup,
   guideSpan,
   widgetPreviewGroupId = null,
-  widgetPreviewFrame = 0
+  widgetPreviewFrame = 0,
+  capture = false
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -174,6 +176,8 @@ export function EditablePagePreview({
   session?: PenSession | null;
   widgetPreviewGroupId?: string | null;
   widgetPreviewFrame?: number;
+  /** Offscreen viewer render that publish bakes: no toolbar, gutters, guides or placeholders. */
+  capture?: boolean;
 }) {
   const livePlayheadSec = usePlayheadSec(playheadProp === undefined);
   const playheadSec = playheadProp ?? livePlayheadSec;
@@ -315,7 +319,7 @@ export function EditablePagePreview({
     scrollWithParent && measuredSheetH > 0 ? measuredSheetH : undefined
   );
   const artboard = pageAllowsPasteboard(manifest.pageLayout, manifest.flowWorkspaceWidthPx);
-  const artboardGutter = artboard && !scrollWithParent
+  const artboardGutter = artboard && !scrollWithParent && !capture
     ? pasteboardGutterPx(
         items.map((item) => ({ x: item.x + pad, y: item.y + pad, w: item.w, h: item.h })),
         box.width + 2 * pad,
@@ -543,7 +547,7 @@ export function EditablePagePreview({
   const bodyHtml = docToHtml(prepared.doc);
   const bodyStyle = bodyMarginStyle(presentation);
   const bodyVerticalAlign = prepared.bodyVerticalAlign;
-  const chrome = showToolbar ? (
+  const chrome = showToolbar && !capture ? (
     <>
       <div
         ref={pageToolsRef}
@@ -802,7 +806,9 @@ export function EditablePagePreview({
       <div
         ref={scrollerRef}
         className={
-          scrollWithParent
+          capture
+            ? 'relative flex flex-col items-start bg-transparent p-0'
+            : scrollWithParent
             ? `relative flex h-full min-h-0 w-full flex-col bg-transparent p-0 ${
                 artboard ? 'overflow-visible' : 'overflow-hidden'
               }`
@@ -810,7 +816,7 @@ export function EditablePagePreview({
                 flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
               }`
         }
-        style={artboard ? { padding: artboardGutter } : undefined}
+        style={artboard && !capture ? { padding: artboardGutter } : undefined}
       >
         <PageSheetColumn
           sheetRef={sheetMeasureRef}
@@ -819,7 +825,13 @@ export function EditablePagePreview({
           flowWorkspaceHeightPx={manifest.flowWorkspaceHeightPx}
           pageSize={manifest.pageSize}
           contentOuterHeightPx={contentOuterH}
-          style={artboard ? { ...frameStyle, overflow: 'visible' } : frameStyle}
+          style={
+            capture
+              ? { ...frameStyle, overflow: 'hidden' }
+              : artboard
+                ? { ...frameStyle, overflow: 'visible' }
+                : frameStyle
+          }
           bare={
             !scrollWithParent &&
             presentation.backgroundColor === 'transparent' &&
@@ -837,7 +849,7 @@ export function EditablePagePreview({
           fitParent
           containInParent={scrollWithParent}
           onClick={() => selectLayer(PAGE_LAYER_ID)}
-          composeExportRoot
+          composeExportRoot={capture ? 'capture' : true}
         >
           {presentation.backgroundVideo && (
             <>
@@ -907,13 +919,13 @@ export function EditablePagePreview({
               <div
                 style={{ display: 'contents' }}
                 dangerouslySetInnerHTML={{
-                  __html: bodyHtml || '<p class="text-neutral-400">Start writing…</p>'
+                  __html: bodyHtml || (capture ? '' : '<p class="text-neutral-400">Start writing…</p>')
                 }}
               />
             </div>
 
             {/* Layers cover the whole page. Body text keeps the margin. */}
-            {showAbsoluteLayers && !scrollWithParent && guideLayers.length > 0 && (
+            {showAbsoluteLayers && !scrollWithParent && !capture && guideLayers.length > 0 && (
               <PageGuides
                 guides={guideLayers.map((layer) => ({
                   id: layer.id,
@@ -956,7 +968,8 @@ export function EditablePagePreview({
               freePlacement={artboard}
               frameStyle={(item) => {
                 const layer = layers.find((entry) => entry.id === item.id);
-                return layer ? layerFrameStyle(layer) : {};
+                if (!layer) return {};
+                return capture ? layerFrameStyle(layer) : editorLayerFrameStyle(layer);
               }}
               selectedId={pageActive ? null : activeLayerId}
               snap={snapEnabled}
@@ -985,6 +998,7 @@ export function EditablePagePreview({
                     onSelect={() => selectLayer(layer.id)}
                     onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
                     selected={activeLayerId === layer.id}
+                    editor={!capture}
                   />
                 );
               }}

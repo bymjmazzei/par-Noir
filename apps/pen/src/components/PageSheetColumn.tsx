@@ -5,6 +5,9 @@ import {
   type PenPageLayout
 } from '@par-noir/pen-protocol';
 
+/** The offscreen viewer render that publish and download bake. */
+export const CAPTURE_EXPORT_ROOT_SELECTOR = '[data-pen-compose-export-root="capture"]';
+
 /**
  * Shared sheet chrome: Flow = continuous white panel (open fill or fixed W×H);
  * Letter/A4 = stacked fixed-size page bands with hairline breaks.
@@ -20,7 +23,7 @@ export function PageSheetColumn({
   children,
   sheetRef,
   onClick,
-  /** When true, marks this sheet as the compose/encode export root. */
+  /** Marks this sheet as an export root; `capture` is the offscreen surface publish bakes. */
   composeExportRoot = false,
   /** Transparent flow surface: no page fill or sheet shadow. */
   bare = false,
@@ -45,7 +48,7 @@ export function PageSheetColumn({
   children: ReactNode;
   sheetRef?: Ref<HTMLDivElement>;
   onClick?: () => void;
-  composeExportRoot?: boolean;
+  composeExportRoot?: boolean | 'capture';
   bare?: boolean;
   fitParent?: boolean;
   containInParent?: boolean;
@@ -75,7 +78,7 @@ export function PageSheetColumn({
     <div
       ref={sheetRef}
       {...(composeExportRoot
-        ? { 'data-pen-compose-export-root': 'page' }
+        ? { 'data-pen-compose-export-root': composeExportRoot === 'capture' ? 'capture' : 'page' }
         : {})}
       className={`relative ${
         bare

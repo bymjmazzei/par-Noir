@@ -3,6 +3,7 @@ import { collectFontFamiliesFromLayers } from './fonts.js';
 import {
   DEFAULT_LAYER_FILL,
   isDirectImageSrc,
+  layerChromeStyle,
   layerMediaSource,
   layerPaintStyle
 } from './layerPaint.js';
@@ -45,6 +46,12 @@ describe('layerPaintStyle', () => {
     expect(layerPaintStyle(layer({ kind: 'image', imageSrc: 'https://x/y.png' }))).toEqual({
       backgroundColor: 'transparent'
     });
+  });
+});
+
+describe('layerChromeStyle', () => {
+  it('draws no outline on an unstroked group; the outline is editor chrome', () => {
+    expect(layerChromeStyle(layer({ kind: 'group' })).border).toBeUndefined();
   });
 });
 

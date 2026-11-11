@@ -63,12 +63,15 @@ describe('paint bands', () => {
     expect(order.map((entry) => entry.id)).toEqual([PAGE_BACKGROUND_ID, PAGE_BODY_ID, 'art']);
   });
 
-  it('leaves out layers the feed draws live', () => {
-    const order = pagePaintOrder([layer('art', 1), layer('intro', 2)], {
-      backgroundVideo: false,
-      skipIds: new Set(['intro'])
-    });
-    expect(order.map((entry) => entry.id)).toEqual([PAGE_BACKGROUND_ID, PAGE_BODY_ID, 'art']);
+  it('keeps animated non-action layers in the bake', () => {
+    const order = pagePaintOrder(
+      [
+        layer('art', 1),
+        layer('intro', 2, { motion: { keys: [], animation: { in: 'fade' } } } as Partial<PenPageLayer>)
+      ],
+      { backgroundVideo: false }
+    );
+    expect(order.map((entry) => entry.id)).toEqual([PAGE_BACKGROUND_ID, PAGE_BODY_ID, 'art', 'intro']);
   });
 });
 

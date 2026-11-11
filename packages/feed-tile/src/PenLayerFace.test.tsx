@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PenPageLayer } from '@par-noir/pen-protocol';
 import { PenLayerFace, type PenLayerFaceProps } from './PenLayerFace.js';
+import { editorLayerFrameStyle, layerFrameStyle } from './penLayerStyle.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -189,5 +190,19 @@ describe('PenLayerFace', () => {
       mediaSrc: 'blob:public-sd'
     });
     expect(el.querySelector('video')).not.toBeNull();
+  });
+});
+
+describe('group frame outline', () => {
+  const group = { ...box, id: 'g', kind: 'group' } as PenPageLayer;
+
+  it('the editor outlines an unstroked group; the feed does not', () => {
+    expect(editorLayerFrameStyle(group).border).toBe('1px dashed rgba(0,0,0,0.25)');
+    expect(layerFrameStyle(group).border).toBeUndefined();
+  });
+
+  it('a stroked group keeps its own stroke in the editor', () => {
+    const stroked = { ...group, strokeWidth: 2, strokeColor: '#f00' } as PenPageLayer;
+    expect(editorLayerFrameStyle(stroked).border).toBe(layerFrameStyle(stroked).border);
   });
 });

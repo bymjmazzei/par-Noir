@@ -14,12 +14,11 @@ describe('compose bands include text', () => {
   const encode = readFileSync(encodePath, 'utf8');
   const raster = readFileSync(rasterPath, 'utf8');
 
-  it('rasterizeBand prefers rasterizeElementToPosterBlob (text+layout) with video holes', () => {
+  it('rasterizeBand bakes through rasterizeElementToPosterBlob (text+layout) with video holes', () => {
     const fnStart = encode.indexOf('async function rasterizeBand');
     const fn = encode.slice(fnStart, fnStart + 1200);
     expect(fn).toMatch(/rasterizeElementToPosterBlob/);
     expect(fn).toMatch(/punchVideos:\s*true/);
-    expect(fn).toMatch(/rasterizeElementSafeStill/);
   });
 
   it('rasterize inlines computed styles, including visibility, for band hiding', () => {
@@ -27,11 +26,6 @@ describe('compose bands include text', () => {
     expect(raster).toMatch(/export function punchVideoHolesFromLive/);
     expect(raster).toMatch(/inlineSafeComputedStyles\(el,\s*clone\)/);
     expect(raster).toMatch(/'visibility'/);
-  });
-
-  it('safe still fallback paints text via fillText', () => {
-    expect(raster).toMatch(/SHOW_TEXT/);
-    expect(raster).toMatch(/fillText/);
   });
 
   it('baked text keeps its font: files are embedded, not swapped for system-ui', () => {
@@ -47,9 +41,12 @@ describe('compose bands include text', () => {
     expect(raster).toMatch(/sanitizeCloneForRaster\(clone\);\s*await inlineBlobUrls\(clone\);/);
   });
 
-  it('a fallback to the safe still is logged', () => {
-    const fnStart = encode.indexOf('async function rasterizeBand');
-    const fn = encode.slice(fnStart, fnStart + 1200);
-    expect(fn).toMatch(/console\.warn\('\[pen\] page raster fell back to the safe still'/);
+  it('a failed bake blocks publish; there is no lookalike fallback', () => {
+    const gallery = readFileSync(resolve(__dirname, 'services/penGalleryPreview.ts'), 'utf8');
+    for (const src of [encode, raster, gallery]) {
+      expect(src).not.toMatch(/rasterizeElementSafeStill|safe still/);
+    }
+    const controller = readFileSync(resolve(__dirname, 'pages/docEditor/useDocEditorController.ts'), 'utf8');
+    expect(controller).toMatch(/Your post was not published: a page could not be captured/);
   });
 });

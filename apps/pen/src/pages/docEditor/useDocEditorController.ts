@@ -56,7 +56,6 @@ import {
   previewPageUsesGutter,
   resolvePagePaddingPx,
   orientationFromPageSize,
-  resolvePageView,
   screenStripWidthPx,
   verifyChain,
   ensureOwnerAssignment,
@@ -69,7 +68,6 @@ import {
   partitionSectionsForPublish,
   resolveTimelineDuration,
   isSectionTimelineActive,
-  feedLiveLayerIds,
   layerSettledSec,
   sectionSettledSec,
   sectionIsFeedPage,
@@ -115,7 +113,7 @@ import { IconLayers } from '../../components/icons/PenIcons';
 import { MediaEditorPanel } from '../../components/MediaEditorPanel';
 import { SectionTimeline } from '../../components/SectionTimeline';
 import { getPlayheadSec, setPlayheadSec } from '../../services/playheadStore';
-import { findComposeExportRoot } from '../../services/penGalleryPreview';
+import { CAPTURE_EXPORT_ROOT_SELECTOR } from '../../components/PageSheetColumn';
 import { composedMaster, type ComposePageVideoResult } from '../../services/composePageVideoEncode';
 import {
   composePageStill,
@@ -301,7 +299,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   /** Layout size of the page. Pane changes scale this box; they do not resize it. */
   const previewLayoutRef = useRef<{ key: string; width: number; height: number } | null>(null);
   const [galleryComposeCapture, setGalleryComposeCapture] = useState(false);
-  const [captureLayers, setCaptureLayers] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [invitePn, setInvitePn] = useState('');
@@ -1853,28 +1850,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     });
   }
 
-  function pageExportRoot(slug: string): HTMLElement | null {
-    const scoped = document.querySelector(
-      `[data-preview-page="${CSS.escape(slug)}"] [data-pen-compose-export-root]`
-    );
-    return scoped instanceof HTMLElement ? scoped : null;
-  }
-
-  async function rootForSlug(slug: string): Promise<HTMLElement> {
-    const live = pageExportRoot(slug);
-    if (live) return live;
-    flushSync(() => {
-      setActiveSlug(slug);
-      setGalleryComposeCapture(true);
-    });
-    await waitTwoFrames();
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    const root = findComposeExportRoot();
-    if (!root) throw new Error('compose_export_root_missing');
-    return root;
-  }
-
-  /** Same offscreen page surface Commit uses — social/screen preview hides layer video otherwise. */
+  /** The offscreen viewer render of the active page: no editor chrome, every layer showing. */
   async function mountComposeCaptureForEncode(slug: string): Promise<void> {
     flushSync(() => {
       setActiveSlug(slug);
@@ -1886,7 +1862,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
 
   function teardownComposeCaptureForEncode(prevSlug: string): void {
     setGalleryComposeCapture(false);
-    setCaptureLayers(false);
     setActiveSlug(prevSlug);
     const current = bundleRef.current || bundle;
     setPlayheadSec(
@@ -1912,7 +1887,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       return 'Could not record the page video for the feed. Wait for the clip to finish loading, then try Share again.';
     }
     if (/toBlob|tainted|rasterize_/i.test(raw)) {
-      return 'Could not capture a page for the feed. Wait for media to load, then try Share again.';
+      return 'Your post was not published: a page could not be captured exactly as it looks in Pen. Wait for media to load, then try Share again.';
     }
     if (raw.startsWith('r2_owner_upload_failed') || raw.startsWith('r2_put_failed')) {
       return 'Could not upload preview to the feed CDN. Try again after the API has finished deploying.';
@@ -1923,15 +1898,12 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     return raw;
   }
 
-  /** Mount `slug` on the capture surface with its page background and layers showing. */
+  /** Mount `slug` on the capture surface; the bake never reads the editor's on-screen page. */
   async function capturePageRoot(slug: string): Promise<HTMLElement> {
-    const current = bundleRef.current || bundle;
     await mountComposeCaptureForEncode(slug);
-    if (current && resolvePageView(current.manifest.pageView, current.manifest.pageLayout) === 'screen') {
-      flushSync(() => setCaptureLayers(true));
-      await waitTwoFrames();
-    }
-    return rootForSlug(slug);
+    const root = document.querySelector(CAPTURE_EXPORT_ROOT_SELECTOR);
+    if (!(root instanceof HTMLElement)) throw new Error('compose_export_root_missing');
+    return root;
   }
 
   function pageContext(slug: string) {
@@ -1941,47 +1913,35 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     return { section, manifest: current.manifest };
   }
 
-  /** Layers a feed post draws live (buttons, animated layers); its bake leaves them out. */
-  function feedLiveIds(slug: string, forFeed?: boolean): Set<string> | undefined {
-    return forFeed ? feedLiveLayerIds(pageContext(slug).section.layers) : undefined;
-  }
-
   /**
-   * One image of a page's non-action layers. A feed post's image is the background
-   * under the live layers; a download keeps every layer at its rest pose.
+   * One image of a page's non-action layers at their rest pose. A feed post's image is
+   * the background under the live action layers.
    */
   async function flattenPage(
     slug: string,
-    opts?: { mime?: 'image/jpeg' | 'image/png'; forFeed?: boolean }
+    opts?: { mime?: 'image/jpeg' | 'image/png' }
   ): Promise<Blob> {
     const root = await capturePageRoot(slug);
-    return composePageStill(root, pageContext(slug), {
-      mime: opts?.mime,
-      skipIds: feedLiveIds(slug, opts?.forFeed)
-    });
+    return composePageStill(root, pageContext(slug), { mime: opts?.mime });
   }
 
   /** One timeline video of a page's non-action layers, with its sound mixed in. */
   async function encodePage(
     slug: string,
-    onProgress?: (pct: number) => void,
-    forFeed?: boolean
+    onProgress?: (pct: number) => void
   ): Promise<ComposePageVideoResult> {
     setPlaybackMode('publish');
     try {
       const root = await capturePageRoot(slug);
-      return await encodePageVideo(root, pageContext(slug), {
-        onProgress,
-        skipIds: feedLiveIds(slug, forFeed)
-      });
+      return await encodePageVideo(root, pageContext(slug), { onProgress });
     } finally {
       setPlaybackMode('edit');
     }
   }
 
   const pageExport: PageExport = {
-    flattenSection: (slug) => flattenPage(slug, { forFeed: true }),
-    encodeSection: (slug, onProgress) => encodePage(slug, onProgress, true)
+    flattenSection: (slug) => flattenPage(slug),
+    encodeSection: (slug, onProgress) => encodePage(slug, onProgress)
   };
 
   async function downloadFlattened() {
@@ -2160,7 +2120,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
                       onProgress
                     })
                   }
-                : { image: { slug: page.slug, posterBlob: await flattenPage(page.slug, { forFeed: true }) } };
+                : { image: { slug: page.slug, posterBlob: await flattenPage(page.slug) } };
             }
             setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
             publishResult = await publishPostToOwnerCloud({
@@ -2486,7 +2446,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     bundle,
     bundleRef,
     canvasSection,
-    captureLayers,
     classTrail,
     commentDraft,
     comments,
@@ -2533,7 +2492,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     navigate,
     onEditorReady,
     onStoryBlockHeights,
-    pageExportRoot,
     pageLayout,
     persist,
     persistSection,
@@ -2558,7 +2516,6 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     rejectSuggestion,
     rememberPostFileId,
     removeMember,
-    rootForSlug,
     saveDraft,
     savedTick,
     scheduleLedgerPush,

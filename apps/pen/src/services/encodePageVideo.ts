@@ -52,7 +52,6 @@ import {
 } from './composePageVideoEncode';
 import {
   rasterOutputSize,
-  rasterizeElementSafeStill,
   rasterizeElementToPosterBlob,
   visualScale
 } from './rasterizePagePoster';
@@ -108,15 +107,15 @@ export function splitPaintBands(entries: PaintEntry[]): { bands: string[][]; vid
 
 /**
  * Bottom-up paint order of a sampled page: page background, background video,
- * wrapped objects, body text, then free layers by zIndex. Action layers and `skipIds`
- * (layers the feed draws live) are left out.
+ * wrapped objects, body text, then free layers by zIndex. Action layers, which the
+ * feed draws live, are left out.
  */
 export function pagePaintOrder(
   layers: PenPageLayer[],
-  opts: { backgroundVideo: boolean; skipIds?: ReadonlySet<string> }
+  opts: { backgroundVideo: boolean }
 ): PaintEntry[] {
   const shown = partitionLayersForCompose(layers).inert.filter(
-    (layer) => layer.visible !== false && layer.kind !== 'guide' && !opts.skipIds?.has(layer.id)
+    (layer) => layer.visible !== false && layer.kind !== 'guide'
   );
   const entries: PaintEntry[] = [{ id: PAGE_BACKGROUND_ID, video: false }];
   if (opts.backgroundVideo) entries.push({ id: BACKGROUND_VIDEO_ID, video: true });
@@ -183,15 +182,13 @@ async function rasterizeBand(
   if (!band.length) return null;
   const restore = showBandOnly(root, new Set(band));
   try {
-    const size = { targetWidth: w, targetHeight: h, transparent: !opaque };
-    let blob: Blob;
-    try {
-      blob = await rasterizeElementToPosterBlob(root, { ...size, punchVideos: true, mime: 'image/png' });
-    } catch (e) {
-      // The safe still keeps fills, blob images and text only; shapes and art drop out.
-      console.warn('[pen] page raster fell back to the safe still', e instanceof Error ? e.message : e);
-      blob = await rasterizeElementSafeStill(root, size);
-    }
+    const blob = await rasterizeElementToPosterBlob(root, {
+      targetWidth: w,
+      targetHeight: h,
+      transparent: !opaque,
+      punchVideos: true,
+      mime: 'image/png'
+    });
     return await createImageBitmap(blob);
   } finally {
     restore();
@@ -337,8 +334,7 @@ class PageSampler {
     private readonly section: PenSectionContent,
     private readonly hasBackgroundVideo: boolean,
     private readonly width: number,
-    private readonly height: number,
-    private readonly skipIds?: ReadonlySet<string>
+    private readonly height: number
   ) {}
 
   async sample(t: number): Promise<void> {
@@ -348,7 +344,7 @@ class PageSampler {
       flushSync(() => setPlayheadSec(t));
       await settle();
       const { bands, videos } = splitPaintBands(
-        pagePaintOrder(layers, { backgroundVideo: this.hasBackgroundVideo, skipIds: this.skipIds })
+        pagePaintOrder(layers, { backgroundVideo: this.hasBackgroundVideo })
       );
       const ready = await waitForVideos(this.root, videos, VIDEO_READY_TIMEOUT_MS);
       const byId = new Map(layers.map((layer) => [layer.id, layer]));
@@ -431,7 +427,7 @@ function canvasBlob(canvas: HTMLCanvasElement, mime: string, quality?: number): 
 export async function composePageStill(
   root: HTMLElement,
   page: PageEncodeContext,
-  opts?: { mime?: 'image/jpeg' | 'image/png'; skipIds?: ReadonlySet<string> }
+  opts?: { mime?: 'image/jpeg' | 'image/png' }
 ): Promise<Blob> {
   const mime = opts?.mime ?? 'image/jpeg';
   const editorPlayhead = getPlayheadSec();
@@ -449,8 +445,7 @@ export async function composePageStill(
     section,
     pageHasBackgroundVideo(page.manifest),
     cw,
-    ch,
-    opts?.skipIds
+    ch
   );
   try {
     await sampler.sample(settledSec);
@@ -539,8 +534,6 @@ export async function encodePageVideo(
     /** Publish tier; sizes, duration cap and HD allowance. Defaults to Pen's publish plan. */
     tier?: PublishTierNotch;
     onProgress?: (pct: number) => void;
-    /** Layers the feed draws live; left out of the frames. */
-    skipIds?: ReadonlySet<string>;
   }
 ): Promise<ComposePageVideoResult> {
   if (typeof VideoEncoder === 'undefined') throw new Error(VIDEO_ENCODER_UNAVAILABLE);
@@ -592,14 +585,7 @@ export async function encodePageVideo(
   let poster: EncodedPreview | null = null;
   let audio: AudioBuffer | null | undefined;
 
-  const sampler = new PageSampler(
-    root,
-    section,
-    hasBackgroundVideo,
-    master.w,
-    master.h,
-    opts?.skipIds
-  );
+  const sampler = new PageSampler(root, section, hasBackgroundVideo, master.w, master.h);
   try {
     for (let attempt = 0; attempt < FEED_PREVIEW_ENCODE_ATTEMPTS && pending.length; attempt++) {
       const runs: Array<{

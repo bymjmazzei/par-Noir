@@ -20,6 +20,7 @@ import {
   shouldPublishSocialAsCollection,
   sectionIsFeedPage,
   sectionHasVisibleVideoLayer,
+  sectionHasInertMotion,
   feedPagePlainText,
   audioPublishPlan,
   collectActionOverlays,
@@ -253,14 +254,15 @@ export type PageExport = {
 
 /**
  * A page publishes as one video when it shows any video (a video layer or the page
- * background video) or carries its own sound, which only a video file can hold.
- * Every other page publishes as one image.
+ * background video), animates a non-action layer, or carries its own sound, which
+ * only a video file can hold. Every other page publishes as one image.
  */
 export function pagePublishesAsVideo(
   section: PenSectionContent,
   manifest: Pick<PenDocManifest, 'pagePresentation'>
 ): boolean {
   if (sectionHasVisibleVideoLayer(section)) return true;
+  if (sectionHasInertMotion(section)) return true;
   if (manifest.pagePresentation?.backgroundVideo?.trim()) return true;
   return audioPublishPlan([section]).own.length > 0;
 }

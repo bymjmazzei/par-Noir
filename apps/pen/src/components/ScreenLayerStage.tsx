@@ -15,7 +15,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
-import { layerFrameStyle } from '@par-noir/feed-tile';
+import { editorLayerFrameStyle } from '@par-noir/feed-tile';
 import { PageGuides } from './PageGuides';
 import { PreviewLayerFace } from './PreviewLayerFace';
 import type { PenSession } from '../services/penSession';
@@ -137,7 +137,7 @@ export function ScreenLayerStage({
       freePlacement={freePlacement}
       frameStyle={(item) => {
         const layer = sampledById.get(item.id);
-        return layer ? layerFrameStyle(layer) : {};
+        return layer ? editorLayerFrameStyle(layer) : {};
       }}
       items={items}
       selectedId={activeLayerId}

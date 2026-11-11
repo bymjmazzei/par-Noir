@@ -12,12 +12,10 @@ import {
   sectionHasVisibleVideoLayer,
   type PenPageLayer
 } from '@par-noir/pen-protocol';
+import { CAPTURE_EXPORT_ROOT_SELECTOR } from '../components/PageSheetColumn';
 import { setPlaybackMode } from './playbackMode';
 import { composePageStill, encodePageVideo } from './encodePageVideo';
-import {
-  rasterizeElementToPosterBlob,
-  rasterizeElementSafeStill
-} from './rasterizePagePoster';
+import { rasterizeElementToPosterBlob } from './rasterizePagePoster';
 import { attachMediaFile, penMediaRef, putLocalMedia, uploadStoredMedia } from '@par-noir/pen-media';
 import { FEED_PREVIEW_POSTER_MAX_BYTES } from '@par-noir/aggregator-domain';
 import type { PenSession } from './penSession';
@@ -145,19 +143,11 @@ export function resolveGalleryMedia(
   return resolveLayerMedia(sections, manifest.pagePresentation);
 }
 
-/** Compose capture root for a specific doc section (feed publish / download). */
-export function composeExportRootForSlug(slug: string): HTMLElement | null {
-  if (typeof document === 'undefined') return null;
-  const scoped = document.querySelector(
-    `[data-preview-page="${CSS.escape(slug)}"] [data-pen-compose-export-root]`
-  );
-  if (scoped instanceof HTMLElement) return scoped;
-  return findComposeExportRoot();
-}
-
-/** Prefer a page-layer root over the feed tile; among those, one that mounts video. */
+/** Prefer the offscreen viewer render, then a page-layer root over the feed tile; among those, one that mounts video. */
 export function findComposeExportRoot(): HTMLElement | null {
   if (typeof document === 'undefined') return null;
+  const capture = document.querySelector(CAPTURE_EXPORT_ROOT_SELECTOR);
+  if (capture instanceof HTMLElement) return capture;
   const roots = Array.from(
     document.querySelectorAll('[data-pen-compose-export-root]')
   ) as HTMLElement[];
@@ -182,15 +172,9 @@ const TEMPLATE_POSTER_QUALITIES = [0.82, 0.7, 0.58, 0.46, 0.34];
 export async function captureTemplatePosterBlob(): Promise<Blob | null> {
   const root = findComposeRoot();
   if (!root) return null;
-  for (const raster of [rasterizeElementToPosterBlob, rasterizeElementSafeStill]) {
-    for (const quality of TEMPLATE_POSTER_QUALITIES) {
-      try {
-        const blob = await raster(root, { maxEdge: TEMPLATE_POSTER_MAX_EDGE, quality });
-        if (blob.size > 0 && blob.size <= FEED_PREVIEW_POSTER_MAX_BYTES) return blob;
-      } catch {
-        break;
-      }
-    }
+  for (const quality of TEMPLATE_POSTER_QUALITIES) {
+    const blob = await rasterizeElementToPosterBlob(root, { maxEdge: TEMPLATE_POSTER_MAX_EDGE, quality });
+    if (blob.size > 0 && blob.size <= FEED_PREVIEW_POSTER_MAX_BYTES) return blob;
   }
   return null;
 }

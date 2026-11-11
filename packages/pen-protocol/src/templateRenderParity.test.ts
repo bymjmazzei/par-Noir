@@ -1,10 +1,15 @@
 /**
  * A post built from a template must match the template preview: zero padding stays zero,
- * and intro layers are drawn live by the feed and settled in the editor and the bake.
+ * animated non-action layers bake into the page video, and only action layers draw live.
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildActionOverlayAtTime, exportActionSectionForFeed, feedLiveLayerIds } from './feedActionSection.js';
+import {
+  buildActionOverlayAtTime,
+  exportActionSectionForFeed,
+  feedLiveLayerIds,
+  sectionHasInertMotion
+} from './feedActionSection.js';
 import { layerHasMotion, sectionSettledSec } from './layerMotion.js';
 import { resolvePagePaddingPx, DEFAULT_PAGE_PADDING_PX } from './pageGeometry.js';
 import { getTemplate } from './templates.js';
@@ -60,27 +65,43 @@ describe('settled pose', () => {
   });
 });
 
-describe('recipe reel in the feed', () => {
-  it('draws the ingredients intro live and leaves static art in the bake', () => {
+describe('animated posts in the feed', () => {
+  it('recipe reel bakes its ingredients intro into the video; only the button is live', () => {
     const section = recipeReelBody();
+    expect(sectionHasInertMotion(section)).toBe(true);
     const live = feedLiveLayerIds(section.layers);
-    expect(live.has('rr_ingredients')).toBe(true);
     expect(live.has('rr_full')).toBe(true);
+    expect(live.has('rr_ingredients')).toBe(false);
     expect(live.has('rr_art')).toBe(false);
-    expect(live.has('rr_time')).toBe(false);
     const exported = exportActionSectionForFeed(section);
-    expect(exported.layers.map((item) => item.id)).toContain('rr_ingredients');
+    expect(exported.layers.map((item) => item.id)).not.toContain('rr_ingredients');
+    expect(buildActionOverlayAtTime(exported, 0).map((item) => item.id)).not.toContain('rr_ingredients');
   });
 
-  it('plays the rise: hidden at 0, fully shown once settled', () => {
-    const section = recipeReelBody();
-    const exported = exportActionSectionForFeed(section);
-    const settled = sectionSettledSec(section);
-    expect(settled).toBeGreaterThan(0);
-    const at0 = buildActionOverlayAtTime(exported, 0).find((item) => item.id === 'rr_ingredients');
-    const atRest = buildActionOverlayAtTime(exported, settled).find((item) => item.id === 'rr_ingredients');
-    expect(at0?.opacity ?? 100).toBe(0);
-    expect(atRest?.opacity).toBe(100);
+  it('product drop bakes the batch fade-in; the countdown and Buy now draw live', () => {
+    const section = getTemplate('post.product_drop.v1')?.seedSections?.[0];
+    if (!section) throw new Error('product drop seed missing');
+    expect(sectionHasInertMotion(section)).toBe(true);
+    const live = feedLiveLayerIds(section.layers);
+    expect(live.has('pd_batch')).toBe(false);
+    expect(live.has('pd_cd')).toBe(true);
+    const buy = (section.layers || []).find(
+      (item) => item.kind === 'interactive' && item.behavior === 'cta.open'
+    );
+    expect(buy && live.has(buy.id)).toBe(true);
+    expect([...live].every((id) => id === 'pd_cd' || id === buy?.id)).toBe(true);
+  });
+
+  it('a page without animated non-action layers stays a still', () => {
+    const section: PenSectionContent = {
+      slug: 'body',
+      doc: { type: 'doc', content: [] },
+      layers: [
+        layer('t'),
+        layer('cta', { kind: 'interactive', behavior: 'cta.open', motion: { keys: [], animation: { in: 'fade' } } })
+      ]
+    };
+    expect(sectionHasInertMotion(section)).toBe(false);
   });
 
   it('keeps video layers in the bake even when they animate', () => {
