@@ -96,3 +96,14 @@
 .pen-rich-face > p:last-child {
   margin-bottom: 0;
 }
+
+/* Aligned text boxes place the glyphs, not the paragraph margins. */
+[data-pen-valign='middle'] > div > :first-child,
+[data-pen-valign='bottom'] > div > :first-child {
+  margin-top: 0;
+}
+
+[data-pen-valign='middle'] > div > :last-child,
+[data-pen-valign='bottom'] > div > :last-child {
+  margin-bottom: 0;
+}

@@ -255,18 +255,18 @@ export function PenLayerFace({
       ) : null}
       <div
         className={`pen-rich-html relative flex h-full w-full flex-col p-2 text-sm ${editor ? 'overflow-auto' : 'overflow-hidden'}`}
-        style={{ fontFamily: fontFamily || undefined }}
+        style={{ fontFamily: fontFamily || undefined, justifyContent: verticalJustify(layer) }}
         data-pen-valign={layer.textVerticalAlign || 'top'}
       >
-        <div style={verticalAlignStyle(layer)} dangerouslySetInnerHTML={{ __html: html }} />
+        <div dangerouslySetInnerHTML={{ __html: html }} />
       </div>
     </div>
   );
 }
 
-/** Auto margins, not justify-content, so overflowing text still starts at the top. */
-function verticalAlignStyle(layer: PenPageLayer): CSSProperties | undefined {
-  if (layer.textVerticalAlign === 'middle') return { marginTop: 'auto', marginBottom: 'auto' };
-  if (layer.textVerticalAlign === 'bottom') return { marginTop: 'auto' };
+/** Unsafe justify, like Figma: tight label boxes still center when the line overflows. */
+function verticalJustify(layer: PenPageLayer): CSSProperties['justifyContent'] {
+  if (layer.textVerticalAlign === 'middle') return 'center';
+  if (layer.textVerticalAlign === 'bottom') return 'flex-end';
   return undefined;
 }

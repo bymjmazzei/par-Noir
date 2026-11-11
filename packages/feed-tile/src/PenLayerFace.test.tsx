@@ -95,14 +95,13 @@ describe('PenLayerFace', () => {
         layer: { ...box, id: 'va', kind: 'text', textDoc: styledDoc, textVerticalAlign } as PenPageLayer
       });
       const rich = el.querySelector('.pen-rich-html') as HTMLElement;
-      return { valign: rich.dataset.penValign, inner: rich.firstElementChild as HTMLElement };
+      return { valign: rich.dataset.penValign, rich, inner: rich.firstElementChild as HTMLElement };
     };
     expect(at().valign).toBe('top');
-    expect(at().inner.style.marginTop).toBe('');
-    expect(at('middle').inner.style.marginTop).toBe('auto');
-    expect(at('middle').inner.style.marginBottom).toBe('auto');
-    expect(at('bottom').inner.style.marginTop).toBe('auto');
-    expect(at('bottom').inner.style.marginBottom).toBe('');
+    expect(at().rich.style.justifyContent).toBe('');
+    expect(at('middle').valign).toBe('middle');
+    expect(at('middle').rich.style.justifyContent).toBe('center');
+    expect(at('bottom').rich.style.justifyContent).toBe('flex-end');
     expect(at('bottom').inner.textContent).toBe('Vote');
   });
 
