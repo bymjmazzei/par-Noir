@@ -1952,6 +1952,20 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         return res.json({ success: true, metadata: updated || null, deleted: true });
       }
 
+      if (result && !fileWasDeleted) {
+        const { indexContentCredentials } = await import('./c2paIndex');
+        const row = result as any;
+        await indexContentCredentials(
+          service,
+          {
+            fileId: actualFileId,
+            metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : row,
+            pnIdentifier: row.pnIdentifier ?? current?.pnIdentifier
+          },
+          tokenPayload.pnIdentifier
+        );
+      }
+
       console.log(
         `[MetadataIndex PUT] Completed for ${fileId} in ${Date.now() - putStartedAt}ms`
       );

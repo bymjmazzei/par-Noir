@@ -43,6 +43,7 @@ export default defineConfig(({ command, mode }) => {
       '@par-noir/pqc-crypto': path.resolve(pqcSrc, 'index.ts'),
       '@par-noir/recovery-crypto': path.resolve(__dirname, '../../packages/recovery-crypto/src/index.ts'),
       '@par-noir/pen-protocol': path.resolve(penSrc, 'index.ts'),
+      '@par-noir/pn-provenance/web': path.resolve(__dirname, '../../packages/pn-provenance/src/web/index.ts'),
       '@par-noir/pn-provenance': path.resolve(__dirname, '../../packages/pn-provenance/src/index.ts'),
       '@par-noir/public-names': path.resolve(__dirname, '../../packages/public-names/src/index.ts'),
       '@par-noir/pen-live': path.resolve(__dirname, '../../packages/pen-live/src/index.ts'),

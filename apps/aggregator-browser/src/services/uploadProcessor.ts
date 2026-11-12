@@ -12,6 +12,7 @@ import { contentBlobParent, type ContentBlobClass } from './contentBlobParent';
 import { ownerFetch } from './ownerApiFetch';
 import { publishPublicShare } from './publicSharePublish';
 import { publishFeedPreviews } from './feedPreviewPublish';
+import { renditionCredentials } from './uploadCredentials';
 import type { PublicContentRef, PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
 interface EncryptedFilePackage {
@@ -128,6 +129,11 @@ async function processFileUpload(
 
   uploadQueueService.updateTaskProgress(task.id, 5);
   uploadQueueService.updateTaskStatus(task.id, 'processing');
+  // Read before sealing: the stored original stays byte-identical; its feed renditions carry its credentials.
+  const credential =
+    task.metadata?.isPublic && (isImage || isVideo)
+      ? await renditionCredentials(file, task.metadata?.title || file.name)
+      : null;
   uploadQueueService.updateTaskProgress(task.id, 10);
 
   let fileId: string;
@@ -294,6 +300,7 @@ async function processFileUpload(
           accessToken,
           accountId: task.accountId,
           planId: task.metadata?.publishPlanId || 'floor',
+          credential,
         });
         feedPreviewFields = previews;
       } catch (previewErr) {
@@ -348,6 +355,7 @@ async function processFileUpload(
         accessToken,
         accountId: task.accountId,
         planId: task.metadata?.publishPlanId || 'floor',
+        credential,
       });
       feedPreviewFields = previews;
     }

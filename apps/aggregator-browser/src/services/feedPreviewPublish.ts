@@ -12,6 +12,7 @@ import { uploadStorageFile } from './storageApiClient';
 import { ownerFetch } from './ownerApiFetch';
 import { contentBlobParent, type ContentBlobClass } from './contentBlobParent';
 import { PNOAuthService } from './pnOAuthService';
+import type { CredentialRendition } from './uploadCredentials';
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -106,6 +107,8 @@ export async function publishFeedPreviews(params: {
   planId?: PublishTierId | string;
   onProgress?: (msg: string) => void;
   blobClass?: ContentBlobClass;
+  /** Carries the source file's Content Credentials onto each rendition. */
+  credential?: CredentialRendition | null;
 }): Promise<PublishedFeedPreviews> {
   const session = PNOAuthService.loadSession();
   const pnIdentifier = session?.pnIdentifier;
@@ -116,31 +119,18 @@ export async function publishFeedPreviews(params: {
   const tier = getPublishTier(planId);
   params.onProgress?.('Preparing feed preview…');
   const encoded = await encodeFeedPreviewsForPublish(params.file, params.mimeType, tier);
+  const credential = params.credential;
+  const variant = async (preview: EncodedPreview) =>
+    uploadOneVariant({
+      ...params,
+      planId,
+      pnIdentifier,
+      encoded: credential ? await credential(preview) : preview,
+    });
 
-  const out: PublishedFeedPreviews = {
-    feedPoster: await uploadOneVariant({
-      ...params,
-      planId,
-      pnIdentifier,
-      encoded: encoded.poster,
-    }),
-  };
-  if (encoded.sd) {
-    out.feedPreviewSd = await uploadOneVariant({
-      ...params,
-      planId,
-      pnIdentifier,
-      encoded: encoded.sd,
-    });
-  }
-  if (encoded.hd) {
-    out.feedPreviewHd = await uploadOneVariant({
-      ...params,
-      planId,
-      pnIdentifier,
-      encoded: encoded.hd,
-    });
-  }
+  const out: PublishedFeedPreviews = { feedPoster: await variant(encoded.poster) };
+  if (encoded.sd) out.feedPreviewSd = await variant(encoded.sd);
+  if (encoded.hd) out.feedPreviewHd = await variant(encoded.hd);
   return out;
 }
 

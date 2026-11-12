@@ -21,7 +21,9 @@
       "@par-noir/pen-protocol": ["../../packages/pen-protocol/src/index.ts"],
       "@par-noir/feed-tile": ["../../packages/feed-tile/src/index.ts"],
       "@par-noir/pn-notify": ["../../packages/pn-notify/src/index.ts"],
-      "@par-noir/owner-files": ["../../packages/owner-files/src/index.ts"]
+      "@par-noir/owner-files": ["../../packages/owner-files/src/index.ts"],
+      "@par-noir/pn-provenance/web": ["../../packages/pn-provenance/src/web/index.ts"],
+      "@par-noir/pn-provenance": ["../../packages/pn-provenance/src/index.ts"]
     }
   },
   "include": ["src"],

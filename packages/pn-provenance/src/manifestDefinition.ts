@@ -8,6 +8,10 @@ import { PEN_DOC_ASSERTION_LABEL, type PenDocAssertionData } from './penDocAsser
 import { TRAINING_MINING_LABEL, trainingMiningAssertion, type TrainingMiningPreference } from './rightsAssertion.js';
 
 export const PEN_CLAIM_GENERATOR = 'par Noir Pen';
+/** Feed renditions par Noir makes of uploaded media (no edit, only resize or transcode). */
+export const PARNOIR_RENDITION_GENERATOR = 'par Noir';
+/** Claim generators the par Noir signer will sign for. */
+export const PARNOIR_CLAIM_GENERATORS: ReadonlySet<string> = new Set([PEN_CLAIM_GENERATOR, PARNOIR_RENDITION_GENERATOR]);
 export const ACTIONS_LABEL = 'c2pa.actions.v2';
 
 export const DIGITAL_SOURCE = {
@@ -77,11 +81,14 @@ export function derivativeDefinition(input: {
   version: string;
   parent: { title: string; format: string };
   action: 'c2pa.resized' | 'c2pa.transcoded';
+  /** Defaults to Pen; browse renditions use `PARNOIR_RENDITION_GENERATOR`. */
+  generator?: string;
   penDoc?: { label: typeof PEN_DOC_ASSERTION_LABEL; data: PenDocAssertionData };
   training?: TrainingMiningPreference;
 }): ManifestDefinition {
+  const generator = input.generator ?? PEN_CLAIM_GENERATOR;
   return {
-    claim_generator_info: [{ name: PEN_CLAIM_GENERATOR, version: input.version }],
+    claim_generator_info: [{ name: generator, version: input.version }],
     title: input.title,
     format: input.format,
     assertions: [
@@ -90,7 +97,7 @@ export function derivativeDefinition(input: {
         data: {
           actions: [
             { action: 'c2pa.opened', parameters: { ingredientIds: [PARENT_INGREDIENT_LABEL] } },
-            { action: input.action, softwareAgent: { name: PEN_CLAIM_GENERATOR, version: input.version } },
+            { action: input.action, softwareAgent: { name: generator, version: input.version } },
           ],
         },
       },

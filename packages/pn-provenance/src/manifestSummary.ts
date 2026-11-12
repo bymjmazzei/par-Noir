@@ -129,7 +129,12 @@ function creativeWorkAuthor(m: Json): string | null {
   return typeof name === 'string' && name ? name : null;
 }
 
-type Ctx = { store: Json; deltas: Map<string, Json>; registryPublicKey: string | null };
+type Ctx = {
+  store: Json;
+  deltas: Map<string, Json>;
+  registryPublicKey: string | null;
+  onAuthor?: (author: { authorKeyId: string; publicKey: string }) => void;
+};
 
 function summarize(ctx: Ctx, label: string, results: Json | undefined, legacy: unknown, depth: number): ManifestSummary | null {
   const { store, registryPublicKey } = ctx;
@@ -163,8 +168,10 @@ function summarize(ctx: Ctx, label: string, results: Json | undefined, legacy: u
         registryPublicKey,
         at: signer.time ?? undefined,
       });
-      if (v.ok) pnAuthor = { handle: v.handle, authorKeyId: v.authorKeyId, chainHead: v.chainHead };
-      else failures.push(`pn_author.${v.error}`);
+      if (v.ok) {
+        pnAuthor = { handle: v.handle, authorKeyId: v.authorKeyId, chainHead: v.chainHead };
+        ctx.onAuthor?.({ authorKeyId: v.authorKeyId, publicKey: v.publicKey });
+      } else failures.push(`pn_author.${v.error}`);
     } else if (!cawg) {
       cawg = cawgDisplay(a);
     }
@@ -229,8 +236,14 @@ function worseTrust(a: TrustStatus, b: TrustStatus): TrustStatus {
   return TRUST_RANK[a] <= TRUST_RANK[b] ? a : b;
 }
 
-/** Summary of the active manifest, or null when the file carries no manifest. */
-export function summarizeManifestStore(store: unknown, opts: { registryPublicKey: string | null }): ManifestSummary | null {
+/**
+ * Summary of the active manifest, or null when the file carries no manifest.
+ * `onAuthor` sees each verified pN author key; the summary itself keeps only key ids.
+ */
+export function summarizeManifestStore(
+  store: unknown,
+  opts: { registryPublicKey: string | null; onAuthor?: Ctx['onAuthor'] }
+): ManifestSummary | null {
   const s = store as Json;
   const label = s?.active_manifest;
   if (typeof label !== 'string') return null;
@@ -238,7 +251,13 @@ export function summarizeManifestStore(store: unknown, opts: { registryPublicKey
   for (const d of Array.isArray(s.validation_results?.ingredientDeltas) ? s.validation_results.ingredientDeltas : []) {
     if (typeof d?.ingredientAssertionURI === 'string' && d.validationDeltas) deltas.set(d.ingredientAssertionURI, d.validationDeltas);
   }
-  return summarize({ store: s, deltas, registryPublicKey: opts.registryPublicKey }, label, s.validation_results?.activeManifest, s.validation_status, 0);
+  return summarize(
+    { store: s, deltas, registryPublicKey: opts.registryPublicKey, onAuthor: opts.onAuthor },
+    label,
+    s.validation_results?.activeManifest,
+    s.validation_status,
+    0
+  );
 }
 
 /** Display line for the signer: "Made in Pen", "Made with Photoshop", or the certificate name. */

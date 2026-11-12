@@ -23,6 +23,9 @@ export default defineConfig(({ mode, command }) => {
       '@par-noir/feed-tile': path.resolve(__dirname, '../../packages/feed-tile/src/index.ts'),
       '@par-noir/pn-notify': path.resolve(__dirname, '../../packages/pn-notify/src/index.ts'),
       '@par-noir/owner-files': path.resolve(__dirname, '../../packages/owner-files/src/index.ts'),
+      '@par-noir/pn-provenance/web': path.resolve(__dirname, '../../packages/pn-provenance/src/web/index.ts'),
+      '@par-noir/pn-provenance': path.resolve(__dirname, '../../packages/pn-provenance/src/index.ts'),
+      '@par-noir/public-names': path.resolve(__dirname, '../../packages/public-names/src/index.ts'),
       // pqc-crypto dist is CJS; Vite/Rollup cannot resolve named exports from workspace CJS builds
       '@par-noir/pqc-crypto/oauth-unlock-proof': path.resolve(__dirname, '../../packages/pqc-crypto/src/oauthUnlockProof.ts'),
       '@par-noir/pqc-crypto/encoding': path.resolve(__dirname, '../../packages/pqc-crypto/src/encoding.ts'),

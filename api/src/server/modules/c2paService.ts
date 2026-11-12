@@ -16,6 +16,7 @@ import { Decoder, Encoder, Tag } from 'cbor-x';
 import { Context, Reader } from '@contentauth/c2pa-node';
 import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
+  PARNOIR_CLAIM_GENERATORS,
   PEN_CLAIM_GENERATOR,
   normalizeSignerPayload,
   summarizeManifestStore,
@@ -121,7 +122,8 @@ export async function checkPenClaim(
   now = new Date()
 ): Promise<{ authorKeyId: string | null; handle: string | null }> {
   const { generator, refs } = parseClaim(claim);
-  if (generator !== PEN_CLAIM_GENERATOR) throw new C2paError('not_pen_claim');
+  if (!PARNOIR_CLAIM_GENERATORS.has(generator)) throw new C2paError('not_pen_claim');
+  if (author && generator !== PEN_CLAIM_GENERATOR) throw new C2paError('author_invalid');
   const identities = refs.filter((r) => /c2pa\.assertions\/cawg\.identity/.test(r.url));
   if (!author) {
     if (identities.length) throw new C2paError('identity_unchecked');
@@ -188,7 +190,11 @@ export async function signClaimCose(claim: Uint8Array, reserveSize: number, stam
 }
 
 /** Summary of the file's manifest store, or null when it has none (or it can't be read). */
-export async function verifyAsset(bytes: Uint8Array, mimeType: string): Promise<ManifestSummary | null> {
+export async function verifyAsset(
+  bytes: Uint8Array,
+  mimeType: string,
+  opts: { onAuthor?: (author: { authorKeyId: string; publicKey: string }) => void } = {}
+): Promise<ManifestSummary | null> {
   const anchors = trustAnchorsPem();
   const ctx = new Context(
     { verify: { verifyTrust: true }, ...(anchors ? { trust: { trustAnchors: anchors } } : {}) },
@@ -202,5 +208,8 @@ export async function verifyAsset(bytes: Uint8Array, mimeType: string): Promise<
   } catch {
     return null;
   }
-  return summarizeManifestStore(store, { registryPublicKey: HandleReceiptService.publicKeyB64() });
+  return summarizeManifestStore(store, {
+    registryPublicKey: HandleReceiptService.publicKeyB64(),
+    onAuthor: opts.onAuthor
+  });
 }

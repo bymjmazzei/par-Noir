@@ -10,9 +10,13 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./web": {
+      "types": "./src/web/index.ts",
+      "default": "./src/web/index.ts"
     }
   },
-  "files": ["dist", "SPEC.md"],
+  "files": ["dist", "src/web", "SPEC.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"
@@ -22,6 +26,12 @@
     "@par-noir/pen-protocol": "file:../pen-protocol",
     "@par-noir/pqc-crypto": "file:../pqc-crypto",
     "@par-noir/public-names": "file:../public-names"
+  },
+  "peerDependencies": {
+    "@contentauth/c2pa-web": "^0.17.0"
+  },
+  "peerDependenciesMeta": {
+    "@contentauth/c2pa-web": { "optional": true }
   },
   "devDependencies": {
     "typescript": "^5.0.0",

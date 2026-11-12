@@ -25,7 +25,8 @@ jest.mock('./integratorStoragePaths', () => ({
 }));
 
 jest.mock('./publicNameService', () => ({
-  PublicNameService: { signingKey: async () => null }
+  PublicNameService: { signingKey: async () => null },
+  normalizePnIdentifier: (pn: string) => (pn.startsWith('pn-') ? pn : `pn-${pn}`)
 }));
 
 const mockStamp = jest.fn();
@@ -48,6 +49,7 @@ import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-p
 import { authorKeyId } from '@par-noir/pen-protocol';
 import { buildHandleReceipt } from '@par-noir/public-names';
 import {
+  PARNOIR_RENDITION_GENERATOR,
   PN_AUTHOR_RESERVE_SIZE,
   PN_AUTHOR_SIG_TYPE,
   authorReferencedLabels,
@@ -58,7 +60,9 @@ import {
   type ManifestDefinition
 } from '@par-noir/pn-provenance';
 import { setupC2paRoutes } from './c2paRoutes';
+import { credentialsForRow } from './c2paIndex';
 import { resetRegistryKeysForTests } from './handleReceiptService';
+import { penIndexFields } from './penIndexFields';
 
 const JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDIooor1DgP/9k=',
@@ -330,5 +334,72 @@ describe('/api/c2pa', () => {
     validateAccessToken.mockReturnValue({ pnIdentifier: AUTHOR_PN, clientId: 'evil-integrator', scope: 'openid' });
     const res = await request(app()).post('/api/c2pa/sign').set('Authorization', 'Bearer t').send({ claim: 'AA==' });
     expect(res.status).toBe(403);
+  });
+
+  it('signs browse renditions as par Noir, carrying the uploaded original credit, but never with an author', async () => {
+    const parent = (await penSign(original(), { withAuthor: true })).out!;
+    const def = derivativeDefinition({
+      title: 'upload.jpg',
+      format: 'image/jpeg',
+      version: '1.0.0',
+      generator: PARNOIR_RENDITION_GENERATOR,
+      parent: { title: 'upload.jpg', format: 'image/jpeg' },
+      action: 'c2pa.resized'
+    });
+    const signed = await penSign(def, { withAuthor: false, parent });
+    expect(signed.status).toBe(200);
+    const s = await verify(signed.out!);
+    expect(s).toMatchObject({ trust: 'trusted', claimGenerator: { name: 'par Noir' }, creator: { kind: 'pn', handle: 'bymjmazzei' } });
+
+    const authored = { ...original(), claim_generator_info: [{ name: PARNOIR_RENDITION_GENERATOR, version: '1.0.0' }] };
+    expect(await penSign(authored, { withAuthor: true })).toEqual({ status: 400, error: 'author_invalid' });
+  });
+});
+
+describe('index-time credentials', () => {
+  const poster = { feedPoster: { r2Key: 'feed/f1/poster', contentType: 'image/jpeg' } };
+  const rowFor = (bytes: Buffer, uploader: string, meta: Record<string, unknown> = poster) =>
+    credentialsForRow(meta, uploader, { getBytes: async () => new Uint8Array(bytes), signingKey: async () => null });
+  const reserved = () =>
+    penOriginalDefinition({
+      title: 'post.jpg',
+      format: 'image/jpeg',
+      version: '0.1.0',
+      penDoc: penDocAssertion({
+        docId: 'pen_2',
+        templateId: 'social.post',
+        licensing: { family: 'implied', workLicense: 'all-rights-reserved', contracts: [] }
+      })
+    });
+
+  it("stores the verified summary and credits the author's own post as a verified original", async () => {
+    const out = (await penSign(original(), { withAuthor: true })).out!;
+    const row = await rowFor(out, AUTHOR_PN);
+    expect(row).toMatchObject({
+      c2pa: { trust: 'trusted', creator: { kind: 'pn', handle: 'bymjmazzei' } },
+      originality: { kind: 'original', verifiedOriginal: true, reason: 'uploader_is_creator' },
+      c2paSource: expect.any(String)
+    });
+  });
+
+  it("marks someone else's credited work as a copy, or a licensed remix when the license allows", async () => {
+    const own = (await penSign(reserved(), { withAuthor: true })).out!;
+    expect(await rowFor(own, 'pn-reposter')).toMatchObject({
+      originality: { kind: 'copy', creator: { kind: 'pn', handle: 'bymjmazzei' }, reason: 'license_forbids_reuse' }
+    });
+    const ccBy = (await penSign(original(), { withAuthor: true })).out!;
+    expect(await rowFor(ccBy, 'pn-reposter')).toMatchObject({ originality: { kind: 'licensed_remix' } });
+  });
+
+  it('indexes a file without credentials as an original with no claim, and skips work it already did', async () => {
+    const row = await rowFor(JPEG, 'pn-anyone');
+    expect(row).toMatchObject({ c2pa: null, originality: { kind: 'original', reason: 'no_manifest' } });
+    const source = (row as { c2paSource: string }).c2paSource;
+    expect(await rowFor(JPEG, 'pn-anyone', { ...poster, c2paSource: source })).toBe('unchanged');
+    expect(await rowFor(JPEG, 'pn-anyone', { c2paSource: source })).toBe('clear');
+  });
+
+  it('never takes credentials from the client', () => {
+    expect(penIndexFields({ c2pa: { trust: 'trusted' }, originality: { kind: 'original' }, c2paSource: 'x' })).toEqual({});
   });
 });
