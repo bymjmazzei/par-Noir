@@ -21,6 +21,7 @@ export interface SummaryIngredient {
   manifestLabel: string | null;
   trust: TrustStatus | 'none';
   signer: string | null;
+  generator: string | null;
   creator: ManifestCreator | null;
   workLicense: string | null;
 }
@@ -205,6 +206,7 @@ function summarize(ctx: Ctx, label: string, results: Json | undefined, legacy: u
       manifestLabel: childLabel,
       trust: child ? child.trust : 'none',
       signer: child?.signer.commonName ?? null,
+      generator: child?.claimGenerator?.name ?? null,
       creator: child?.creator ?? null,
       workLicense: child?.workLicense ?? null,
     });

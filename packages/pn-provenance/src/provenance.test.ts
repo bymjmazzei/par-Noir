@@ -6,6 +6,7 @@ import { buildHandleReceipt } from '@par-noir/public-names';
 import {
   DEFAULT_TRAINING_PREFERENCE,
   PN_AUTHOR_SIG_TYPE,
+  credentialsBadge,
   derivativeDefinition,
   ingredientFromSummary,
   parseTrainingMining,
@@ -411,6 +412,7 @@ describe('resolveOriginality', () => {
       manifestLabel: 'urn:c2pa:a',
       trust: 'trusted' as const,
       signer: null,
+      generator: null,
       creator: theirs,
       workLicense,
     });
@@ -423,5 +425,61 @@ describe('resolveOriginality', () => {
 
   it('ignores an invalid manifest', () => {
     expect(resolveOriginality(summary({ trust: 'invalid', creator: theirs }), me, { monetized: true }).kind).toBe('original');
+  });
+});
+
+describe('credentialsBadge', () => {
+  const ing = (over: Partial<ManifestSummary['ingredients'][number]>) => ({
+    title: 'photo.jpg',
+    format: 'image/jpeg',
+    relationship: 'parentOf' as const,
+    manifestLabel: 'urn:c2pa:p',
+    trust: 'trusted' as const,
+    signer: 'Adobe Inc.',
+    generator: 'Adobe Photoshop/26.0',
+    creator: { kind: 'cawg' as const, display: 'Ada (Instagram)' },
+    workLicense: null,
+    ...over,
+  });
+
+  it('shows what made the original behind a par Noir rendition, and its creator as text', () => {
+    const s = summary({
+      claimGenerator: { name: 'par Noir', version: '1.0.0' },
+      creator: { kind: 'cawg', display: 'Ada (Instagram)' },
+      ingredients: [ing({})],
+    });
+    expect(credentialsBadge(s)).toEqual({
+      made: 'Made with Adobe Photoshop',
+      trust: 'trusted',
+      creator: { label: 'Ada (Instagram)', handle: null },
+      ingredients: [],
+      originalBy: null,
+      originality: null,
+    });
+  });
+
+  it('credits a Pen post to its handle, lists what it was built from, and names the original on a copy', () => {
+    const pen = summary({
+      claimGenerator: { name: 'par Noir Pen', version: '1.0.0' },
+      creator: { kind: 'pn', handle: 'bymjmazzei', authorKeyId: 'k' },
+      ingredients: [ing({ relationship: 'componentOf', title: 'Attached image', generator: null, signer: 'Leica Camera AG' })],
+    });
+    const badge = credentialsBadge(pen, {
+      kind: 'copy',
+      creator: { kind: 'pn', handle: 'bymjmazzei', authorKeyId: 'k' },
+      verifiedOriginal: false,
+      reason: 'license_forbids_reuse',
+    })!;
+    expect(badge.made).toBe('Made in Pen');
+    expect(badge.creator).toEqual({ label: '@bymjmazzei', handle: 'bymjmazzei' });
+    expect(badge.ingredients).toEqual([
+      { title: 'Attached image', made: 'Signed by Leica Camera AG', creator: { label: 'Ada (Instagram)', handle: null }, trust: 'trusted' },
+    ]);
+    expect(badge.originalBy).toEqual({ label: '@bymjmazzei', handle: 'bymjmazzei' });
+  });
+
+  it('shows nothing for no credentials or credentials that fail validation', () => {
+    expect(credentialsBadge(null)).toBeNull();
+    expect(credentialsBadge(summary({ trust: 'invalid' }))).toBeNull();
   });
 });

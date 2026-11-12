@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "private": true,
   "dependencies": {
-    "@par-noir/pen-protocol": "file:../pen-protocol"
+    "@par-noir/pen-protocol": "file:../pen-protocol",
+    "@par-noir/pn-provenance": "file:../pn-provenance"
   },
   "peerDependencies": {
     "react": "^18.2.0",

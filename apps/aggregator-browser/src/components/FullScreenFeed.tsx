@@ -33,6 +33,7 @@ import {
 } from '../services/feedPreviewPlayback';
 import { isFeedPreviewPlaceholder } from '@par-noir/aggregator-domain';
 import {
+  ContentCredentialsBadge,
   FeedLoopVideo,
   FeedMuteButton,
   FeedPausedGlyph,
@@ -2149,6 +2150,7 @@ export function FullScreenFeed({
                   <h3 className="text-white text-base md:text-lg font-semibold mb-1 line-clamp-1">
                     {cleanTitle(file.title || file.name || 'Untitled')}
                   </h3>
+                  <ContentCredentialsBadge credentials={{ c2pa: file.c2pa, originality: file.originality }} className="mb-2" />
                   
                   {/* Caption with expand/collapse */}
                   {file.description && (

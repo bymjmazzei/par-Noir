@@ -31,6 +31,7 @@ export { FeedMuteButton, FeedPausedGlyph, FeedPlayGlyph } from './FeedPlaybackCh
 export { SpeakerIcon } from './SpeakerIcon.js';
 export { useTapToggle, TAP_SLOP_PX } from './useTapToggle.js';
 export { PublishedEngagementBar } from './PublishedEngagementBar.js';
+export { ContentCredentialsBadge, type PostCredentials } from './ContentCredentialsBadge.js';
 export {
   engagementRailLayout,
   useFeedFrameHeight,

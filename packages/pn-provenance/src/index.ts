@@ -5,3 +5,4 @@ export * from './ingredients.js';
 export * from './manifestDefinition.js';
 export * from './manifestSummary.js';
 export * from './originality.js';
+export * from './badge.js';

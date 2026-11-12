@@ -10,6 +10,7 @@ import { PenMediaPlayer } from './PenMediaPlayer.js';
 import { PenFeedPageStage, type ResolveLayerMedia } from './PenFeedPageStage.js';
 import { resolveNavigatePageIndex, saveIcsFile } from './penNavigate.js';
 import { DEFAULT_FEED_PLAYBACK, FeedLoopVideo, type FeedPlayback } from './FeedLoopVideo.js';
+import { ContentCredentialsBadge, type PostCredentials } from './ContentCredentialsBadge.js';
 
 export type FeedTilePage = {
   /** Section slug for `page.go` slug: targets. */
@@ -41,6 +42,8 @@ export type FeedTileViewModel = {
   pageSwipeAxis?: 'x' | 'y';
   /** Screen paints one background across the pages instead of swiping. */
   pageView?: 'vertical' | 'horizontal' | 'screen';
+  /** Server-verified Content Credentials; feed hosts draw the badge with their caption. */
+  credentials?: PostCredentials;
 };
 
 function EngagementRail({ mode }: { mode: 'preview' | 'live' }) {
@@ -504,6 +507,7 @@ export function FeedTileSurface({
       {/* Browse-shaped caption: title + caption only (no profile avatar; dedupe equal caption). */}
       {feed ? null : (
         <div className="pen-feed-tile-caption pointer-events-none absolute bottom-4 left-0 right-20 z-20 text-white drop-shadow-md">
+          <ContentCredentialsBadge credentials={model.credentials} className="mb-1" />
           {titleText ? (
             <h3 className="pen-feed-tile-caption-title mb-1 line-clamp-1 font-semibold">{titleText}</h3>
           ) : null}
