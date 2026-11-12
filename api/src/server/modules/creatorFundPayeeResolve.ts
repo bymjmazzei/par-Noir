@@ -44,9 +44,10 @@ export function mergeResolvedWeights(
   foldPublisherPn: string
 ): void {
   const pub = foldPublisherPn.trim();
-  if (!pub) return;
   for (const [key, w] of local) {
     if (!Number.isFinite(w) || w <= 0) continue;
+    // With no one to fold to, unknown payees' weight stays in the fund.
+    if (!pub && !aliasMap.has(key.slice(2).trim())) continue;
     const resolved = resolveWeightKey(key, aliasMap, pub);
     global.set(resolved, (global.get(resolved) || 0) + w);
   }

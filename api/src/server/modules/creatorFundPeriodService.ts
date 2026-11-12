@@ -27,6 +27,7 @@ import {
   bucketForKey,
   legacySplitsToMusicLicensing,
   licensingFromMetadata,
+  originalityFromMetadata,
   recipientIdFromKey
 } from './creatorFundMicroAllocate';
 import { buildPayeeAliasMap, mergeResolvedWeights } from './creatorFundPayeeResolve';
@@ -374,11 +375,17 @@ async function allocateCreatorBountyShares(
     }
 
     const commentAuthors = commentsByFile.get(fileId) || [];
-    const foldPublisher =
+    const indexed = originalityFromMetadata(row.post_metadata);
+    const originality = indexed && {
+      kind: indexed.kind,
+      creatorPn: (indexed.creatorPn && aliasMap.get(indexed.creatorPn)) || null
+    };
+    const ownerFold =
       orphan && trackOwnerPn.trim()
         ? trackOwnerPn.trim()
         : ownerPn.trim() || trackOwnerPn.trim();
-    if (!foldPublisher) continue;
+    if (!ownerFold) continue;
+    const foldPublisher = originality?.kind === 'copy' && !orphan ? originality.creatorPn ?? '' : ownerFold;
 
     const local = new Map<string, number>();
     if (dual && ownerPn) {
@@ -391,7 +398,8 @@ async function allocateCreatorBountyShares(
         postLicensing,
         musicLicensing,
         musicAttached: usesMusic,
-        commentAuthorPns: commentAuthors
+        commentAuthorPns: commentAuthors,
+        originality
       });
     } else if (orphan && (trackOwnerPn || musicPenDoc)) {
       addMicroWeights({

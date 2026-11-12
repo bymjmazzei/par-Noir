@@ -15,7 +15,7 @@ import { getDatabasePool } from '../utils/database';
 import { PublicMetadata, CentralIndexEntry, CentralIndexResponse } from './aggregatorMetadataService';
 import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { EngagementService, type EngagementMetrics } from './engagementService';
-import { computePublicRankFromMetrics } from './discoveryRank';
+import { computePublicRankFromMetrics, originalityRankAdjust } from './discoveryRank';
 
 /**
  * Sort merged index rows by public discovery score (verified-weighted engagement + recency).
@@ -40,7 +40,7 @@ async function sortRowsByPublicRank(allFiles: any[]): Promise<void> {
       : new Date(row.submitted_at).getTime();
     const uploadMs = Number.isFinite(rawUpload) ? rawUpload : Date.now();
     const { score } = computePublicRankFromMetrics(m, uploadMs, {});
-    row._publicRankScore = score;
+    row._publicRankScore = score + originalityRankAdjust(row.metadata);
   }
 
   allFiles.sort((a, b) => {
@@ -1778,6 +1778,8 @@ export class AggregatorMetadataServiceDB {
             else if ((b.metadata?.description || '').toLowerCase().includes(queryLower)) bScore = 3;
             
             if (aScore !== bScore) return aScore - bScore;
+            const credited = originalityRankAdjust(b.metadata) - originalityRankAdjust(a.metadata);
+            if (credited !== 0) return credited;
             
             const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
             const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
@@ -1785,6 +1787,8 @@ export class AggregatorMetadataServiceDB {
           });
         } else {
           allFiles.sort((a, b) => {
+            const credited = originalityRankAdjust(b.metadata) - originalityRankAdjust(a.metadata);
+            if (credited !== 0) return credited;
             const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
             const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
             return bTime - aTime;

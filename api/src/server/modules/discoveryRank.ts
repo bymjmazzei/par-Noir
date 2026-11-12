@@ -40,3 +40,22 @@ export function computePublicRankFromMetrics(
 
   return { score, reasonLine };
 }
+
+/** Fixed rank shifts from a post's server-verified Content Credentials; the boost stays below the demotion. */
+export const COPY_RANK_DEMOTION = 10;
+export const VERIFIED_ORIGINAL_RANK_BOOST = 3;
+
+/**
+ * Copies of someone else's credited work rank lower; originals proven by a trusted signer and the
+ * uploader's own pN author key rank a little higher. Stripping credentials avoids the demotion
+ * but forfeits the boost.
+ */
+export function originalityRankAdjust(metadata: unknown): number {
+  const m = metadata && typeof metadata === 'object' ? (metadata as Record<string, any>) : null;
+  const o = m?.originality;
+  if (o?.kind === 'copy') return -COPY_RANK_DEMOTION;
+  if (o?.kind === 'original' && o.verifiedOriginal === true && m?.c2pa?.trust === 'trusted') {
+    return VERIFIED_ORIGINAL_RANK_BOOST;
+  }
+  return 0;
+}

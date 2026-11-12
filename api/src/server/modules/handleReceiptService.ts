@@ -58,6 +58,11 @@ export class HandleReceiptService {
     return r.rows[0]?.signing_public_key ? String(r.rows[0].signing_public_key) : null;
   }
 
+  static async pnForSigningKey(q: Queryable, signingKey: string): Promise<string | null> {
+    const r = await q.query(`SELECT pn_identifier FROM pn_signing_keys WHERE signing_public_key = $1 LIMIT 1`, [signingKey]);
+    return r.rows[0]?.pn_identifier ? String(r.rows[0].pn_identifier) : null;
+  }
+
   /**
    * Sign a receipt for this row's current state, log it, and move the row's chain head.
    * Taking a handle needs the holder's registered signing key; ending events without one are skipped.

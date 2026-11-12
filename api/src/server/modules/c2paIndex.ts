@@ -13,11 +13,13 @@ import { feedR2GetBytes } from './feedPreviewR2';
 import { creditFromMetadata, recordFingerprintCredit } from './mediaFingerprints';
 import { PublicNameService, normalizePnIdentifier } from './publicNameService';
 
-export const C2PA_INDEX_KEYS = ['c2pa', 'originality', 'c2paSource'] as const;
+export const C2PA_INDEX_KEYS = ['c2pa', 'originality', 'originalityCreatorPn', 'c2paSource'] as const;
 
 export interface IndexedCredentials {
   c2pa: ManifestSummary | null;
   originality: OriginalityResult;
+  /** The pN of a copy's or remix's credited creator, who earns its shares at fund close. */
+  originalityCreatorPn: string | null;
   /** Which preview was verified, so unrelated updates don't re-verify. */
   c2paSource: string;
 }
@@ -48,6 +50,7 @@ export async function credentialsForRow(
   deps: {
     getBytes?: (key: string) => Promise<Uint8Array | null>;
     signingKey?: (pn: string) => Promise<string | null>;
+    keyOwner?: (publicKey: string) => Promise<string | null>;
   } = {}
 ): Promise<IndexedCredentials | 'unchanged' | 'clear'> {
   const source = previewSource(meta);
@@ -58,9 +61,11 @@ export async function credentialsForRow(
   const bytes = await (deps.getBytes ?? feedR2GetBytes)(source.key);
   const uploader = normalizePnIdentifier(uploaderPn);
   const ownKeys = new Set<string>();
+  const authorKeys = new Map<string, string>();
   const summary = bytes
     ? await verifyAsset(bytes, source.contentType, {
         onAuthor: ({ authorKeyId: keyId, publicKey }) => {
+          authorKeys.set(keyId, publicKey);
           if (normalizePnIdentifier(deriveCanonicalPnIdentifier(publicKey)) === uploader) ownKeys.add(keyId);
         }
       })
@@ -70,7 +75,14 @@ export async function credentialsForRow(
 
   // Every public post can earn from the creator fund, so non-commercial licenses don't cover reuse.
   const originality = resolveOriginality(summary, { authorKeyIds: [...ownKeys] }, { monetized: true });
-  return { c2pa: summary, originality, c2paSource: id };
+  const creatorKey =
+    originality.kind !== 'original' && originality.creator?.kind === 'pn'
+      ? authorKeys.get(originality.creator.authorKeyId)
+      : undefined;
+  const originalityCreatorPn = creatorKey
+    ? await (deps.keyOwner ?? (async (key) => PublicNameService.pnForKey(key)))(creatorKey).catch(() => null)
+    : null;
+  return { c2pa: summary, originality, originalityCreatorPn, c2paSource: id };
 }
 
 /** Verify and store a public row's credentials. Never fails the index write. */

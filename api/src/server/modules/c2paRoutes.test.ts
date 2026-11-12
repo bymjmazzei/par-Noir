@@ -359,7 +359,11 @@ describe('/api/c2pa', () => {
 describe('index-time credentials', () => {
   const poster = { feedPoster: { r2Key: 'feed/f1/poster', contentType: 'image/jpeg' } };
   const rowFor = (bytes: Buffer, uploader: string, meta: Record<string, unknown> = poster) =>
-    credentialsForRow(meta, uploader, { getBytes: async () => new Uint8Array(bytes), signingKey: async () => null });
+    credentialsForRow(meta, uploader, {
+      getBytes: async () => new Uint8Array(bytes),
+      signingKey: async () => null,
+      keyOwner: async (key) => (key === AUTHOR_PK ? AUTHOR_PN : null)
+    });
   const reserved = () =>
     penOriginalDefinition({
       title: 'post.jpg',
@@ -385,10 +389,15 @@ describe('index-time credentials', () => {
   it("marks someone else's credited work as a copy, or a licensed remix when the license allows", async () => {
     const own = (await penSign(reserved(), { withAuthor: true })).out!;
     expect(await rowFor(own, 'pn-reposter')).toMatchObject({
-      originality: { kind: 'copy', creator: { kind: 'pn', handle: 'bymjmazzei' }, reason: 'license_forbids_reuse' }
+      originality: { kind: 'copy', creator: { kind: 'pn', handle: 'bymjmazzei' }, reason: 'license_forbids_reuse' },
+      originalityCreatorPn: AUTHOR_PN
     });
     const ccBy = (await penSign(original(), { withAuthor: true })).out!;
-    expect(await rowFor(ccBy, 'pn-reposter')).toMatchObject({ originality: { kind: 'licensed_remix' } });
+    expect(await rowFor(ccBy, 'pn-reposter')).toMatchObject({
+      originality: { kind: 'licensed_remix' },
+      originalityCreatorPn: AUTHOR_PN
+    });
+    expect(await rowFor(ccBy, AUTHOR_PN)).toMatchObject({ originality: { kind: 'original' }, originalityCreatorPn: null });
   });
 
   it('indexes a file without credentials as an original with no claim, and skips work it already did', async () => {
@@ -400,6 +409,8 @@ describe('index-time credentials', () => {
   });
 
   it('never takes credentials from the client', () => {
-    expect(penIndexFields({ c2pa: { trust: 'trusted' }, originality: { kind: 'original' }, c2paSource: 'x' })).toEqual({});
+    expect(
+      penIndexFields({ c2pa: { trust: 'trusted' }, originality: { kind: 'original' }, originalityCreatorPn: 'pn-x', c2paSource: 'x' })
+    ).toEqual({});
   });
 });

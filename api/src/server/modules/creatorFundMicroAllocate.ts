@@ -67,8 +67,26 @@ export function licensingFromMetadata(meta: unknown, ownerPn: string): PenLicens
 }
 
 /**
+ * Someone else credited by the post's verified Content Credentials.
+ * `creatorPn` is set only when the creator is a fund member.
+ */
+export type PayeeOriginality = { kind: 'copy' | 'licensed_remix'; creatorPn: string | null };
+
+/** The indexed originality of a post, with the credited creator's pN when they have one. */
+export function originalityFromMetadata(meta: unknown): PayeeOriginality | null {
+  const o = meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : null;
+  const kind = (o?.originality as { kind?: unknown } | undefined)?.kind;
+  if (kind !== 'copy' && kind !== 'licensed_remix') return null;
+  const pn = typeof o?.originalityCreatorPn === 'string' ? o.originalityCreatorPn.trim() : '';
+  return { kind, creatorPn: pn || null };
+}
+
+/**
  * Distribute cnt engagement units according to micro allocation.
  * Orphan: publisher + content portions that would go to content owner redirect to trackOwnerPn as m:.
+ * Copy: publisher and content-rights shares go to a member creator, otherwise back to the fund.
+ * Licensed remix: the content-rights share goes to a member creator, otherwise back to the fund.
+ * The uploader never earns another creator's share.
  */
 export function addMicroWeights(input: {
   target: Map<string, number>;
@@ -80,6 +98,7 @@ export function addMicroWeights(input: {
   musicLicensing: PenLicensingRoot | null;
   musicAttached: boolean;
   commentAuthorPns: string[];
+  originality?: PayeeOriginality | null;
 }): void {
   const {
     target,
@@ -90,9 +109,13 @@ export function addMicroWeights(input: {
     postLicensing,
     musicLicensing,
     musicAttached,
-    commentAuthorPns
+    commentAuthorPns,
+    originality
   } = input;
   if (!Number.isFinite(cnt) || cnt <= 0) return;
+  const credited = orphan ? null : originality ?? null;
+  const creatorPn = credited?.creatorPn?.trim() || '';
+  const copy = credited?.kind === 'copy';
 
   const claims = claimsForPostWithMusic({
     postLicensing,
@@ -110,7 +133,8 @@ export function addMicroWeights(input: {
   if (engagerBps > 0) {
     if (authors.length === 0) {
       // Fold to publisher
-      addWeight(target, `c:${publisherPn}`, cnt * engagerBps);
+      if (!copy) addWeight(target, `c:${publisherPn}`, cnt * engagerBps);
+      else if (creatorPn) addWeight(target, `c:${creatorPn}`, cnt * engagerBps);
     } else {
       const each = Math.floor(engagerBps / authors.length);
       let rem = engagerBps - each * authors.length;
@@ -127,6 +151,8 @@ export function addMicroWeights(input: {
     if (!pn || p.bps <= 0) continue;
     if (orphan) {
       addWeight(target, `m:${trackOwnerPn.trim() || pn}`, cnt * p.bps);
+    } else if (credited) {
+      if (creatorPn) addWeight(target, `r:${creatorPn}`, cnt * p.bps);
     } else {
       addWeight(target, `r:${pn}`, cnt * p.bps);
     }
@@ -141,6 +167,8 @@ export function addMicroWeights(input: {
   if (alloc.publisherBps > 0) {
     if (orphan) {
       addWeight(target, `m:${publisherPn}`, cnt * alloc.publisherBps);
+    } else if (copy) {
+      if (creatorPn) addWeight(target, `c:${creatorPn}`, cnt * alloc.publisherBps);
     } else {
       addWeight(target, `c:${publisherPn}`, cnt * alloc.publisherBps);
     }

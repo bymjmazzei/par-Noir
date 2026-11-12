@@ -10,6 +10,7 @@ import { promises as dns } from 'dns';
 import { parse as parseDomain } from 'tldts';
 import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import { mlDsa65Verify } from '@par-noir/pqc-crypto/ml-dsa';
+import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import {
   confusableSkeleton,
   isMlDsa65PublicKeyB64,
@@ -1054,6 +1055,12 @@ export class PublicNameService {
 
   static async signingKey(pnIdentifier: string): Promise<string | null> {
     return HandleReceiptService.signingKeyFor(getDatabasePool(), normalizePnIdentifier(pnIdentifier));
+  }
+
+  /** The pN that registered this signing key, or the pN it is the root key of. */
+  static async pnForKey(publicKey: string): Promise<string> {
+    const registered = await HandleReceiptService.pnForSigningKey(getDatabasePool(), publicKey);
+    return normalizePnIdentifier(registered ?? deriveCanonicalPnIdentifier(publicKey));
   }
 
   /**
