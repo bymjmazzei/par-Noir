@@ -1828,7 +1828,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   function rememberPostFileId(
     b: NonNullable<typeof bundle>,
     fileId: string,
-    penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug']
+    penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'],
+    ingredients?: PenDocManifest['ingredients']
   ) {
     const next = {
       ...b,
@@ -1836,6 +1837,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         ...b.manifest,
         publishedFileId: fileId,
         ...(penFeedMediaBySlug ? { penFeedMediaBySlug } : {}),
+        ...(ingredients ? { ingredients } : {}),
         updatedAt: new Date().toISOString()
       }
     };
@@ -2044,12 +2046,14 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         };
         const feedPublish = {
           metadata: input.metadata,
-          indexingPermissions: input.indexingPermissions
+          indexingPermissions: input.indexingPermissions,
+          training: input.training
         };
         setStatus(mode === 'update' ? 'Updating shared post…' : 'Publishing to your cloud…');
         let publishResult: {
           fileId: string;
           penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
+          ingredients?: PenDocManifest['ingredients'];
         };
         const prevSlug = activeSlugRef.current;
         const feedManifest = {
@@ -2136,7 +2140,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
           rememberPostFileId(
             bundleRef.current || b,
             publishResult.fileId,
-            publishResult.penFeedMediaBySlug
+            publishResult.penFeedMediaBySlug,
+            publishResult.ingredients
           );
           setStatus(mode === 'update' ? 'Shared post updated' : 'Published to your cloud');
           window.setTimeout(() => setStatus(null), 4000);

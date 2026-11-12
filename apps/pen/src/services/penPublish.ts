@@ -62,6 +62,7 @@ import {
 import { ensurePenMediaUrl } from '@par-noir/pen-media';
 import type { FeedPublishExtras } from './penFeedMetadata';
 import { metadataFieldsFromPublishForm } from './penFeedMetadata';
+import { credentialImage, credentialVideo, penMediaSignerFor, type PenMediaSigner } from './penC2pa';
 import { isTemplatesCatalogClass } from './classFeedRailItems';
 import { ensureShareFeedIds } from './penFeedTargets';
 import {
@@ -785,9 +786,13 @@ export async function publishPostToOwnerCloud(params: {
   feedPublish?: FeedPublishExtras;
   /** Default new. Update keeps the same fileId so engagement is preserved. */
   target?: PublishPostTarget;
+  /** Content Credentials signer. Defaults to the session's author keys; null publishes unsigned. */
+  mediaSigner?: PenMediaSigner | null;
 }): Promise<{
   fileId: string;
   penFeedMediaBySlug?: PenDocManifest['penFeedMediaBySlug'];
+  /** Credentialed media the published files were built from. */
+  ingredients?: PenDocManifest['ingredients'];
 }> {
   if (!params.feedIds.length) throw new Error('feed_required');
   const penFeedMediaBySlug: NonNullable<PenDocManifest['penFeedMediaBySlug']> = {};
@@ -850,17 +855,32 @@ export async function publishPostToOwnerCloud(params: {
   };
   const caption =
     typeof publishMeta.description === 'string' ? publishMeta.description : undefined;
+  const signer =
+    params.mediaSigner !== undefined
+      ? params.mediaSigner
+      : penMediaSignerFor({
+          bundle: params.bundle,
+          pnIdentifier: params.pnIdentifier,
+          session: params.session,
+          request: params.request || defaultCloudRequest(),
+          training: params.feedPublish?.training
+        });
+  const ingredients = () => {
+    const found = signer?.ingredients() ?? [];
+    return found.length ? { ingredients: found } : {};
+  };
 
   if (params.image) {
     const { slug, posterBlob } = params.image;
     const section = sectionBySlug(params.bundle, slug);
+    const credentialed = await credentialImage(signer, posterBlob, { title: publishTitle, slug });
     const uploaded = await publishPublicCloudFile({
       request: params.request,
       parentFolderId,
-      bytes: new Uint8Array(await posterBlob.arrayBuffer()),
+      bytes: new Uint8Array(await credentialed.file.arrayBuffer()),
       fileName: `pen-${params.bundle.manifest.docId}.${posterBlob.type === 'image/png' ? 'png' : 'jpg'}`,
       title: publishTitle,
-      previews: await posterPreview(posterBlob),
+      previews: credentialed.previews,
       indexingPermissions,
       replaceFileId,
       metadata: {
@@ -878,12 +898,13 @@ export async function publishPostToOwnerCloud(params: {
     });
     penFeedMediaBySlug[slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'image' };
     await cleanupAfterUpdate({ request: params.request, prior, keepChildren: layerMedia.fileIds });
-    return { fileId: uploaded.fileId, penFeedMediaBySlug };
+    return { fileId: uploaded.fileId, penFeedMediaBySlug, ...ingredients() };
   }
 
   if (params.video) {
-    const bytes = new Uint8Array(await composedMaster(params.video.previews).blob.arrayBuffer());
     const videoSlug = params.video.slug;
+    const videoPreviews = await credentialVideo(signer, params.video.previews, { title: publishTitle, slug: videoSlug });
+    const bytes = new Uint8Array(await composedMaster(videoPreviews).blob.arrayBuffer());
     const videoSection = sectionBySlug(params.bundle, videoSlug);
     const videoPageMeta = videoSection
       ? { penFeedPage: penFeedPageForSection(videoSection, params.bundle.manifest, mediaByRef) }
@@ -894,7 +915,7 @@ export async function publishPostToOwnerCloud(params: {
       bytes,
       fileName: `pen-${params.bundle.manifest.docId}.video`,
       title: publishTitle,
-      previews: params.video.previews,
+      previews: videoPreviews,
       indexingPermissions,
       replaceFileId,
       metadata: {
@@ -910,7 +931,7 @@ export async function publishPostToOwnerCloud(params: {
     });
     penFeedMediaBySlug[videoSlug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'video' };
     await cleanupAfterUpdate({ request: params.request, prior, keepChildren: layerMedia.fileIds });
-    return { fileId: uploaded.fileId, penFeedMediaBySlug };
+    return { fileId: uploaded.fileId, penFeedMediaBySlug, ...ingredients() };
   }
 
   const mixed = params.mixed!;
@@ -928,28 +949,32 @@ export async function publishPostToOwnerCloud(params: {
     if (page.kind === 'video') {
       const video = mixed.videos[page.videoIndex];
       if (!video) throw new Error(`missing_video_${page.videoIndex}`);
+      const partTitle = `${publishTitle} — ${page.slug}`;
+      const previews = await credentialVideo(signer, video.previews, { title: partTitle, slug: page.slug });
       const uploaded = await publishPublicCloudFile({
         request: params.request,
         parentFolderId,
-        bytes: new Uint8Array(await composedMaster(video.previews).blob.arrayBuffer()),
+        bytes: new Uint8Array(await composedMaster(previews).blob.arrayBuffer()),
         fileName: `pen-${docId}-${page.slug}.video`,
-        title: `${publishTitle} — ${page.slug}`,
-        previews: video.previews,
+        title: partTitle,
+        previews,
         indexingPermissions,
         metadata: { ...partMeta, fileType: 'video' }
       });
-      if (!parentPoster) parentPoster = video.previews.poster.blob;
+      if (!parentPoster) parentPoster = previews.poster.blob;
       childIds.push(uploaded.fileId);
       penFeedMediaBySlug[page.slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'video' };
     } else {
       const mime = page.posterBlob.type || 'image/jpeg';
+      const partTitle = `${publishTitle} — ${page.slug}`;
+      const credentialed = await credentialImage(signer, page.posterBlob, { title: partTitle, slug: page.slug });
       const uploaded = await publishPublicCloudFile({
         request: params.request,
         parentFolderId,
-        bytes: new Uint8Array(await page.posterBlob.arrayBuffer()),
+        bytes: new Uint8Array(await credentialed.file.arrayBuffer()),
         fileName: `pen-${docId}-${page.slug}.${mime === 'image/png' ? 'png' : 'jpg'}`,
-        title: `${publishTitle} — ${page.slug}`,
-        previews: await posterPreview(page.posterBlob),
+        title: partTitle,
+        previews: credentialed.previews,
         indexingPermissions,
         metadata: {
           ...partMeta,
@@ -957,7 +982,7 @@ export async function publishPostToOwnerCloud(params: {
           ...(page.description ? { description: page.description } : {})
         }
       });
-      if (!parentPoster) parentPoster = page.posterBlob;
+      if (!parentPoster) parentPoster = credentialed.previews?.poster?.blob ?? page.posterBlob;
       childIds.push(uploaded.fileId);
       penFeedMediaBySlug[page.slug] = { ref: `penmedia:${uploaded.fileId}`, kind: 'image' };
     }
@@ -989,7 +1014,7 @@ export async function publishPostToOwnerCloud(params: {
     prior,
     keepChildren: [...childIds, ...layerMedia.fileIds]
   });
-  return { fileId: uploaded.fileId, penFeedMediaBySlug };
+  return { fileId: uploaded.fileId, penFeedMediaBySlug, ...ingredients() };
 }
 
 /** Superseded collection children, layer media, and companion audio from before audio lived in the file. */

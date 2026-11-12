@@ -18,6 +18,13 @@ import {
   type ThirdPartyIndexer
 } from '../services/penFeedTargets';
 import { defaultCloudRequest } from '../services/penPublicPublish';
+import {
+  loadTrainingPreference,
+  saveTrainingPreference,
+  trainingAllowed,
+  trainingPreferenceFromAllow
+} from '../services/penFeedMetadata';
+import type { TrainingMiningPreference } from '@par-noir/pn-provenance';
 
 export type ShareToFeedMode = 'share' | 'update' | 'new';
 
@@ -26,6 +33,7 @@ export type ShareToFeedSubmit = {
   feedIds: string[];
   metadata: PublishMetadataForm;
   indexingPermissions?: IndexingPermissionsInput;
+  training?: TrainingMiningPreference;
 };
 
 const EMPTY_FORM: PublishMetadataForm = {
@@ -140,6 +148,7 @@ export function ShareToFeedDialog({
     name: manifest.title || ''
   }));
   const [expanded, setExpanded] = useState(false);
+  const [allowTraining, setAllowTraining] = useState(() => trainingAllowed(loadTrainingPreference()));
   const [hosted, setHosted] = useState<PublishFeed[]>([]);
   const [hostedChecked, setHostedChecked] = useState<Record<string, boolean>>({});
   const [indexers, setIndexers] = useState<ThirdPartyIndexer[]>([]);
@@ -237,7 +246,9 @@ export function ShareToFeedDialog({
       indexers.map((i) => i.id),
       indexerToggles
     );
-    onSubmit({ mode, feedIds, metadata: form, indexingPermissions });
+    const training = trainingPreferenceFromAllow(allowTraining);
+    saveTrainingPreference(training);
+    onSubmit({ mode, feedIds, metadata: form, indexingPermissions, training });
     onClose();
   }
 
@@ -340,6 +351,14 @@ export function ShareToFeedDialog({
                   onChange={(e) => setForm({ ...form, isNSFW: e.target.checked })}
                 />
                 NSFW (18+)
+              </label>
+              <label className="flex items-center gap-2 text-[12px] text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={allowTraining}
+                  onChange={(e) => setAllowTraining(e.target.checked)}
+                />
+                Allow AI training and data mining
               </label>
             </div>
           )}
