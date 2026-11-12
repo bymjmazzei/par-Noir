@@ -84,7 +84,10 @@ function bearerTokenPayload(req: Request): TokenPayload | null {
  * Require a valid Bearer issued to a first-party OAuth client.
  * L5 / third-party integrators must not reach product routes (messages, social, …).
  */
-export function requireFirstPartyOAuthClient(req: Request, res: Response): TokenPayload | null {
+export function requireFirstPartyOAuthClient(
+  req: Request,
+  res: Response
+): (TokenPayload & { pnIdentifier: string }) | null {
   const payload = bearerTokenPayload(req);
   if (!payload?.pnIdentifier) {
     res.status(401).json({ error: 'unauthorized' });
@@ -98,7 +101,7 @@ export function requireFirstPartyOAuthClient(req: Request, res: Response): Token
     res.status(403).json({ error: 'forbidden', reason: 'first_party_required' });
     return null;
   }
-  return payload;
+  return { ...payload, pnIdentifier: payload.pnIdentifier };
 }
 
 /**

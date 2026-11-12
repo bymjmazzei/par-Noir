@@ -122,7 +122,7 @@ export async function checkPenClaim(
   now = new Date()
 ): Promise<{ authorKeyId: string | null; handle: string | null }> {
   const { generator, refs } = parseClaim(claim);
-  if (!PARNOIR_CLAIM_GENERATORS.has(generator)) throw new C2paError('not_pen_claim');
+  if (!generator || !PARNOIR_CLAIM_GENERATORS.has(generator)) throw new C2paError('not_pen_claim');
   if (author && generator !== PEN_CLAIM_GENERATOR) throw new C2paError('author_invalid');
   const identities = refs.filter((r) => /c2pa\.assertions\/cawg\.identity/.test(r.url));
   if (!author) {
