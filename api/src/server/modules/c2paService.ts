@@ -5,6 +5,8 @@
  * against the trust anchors and returns a ManifestSummary.
  *
  * Env: PEN_C2PA_CERT_CHAIN_PEM, PEN_C2PA_PRIVATE_KEY_PEM, C2PA_TRUST_ANCHORS_PEM, C2PA_TSA_URL.
+ * Trust anchors always include static/c2pa/trust-anchors.pem (the public C2PA trust lists);
+ * C2PA_TRUST_ANCHORS_PEM adds to them.
  * Outside production, C2PA_DEV_DIR (default api/.c2pa-dev, from scripts/c2pa-dev-cert.sh) fills
  * in missing signer values and adds its root as a trust anchor.
  */
@@ -28,6 +30,7 @@ import { PublicNameService } from './publicNameService';
 import { stampImprint } from './timestampService';
 
 const DEV_DIR = path.resolve(__dirname, '../../../.c2pa-dev');
+const BUNDLED_ANCHORS = path.resolve(__dirname, '../../static/c2pa/trust-anchors.pem');
 const MIN_RESERVE = 4_096;
 const MAX_RESERVE = 65_536;
 const MAX_CLAIM_BYTES = 256 * 1024;
@@ -81,8 +84,17 @@ function penSigner(): PenSigner {
 }
 
 /** Trust anchors for reading: the configured list, plus the dev root outside production. */
+let bundledAnchors: string | null = null;
+
+function bundledTrustAnchors(): string {
+  if (bundledAnchors === null) {
+    bundledAnchors = existsSync(BUNDLED_ANCHORS) ? readFileSync(BUNDLED_ANCHORS, 'utf8') : '';
+  }
+  return bundledAnchors;
+}
+
 export function trustAnchorsPem(): string {
-  return [pemEnv('C2PA_TRUST_ANCHORS_PEM'), devFile('root.pem')].filter(Boolean).join('\n');
+  return [bundledTrustAnchors(), pemEnv('C2PA_TRUST_ANCHORS_PEM'), devFile('root.pem')].filter(Boolean).join('\n');
 }
 
 function b64(bytes: unknown): string | null {

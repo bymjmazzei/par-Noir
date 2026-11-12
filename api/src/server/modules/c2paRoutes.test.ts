@@ -61,6 +61,7 @@ import {
 } from '@par-noir/pn-provenance';
 import { setupC2paRoutes } from './c2paRoutes';
 import { credentialsForRow } from './c2paIndex';
+import { trustAnchorsPem } from './c2paService';
 import { resetRegistryKeysForTests } from './handleReceiptService';
 import { penIndexFields } from './penIndexFields';
 
@@ -317,6 +318,17 @@ describe('/api/c2pa', () => {
     const tampered = Buffer.from(out);
     tampered[tampered.length - 3] ^= 0xff;
     expect((await verify(tampered)).trust).toBe('invalid');
+  });
+
+  it('always trusts the bundled C2PA trust lists, with the env adding anchors', () => {
+    process.env.C2PA_DEV_DIR = emptyDir;
+    const bundled = trustAnchorsPem();
+    expect(bundled.match(/BEGIN CERTIFICATE/g)!.length).toBeGreaterThanOrEqual(60);
+    expect(bundled).toContain('O=Adobe Inc');
+    process.env.C2PA_TRUST_ANCHORS_PEM = '-----BEGIN CERTIFICATE-----\nextra\n-----END CERTIFICATE-----';
+    expect(trustAnchorsPem()).toContain('extra');
+    delete process.env.C2PA_TRUST_ANCHORS_PEM;
+    process.env.C2PA_DEV_DIR = dir;
   });
 
   it('refuses to sign for an author who is not the caller', async () => {

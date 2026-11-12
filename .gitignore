@@ -215,6 +215,8 @@ api/.c2pa-dev/
 # Secrets and keys
 *.key
 *.pem
+# Public C2PA trust lists (certificates only, no keys)
+!api/src/static/c2pa/trust-anchors.pem
 *.p12
 *.pfx
 secrets.json
