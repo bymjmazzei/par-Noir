@@ -3,6 +3,7 @@ import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
 import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
 import {
   buildHandleReceipt,
+  handleBoundToKey,
   handleReceiptHash,
   proofStrength,
   verifyHandleReceipt,
@@ -12,6 +13,8 @@ import {
 const registry = mlDsa65Keygen(new Uint8Array(32).fill(11));
 const REGISTRY_PK = bytesToBase64(registry.publicKey);
 const other = mlDsa65Keygen(new Uint8Array(32).fill(12));
+const ALICE_KEY = bytesToBase64(mlDsa65Keygen(new Uint8Array(32).fill(13)).publicKey);
+const BOB_KEY = bytesToBase64(mlDsa65Keygen(new Uint8Array(32).fill(14)).publicKey);
 
 const PRIORITY = '2026-01-02T03:04:05.000Z';
 
@@ -19,13 +22,29 @@ function claim() {
   return buildHandleReceipt(
     {
       handle: 'bymjmazzei',
-      ownerPn: 'pn-alice',
+      signingKey: ALICE_KEY,
       proofType: 'claim',
       strength: proofStrength('claim'),
       priorityAt: PRIORITY,
       event: 'claim',
       prevReceiptHash: null,
       issuedAt: PRIORITY,
+    },
+    registry.secretKey
+  );
+}
+
+function next(prev: string | null, over: Record<string, unknown> = {}) {
+  return buildHandleReceipt(
+    {
+      handle: 'bymjmazzei',
+      signingKey: BOB_KEY,
+      proofType: 'claim',
+      strength: 1,
+      priorityAt: PRIORITY,
+      event: 'transfer',
+      prevReceiptHash: prev,
+      ...over,
     },
     registry.secretKey
   );
@@ -43,54 +62,41 @@ describe('handle receipts', () => {
     expect(verifyHandleReceipt({ ...receipt, priorityAt: '2027-01-01T00:00:00.000Z' }, signature, REGISTRY_PK)).toBe(
       false
     );
+    expect(verifyHandleReceipt({ ...receipt, signingKey: BOB_KEY }, signature, REGISTRY_PK)).toBe(false);
     expect(verifyHandleReceipt(receipt, signature, bytesToBase64(other.publicKey))).toBe(false);
   });
 
-  it('chains from claim to transfer with the priority date travelling', () => {
+  it('refuses a receipt without a real signing key', () => {
+    expect(() => next(null, { signingKey: 'pn-alice' })).toThrow('Invalid handle receipt');
+  });
+
+  it('chains from claim to transfer to rekey with the priority date travelling', () => {
     const first = claim();
-    const transfer = buildHandleReceipt(
-      {
-        handle: 'bymjmazzei',
-        ownerPn: 'pn-bob',
-        proofType: 'claim',
-        strength: 1,
-        priorityAt: PRIORITY,
-        event: 'transfer',
-        prevReceiptHash: first.hash,
-      },
-      registry.secretKey
-    );
-    expect(verifyHandleReceiptChain([first, transfer], REGISTRY_PK)).toBe(true);
+    const transfer = next(first.hash);
+    const rekey = next(transfer.hash, { event: 'rekey', signingKey: ALICE_KEY });
+    expect(verifyHandleReceiptChain([first, transfer, rekey], REGISTRY_PK)).toBe(true);
   });
 
   it('rejects a broken link or a transfer that changes the priority date', () => {
     const first = claim();
-    const unlinked = buildHandleReceipt(
-      {
-        handle: 'bymjmazzei',
-        ownerPn: 'pn-bob',
-        proofType: 'claim',
-        strength: 1,
-        priorityAt: PRIORITY,
-        event: 'transfer',
-        prevReceiptHash: null,
-      },
-      registry.secretKey
-    );
-    expect(verifyHandleReceiptChain([first, unlinked], REGISTRY_PK)).toBe(false);
-
-    const redated = buildHandleReceipt(
-      {
-        handle: 'bymjmazzei',
-        ownerPn: 'pn-bob',
-        proofType: 'claim',
-        strength: 1,
-        priorityAt: '2020-01-01T00:00:00.000Z',
-        event: 'transfer',
-        prevReceiptHash: first.hash,
-      },
-      registry.secretKey
-    );
+    expect(verifyHandleReceiptChain([first, next(null)], REGISTRY_PK)).toBe(false);
+    const redated = next(first.hash, { priorityAt: '2020-01-01T00:00:00.000Z' });
     expect(verifyHandleReceiptChain([first, redated], REGISTRY_PK)).toBe(false);
+  });
+});
+
+describe('key binding', () => {
+  it('binds the handle to the key the receipt names, from its issue time', () => {
+    const first = claim();
+    expect(handleBoundToKey(first, REGISTRY_PK, ALICE_KEY)).toBe('bymjmazzei');
+    expect(handleBoundToKey(first, REGISTRY_PK, ALICE_KEY, '2026-02-01T00:00:00.000Z')).toBe('bymjmazzei');
+    expect(handleBoundToKey(first, REGISTRY_PK, ALICE_KEY, '2025-12-31T00:00:00.000Z')).toBeNull();
+    expect(handleBoundToKey(first, REGISTRY_PK, BOB_KEY)).toBeNull();
+    expect(handleBoundToKey(first, bytesToBase64(other.publicKey), ALICE_KEY)).toBeNull();
+  });
+
+  it('does not bind after the handle was released', () => {
+    const released = next(claim().hash, { event: 'release', signingKey: ALICE_KEY });
+    expect(handleBoundToKey(released, REGISTRY_PK, ALICE_KEY)).toBeNull();
   });
 });

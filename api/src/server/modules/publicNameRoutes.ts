@@ -47,7 +47,8 @@ const ERRORS: Record<string, [number, string, string]> = {
   NOT_PROVEN: [400, 'not_proven', 'Prove this name via DNS or YouTube before adding it to the directory.'],
   NOT_LISTED: [400, 'not_listed', 'Add the name to the search directory before setting a profile URL.'],
   TRANSFER_PENDING: [409, 'transfer_pending', 'This handle already has a pending transfer.'],
-  TRANSFER_STALE: [409, 'transfer_stale', 'The sender no longer holds this handle.']
+  TRANSFER_STALE: [409, 'transfer_stale', 'The sender no longer holds this handle.'],
+  SIGNING_KEY_REQUIRED: [409, 'signing_key_required', 'Unlock again so this pN can register its signing key.']
 };
 
 function mapServiceError(e: unknown, res: Response): Response | null {
@@ -156,6 +157,21 @@ export function registerPublicNameRoutes(app: Application): void {
     }
   });
 
+  /** Head receipt of a held handle: binds the handle to the key that signs its content. */
+  app.get('/api/public-names/receipt/:handle', async (req, res: Response) => {
+    try {
+      const head = await HandleReceiptService.latestForHandle(
+        getDatabasePool(),
+        normalizePublicName(str(req.params.handle))
+      );
+      if (!head) return res.status(404).json({ error: 'not_found' });
+      return res.json({ registryPublicKey: HandleReceiptService.publicKeyB64(), ...head });
+    } catch (e: unknown) {
+      console.error('[public-names] receipt:', e);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
   app.get('/api/public-names/by-feed/:feedId', async (req, res: Response) => {
     try {
       const badges = await PublicNameService.badges(await PublicNameService.getByFeedListed(str(req.params.feedId)));
@@ -248,6 +264,30 @@ export function registerPublicNameRoutes(app: Application): void {
     ...auth,
     owner(WRITE, 'transfer', async (req, res, pn) =>
       res.status(201).json(await PublicNameService.createTransfer(pn, req.body?.statement, str(req.body?.signature)))
+    )
+  );
+
+  app.get(
+    '/api/public-names/signing-key',
+    ...auth,
+    owner(READ, 'signing-key', async (_req, res, pn) =>
+      res.json({ signingKey: await PublicNameService.signingKey(pn) })
+    )
+  );
+
+  app.put(
+    '/api/public-names/signing-key',
+    ...auth,
+    owner(WRITE, 'signing-key', async (req, res, pn) =>
+      res.json(
+        await PublicNameService.registerSigningKey(
+          pn,
+          req.body?.statement,
+          str(req.body?.rootPublicKey),
+          str(req.body?.rootSignature),
+          str(req.body?.keySignature) || null
+        )
+      )
     )
   );
 

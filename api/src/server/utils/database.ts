@@ -1225,6 +1225,19 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const keysPath = path.join(__dirname, '../../migrations/add_pn_signing_keys.sql');
+      await db.query(fs.readFileSync(keysPath, 'utf-8'));
+      console.log('✅ pN signing keys migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ pN signing keys migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
       const { OwnedAssetService } = await import('../modules/ownedAssetService');
       await OwnedAssetService.backfillLegacyApiKeys();
     } catch (bfErr: unknown) {

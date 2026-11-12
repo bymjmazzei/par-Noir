@@ -8,15 +8,23 @@
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { promises as dns } from 'dns';
 import { parse as parseDomain } from 'tldts';
+import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
+import { mlDsa65Verify } from '@par-noir/pqc-crypto/ml-dsa';
 import {
   confusableSkeleton,
+  isMlDsa65PublicKeyB64,
   isValidHandle,
   normalizePublicName,
   proofStrength,
   type HandleProofType,
   type SignedHandleReceipt
 } from '@par-noir/public-names';
-import { canonicalHandleTransferBytes, parseHandleTransferStatement } from '@par-noir/standard-data-points';
+import {
+  canonicalHandleSigningKeyBytes,
+  canonicalHandleTransferBytes,
+  parseHandleSigningKeyStatement,
+  parseHandleTransferStatement
+} from '@par-noir/standard-data-points';
 import { getDatabasePool } from '../utils/database';
 import { appendAuditEvent } from './auditService';
 import { HandleReceiptService, type Queryable } from './handleReceiptService';
@@ -1038,6 +1046,88 @@ export class PublicNameService {
        WHERE pn_identifier = $1 AND is_vanity = true`,
       [pn]
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Signing key
+  // ---------------------------------------------------------------------------
+
+  static async signingKey(pnIdentifier: string): Promise<string | null> {
+    return HandleReceiptService.signingKeyFor(getDatabasePool(), normalizePnIdentifier(pnIdentifier));
+  }
+
+  /**
+   * Register the ML-DSA key this pN's handle receipts name. The root signs the statement; a key
+   * other than the root also signs it to prove possession. Changing the key issues a `rekey`
+   * receipt for every handle the pN holds.
+   */
+  static async registerSigningKey(
+    pnIdentifier: string,
+    statementRaw: unknown,
+    rootPublicKey: string,
+    rootSignature: string,
+    keySignature?: string | null,
+    now: number = Date.now()
+  ): Promise<{ signingKey: string; rekeyed: number }> {
+    const pn = normalizePnIdentifier(pnIdentifier);
+    const raw = typeof statementRaw === 'string' ? safeJson(statementRaw) : statementRaw;
+    const statement = parseHandleSigningKeyStatement(raw);
+    if (
+      !statement ||
+      normalizePnIdentifier(statement.pnIdentifier) !== pn ||
+      !isMlDsa65PublicKeyB64(statement.signingKey)
+    ) {
+      fail('INVALID_INPUT', { reason: 'signing_key_statement_required' });
+    }
+    const bytes = canonicalHandleSigningKeyBytes(statement);
+    verifyRootSignedStatement({
+      prefix: 'signing_key',
+      root: pn,
+      rootPublicKey,
+      bytes,
+      signature: rootSignature,
+      issuedAt: statement.issuedAt,
+      now
+    });
+    if (statement.signingKey !== rootPublicKey) {
+      let held = false;
+      try {
+        held =
+          typeof keySignature === 'string' &&
+          mlDsa65Verify(base64ToBytes(keySignature), bytes, base64ToBytes(statement.signingKey));
+      } catch {
+        held = false;
+      }
+      if (!held) fail('INVALID_INPUT', { reason: 'signing_key_possession_invalid' });
+    }
+    return withTx(async (q) => {
+      const previous = await HandleReceiptService.signingKeyFor(q, pn);
+      if (previous === statement.signingKey) return { signingKey: previous, rekeyed: 0 };
+      await q.query(
+        `INSERT INTO pn_signing_keys (pn_identifier, signing_public_key, registered_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (pn_identifier) DO UPDATE SET signing_public_key = $2, registered_at = NOW()`,
+        [pn, statement.signingKey]
+      );
+      let rekeyed = 0;
+      if (previous) {
+        const held = await q.query(
+          `SELECT * FROM public_names WHERE pn_identifier = $1 AND status IN ('listed', 'disputed')`,
+          [pn]
+        );
+        for (const row of held.rows) {
+          await HandleReceiptService.issue(q, row, 'rekey', row.receipt_hash ?? null);
+          rekeyed += 1;
+        }
+      }
+      await appendAuditEvent({
+        eventType: 'public_name.signing_key_registered',
+        actorHint: 'dashboard',
+        subjectPnIdentifier: pn,
+        metadata: { rekeyed }
+      });
+      return { signingKey: statement.signingKey, rekeyed };
+    });
   }
 
   // ---------------------------------------------------------------------------

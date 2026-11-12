@@ -10,7 +10,12 @@ import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
 import { mlDsa65Keygen, mlDsa65Sign } from '@par-noir/pqc-crypto/ml-dsa';
 import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { confusableSkeleton, verifyHandleReceiptChain } from '@par-noir/public-names';
-import { buildHandleTransferStatement, canonicalHandleTransferBytes } from '@par-noir/standard-data-points';
+import {
+  buildHandleSigningKeyStatement,
+  buildHandleTransferStatement,
+  canonicalHandleSigningKeyBytes,
+  canonicalHandleTransferBytes
+} from '@par-noir/standard-data-points';
 
 type Row = Record<string, any>;
 type State = {
@@ -21,13 +26,14 @@ type State = {
   transfers: Row[];
   disputes: Row[];
   receipts: Row[];
+  keys: Record<string, string>;
 };
 
 let db: State;
 let snapshot: State | null = null;
 
 function fresh(): State {
-  return { names: [], feeds: [], protectedNames: [], verified: [], transfers: [], disputes: [], receipts: [] };
+  return { names: [], feeds: [], protectedNames: [], verified: [], transfers: [], disputes: [], receipts: [], keys: {} };
 }
 
 const now = () => new Date().toISOString();
@@ -118,6 +124,20 @@ function run(sqlRaw: string, p: any[] = []): { rows: Row[]; rowCount?: number } 
     };
     db.names.push(row);
     return rows([row]);
+  }
+  if (sql.startsWith('SELECT signing_public_key FROM pn_signing_keys')) {
+    return rows(db.keys[p[0]] ? [{ signing_public_key: db.keys[p[0]] }] : []);
+  }
+  if (sql.startsWith('SELECT r.receipt_hash, r.receipt, r.signature FROM public_names pn')) {
+    const head = db.names.find((r) => r.public_name === p[0] && held(r));
+    return rows(db.receipts.filter((r) => head && r.receipt_hash === head.receipt_hash));
+  }
+  if (sql.startsWith('INSERT INTO pn_signing_keys')) {
+    db.keys[p[0]] = p[1];
+    return rows([]);
+  }
+  if (sql.startsWith("SELECT * FROM public_names WHERE pn_identifier = $1 AND status IN ('listed', 'disputed')")) {
+    return rows(db.names.filter((r) => r.pn_identifier === p[0] && held(r)));
   }
   if (sql.startsWith('INSERT INTO public_name_receipts')) {
     db.receipts.push({ receipt_hash: p[0], public_name: p[1], owner: p[2], receipt: JSON.parse(p[3]), signature: p[4] });
@@ -298,11 +318,89 @@ function backdate(name: string, days: number) {
   db.names.filter((r) => r.public_name === name).forEach((r) => (r.priority_at = ago(days)));
 }
 
+const TEST_KEY = bytesToBase64(mlDsa65Keygen(new Uint8Array(32).fill(30)).publicKey);
+
 beforeEach(() => {
   db = fresh();
   snapshot = null;
+  for (const pn of ['pn-alice', 'pn-bob', 'pn-carol', 'pn-dave']) db.keys[pn] = TEST_KEY;
   feed('pn-alice', 'feed-a');
   feed('pn-bob', 'feed-b');
+});
+
+describe('signing key', () => {
+  function rootIdentity(fill: number) {
+    const root = mlDsa65Keygen(new Uint8Array(32).fill(fill));
+    const rootPk = bytesToBase64(root.publicKey);
+    const pn = deriveCanonicalPnIdentifier(rootPk);
+    db.feeds[0].owner_pn_identifier = pn;
+    return { root, rootPk, pn };
+  }
+
+  function keyStatement(pn: string, signingKey: string) {
+    return buildHandleSigningKeyStatement({ pnIdentifier: pn, signingKey, nonce: 'nonce-abcdefghijklmnop' });
+  }
+
+  it('needs a registered key before a handle can be taken', async () => {
+    const { pn } = rootIdentity(40);
+    await expect(PublicNameService.claim(pn, 'nokey')).rejects.toMatchObject({ code: 'SIGNING_KEY_REQUIRED' });
+    expect(db.names).toHaveLength(0);
+  });
+
+  it('registers the root key and names it in receipts', async () => {
+    const { root, rootPk, pn } = rootIdentity(41);
+    const statement = keyStatement(pn, rootPk);
+    const sig = bytesToBase64(mlDsa65Sign(canonicalHandleSigningKeyBytes(statement), root.secretKey));
+    await expect(PublicNameService.registerSigningKey(pn, statement, rootPk, sig)).resolves.toEqual({
+      signingKey: rootPk,
+      rekeyed: 0
+    });
+    const out = await PublicNameService.claim(pn, 'keyed');
+    expect(out.receipt?.receipt.signingKey).toBe(rootPk);
+  });
+
+  it('rekeys every held handle when the key changes', async () => {
+    const { root, rootPk, pn } = rootIdentity(42);
+    db.keys[pn] = rootPk;
+    await PublicNameService.claim(pn, 'rekeyme');
+    const next = mlDsa65Keygen(new Uint8Array(32).fill(43));
+    const nextPk = bytesToBase64(next.publicKey);
+    const statement = keyStatement(pn, nextPk);
+    const bytes = canonicalHandleSigningKeyBytes(statement);
+    const rootSig = bytesToBase64(mlDsa65Sign(bytes, root.secretKey));
+
+    await expect(PublicNameService.registerSigningKey(pn, statement, rootPk, rootSig, null)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    });
+    const keySig = bytesToBase64(mlDsa65Sign(bytes, next.secretKey));
+    await expect(PublicNameService.registerSigningKey(pn, statement, rootPk, rootSig, keySig)).resolves.toEqual({
+      signingKey: nextPk,
+      rekeyed: 1
+    });
+
+    const head = await HandleReceiptService.latestForHandle(
+      { query: async (sql: string, params?: unknown[]) => run(sql, params as any[]) },
+      'rekeyme'
+    );
+    expect(head?.receipt).toMatchObject({ event: 'rekey', signingKey: nextPk });
+    const [held] = await HandleReceiptService.chainsForOwner(
+      { query: async (sql: string, params?: unknown[]) => run(sql, params as any[]) },
+      pn
+    );
+    expect(held.chain.map((c) => c.receipt.event)).toEqual(['claim', 'rekey']);
+    expect(verifyHandleReceiptChain(held.chain, HandleReceiptService.publicKeyB64()!)).toBe(true);
+  });
+
+  it('refuses a statement the pN root did not sign', async () => {
+    const { pn } = rootIdentity(44);
+    const other = mlDsa65Keygen(new Uint8Array(32).fill(45));
+    const otherPk = bytesToBase64(other.publicKey);
+    const statement = keyStatement(pn, otherPk);
+    const sig = bytesToBase64(mlDsa65Sign(canonicalHandleSigningKeyBytes(statement), other.secretKey));
+    await expect(PublicNameService.registerSigningKey(pn, statement, otherPk, sig)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    });
+  });
 });
 
 describe('claims and protected names', () => {
@@ -415,6 +513,7 @@ describe('rename, move, transfer', () => {
     const rootPk = bytesToBase64(root.publicKey);
     const alice = deriveCanonicalPnIdentifier(rootPk);
     db.feeds[0].owner_pn_identifier = alice;
+    db.keys[alice] = rootPk;
     await PublicNameService.claim(alice, 'gift');
     const priority = db.names[0].priority_at;
     const statement = buildHandleTransferStatement({
@@ -441,7 +540,8 @@ describe('rename, move, transfer', () => {
     );
     expect(held.handle).toBe('gift');
     expect(held.chain.map((c) => c.receipt.event)).toEqual(['claim', 'transfer']);
-    expect(held.chain[0].receipt.ownerPn).toBe(alice);
+    expect(held.chain[0].receipt.signingKey).toBe(rootPk);
+    expect(held.chain[1].receipt.signingKey).toBe(TEST_KEY);
     expect(verifyHandleReceiptChain(held.chain, HandleReceiptService.publicKeyB64()!)).toBe(true);
   });
 
@@ -450,6 +550,7 @@ describe('rename, move, transfer', () => {
     const rootPk = bytesToBase64(root.publicKey);
     const alice = deriveCanonicalPnIdentifier(rootPk);
     db.feeds[0].owner_pn_identifier = alice;
+    db.keys[alice] = rootPk;
     provenDomain(alice, 'shop.com', 'shop', '2001-01-01T00:00:00.000Z');
     await PublicNameService.listName(alice, 'shop');
     const statement = buildHandleTransferStatement({

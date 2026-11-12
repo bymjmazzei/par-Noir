@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildHandleSigningKeyStatement,
   buildHandleTransferStatement,
   buildPersonalFeedStatement,
+  canonicalHandleSigningKeyBytes,
   canonicalHandleTransferBytes,
   canonicalPersonalFeedBytes,
+  parseHandleSigningKeyStatement,
   parseHandleTransferStatement,
   parsePersonalFeedStatement,
 } from './ownerStatements';
@@ -55,5 +58,25 @@ describe('HandleTransferStatement', () => {
 
   it('rejects a missing recipient', () => {
     expect(parseHandleTransferStatement({ ...s, toPnIdentifier: '' })).toBeNull();
+  });
+});
+
+describe('HandleSigningKeyStatement', () => {
+  const s = buildHandleSigningKeyStatement({
+    pnIdentifier: 'pn-owner',
+    signingKey: 'KEY',
+    nonce: NONCE,
+    issuedAt: '2026-11-09T10:00:00.000Z',
+  });
+
+  it('round-trips and is domain separated', () => {
+    const parsed = parseHandleSigningKeyStatement(JSON.parse(JSON.stringify(s)));
+    expect(canonicalHandleSigningKeyBytes(parsed!)).toEqual(canonicalHandleSigningKeyBytes(s));
+    expect(text(canonicalHandleSigningKeyBytes(s)).startsWith('PN-HANDLE-KEY-V1\n')).toBe(true);
+  });
+
+  it('rejects a missing key or wrong kind', () => {
+    expect(parseHandleSigningKeyStatement({ ...s, signingKey: '' })).toBeNull();
+    expect(parseHandleSigningKeyStatement({ ...s, kind: 'handle_transfer' })).toBeNull();
   });
 });

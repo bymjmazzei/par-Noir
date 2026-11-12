@@ -1,7 +1,7 @@
 /**
  * Root-signed statements for assets the owner creates without Unlock in the loop:
- * the personal feed sub-pN and handle transfers. Same canonical-bytes approach as
- * the agent delegation statement.
+ * the personal feed sub-pN, handle transfers and the handle signing key. Same
+ * canonical-bytes approach as the agent delegation statement.
  */
 
 export const PERSONAL_FEED_STATEMENT_VERSION = 1 as const;
@@ -9,6 +9,9 @@ const PERSONAL_FEED_DOMAIN = 'PN-PERSONAL-FEED-V1';
 
 export const HANDLE_TRANSFER_STATEMENT_VERSION = 1 as const;
 const HANDLE_TRANSFER_DOMAIN = 'PN-HANDLE-TRANSFER-V1';
+
+export const HANDLE_SIGNING_KEY_STATEMENT_VERSION = 1 as const;
+const HANDLE_SIGNING_KEY_DOMAIN = 'PN-HANDLE-KEY-V1';
 
 const KEY_MAX = 4096;
 const NAME_MAX = 64;
@@ -32,6 +35,19 @@ export interface HandleTransferStatement {
   name: string;
   rootPublicKey: string;
   toPnIdentifier: string;
+  issuedAt: string;
+  nonce: string;
+}
+
+/**
+ * Root pN names the ML-DSA key its handle receipts carry, so content signed by that key is
+ * attributed to its handles. A key other than the root also signs, proving possession.
+ */
+export interface HandleSigningKeyStatement {
+  v: typeof HANDLE_SIGNING_KEY_STATEMENT_VERSION;
+  kind: 'handle_signing_key';
+  pnIdentifier: string;
+  signingKey: string;
   issuedAt: string;
   nonce: string;
 }
@@ -148,5 +164,52 @@ export function buildHandleTransferStatement(args: {
     ...args,
   });
   if (!parsed) throw new Error('Invalid handle transfer statement');
+  return parsed;
+}
+
+export function parseHandleSigningKeyStatement(raw: unknown): HandleSigningKeyStatement | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  if (row.v !== HANDLE_SIGNING_KEY_STATEMENT_VERSION || row.kind !== 'handle_signing_key') return null;
+  const pnIdentifier = str(row.pnIdentifier, KEY_MAX);
+  const signingKey = str(row.signingKey, KEY_MAX);
+  const issuedAt = iso(row.issuedAt);
+  const n = nonce(row.nonce);
+  if (!pnIdentifier || !signingKey || !issuedAt || !n) return null;
+  return {
+    v: HANDLE_SIGNING_KEY_STATEMENT_VERSION,
+    kind: 'handle_signing_key',
+    pnIdentifier,
+    signingKey,
+    issuedAt,
+    nonce: n,
+  };
+}
+
+export function canonicalHandleSigningKeyBytes(s: HandleSigningKeyStatement): Uint8Array {
+  const ordered = {
+    v: s.v,
+    kind: s.kind,
+    pnIdentifier: s.pnIdentifier,
+    signingKey: s.signingKey,
+    issuedAt: s.issuedAt,
+    nonce: s.nonce,
+  };
+  return new TextEncoder().encode(`${HANDLE_SIGNING_KEY_DOMAIN}\n${JSON.stringify(ordered)}`);
+}
+
+export function buildHandleSigningKeyStatement(args: {
+  pnIdentifier: string;
+  signingKey: string;
+  nonce: string;
+  issuedAt?: string;
+}): HandleSigningKeyStatement {
+  const parsed = parseHandleSigningKeyStatement({
+    v: HANDLE_SIGNING_KEY_STATEMENT_VERSION,
+    kind: 'handle_signing_key',
+    issuedAt: args.issuedAt ?? new Date().toISOString(),
+    ...args,
+  });
+  if (!parsed) throw new Error('Invalid handle signing key statement');
   return parsed;
 }

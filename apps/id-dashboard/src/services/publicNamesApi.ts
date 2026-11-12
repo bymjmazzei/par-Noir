@@ -5,7 +5,12 @@
 import { ensureDriveChildFolder, upsertDriveChildFile } from '@par-noir/device-cloud-credentials';
 import { bytesToBase64, base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import { mlDsa65Sign } from '@par-noir/pqc-crypto/ml-dsa';
-import { buildHandleTransferStatement, canonicalHandleTransferBytes } from '@par-noir/standard-data-points';
+import {
+  buildHandleSigningKeyStatement,
+  buildHandleTransferStatement,
+  canonicalHandleSigningKeyBytes,
+  canonicalHandleTransferBytes
+} from '@par-noir/standard-data-points';
 import { ownerFetch, ownerGet } from './ownerApiService';
 import { sessionDriveFor } from './sessionDrive';
 import { readShellSigningKeys } from './shellKeys';
@@ -152,12 +157,47 @@ export function checkHandleAvailability(
   return send(accessToken, pnIdentifier, 'GET', `/api/public-names/available/${enc(name)}`);
 }
 
+const registeredSigningKeys = new Set<string>();
+
+/**
+ * Handle receipts name the key that signs this pN's content. The root key from this unlock
+ * registers itself once; claims, proofs and accepted transfers need it.
+ */
+export async function ensureHandleSigningKey(accessToken: string, pnIdentifier: string): Promise<void> {
+  if (registeredSigningKeys.has(pnIdentifier)) return;
+  const keys = readShellSigningKeys(pnIdentifier);
+  if (!keys) throw new Error('Unlock again in par Noir Unlock to sign for your handle.');
+  const current = await send<{ signingKey: string | null }>(
+    accessToken,
+    pnIdentifier,
+    'GET',
+    '/api/public-names/signing-key'
+  );
+  if (current.signingKey !== keys.mlDsaPublicKey) {
+    const statement = buildHandleSigningKeyStatement({
+      pnIdentifier,
+      signingKey: keys.mlDsaPublicKey,
+      nonce: transferNonce()
+    });
+    const rootSignature = bytesToBase64(
+      mlDsa65Sign(canonicalHandleSigningKeyBytes(statement), base64ToBytes(keys.mlDsaSecretKey))
+    );
+    await send(accessToken, pnIdentifier, 'PUT', '/api/public-names/signing-key', {
+      statement,
+      rootPublicKey: keys.mlDsaPublicKey,
+      rootSignature
+    });
+  }
+  registeredSigningKeys.add(pnIdentifier);
+}
+
 export async function claimHandle(
   accessToken: string,
   pnIdentifier: string,
   name: string,
   feedId: string | null
 ): Promise<PublicNameDto> {
+  await ensureHandleSigningKey(accessToken, pnIdentifier);
   const data = await send<{ name: PublicNameDto }>(accessToken, pnIdentifier, 'POST', '/api/public-names/claim', {
     name,
     ...(feedId ? { feedId } : {})
@@ -180,6 +220,7 @@ export async function startDnsVerification(
 }
 
 export async function verifyDns(accessToken: string, pnIdentifier: string, domain: string): Promise<PublicNameDto> {
+  await ensureHandleSigningKey(accessToken, pnIdentifier);
   const data = await send<{ name: PublicNameDto }>(accessToken, pnIdentifier, 'POST', '/api/public-names/dns/verify', {
     domain
   });
@@ -191,6 +232,7 @@ export async function completeYoutube(
   pnIdentifier: string,
   googleAccessToken: string
 ): Promise<PublicNameDto> {
+  await ensureHandleSigningKey(accessToken, pnIdentifier);
   const data = await send<{ name: PublicNameDto }>(
     accessToken,
     pnIdentifier,
@@ -202,12 +244,13 @@ export async function completeYoutube(
 }
 
 /** List a proven name. `disputed` means a holder exists and a dispute was opened instead. */
-export function listPublicName(
+export async function listPublicName(
   accessToken: string,
   pnIdentifier: string,
   name: string,
   feedId?: string | null
 ): Promise<{ name: PublicNameDto; disputed?: boolean }> {
+  await ensureHandleSigningKey(accessToken, pnIdentifier);
   return send(accessToken, pnIdentifier, 'POST', `/api/public-names/${enc(name)}/list`, feedId ? { feedId } : {});
 }
 
@@ -285,7 +328,7 @@ export async function sendHandle(
   return send(accessToken, pnIdentifier, 'POST', '/api/public-names/transfers', { statement, signature });
 }
 
-export function acceptHandleTransfer(
+export async function acceptHandleTransfer(
   accessToken: string,
   pnIdentifier: string,
   transferId: string,
@@ -294,6 +337,7 @@ export function acceptHandleTransfer(
   | { status: 'completed'; name: PublicNameDto }
   | { status: 'reproof_required'; challenge: ReproofChallengeDto }
 > {
+  await ensureHandleSigningKey(accessToken, pnIdentifier);
   return send(accessToken, pnIdentifier, 'POST', `/api/public-names/transfers/${enc(transferId)}/accept`, {
     ...(opts.feedId ? { feedId: opts.feedId } : {}),
     ...(opts.googleAccessToken ? { googleAccessToken: opts.googleAccessToken } : {})

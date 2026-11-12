@@ -109,14 +109,19 @@ export {
 export {
   type PersonalFeedStatement,
   type HandleTransferStatement,
+  type HandleSigningKeyStatement,
   PERSONAL_FEED_STATEMENT_VERSION,
   HANDLE_TRANSFER_STATEMENT_VERSION,
+  HANDLE_SIGNING_KEY_STATEMENT_VERSION,
   parsePersonalFeedStatement,
   canonicalPersonalFeedBytes,
   buildPersonalFeedStatement,
   parseHandleTransferStatement,
   canonicalHandleTransferBytes,
-  buildHandleTransferStatement
+  buildHandleTransferStatement,
+  parseHandleSigningKeyStatement,
+  canonicalHandleSigningKeyBytes,
+  buildHandleSigningKeyStatement
 } from './ownerStatements';
 export {
   type PermissionManifestItem,
