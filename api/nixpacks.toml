@@ -8,7 +8,7 @@ nixPkgs = ["nodejs_22", "npm-9_x", "ffmpeg"]
 aptPkgs = []
 
 [phases.install]
-cmds = ["npm ci --production=false --ignore-scripts"]
+cmds = ["npm ci --production=false --ignore-scripts && npm rebuild @contentauth/c2pa-node"]
 
 [phases.build]
 cmds = ["NODE_OPTIONS=--max-old-space-size=8192 npm run build"]

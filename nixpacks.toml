@@ -9,7 +9,8 @@ nixPkgs = ["nodejs_22", "npm-9_x", "ffmpeg"]
 aptPkgs = []
 
 [phases.install]
-cmds = ["cd api && npm ci --production=false --ignore-scripts"]
+# c2pa-node's install script downloads its native binary; without it Content Credentials can't sign or verify.
+cmds = ["cd api && npm ci --production=false --ignore-scripts && npm rebuild @contentauth/c2pa-node"]
 
 [phases.build]
 cmds = ["cd api && NODE_OPTIONS=--max-old-space-size=8192 npm run build"]
