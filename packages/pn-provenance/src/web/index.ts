@@ -65,7 +65,7 @@ function claimSigner(request: ApiRequest, author: () => AuthorPayload | null): S
         throw new Error(`c2pa_sign_${err.error || res.status}`);
       }
       const { cose } = (await res.json()) as { cose: string };
-      return base64ToBytes(cose) as Uint8Array<ArrayBuffer>;
+      return base64ToBytes(cose);
     }
   };
 }
@@ -82,7 +82,7 @@ export async function signManifest(params: {
   const { web, request, def, blob } = params;
   const { ingredients, ...json } = def;
   // Feed posters have a 200 KB cap; a claim thumbnail would only add weight to every rendition.
-  const settings = new web.sdk.Context({ builder: { thumbnail: { enabled: false } } });
+  const settings = new web.sdk.Context({ builder: { generateC2paArchive: true, thumbnail: { enabled: false } } });
   const builder: C2paBuilder = await web.sdk.Builder.fromDefinition(web.c2pa, json as never, settings);
   try {
     for (const [i, ing] of (ingredients || []).entries()) {
@@ -109,7 +109,7 @@ export async function signManifest(params: {
                   },
                   credential: bytesToBase64(credential)
                 };
-                return credential as Uint8Array<ArrayBuffer>;
+                return credential;
               }
             },
             referencedAssertions: identity.referencedAssertions
