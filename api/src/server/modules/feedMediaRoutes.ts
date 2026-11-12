@@ -418,6 +418,16 @@ export function registerFeedMediaRoutes(app: Application): void {
       const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
       const agg = AggregatorMetadataServiceDB.getInstance();
       const existing = await agg.getFileMetadata(fileId);
+      if (ref.r2Key && (variant === 'poster' || variant === 'sd')) {
+        const { enqueueFingerprint, creditFromMetadata } = await import('./mediaFingerprints');
+        enqueueFingerprint({
+          fileId,
+          variant,
+          uploaderPn: tokenPayload.pnIdentifier,
+          r2Key: ref.r2Key,
+          credit: creditFromMetadata(existing?.metadata as unknown as Record<string, unknown> | undefined),
+        });
+      }
       const patch =
         variant === 'poster'
           ? { feedPoster: { ...ref, r2Warm: true } }
@@ -573,6 +583,8 @@ export function registerFeedMediaRoutes(app: Application): void {
         feedPreviewSd: null,
         feedPreviewHd: null,
       } as any);
+      const { deleteFingerprints } = await import('./mediaFingerprints');
+      await deleteFingerprints(fileId);
       return res.json({ success: true });
     } catch (err: unknown) {
       return res.status(500).json({ error: 'revoke_failed' });

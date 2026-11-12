@@ -953,6 +953,18 @@ class ProductionServer {
         })();
         (async () => {
           try {
+            const { runNearDuplicateMetric } = await import('./server/modules/mediaFingerprints');
+            setInterval(() => {
+              runNearDuplicateMetric().catch((e: unknown) =>
+                console.error('[fingerprint] near-duplicate metric failed:', e)
+              );
+            }, 24 * 60 * 60 * 1000);
+          } catch (e) {
+            console.warn('[fingerprint] Could not schedule near-duplicate metric:', e);
+          }
+        })();
+        (async () => {
+          try {
             const { PublicNameService } = await import('./server/modules/publicNameService');
             const { ProtectedNameService } = await import('./server/modules/protectedNameService');
             PublicNameService.startExpirySweep();

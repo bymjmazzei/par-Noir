@@ -1238,6 +1238,19 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const fingerprintsPath = path.join(__dirname, '../../migrations/add_media_fingerprints.sql');
+      await db.query(fs.readFileSync(fingerprintsPath, 'utf-8'));
+      console.log('✅ media fingerprints migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ media fingerprints migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
       const { OwnedAssetService } = await import('../modules/ownedAssetService');
       await OwnedAssetService.backfillLegacyApiKeys();
     } catch (bfErr: unknown) {

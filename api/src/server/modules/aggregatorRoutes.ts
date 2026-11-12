@@ -672,6 +672,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             await feedR2Delete(key).catch(() => undefined);
           }
         }
+        const { deleteFingerprints } = await import('./mediaFingerprints');
+        await deleteFingerprints(actualFileId).catch(() => undefined);
         return res.json({
           success: true,
           fileId: actualFileId,

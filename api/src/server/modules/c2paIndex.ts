@@ -10,6 +10,7 @@ import { deriveCanonicalPnIdentifier } from '@par-noir/pqc-crypto/oauth-unlock-p
 import { resolveOriginality, type ManifestSummary, type OriginalityResult } from '@par-noir/pn-provenance';
 import { verifyAsset } from './c2paService';
 import { feedR2GetBytes } from './feedPreviewR2';
+import { creditFromMetadata, recordFingerprintCredit } from './mediaFingerprints';
 import { PublicNameService, normalizePnIdentifier } from './publicNameService';
 
 export const C2PA_INDEX_KEYS = ['c2pa', 'originality', 'c2paSource'] as const;
@@ -87,9 +88,11 @@ export async function indexContentCredentials(
     if (result === 'unchanged') return;
     if (result === 'clear') {
       await service.updateMetadata(row.fileId, { clearKeys: [...C2PA_INDEX_KEYS] });
+      await recordFingerprintCredit(row.fileId, creditFromMetadata(null));
       return;
     }
     await service.updateMetadata(row.fileId, { provenance: { ...result } });
+    await recordFingerprintCredit(row.fileId, creditFromMetadata({ c2pa: result.c2pa }));
   } catch (err) {
     console.warn(`[c2paIndex] credentials skipped for ${row.fileId}:`, err instanceof Error ? err.message : err);
   }
