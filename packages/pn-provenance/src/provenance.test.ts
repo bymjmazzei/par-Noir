@@ -236,6 +236,75 @@ describe('manifest summary', () => {
   });
 });
 
+describe('derivative summary', () => {
+  const parentManifest = () => ({
+    claim_generator_info: [{ name: 'Adobe Photoshop', version: '26.0' }],
+    signature_info: { common_name: 'Adobe', time: '2026-03-01T00:00:00+00:00' },
+    assertions: [pnIdentity()],
+  });
+  const derivative = (parentFailures: string[]) => {
+    const s = store({
+      generator: 'par Noir Pen',
+      trusted: true,
+      ingredients: [
+        {
+          title: 'orig.jpg',
+          format: 'image/jpeg',
+          relationship: 'parentOf',
+          active_manifest: 'urn:c2pa:parent',
+          validation_results: {
+            activeManifest: {
+              success: parentFailures.length ? [] : [{ code: 'signingCredential.trusted' }],
+              failure: parentFailures.map((code) => ({ code })),
+            },
+          },
+        },
+      ],
+      extraManifests: { 'urn:c2pa:parent': parentManifest() },
+    });
+    return summarizeManifestStore(s, { registryPublicKey: REGISTRY_PK })!;
+  };
+
+  it('carries the parent credit into a rendition that credits no one', () => {
+    const s = derivative([]);
+    expect(s.creator).toEqual({ kind: 'pn', handle: 'bymjmazzei', authorKeyId: authorKeyId(AUTHOR_PK) });
+    expect(s.pnAuthor?.handle).toBe('bymjmazzei');
+    expect(s.trust).toBe('trusted');
+    expect(signerDisplay(s)).toBe('Made in Pen');
+  });
+
+  it('never trusts inherited credit more than the parent', () => {
+    expect(derivative(['signingCredential.untrusted']).trust).toBe('untrusted');
+  });
+
+  it("applies the reader's re-validation of an ingredient over what its builder recorded", () => {
+    const s = store({
+      generator: 'par Noir Pen',
+      trusted: true,
+      ingredients: [
+        {
+          title: 'orig.jpg',
+          format: 'image/jpeg',
+          relationship: 'parentOf',
+          label: 'c2pa.ingredient.v3',
+          active_manifest: 'urn:c2pa:parent',
+          validation_results: { activeManifest: { success: [], failure: [{ code: 'signingCredential.untrusted' }] } },
+        },
+      ],
+      extraManifests: { 'urn:c2pa:parent': parentManifest() },
+    }) as Record<string, any>;
+    s.validation_results.ingredientDeltas = [
+      {
+        ingredientAssertionURI: 'self#jumbf=/c2pa/urn:c2pa:active/c2pa.assertions/c2pa.ingredient.v3',
+        validationDeltas: { success: [{ code: 'signingCredential.trusted' }], failure: [] },
+      },
+    ];
+    const out = summarizeManifestStore(s, { registryPublicKey: REGISTRY_PK })!;
+    expect(out.ingredients[0]!.trust).toBe('trusted');
+    expect(out.trust).toBe('trusted');
+  });
+});
+
 describe('training-mining', () => {
   it('maps every preference to its CAWG entry and back', () => {
     const pref = {
@@ -274,7 +343,11 @@ describe('manifest definitions', () => {
       parent: { title: 'post.jpg', format: 'image/jpeg' },
       action: 'c2pa.resized',
     });
-    expect(d.ingredients).toEqual([{ title: 'post.jpg', format: 'image/jpeg', relationship: 'parentOf' }]);
+    expect(d.ingredients).toEqual([{ title: 'post.jpg', format: 'image/jpeg', relationship: 'parentOf', label: 'parent' }]);
+    expect((d.assertions[0]!.data as { actions: Array<{ action: string }> }).actions.map((a) => a.action)).toEqual([
+      'c2pa.opened',
+      'c2pa.resized',
+    ]);
   });
 });
 

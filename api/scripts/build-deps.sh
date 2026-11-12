@@ -31,6 +31,8 @@ PACKAGES=(
   identity-migration
   storage-migration
   pen-protocol
+  # Imports pen-protocol and public-names.
+  pn-provenance
   # Last: imports dm-crypto, pen-protocol and standard-data-points.
   mcp-server
 )

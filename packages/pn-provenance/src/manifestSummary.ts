@@ -83,6 +83,25 @@ function trustOf(results: Json | undefined, legacy: unknown): { trust: TrustStat
   return { trust: trusted ? 'trusted' : 'untrusted', failures: [] };
 }
 
+function codePrefix(code: string): string {
+  return code.slice(0, code.lastIndexOf('.'));
+}
+
+/**
+ * An ingredient's results as its builder recorded them, updated by the reader's re-validation
+ * (`ingredientDeltas`): the builder may not have had the reader's trust anchors.
+ */
+function withDelta(stored: Json | undefined, delta: Json | undefined): Json | undefined {
+  if (!delta) return stored;
+  const fresh = [...codes(delta.success), ...codes(delta.failure)];
+  const revalidated = new Set(fresh.map((c) => codePrefix(c.code)));
+  const keep = (list: unknown) => codes(list).filter((c) => !revalidated.has(codePrefix(c.code)));
+  return {
+    success: [...keep(stored?.success), ...codes(delta.success)],
+    failure: [...keep(stored?.failure), ...codes(delta.failure)],
+  };
+}
+
 function assertionsOf(m: Json): Json[] {
   return Array.isArray(m?.assertions) ? m.assertions : [];
 }
@@ -110,14 +129,10 @@ function creativeWorkAuthor(m: Json): string | null {
   return typeof name === 'string' && name ? name : null;
 }
 
-function summarize(
-  store: Json,
-  label: string,
-  results: Json | undefined,
-  legacy: unknown,
-  registryPublicKey: string | null,
-  depth: number
-): ManifestSummary | null {
+type Ctx = { store: Json; deltas: Map<string, Json>; registryPublicKey: string | null };
+
+function summarize(ctx: Ctx, label: string, results: Json | undefined, legacy: unknown, depth: number): ManifestSummary | null {
+  const { store, registryPublicKey } = ctx;
   const m = store?.manifests?.[label];
   if (!m) return null;
   const { trust, failures } = trustOf(results, legacy);
@@ -166,13 +181,16 @@ function summarize(
   const workLicense = penDocRaw?.license.workLicense ?? cwLicense;
 
   const ingredients: SummaryIngredient[] = [];
+  let parent: ManifestSummary | null = null;
   for (const ing of Array.isArray(m.ingredients) ? m.ingredients : []) {
     const childLabel = typeof ing?.active_manifest === 'string' ? ing.active_manifest : null;
+    const delta = ctx.deltas.get(`self#jumbf=/c2pa/${label}/c2pa.assertions/${ing?.label}`);
     const child =
       childLabel && depth < MAX_DEPTH
-        ? summarize(store, childLabel, ing.validation_results?.activeManifest, ing.validation_status, registryPublicKey, depth + 1)
+        ? summarize(ctx, childLabel, withDelta(ing.validation_results?.activeManifest, delta), ing.validation_status, depth + 1)
         : null;
     const rel = ing?.relationship;
+    if (rel === 'parentOf' && child && !parent) parent = child;
     ingredients.push({
       title: String(ing?.title ?? ''),
       format: String(ing?.format ?? ''),
@@ -185,20 +203,30 @@ function summarize(
     });
   }
 
+  const trainingMining = parseTrainingMining(find(m, TRAINING_MINING_LABEL)?.data);
+  // A rendition that credits no one carries its parent's credit, at no more trust than the parent.
+  const inherit = !creator && parent?.creator ? parent : null;
+
   return {
     v: 1,
     label,
-    trust,
+    trust: inherit ? worseTrust(trust, inherit.trust) : trust,
     signer,
     claimGenerator,
-    pnAuthor,
-    creator,
+    pnAuthor: inherit ? inherit.pnAuthor : pnAuthor,
+    creator: inherit ? inherit.creator : creator,
     ingredients,
-    trainingMining: parseTrainingMining(find(m, TRAINING_MINING_LABEL)?.data),
-    workLicense,
-    penDoc: penDocRaw ? { docId: penDocRaw.docId, templateId: penDocRaw.templateId } : null,
+    trainingMining: trainingMining ?? inherit?.trainingMining ?? null,
+    workLicense: workLicense ?? inherit?.workLicense ?? null,
+    penDoc: penDocRaw ? { docId: penDocRaw.docId, templateId: penDocRaw.templateId } : (inherit?.penDoc ?? null),
     failures,
   };
+}
+
+const TRUST_RANK: Record<TrustStatus, number> = { trusted: 2, untrusted: 1, invalid: 0 };
+
+function worseTrust(a: TrustStatus, b: TrustStatus): TrustStatus {
+  return TRUST_RANK[a] <= TRUST_RANK[b] ? a : b;
 }
 
 /** Summary of the active manifest, or null when the file carries no manifest. */
@@ -206,7 +234,11 @@ export function summarizeManifestStore(store: unknown, opts: { registryPublicKey
   const s = store as Json;
   const label = s?.active_manifest;
   if (typeof label !== 'string') return null;
-  return summarize(s, label, s.validation_results?.activeManifest, s.validation_status, opts.registryPublicKey, 0);
+  const deltas = new Map<string, Json>();
+  for (const d of Array.isArray(s.validation_results?.ingredientDeltas) ? s.validation_results.ingredientDeltas : []) {
+    if (typeof d?.ingredientAssertionURI === 'string' && d.validationDeltas) deltas.set(d.ingredientAssertionURI, d.validationDeltas);
+  }
+  return summarize({ store: s, deltas, registryPublicKey: opts.registryPublicKey }, label, s.validation_results?.activeManifest, s.validation_status, 0);
 }
 
 /** Display line for the signer: "Made in Pen", "Made with Photoshop", or the certificate name. */

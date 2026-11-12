@@ -210,6 +210,7 @@ coverage/
 # Local development
 .local/
 dev-data/
+api/.c2pa-dev/
 
 # Secrets and keys
 *.key

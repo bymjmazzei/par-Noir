@@ -32,10 +32,12 @@ module.exports = {
       },
     ],
   },
-  // `@noble/*` ship ESM only and are pulled in transitively by the crypto packages.
-  transformIgnorePatterns: ['/node_modules/(?!(@par-noir|@noble)/)'],
+  // `@noble/*` ship ESM only and are pulled in transitively by the crypto packages; so do
+  // `@contentauth/*` (C2PA) and its `ts-deepmerge`.
+  transformIgnorePatterns: ['/node_modules/(?!(@par-noir|@noble|@contentauth|ts-deepmerge)/)'],
   moduleNameMapper: {
     '^\\./starterAssets\\.js$': '<rootDir>/jest.penStarterAssets.cjs',
+    '^\\./binary\\.js$': '<rootDir>/jest.c2paBinary.cjs',
   },
   setupFiles: ['<rootDir>/jest.setup.cjs'],
 };

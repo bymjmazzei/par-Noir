@@ -21,8 +21,11 @@ export interface ManifestDefinition {
   title: string;
   format: string;
   assertions: Array<{ label: string; data: unknown }>;
-  ingredients?: Array<{ title: string; format: string; relationship: string }>;
+  ingredients?: Array<{ title: string; format: string; relationship: string; label?: string }>;
 }
+
+/** Ingredient label a derivative's `c2pa.opened` action points at. */
+export const PARENT_INGREDIENT_LABEL = 'parent';
 
 /** Labels the author assertion signs over (the hard binding is added by the signer). */
 export function authorReferencedLabels(def: ManifestDefinition): string[] {
@@ -85,13 +88,18 @@ export function derivativeDefinition(input: {
       {
         label: ACTIONS_LABEL,
         data: {
-          actions: [{ action: input.action, softwareAgent: { name: PEN_CLAIM_GENERATOR, version: input.version } }],
+          actions: [
+            { action: 'c2pa.opened', parameters: { ingredientIds: [PARENT_INGREDIENT_LABEL] } },
+            { action: input.action, softwareAgent: { name: PEN_CLAIM_GENERATOR, version: input.version } },
+          ],
         },
       },
       ...(input.penDoc ? [input.penDoc] : []),
       ...(input.training ? [trainingMiningAssertion(input.training)] : []),
     ],
-    ingredients: [{ title: input.parent.title, format: input.parent.format, relationship: 'parentOf' }],
+    ingredients: [
+      { title: input.parent.title, format: input.parent.format, relationship: 'parentOf', label: PARENT_INGREDIENT_LABEL },
+    ],
   };
 }
 
