@@ -12,6 +12,7 @@ import path from 'path';
 import type { Pool } from 'pg';
 import { getDatabasePool } from '../utils/database';
 import { safeLogger } from '../../utils/logger';
+import { nextZonedHour } from '../utils/zonedTime';
 import { feedR2GetBytes } from './feedPreviewR2';
 
 export const IMAGE_ALGORITHM = 'phash-dct32-v1';
@@ -210,4 +211,17 @@ export async function runNearDuplicateMetric(db: Pick<Pool, 'query'> = getDataba
   const counts = countNearDuplicates(rows as Row[]);
   safeLogger.info('[fingerprint] near-duplicate metric', { ...counts });
   return counts;
+}
+
+export const METRIC_HOUR = 2;
+export const METRIC_TIME_ZONE = 'America/Los_Angeles';
+
+/** Daily at 2am Pacific (PST or PDT); deploys and restarts don't push it back. */
+export function scheduleNearDuplicateMetric(now: () => Date = () => new Date()): void {
+  const at = nextZonedHour(now(), METRIC_HOUR, METRIC_TIME_ZONE);
+  setTimeout(() => {
+    runNearDuplicateMetric()
+      .catch((e: unknown) => safeLogger.warn('[fingerprint] near-duplicate metric failed', { message: e instanceof Error ? e.message : 'unknown' }))
+      .finally(() => scheduleNearDuplicateMetric(now));
+  }, Math.max(0, at.getTime() - now().getTime()));
 }

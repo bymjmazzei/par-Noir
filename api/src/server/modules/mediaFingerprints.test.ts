@@ -94,9 +94,13 @@ import {
   decodeGrayFrames,
   fingerprintPreview,
   hamming,
+  METRIC_HOUR,
+  METRIC_TIME_ZONE,
   phash,
   runNearDuplicateMetric,
+  scheduleNearDuplicateMetric,
 } from './mediaFingerprints';
+import { nextZonedHour } from '../utils/zonedTime';
 
 jest.setTimeout(60_000);
 
@@ -214,5 +218,36 @@ describe('near-duplicate metric', () => {
       matchingCredentialed: 1,
     });
     expect(Object.values(counts).every((v) => typeof v === 'number')).toBe(true);
+  });
+});
+
+describe('near-duplicate metric schedule', () => {
+  const at2am = (iso: string) => nextZonedHour(new Date(iso), METRIC_HOUR, METRIC_TIME_ZONE).toISOString();
+
+  it('aims at the next 2am Pacific through daylight-saving changes', () => {
+    expect(at2am('2026-11-12T15:38:00Z')).toBe('2026-11-13T10:00:00.000Z');
+    expect(at2am('2026-11-12T09:30:00Z')).toBe('2026-11-12T10:00:00.000Z');
+    expect(at2am('2026-07-01T12:00:00Z')).toBe('2026-07-02T09:00:00.000Z');
+    expect(at2am('2026-11-01T07:00:00Z')).toBe('2026-11-01T10:00:00.000Z');
+    expect(at2am('2026-11-12T10:00:00Z')).toBe('2026-11-13T10:00:00.000Z');
+  });
+
+  it('runs at 2am and re-aims for the next night, so restarts never push it back', async () => {
+    jest.useFakeTimers();
+    const metric = jest.spyOn(fakeDb, 'query');
+    try {
+      jest.setSystemTime(new Date('2026-11-12T15:38:00Z'));
+      scheduleNearDuplicateMetric();
+      await jest.advanceTimersByTimeAsync(18 * 60 * 60 * 1000 + 21 * 60 * 1000);
+      expect(metric).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(2 * 60 * 1000);
+      expect(metric).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+      expect(metric).toHaveBeenCalledTimes(2);
+    } finally {
+      metric.mockRestore();
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
   });
 });

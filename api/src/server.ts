@@ -953,12 +953,8 @@ class ProductionServer {
         })();
         (async () => {
           try {
-            const { runNearDuplicateMetric } = await import('./server/modules/mediaFingerprints');
-            setInterval(() => {
-              runNearDuplicateMetric().catch((e: unknown) =>
-                console.error('[fingerprint] near-duplicate metric failed:', e)
-              );
-            }, 24 * 60 * 60 * 1000);
+            const { scheduleNearDuplicateMetric } = await import('./server/modules/mediaFingerprints');
+            scheduleNearDuplicateMetric();
           } catch (e) {
             console.warn('[fingerprint] Could not schedule near-duplicate metric:', e);
           }
