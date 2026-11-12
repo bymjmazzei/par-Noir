@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
+import { mlDsa65Keygen, mlDsa65Sign } from '@par-noir/pqc-crypto/ml-dsa';
 import {
+  attachTimestamp,
+  authorKeyId,
+  penKeyAttestationBytes,
+  timestampImprintForGenesis,
   pastFileName,
   promoteSectionToPast,
   sectionCurrentPath,
@@ -684,12 +689,13 @@ describe('chain authenticity', () => {
     const genesis = signGenesis({
       docId: 'd1',
       templateId: 'note.hot_take.v1',
-      authorPn: 'pn_a',
       clientCreatedAt: '2026-09-20T00:00:00Z',
       contentCommitment: hashSectionContent(utf8ToBytes('init')),
       secretKey: keys.secretKey,
       publicKey: keys.publicKey
     });
+    expect(genesis.authorKeyId).toBe(authorKeyId(genesis.publicKey));
+    expect(JSON.stringify(genesis)).not.toContain('pn_');
     const chain = { docId: 'd1', genesis, links: [] as ReturnType<typeof signPromoteLink>[] };
     expect(verifyChain(chain).ok).toBe(true);
     const prev = headHashFromChain(chain);
@@ -698,7 +704,6 @@ describe('chain authenticity', () => {
       pastName: 'body-2026-09-20.pen',
       contentHash: hashSectionContent(utf8ToBytes('next')),
       prevHeadHash: prev,
-      authorPn: 'pn_a',
       clientPromotedAt: '2026-09-20T01:00:00Z',
       secretKey: keys.secretKey,
       publicKey: keys.publicKey
@@ -709,6 +714,56 @@ describe('chain authenticity', () => {
     const forged = { ...link, contentHash: hashSectionContent(utf8ToBytes('evil')) };
     chain.links[0] = forged;
     expect(verifyChain(chain).ok).toBe(false);
+  });
+
+  it('accepts a member link only when the genesis signer attested the key', () => {
+    const owner = mlDsa65Keygen();
+    const member = mlDsa65Keygen();
+    const genesis = signGenesis({
+      docId: 'd2',
+      templateId: 'note.hot_take.v1',
+      clientCreatedAt: '2026-09-20T00:00:00Z',
+      contentCommitment: hashSectionContent(utf8ToBytes('init')),
+      secretKey: owner.secretKey,
+      publicKey: owner.publicKey
+    });
+    const chain = { docId: 'd2', genesis, links: [] as ReturnType<typeof signPromoteLink>[] };
+    const link = signPromoteLink({
+      sectionSlug: 'body',
+      pastName: 'body-1.pen',
+      contentHash: hashSectionContent(utf8ToBytes('member edit')),
+      prevHeadHash: headHashFromChain(chain),
+      clientPromotedAt: '2026-09-20T01:00:00Z',
+      secretKey: member.secretKey,
+      publicKey: member.publicKey
+    });
+    chain.links.push(link);
+    expect(verifyChain(chain)).toEqual({ ok: false, error: 'link_0_key_unattested' });
+
+    const signature = Buffer.from(
+      mlDsa65Sign(penKeyAttestationBytes('d2', 'memberhash', link.publicKey), owner.secretKey)
+    ).toString('base64');
+    const roles = [{ pnHash: 'memberhash', role: 'editor' as const, mlDsaPublicKey: link.publicKey, keyAttestation: { by: 'owner', signature } }];
+    expect(verifyChain(chain, roles).ok).toBe(true);
+    const selfSigned = Buffer.from(
+      mlDsa65Sign(penKeyAttestationBytes('d2', 'memberhash', link.publicKey), member.secretKey)
+    ).toString('base64');
+    expect(verifyChain(chain, [{ ...roles[0]!, keyAttestation: { by: 'owner', signature: selfSigned } }]).ok).toBe(false);
+  });
+
+  it('rejects a timestamp over a different imprint', () => {
+    const keys = mlDsa65Keygen();
+    const genesis = signGenesis({
+      docId: 'd3',
+      templateId: 'note.hot_take.v1',
+      clientCreatedAt: '2026-09-20T00:00:00Z',
+      contentCommitment: hashSectionContent(utf8ToBytes('init')),
+      secretKey: keys.secretKey,
+      publicKey: keys.publicKey
+    });
+    expect(timestampImprintForGenesis(genesis)).toMatch(/^[0-9a-f]{64}$/);
+    attachTimestamp(genesis, { kind: 'rfc3161', token: readFileSync(new URL('./__fixtures__/digicert-tst.der', import.meta.url)).toString('base64') });
+    expect(verifyChain({ docId: 'd3', genesis, links: [] })).toEqual({ ok: false, error: 'genesis_timestamp_invalid' });
   });
 });
 

@@ -16,9 +16,10 @@ import {
   promoteSectionToPast,
   compileDocumentToNote,
   penSectionPromoteFanout,
+  penKeyAttestationBytes,
   PEN_SECTION_PROMOTE_KIND
 } from '@par-noir/pen-protocol';
-import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
+import { mlDsa65Keygen, mlDsa65Sign } from '@par-noir/pqc-crypto/ml-dsa';
 
 describe('Pen v1 acceptance (hermetic)', () => {
   it('starter pack is Social (+ kit) — post, collection, notes, set; no community feed', () => {
@@ -43,7 +44,6 @@ describe('Pen v1 acceptance (hermetic)', () => {
     const genesis = signGenesis({
       docId,
       templateId: template.id,
-      authorPn: 'pn-alice',
       clientCreatedAt: new Date().toISOString(),
       contentCommitment: commitment,
       secretKey: keys.secretKey,
@@ -71,7 +71,6 @@ describe('Pen v1 acceptance (hermetic)', () => {
       pastName: paths.pastName,
       contentHash,
       prevHeadHash: headHashFromChain(chain),
-      authorPn: 'pn-alice',
       clientPromotedAt: now.toISOString(),
       secretKey: keys.secretKey,
       publicKey: keys.publicKey
@@ -103,7 +102,6 @@ describe('Pen v1 acceptance (hermetic)', () => {
     const genesis = signGenesis({
       docId,
       templateId: template.id,
-      authorPn: 'pn-a',
       clientCreatedAt: new Date().toISOString(),
       contentCommitment: hashSectionContent(new TextEncoder().encode('x')),
       secretKey: a.secretKey,
@@ -117,7 +115,6 @@ describe('Pen v1 acceptance (hermetic)', () => {
       pastName: paths.pastName,
       contentHash: hashSectionContent(new TextEncoder().encode('a-edit')),
       prevHeadHash: headHashFromChain(chain),
-      authorPn: 'pn-a',
       clientPromotedAt: new Date().toISOString(),
       secretKey: a.secretKey,
       publicKey: a.publicKey
@@ -130,13 +127,19 @@ describe('Pen v1 acceptance (hermetic)', () => {
       pastName: bPaths.pastName,
       contentHash: hashSectionContent(new TextEncoder().encode('b-edit')),
       prevHeadHash: headHashFromChain(chain),
-      authorPn: 'pn-b',
       clientPromotedAt: new Date().toISOString(),
       secretKey: b.secretKey,
       publicKey: b.publicKey
     });
     chain = { ...chain, links: [...chain.links, bLink] };
-    expect(verifyChain(chain).ok).toBe(true);
+    expect(verifyChain(chain)).toEqual({ ok: false, error: 'link_1_key_unattested' });
+    const attestation = btoa(
+      String.fromCharCode(...mlDsa65Sign(penKeyAttestationBytes(docId, 'b-hash', bLink.publicKey), a.secretKey))
+    );
+    const roles = [
+      { pnHash: 'b-hash', role: 'editor' as const, mlDsaPublicKey: bLink.publicKey, keyAttestation: { by: 'a-hash', signature: attestation } }
+    ];
+    expect(verifyChain(chain, roles).ok).toBe(true);
     expect(chain.links).toHaveLength(2);
   });
 });

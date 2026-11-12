@@ -5,7 +5,7 @@ import { listBrowseFeaturedTemplates, requireTemplate } from '@par-noir/pen-prot
 import { templatePreviewBundle } from './components/TemplateGalleryThumb';
 
 vi.mock('./services/penApi', () => ({
-  requestNotaryStamp: vi.fn(async () => null)
+  requestTimestamp: vi.fn(async () => null)
 }));
 
 describe('rich template preview + create chrome', () => {

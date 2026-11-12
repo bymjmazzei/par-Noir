@@ -11,7 +11,7 @@ import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { mlDsa65Sign, mlDsa65Verify } from '@par-noir/pqc-crypto/ml-dsa';
-import type { PenRoleAssignment } from '@par-noir/pen-protocol';
+import { penKeyAttestationBytes as attestationBytes, type PenRoleAssignment } from '@par-noir/pen-protocol';
 import { base64ToBytes, bytesToBase64 } from './crypto.js';
 import type { PenLiveSigner } from './batch.js';
 
@@ -23,10 +23,6 @@ export interface PenLiveTrustAnchor {
 }
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
-
-function attestationBytes(docId: string, pnHash: string, mlDsaPublicKey: string): Uint8Array {
-  return utf8(`pen-live-key/v1|${docId}|${pnHash}|${mlDsaPublicKey}`);
-}
 
 function verifySig(signatureB64: string, msg: Uint8Array, publicKeyB64: string): boolean {
   try {

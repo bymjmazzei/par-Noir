@@ -63,6 +63,7 @@ import { setupProfileRoutes } from './server/modules/profileRoutes';
 import { setupMessageRoutes } from './server/modules/messageRoutes';
 import { setupGroupRoutes } from './server/modules/groupRoutes';
 import { setupPenRoutes } from './server/modules/penRoutes';
+import { setupTimestampRoutes } from './server/modules/timestampRoutes';
 import { setupConnectionRoutes } from './server/modules/connectionRoutes';
 import { setupUserRoutes } from './server/modules/userRoutes';
 import { setupCloudProxyGoneRoutes } from './server/modules/cloudProxyGoneRoutes';
@@ -856,6 +857,7 @@ class ProductionServer {
     });
 
     setupPenRoutes(this.app);
+    setupTimestampRoutes(this.app);
 
     setupConnectionRoutes(this.app);
 

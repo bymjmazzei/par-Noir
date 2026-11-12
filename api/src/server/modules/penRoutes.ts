@@ -1,10 +1,9 @@
 /**
- * Pen first-party routes: notary (hash-only), apply-inbound receipts for
- * device-written docs, stickers, templates, and doc invites.
+ * Pen first-party routes: apply-inbound receipts for device-written docs,
+ * stickers, templates, and doc invites. Chain timestamps use /api/timestamp.
  */
 
 import type { Application, Request, Response } from 'express';
-import { createHmac, createHash, timingSafeEqual } from 'crypto';
 import {
   gateFirstPartyOwnerRoute,
   requireFirstPartyOAuthClient,
@@ -33,53 +32,8 @@ const PEN_JOB_TYPES = [
   'pen.widget_action'
 ] as const;
 
-function getNotarySecret(): Buffer {
-  const raw =
-    process.env.PEN_NOTARY_HMAC_SECRET ||
-    process.env.PN_OAUTH_JWT_SECRET ||
-    '';
-  if (!raw || raw.length < 16) {
-    return createHash('sha256').update('pen-notary-dev-only').digest();
-  }
-  return createHash('sha256').update(raw).digest();
-}
-
-function signNotary(hash: string, notaryTime: string): string {
-  const mac = createHmac('sha256', getNotarySecret());
-  mac.update(`pen.notary.v1|${hash}|${notaryTime}`);
-  return mac.digest('base64');
-}
-
-export function verifyNotaryToken(hash: string, notaryTime: string, notarySig: string): boolean {
-  try {
-    const expected = Buffer.from(signNotary(hash, notaryTime), 'base64');
-    const got = Buffer.from(notarySig, 'base64');
-    if (expected.length !== got.length) return false;
-    return timingSafeEqual(expected, got);
-  } catch {
-    return false;
-  }
-}
-
 export function setupPenRoutes(app: Application): void {
   setupWidgetRoutes(app);
-  app.post('/api/pen/notary/timestamp', async (req: Request, res: Response) => {
-    try {
-      if (!requireFirstPartyOAuthClient(req, res)) return;
-      const hash = String(req.body?.hash || '').trim().toLowerCase();
-      if (!/^[a-f0-9]{32,128}$/.test(hash)) {
-        return res.status(400).json({ error: 'hash_required' });
-      }
-      const notaryTime = new Date().toISOString();
-      const notarySig = signNotary(hash, notaryTime);
-      return res.json({ hash, notaryTime, notarySig });
-    } catch (e) {
-      safeLogger.warn('[pen/notary] failed', {
-        err: e instanceof Error ? e.message : 'unknown'
-      });
-      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
-    }
-  });
 
   /**
    * POST /api/pen/apply-inbound

@@ -67,7 +67,6 @@ export function signPenMiniNoteGenesis(input: {
   const genesis = signGenesis({
     docId,
     templateId: template.id,
-    authorPn: input.authorPn,
     clientCreatedAt,
     contentCommitment,
     secretKey: keys.secretKey,

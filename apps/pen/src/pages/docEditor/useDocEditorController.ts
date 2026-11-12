@@ -19,7 +19,7 @@ import {
   layerOpensWidgetEditor,
   mergePagePresentation,
   normalizeSection,
-  notaryHashForPromote,
+  timestampImprintForPromote,
   PAGE_LAYER_ID,
   promoteSectionToPast,
   publishCurrentToPast,
@@ -27,7 +27,7 @@ import {
   setTextLayerDoc,
   patchLayerStyle,
   signPromoteLink,
-  attachNotary,
+  attachTimestamp,
   adjacentPageSlug,
   appendDocPage,
   appendChapter,
@@ -148,7 +148,7 @@ import {
   type PublishPostTarget
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
-import { requestNotaryStamp, fetchMonetizationStatus } from '../../services/penApi';
+import { requestTimestamp, fetchMonetizationStatus } from '../../services/penApi';
 import { ensureWidgetSheet, registerTapWidget, registerWidget } from '../../services/pollCloud';
 import { ensureBundleTrackingSheets } from '../../services/widgetTracking';
 import { resolveSigningKeys } from '../../services/penKeys';
@@ -1499,25 +1499,23 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       const bytes = new TextEncoder().encode(JSON.stringify(section));
       const contentHash = hashSectionContent(bytes);
       const prevHeadHash = headHashFromChain(bundle!.chain);
-      let link = signPromoteLink({
+      const link = signPromoteLink({
         sectionSlug: section!.slug,
         pastName: paths.pastName,
         contentHash,
         prevHeadHash,
-        authorPn: session.pnIdentifier,
         clientPromotedAt: now.toISOString(),
         secretKey: keys.secretKey,
         publicKey: keys.publicKey
       });
       try {
-        const notary = await requestNotaryStamp(session.accessToken, notaryHashForPromote(link));
-        attachNotary(link, notary);
+        attachTimestamp(link, await requestTimestamp(session.accessToken, timestampImprintForPromote(link)));
       } catch {
-        /* offline notary optional */
+        /* offline: timestamp optional */
       }
 
       const nextChain = { ...bundle!.chain, links: [...bundle!.chain.links, link] };
-      const verified = verifyChain(nextChain);
+      const verified = verifyChain(nextChain, bundle!.manifest.roles);
       if (!verified.ok) throw new Error(verified.error);
 
       let nextManifest: PenDocManifest = {
@@ -2310,7 +2308,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     if (
       !actorCan(
         bundle.manifest.roles,
-        bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+        bundle.manifest.ownerPnHash || '',
         session.pnIdentifier,
         'submit_suggestion'
       )
@@ -2355,19 +2353,17 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       const paths = promoteSectionToPast(docId, suggestion.sectionSlug, now);
       const bytes = new TextEncoder().encode(JSON.stringify(nextSection));
       const contentHash = hashSectionContent(bytes);
-      let link = signPromoteLink({
+      const link = signPromoteLink({
         sectionSlug: suggestion.sectionSlug,
         pastName: paths.pastName,
         contentHash,
         prevHeadHash: headHashFromChain(bundle.chain),
-        authorPn: session.pnIdentifier,
         clientPromotedAt: now.toISOString(),
         secretKey: keys.secretKey,
         publicKey: keys.publicKey
       });
       try {
-        const notary = await requestNotaryStamp(session.accessToken, notaryHashForPromote(link));
-        attachNotary(link, notary);
+        attachTimestamp(link, await requestTimestamp(session.accessToken, timestampImprintForPromote(link)));
       } catch {
         /* offline */
       }

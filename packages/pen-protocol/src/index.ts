@@ -4,6 +4,7 @@ export * from './templates.js';
 export * from './types.js';
 export * from './roles.js';
 export * from './chain.js';
+export * from './rfc3161.js';
 export * from './compile.js';
 export * from './outbox.js';
 export * from './fonts.js';

@@ -11,8 +11,8 @@ import {
   templateForDoc,
   hashSectionContent,
   signGenesis,
-  attachNotary,
-  notaryHashForGenesis,
+  attachTimestamp,
+  timestampImprintForGenesis,
   snapshotPenEmbeds,
   normalizeLicensingRoot,
   shouldPublishAsMixedPages,
@@ -43,7 +43,7 @@ import {
   savePersonalTemplateFromDoc
 } from './penPersonalTemplates';
 import { resolveSigningKeys } from './penKeys';
-import { requestNotaryStamp } from './penApi';
+import { requestTimestamp } from './penApi';
 import { generateChatKey, generateGroupId } from '@par-noir/dm-crypto';
 import { schedulePrefsCloudPush } from './penPrefsCloud';
 import type { PenLicensingRoot } from '@par-noir/pen-protocol';
@@ -1139,18 +1139,16 @@ export async function promoteProjectToFinishedLibraryDoc(input: {
     new TextEncoder().encode(JSON.stringify(mapped.sections))
   );
   const keys = resolveSigningKeys(session);
-  let genesis = signGenesis({
+  const genesis = signGenesis({
     docId,
     templateId: `blank.${shape.classId}`,
-    authorPn: session.pnIdentifier,
     clientCreatedAt: now,
     contentCommitment: commitment,
     secretKey: keys.secretKey,
     publicKey: keys.publicKey
   });
   try {
-    const notary = await requestNotaryStamp(session.accessToken, notaryHashForGenesis(genesis));
-    attachNotary(genesis, notary);
+    attachTimestamp(genesis, await requestTimestamp(session.accessToken, timestampImprintForGenesis(genesis)));
   } catch {
     /* optional */
   }

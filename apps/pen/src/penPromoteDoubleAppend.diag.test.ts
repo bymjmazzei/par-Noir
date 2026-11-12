@@ -28,7 +28,6 @@ describe('Pen promote double-append invariant', () => {
     const genesis = signGenesis({
       docId,
       templateId: template.id,
-      authorPn: 'pn-diag',
       clientCreatedAt: new Date().toISOString(),
       contentCommitment: commitment,
       secretKey: keys.secretKey,
@@ -50,7 +49,6 @@ describe('Pen promote double-append invariant', () => {
       pastName: paths.pastName,
       contentHash,
       prevHeadHash: headHashFromChain(chain),
-      authorPn: 'pn-diag',
       clientPromotedAt: now.toISOString(),
       secretKey: keys.secretKey,
       publicKey: keys.publicKey

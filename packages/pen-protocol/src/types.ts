@@ -603,33 +603,37 @@ export interface PenDraftManifest {
   summary?: string;
 }
 
-export interface PenNotaryToken {
-  hash: string;
-  notaryTime: string;
-  notarySig: string;
+/** RFC 3161 TimeStampToken (base64 DER) over the proof's timestamp imprint. */
+export interface PenTimestampToken {
+  kind: 'rfc3161';
+  token: string;
 }
 
 export interface PenGenesisProof {
+  v: 2;
   docId: string;
   templateId: string;
-  authorPnHash: string;
+  /** SHA3-384 hex of `publicKey`. */
+  authorKeyId: string;
   clientCreatedAt: string;
   contentCommitment: string;
   signature: string;
   publicKey: string;
-  notary?: PenNotaryToken;
+  timestamp?: PenTimestampToken;
 }
 
 export interface PenPromoteLink {
+  v: 2;
   sectionSlug: string;
   pastName: string;
   contentHash: string;
   prevHeadHash: string;
-  authorPnHash: string;
+  /** SHA3-384 hex of `publicKey`. */
+  authorKeyId: string;
   clientPromotedAt: string;
   signature: string;
   publicKey: string;
-  notary?: PenNotaryToken;
+  timestamp?: PenTimestampToken;
 }
 
 export interface PenHistoryChain {

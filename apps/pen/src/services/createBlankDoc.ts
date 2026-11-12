@@ -8,8 +8,8 @@ import {
   getClass,
   blankTemplateForClass,
   hashSectionContent,
-  notaryHashForGenesis,
-  attachNotary,
+  timestampImprintForGenesis,
+  attachTimestamp,
   signGenesis,
   hashPnIdentifier,
   ensureOwnerAssignment,
@@ -22,7 +22,7 @@ import {
 import { generateGroupId } from '@par-noir/dm-crypto';
 import type { PenSession } from './penSession';
 import { saveLocalDoc, type LocalDocBundle } from './penLocalStore';
-import { requestNotaryStamp } from './penApi';
+import { requestTimestamp } from './penApi';
 import { resolveSigningKeys } from './penKeys';
 import { scheduleDocCloudBootstrap } from './penSyncFlush';
 import { mintDocKey } from './penDocCrypto';
@@ -90,10 +90,9 @@ export async function createBlankDoc(input: {
   const keys = resolveSigningKeys(input.session);
   const ownerPnHash = hashPnIdentifier(input.session.pnIdentifier);
 
-  let genesis = signGenesis({
+  const genesis = signGenesis({
     docId,
     templateId: shape.templateId,
-    authorPn: input.session.pnIdentifier,
     clientCreatedAt: now,
     contentCommitment: commitment,
     secretKey: keys.secretKey,
@@ -101,11 +100,7 @@ export async function createBlankDoc(input: {
   });
 
   try {
-    const notary = await requestNotaryStamp(
-      input.session.accessToken,
-      notaryHashForGenesis(genesis)
-    );
-    attachNotary(genesis, notary);
+    attachTimestamp(genesis, await requestTimestamp(input.session.accessToken, timestampImprintForGenesis(genesis)));
   } catch {
     /* optional */
   }

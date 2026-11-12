@@ -174,7 +174,7 @@ export function usePenLive(params: {
   const manifest = bundle?.manifest;
   const groupId = manifest?.groupId || '';
   const keyEpoch = manifest?.keyEpoch ?? 0;
-  const ownerPnHash = manifest?.ownerPnHash || bundle?.chain.genesis.authorPnHash || '';
+  const ownerPnHash = manifest?.ownerPnHash || '';
   const ownerKey = bundle?.chain.genesis.publicKey || '';
   const shared = (manifest?.roles?.length ?? 0) > 1;
   const [keyTick, setKeyTick] = useState(0);

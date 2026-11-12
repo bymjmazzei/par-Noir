@@ -616,7 +616,7 @@ async function applyMailboxRekey(
   rekey: PenLiveRekey
 ): Promise<void> {
   const local = loadLocalDoc(session.pnIdentifier, docId);
-  const ownerPnHash = local?.manifest.ownerPnHash || local?.chain.genesis.authorPnHash || '';
+  const ownerPnHash = local?.manifest.ownerPnHash || '';
   const ownerKey = local?.chain.genesis.publicKey || '';
   if (!local || !ownerPnHash || !ownerKey) return;
   const applied = await applyPenLiveRekey({

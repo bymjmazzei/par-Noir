@@ -212,7 +212,6 @@ export function buildKnowledgeClaimDoc(input: {
   const genesis = signGenesis({
     docId: input.docId,
     templateId: input.template.id,
-    authorPn: input.authorPn,
     clientCreatedAt: now,
     contentCommitment: hashSectionContent(new TextEncoder().encode(JSON.stringify(sections))),
     secretKey: input.secretKey,

@@ -19,14 +19,11 @@ import {
   layerOpensWidgetEditor,
   mergePagePresentation,
   normalizeSection,
-  notaryHashForPromote,
   PAGE_LAYER_ID,
   promoteSectionToPast,
   publishCurrentToPast,
   publishPlaybackSrc,
   setTextLayerDoc,
-  signPromoteLink,
-  attachNotary,
   adjacentPageSlug,
   appendDocPage,
   appendChapter,
@@ -170,7 +167,7 @@ import {
   writeTextCollectionHandoff
 } from '../../services/penPublish';
 import { previewPath, socialFeedPublishAllowed } from '../../services/penPreview';
-import { requestNotaryStamp, fetchMonetizationConnectReady } from '../../services/penApi';
+import { fetchMonetizationConnectReady } from '../../services/penApi';
 import { castPollVote, createPollSheet, putPollStructure } from '../../services/pollCloud';
 import { ensureBundleTrackingSheets } from '../../services/widgetTracking';
 import { queueWidgetAction } from '../../services/widgetAction';
@@ -377,7 +374,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
   } = state;
   const [testOpen, setTestOpen] = useState(false);
   const socialDoc = getClass(bundle.manifest.classId)?.parentId === 'social';
-  const chainStatus = verifyChain(bundle.chain);
+  const chainStatus = verifyChain(bundle.chain, bundle.manifest.roles);
   const tocSections = (
     template?.sections ||
     bundle.manifest.toc.map((slug) => ({ slug, title: slug, required: true as boolean | undefined }))
@@ -772,31 +769,31 @@ export function DocEditorShell(state: DocEditorReadyState) {
     bundle.manifest.classId === 'projects.letter' || bundle.manifest.classId === 'projects.note';
   const canCommit = actorCan(
     bundle.manifest.roles,
-    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    bundle.manifest.ownerPnHash || '',
     session.pnIdentifier,
     'publish'
   );
   const canInvite = actorCan(
     bundle.manifest.roles,
-    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    bundle.manifest.ownerPnHash || '',
     session.pnIdentifier,
     'invite'
   );
   const canRemoveMembers = actorCan(
     bundle.manifest.roles,
-    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    bundle.manifest.ownerPnHash || '',
     session.pnIdentifier,
     'revoke'
   );
   const canAccept = actorCan(
     bundle.manifest.roles,
-    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    bundle.manifest.ownerPnHash || '',
     session.pnIdentifier,
     'accept_suggestion'
   );
   const canSuggest = actorCan(
     bundle.manifest.roles,
-    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    bundle.manifest.ownerPnHash || '',
     session.pnIdentifier,
     'submit_suggestion'
   );

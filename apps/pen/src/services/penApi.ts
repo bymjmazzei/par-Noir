@@ -1,22 +1,19 @@
 import { apiFetch, apiGet } from './penOwnerFetch';
-import type { PenClass, PenNotaryToken, PenTemplate } from '@par-noir/pen-protocol';
-import { listClasses, listStarterTemplates } from '@par-noir/pen-protocol';
+import type { PenClass, PenTemplate, PenTimestampToken } from '@par-noir/pen-protocol';
+import { listClasses, listStarterTemplates, timeStampTokenMatches } from '@par-noir/pen-protocol';
 
-export async function requestNotaryStamp(
-  accessToken: string,
-  hash: string
-): Promise<PenNotaryToken> {
-  const res = await apiFetch(
-    'POST',
-    '/api/pen/notary/timestamp',
-    { hash },
-    { authToken: accessToken }
-  );
+/** RFC 3161 token for a SHA-256 imprint, through the API's TSA proxy. Only the hash leaves the device. */
+export async function requestTimestamp(accessToken: string, imprintHex: string): Promise<PenTimestampToken> {
+  const res = await apiFetch('POST', '/api/timestamp', { imprint: imprintHex }, { authToken: accessToken });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'notary_failed');
+    throw new Error((err as { error?: string }).error || 'timestamp_failed');
   }
-  return (await res.json()) as PenNotaryToken;
+  const { token } = (await res.json()) as { token?: string };
+  if (!token || !timeStampTokenMatches(Uint8Array.from(atob(token), (c) => c.charCodeAt(0)), imprintHex)) {
+    throw new Error('timestamp_mismatch');
+  }
+  return { kind: 'rfc3161', token };
 }
 
 export interface PenCatalogPayload {

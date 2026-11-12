@@ -8,7 +8,7 @@ vi.mock('./services/penCloudStore', () => ({
   bootstrapDocCloud: vi.fn().mockRejectedValue(new Error('cloud_token_required'))
 }));
 vi.mock('./services/penApi', () => ({
-  requestNotaryStamp: vi.fn().mockRejectedValue(new Error('skip_notary'))
+  requestTimestamp: vi.fn().mockRejectedValue(new Error('skip_timestamp'))
 }));
 vi.mock('./services/penSyncFlush', () => ({
   scheduleDocCloudBootstrap: vi.fn()
