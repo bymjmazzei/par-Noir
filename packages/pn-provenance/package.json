@@ -1,0 +1,32 @@
+{
+  "name": "@par-noir/pn-provenance",
+  "version": "0.1.0",
+  "description": "par Noir Content Credentials: pN author assertion, Pen doc and rights assertions, manifest definitions, manifest summaries and the originality rule",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "SPEC.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.0",
+    "@par-noir/pen-protocol": "file:../pen-protocol",
+    "@par-noir/pqc-crypto": "file:../pqc-crypto",
+    "@par-noir/public-names": "file:../public-names"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

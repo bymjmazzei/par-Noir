@@ -586,6 +586,23 @@ export interface PenDocManifest {
    * Bytes live under par-noir-pen/{docId}/fonts/{fontId}.penfont (docKey envelopes).
    */
   usedCustomFonts?: Array<{ fontId: string; family: string }>;
+  /** Credentialed media attached to layers; becomes `c2pa.ingredient` entries on publish. */
+  ingredients?: PenIngredient[];
+}
+
+/** A Content Credentials ingredient: what was used, who made it, and under what license. */
+export interface PenIngredient {
+  /** Layer the media sits on (or doc-level when absent). */
+  layerId?: string;
+  title: string;
+  format: string;
+  relationship: 'componentOf' | 'parentOf' | 'inputTo';
+  /** Active manifest label of the ingredient, when it had credentials. */
+  manifestLabel?: string;
+  trust: 'trusted' | 'untrusted' | 'invalid' | 'none';
+  signer?: string;
+  creator?: { kind: 'pn'; handle: string | null; authorKeyId: string } | { kind: 'cawg'; display: string };
+  workLicense?: string;
 }
 
 /** Draft under drafts/{draftId}/ — unfinished suggestion until submitted. */
