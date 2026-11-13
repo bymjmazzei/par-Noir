@@ -29,7 +29,8 @@ export function PenFeedTilePlayer({
   onEffect,
   onReportLink,
   playback,
-  onPageChange
+  onPageChange,
+  interceptEffect
 }: {
   model: FeedTileViewModel;
   aspectRatio?: '9/16' | '16/9' | '1/1';
@@ -41,6 +42,8 @@ export function PenFeedTilePlayer({
   onReportLink?: (url: string) => void;
   playback?: FeedPlayback;
   onPageChange?: (index: number, slug: string) => void;
+  /** Return true to take over an effect before it runs (embeds route signed actions out). */
+  interceptEffect?: (effect: PenActionEffect) => boolean;
 }) {
   const docId = penDocId || model.penDocId || '';
   const [widgetViews, setWidgetViews] = useState<Record<string, WidgetViewPayload>>({});
@@ -72,6 +75,7 @@ export function PenFeedTilePlayer({
 
   const handleEffect = useCallback(
     async (effect: PenActionEffect) => {
+      if (interceptEffect?.(effect)) return;
       const view = await runFeedPenEffect({
         effect,
         penDocId: docId,
@@ -86,7 +90,7 @@ export function PenFeedTilePlayer({
       }
       onEffect?.(effect);
     },
-    [creatorPnIdentifier, docId, onEffect, userPnIdentifier]
+    [creatorPnIdentifier, docId, interceptEffect, onEffect, userPnIdentifier]
   );
 
   const handleTrack = useCallback(

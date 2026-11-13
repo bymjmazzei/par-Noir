@@ -27,6 +27,16 @@ export interface FeedEmbedReadyMessage {
 
 export type FeedEmbedPostMessage = FeedEmbedHandshakeMessage | FeedEmbedReadyMessage;
 
+/** A single-post embed reports its height so the host page can size the iframe. */
+export const PN_POST_EMBED_SIZE = 'pn_post_embed_size' as const;
+
+export interface PostEmbedSizeMessage {
+  v: 1;
+  type: typeof PN_POST_EMBED_SIZE;
+  fileId: string;
+  height: number;
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
@@ -43,4 +53,23 @@ export function isFeedEmbedPostMessage(v: unknown): v is FeedEmbedPostMessage {
   if (!isRecord(v) || v.v !== 1) return false;
   if (typeof v.clientId !== 'string' || !v.clientId.trim()) return false;
   return v.type === PN_FEED_EMBED_READY || v.type === PN_FEED_EMBED_HANDSHAKE;
+}
+
+/** Build iframe src for one public post. */
+export function buildPostEmbedUrl(
+  fileId: string,
+  creator?: string,
+  options?: FeedEmbedOptions
+): string {
+  const origin = (options?.origin ?? BROWSE_EMBED_ORIGIN).replace(/\/$/, '');
+  const url = new URL('/embed/post', origin);
+  if (creator?.trim()) url.searchParams.set('creator', creator.trim());
+  url.searchParams.set('file', fileId.trim());
+  return url.toString();
+}
+
+export function isPostEmbedSizeMessage(v: unknown): v is PostEmbedSizeMessage {
+  if (!isRecord(v) || v.v !== 1 || v.type !== PN_POST_EMBED_SIZE) return false;
+  if (typeof v.fileId !== 'string' || !v.fileId.trim()) return false;
+  return typeof v.height === 'number' && Number.isFinite(v.height) && v.height > 0;
 }

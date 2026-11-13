@@ -3,8 +3,11 @@ import {
   BROWSE_EMBED_ORIGIN,
   PN_FEED_EMBED_HANDSHAKE,
   PN_FEED_EMBED_READY,
+  PN_POST_EMBED_SIZE,
   buildFeedEmbedUrl,
-  isFeedEmbedPostMessage
+  buildPostEmbedUrl,
+  isFeedEmbedPostMessage,
+  isPostEmbedSizeMessage
 } from './feedEmbed';
 
 describe('feedEmbed', () => {
@@ -26,5 +29,18 @@ describe('feedEmbed', () => {
       isFeedEmbedPostMessage({ v: 1, type: PN_FEED_EMBED_HANDSHAKE, clientId: 'x' })
     ).toBe(true);
     expect(isFeedEmbedPostMessage({ v: 1, type: 'other', clientId: 'x' })).toBe(false);
+  });
+
+  it('buildPostEmbedUrl names the creator and the post on the embed route', () => {
+    expect(buildPostEmbedUrl('abc', 'pn-1')).toBe(`${BROWSE_EMBED_ORIGIN}/embed/post?creator=pn-1&file=abc`);
+    expect(buildPostEmbedUrl('abc', undefined, { origin: 'http://localhost:5173/' })).toBe(
+      'http://localhost:5173/embed/post?file=abc'
+    );
+  });
+
+  it('isPostEmbedSizeMessage accepts only a positive height for a post', () => {
+    expect(isPostEmbedSizeMessage({ v: 1, type: PN_POST_EMBED_SIZE, fileId: 'abc', height: 640 })).toBe(true);
+    expect(isPostEmbedSizeMessage({ v: 1, type: PN_POST_EMBED_SIZE, fileId: 'abc', height: 0 })).toBe(false);
+    expect(isPostEmbedSizeMessage({ v: 1, type: PN_POST_EMBED_SIZE, fileId: '', height: 640 })).toBe(false);
   });
 });

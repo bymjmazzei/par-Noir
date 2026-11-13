@@ -5,12 +5,13 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Check, Copy, Lock, Send, Share, X } from 'lucide-react';
+import { ArrowLeft, Check, Code, Copy, Lock, Send, Share, X } from 'lucide-react';
 import { pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import type { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
-import { canOpenShareSheet, sharePostLink } from '../utils/postLink';
+import { canOpenShareSheet, copyPostEmbedCode, sharePostLink } from '../utils/postLink';
+import { embedPostRefusal } from '../utils/embedPost';
 import { sendPostToConnections } from '../utils/sharePostDm';
 import { getConnections, invalidateConnectionsCache, type Connection } from '../services/connectionService';
 import { getUserProfile } from '../services/profileService';
@@ -68,6 +69,7 @@ export function ShareMenu({ file, anchorRect, onClose, onShared }: ShareMenuProp
 
   const fromPn = userState.isUnlocked ? userState.pnIdentifier ?? null : null;
   const showSheetOption = canOpenShareSheet();
+  const canEmbed = embedPostRefusal(file.metadata as unknown as Record<string, unknown>) === null;
   const asPopover = !!anchorRect && !isTouchLayout();
 
   useEffect(() => {
@@ -127,6 +129,15 @@ export function ShareMenu({ file, anchorRect, onClose, onShared }: ShareMenuProp
       onClose();
     } else {
       showError('Could not copy the link. Please try again.');
+    }
+  };
+
+  const handleEmbed = async () => {
+    if (await copyPostEmbedCode(file)) {
+      success('Embed code copied');
+      onClose();
+    } else {
+      showError('Could not copy the embed code. Please try again.');
     }
   };
 
@@ -194,6 +205,12 @@ export function ShareMenu({ file, anchorRect, onClose, onShared }: ShareMenuProp
         <Copy className="h-5 w-5 text-neutral-300" />
         <span className="text-sm">Copy link</span>
       </button>
+      {canEmbed && (
+        <button type="button" className={rowClass} onClick={handleEmbed}>
+          <Code className="h-5 w-5 text-neutral-300" />
+          <span className="text-sm">Copy embed code</span>
+        </button>
+      )}
       <button type="button" className={rowClass} onClick={openDm} disabled={!fromPn}>
         {fromPn ? <Send className="h-5 w-5 text-neutral-300" /> : <Lock className="h-5 w-5 text-neutral-400" />}
         <span className="text-sm">{fromPn ? 'Send to a connection' : 'Unlock your pN to send to connections'}</span>

@@ -47,6 +47,12 @@
             {"key": "Cross-Origin-Resource-Policy", "value": "same-site"},
             {"key": "Content-Security-Policy", "value": "frame-ancestors 'self' https://parnoir.com https://www.parnoir.com; object-src 'none'; base-uri 'self'"}
           ]
+        },
+        {
+          "source": "/embed/@(post|feed)",
+          "headers": [
+            {"key": "Content-Security-Policy", "value": "frame-ancestors *; object-src 'none'; base-uri 'self'"}
+          ]
         }
       ]
     },

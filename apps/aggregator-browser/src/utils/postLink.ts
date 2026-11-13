@@ -23,6 +23,29 @@ export function postShareUrl(
   return `${base}?${params.toString()}`;
 }
 
+/** iframe src for a post on any site; the embed route plays it like the feed. */
+export function postEmbedUrl(file: IndexedFile, origin = window.location.origin): string {
+  return `${origin}/embed/post?${new URL(postShareUrl(file, `${origin}/`)).searchParams.toString()}`;
+}
+
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** Paste-ready iframe for a post; width follows the host column, height follows the post's 9:16 frame. */
+export function postEmbedCode(file: IndexedFile, origin = window.location.origin): string {
+  const title = file.metadata.title || file.metadata.name || 'par Noir post';
+  return (
+    `<iframe src="${escapeHtmlAttr(postEmbedUrl(file, origin))}" title="${escapeHtmlAttr(String(title))}" ` +
+    'style="width:100%;max-width:400px;aspect-ratio:9/16;border:0" ' +
+    'allow="autoplay; fullscreen" loading="lazy"></iframe>'
+  );
+}
+
 /** Same-origin post link -> its creator and file; anything else -> null. */
 export function parsePostLink(
   url: string,
@@ -70,6 +93,10 @@ async function openShareSheet(file: IndexedFile, url: string): Promise<SharePost
   } catch (err) {
     return isShareCancel(err) ? 'cancelled' : 'failed';
   }
+}
+
+export async function copyPostEmbedCode(file: IndexedFile): Promise<boolean> {
+  return copyToClipboard(postEmbedCode(file));
 }
 
 export async function sharePostLink(file: IndexedFile, mode: SharePostMode): Promise<SharePostResult> {

@@ -8,7 +8,15 @@ vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => isNativ
 vi.mock('@capacitor/share', () => ({ Share: { share: (o: unknown) => nativeShare(o) } }));
 vi.mock('./clipboard', () => ({ copyToClipboard: (t: string) => copyToClipboard(t) }));
 
-import { canOpenShareSheet, parsePostLink, postShareUrl, sharePostLink } from './postLink';
+import {
+  canOpenShareSheet,
+  copyPostEmbedCode,
+  parsePostLink,
+  postEmbedCode,
+  postEmbedUrl,
+  postShareUrl,
+  sharePostLink
+} from './postLink';
 import type { IndexedFile } from '../types/aggregator';
 
 const file = {
@@ -45,6 +53,32 @@ describe('postShareUrl', () => {
   it('omits creator when the post has none', () => {
     const anon = { metadata: { fileId: 'x' } } as unknown as IndexedFile;
     expect(postShareUrl(anon, 'https://a/')).toBe('https://a/?file=x');
+  });
+});
+
+describe('post embed code', () => {
+  const origin = 'https://pn.parnoir.com';
+
+  it('points the iframe at the embed route with the creator and post', () => {
+    expect(postEmbedUrl(file, origin)).toBe(`${origin}/embed/post?creator=pn-d8f74864&file=abc123`);
+  });
+
+  it('is a paste-ready iframe with escaped attributes', () => {
+    const tricky = {
+      pnIdentifier: 'pn-1',
+      metadata: { fileId: 'a"b', title: 'Say "hi" <now>' },
+    } as unknown as IndexedFile;
+    const code = postEmbedCode(tricky, origin);
+    expect(code).toBe(
+      `<iframe src="${origin}/embed/post?creator=pn-1&amp;file=a%22b" title="Say &quot;hi&quot; &lt;now&gt;" ` +
+        'style="width:100%;max-width:400px;aspect-ratio:9/16;border:0" allow="autoplay; fullscreen" loading="lazy"></iframe>'
+    );
+  });
+
+  it('copies the code for the current origin', async () => {
+    stubBrowser({ coarse: false });
+    await expect(copyPostEmbedCode(file)).resolves.toBe(true);
+    expect(copyToClipboard).toHaveBeenCalledWith(postEmbedCode(file, 'https://pn.parnoir.com'));
   });
 });
 

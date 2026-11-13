@@ -163,14 +163,18 @@ export {
   BROWSE_EMBED_ORIGIN,
   PN_FEED_EMBED_READY,
   PN_FEED_EMBED_HANDSHAKE,
+  PN_POST_EMBED_SIZE,
   buildFeedEmbedUrl,
+  buildPostEmbedUrl,
   isFeedEmbedPostMessage,
+  isPostEmbedSizeMessage,
 } from './feedEmbed';
 export type {
   FeedEmbedOptions,
   FeedEmbedHandshakeMessage,
   FeedEmbedReadyMessage,
   FeedEmbedPostMessage,
+  PostEmbedSizeMessage,
 } from './feedEmbed';
 export {
   SECRET_KEY_1_NAME,

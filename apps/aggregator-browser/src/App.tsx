@@ -64,6 +64,7 @@ import { API_ENDPOINT } from './config/api';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { EmbedMessagingPage } from './pages/EmbedMessagingPage';
 import { EmbedFeedPage } from './pages/EmbedFeedPage';
+import { EmbedPostPage } from './pages/EmbedPostPage';
 import { VanityConnectPage } from './pages/VanityConnectPage';
 
 // Shared types - importing from id-dashboard
@@ -77,8 +78,10 @@ function App() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
   const isFeedEmbed =
     pathname === '/embed/feed' || pathname.startsWith('/embed/feed/');
+  const isPostEmbed =
+    pathname === '/embed/post' || pathname.startsWith('/embed/post/');
   const isMessagingEmbed =
-    !isFeedEmbed && (pathname === '/embed' || pathname.startsWith('/embed/'));
+    !isFeedEmbed && !isPostEmbed && (pathname === '/embed' || pathname.startsWith('/embed/'));
 
   const { userState, getDisplayName } = useUserState();
   const discover = useDiscoverFiles();
@@ -1131,6 +1134,10 @@ function App() {
         <EmbedFeedPage onLockUnlock={handleLockUnlock} />
       </>
     );
+  }
+
+  if (isPostEmbed) {
+    return <EmbedPostPage />;
   }
 
   if (isMessagingEmbed) {
