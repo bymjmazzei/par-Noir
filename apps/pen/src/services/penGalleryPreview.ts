@@ -233,7 +233,7 @@ export async function buildAndStoreGalleryPreview(params: {
     setPlaybackMode('publish');
     let encoded: Awaited<ReturnType<typeof encodePageVideo>>;
     try {
-      encoded = await encodePageVideo(root, page);
+      encoded = await encodePageVideo(root, page, { trimToTier: true });
     } finally {
       setPlaybackMode('edit');
     }

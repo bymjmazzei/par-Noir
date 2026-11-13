@@ -84,7 +84,7 @@ export function exportActionSectionForFeed(
     }
   }
   const layers = all.filter((layer) => want.has(layer.id));
-  const timelineDurationSec = resolveTimelineDuration({ ...sec, layers }, undefined, ctx);
+  const timelineDurationSec = resolveTimelineDuration(sec, undefined, ctx);
   return {
     layers,
     ...(timelineDurationSec > 0 ? { timelineDurationSec } : {})

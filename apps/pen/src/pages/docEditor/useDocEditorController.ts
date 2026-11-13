@@ -118,6 +118,7 @@ import { composedMaster, type ComposePageVideoResult } from '../../services/comp
 import {
   composePageStill,
   encodePageVideo,
+  PageTooLongError,
   VIDEO_ENCODER_UNAVAILABLE
 } from '../../services/encodePageVideo';
 import { setPlaybackMode } from '../../services/playbackMode';
@@ -1872,7 +1873,15 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     );
   }
 
+  function clockLabel(sec: number): string {
+    const whole = Math.ceil(sec);
+    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+  }
+
   function sharePublishErrorMessage(e: unknown): string {
+    if (e instanceof PageTooLongError) {
+      return `Your post was not published: this page runs ${clockLabel(e.durationSec)}. Posts on your plan can be up to ${clockLabel(e.maxDurationSec)}. Shorten the timeline, or upgrade for longer posts.`;
+    }
     const raw = e instanceof Error ? e.message : 'feed_connect_failed';
     if (raw === VIDEO_ENCODER_UNAVAILABLE) {
       return 'Update your browser to share video posts.';
@@ -1975,7 +1984,13 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       setStatus(null);
     } catch (e) {
       const raw = e instanceof Error ? e.message : 'download_failed';
-      setError(raw === VIDEO_ENCODER_UNAVAILABLE ? 'Update your browser to export video.' : raw);
+      if (e instanceof PageTooLongError) {
+        setError(
+          `This page runs ${clockLabel(e.durationSec)}. Videos can be up to ${clockLabel(e.maxDurationSec)}. Shorten the timeline to download it.`
+        );
+      } else {
+        setError(raw === VIDEO_ENCODER_UNAVAILABLE ? 'Update your browser to export video.' : raw);
+      }
       setStatus(null);
     } finally {
       teardownComposeCaptureForEncode(prev);

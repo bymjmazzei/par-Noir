@@ -16,7 +16,11 @@ describe('PenFeedPageStage press path', () => {
 
   it('paints revealed targets through the face shared with the Pen editor', () => {
     expect(stage).toMatch(/<PenLayerFace/);
-    expect(stage).toMatch(/buildActionOverlayAtTime\(\s*penFeedPage\.actionSection,\s*overlayTime,/);
+    expect(stage).toMatch(/buildActionOverlayAtTime\(\s*actionSection,\s*overlayTime,/);
+  });
+
+  it('samples action layers on the same clock the loop wraps on', () => {
+    expect(stage).toMatch(/\.\.\.penFeedPage\.actionSection,\s*timelineDurationSec: duration/);
   });
 
   it('surface exposes onEffect, not the raw message', () => {

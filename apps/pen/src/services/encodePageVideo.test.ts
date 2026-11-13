@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getPublishTier } from '@par-noir/aggregator-domain';
 import type { PenPageLayer } from '@par-noir/pen-protocol';
 import {
   BACKGROUND_VIDEO_ID,
+  EXCEEDS_TIER_MAX_DURATION,
   PAGE_BACKGROUND_ID,
   PAGE_BODY_ID,
   PAGE_VIDEO_FPS,
+  PageTooLongError,
+  encodePageVideo,
   frameTimes,
   pagePaintOrder,
   splitPaintBands
@@ -28,6 +32,36 @@ describe('frame schedule', () => {
 
   it('always has at least frame 0', () => {
     expect(frameTimes(0)).toEqual([0]);
+  });
+});
+
+describe('plan length limit', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('refuses a page longer than the plan allows instead of cutting it off', async () => {
+    vi.stubGlobal('VideoEncoder', class {});
+    const tier = getPublishTier('floor');
+    const root = {
+      get offsetWidth(): number {
+        throw new Error('encoding started');
+      }
+    } as unknown as HTMLElement;
+    const page = {
+      section: {
+        slug: 'p1',
+        doc: { type: 'doc' as const, content: [] },
+        layers: [layer('t', 1)],
+        timelineDurationSec: tier.maxDurationSec + 24
+      },
+      manifest: {}
+    };
+    const run = encodePageVideo(root, page, { tier });
+    await expect(run).rejects.toBeInstanceOf(PageTooLongError);
+    await expect(run).rejects.toMatchObject({
+      message: EXCEEDS_TIER_MAX_DURATION,
+      durationSec: tier.maxDurationSec + 24,
+      maxDurationSec: tier.maxDurationSec
+    });
   });
 });
 

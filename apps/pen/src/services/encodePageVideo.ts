@@ -68,6 +68,17 @@ import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
 
 export const PAGE_VIDEO_FPS = 30;
 export const VIDEO_ENCODER_UNAVAILABLE = 'video_encoder_unavailable';
+/** Same code browse uploads throw when a video runs past the plan's limit. */
+export const EXCEEDS_TIER_MAX_DURATION = 'exceeds_tier_max_duration';
+
+export class PageTooLongError extends Error {
+  constructor(
+    readonly durationSec: number,
+    readonly maxDurationSec: number
+  ) {
+    super(EXCEEDS_TIER_MAX_DURATION);
+  }
+}
 export const PAGE_BACKGROUND_ID = '@page-background';
 export const PAGE_BODY_ID = '@page-body';
 export const BACKGROUND_VIDEO_ID = '@background-video';
@@ -534,20 +545,26 @@ export async function encodePageVideo(
     /** Publish tier; sizes, duration cap and HD allowance. Defaults to Pen's publish plan. */
     tier?: PublishTierNotch;
     onProgress?: (pct: number) => void;
+    /** Library thumbnail: trim to the tier's length. Posts and downloads refuse a longer page. */
+    trimToTier?: boolean;
   }
 ): Promise<ComposePageVideoResult> {
   if (typeof VideoEncoder === 'undefined') throw new Error(VIDEO_ENCODER_UNAVAILABLE);
-  const editorPlayhead = getPlayheadSec();
   const tier = opts?.tier ?? getPublishTier(PEN_PUBLISH_PLAN_ID);
   const section = normalizeSection(page.section);
-  const hasBackgroundVideo = pageHasBackgroundVideo(page.manifest);
   const backgroundSrc = page.manifest.pagePresentation?.backgroundVideo?.trim();
-  const clock = resolveTimelineDuration(
+  const resolved = resolveTimelineDuration(
     section,
     undefined,
     backgroundSrc ? { pageBackgroundVideo: backgroundSrc } : {}
   );
-  const times = frameTimes(Math.min(clock > 0 ? clock : 5, tier.maxDurationSec));
+  const clock = resolved > 0 ? resolved : 5;
+  if (clock > tier.maxDurationSec && !opts?.trimToTier) {
+    throw new PageTooLongError(clock, tier.maxDurationSec);
+  }
+  const editorPlayhead = getPlayheadSec();
+  const hasBackgroundVideo = pageHasBackgroundVideo(page.manifest);
+  const times = frameTimes(Math.min(clock, tier.maxDurationSec));
   const frameSec = 1 / PAGE_VIDEO_FPS;
   const durationSec = times.length * frameSec;
   const durationMs = Math.round(durationSec * 1000);

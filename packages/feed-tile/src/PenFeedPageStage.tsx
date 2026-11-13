@@ -289,6 +289,11 @@ export function PenFeedPageStage({
   };
   const duration = penFeedPage.timelineDurationSec ?? penFeedPage.actionSection.timelineDurationSec ?? 5;
   const canvas: StageCanvas = { ...penFeedPage.canvas, inset: penFeedPage.contentInsetPx ?? 0 };
+  /** A stored action-section length can be shorter than the page; action layers use the loop's clock. */
+  const actionSection = useMemo(
+    () => ({ ...penFeedPage.actionSection, timelineDurationSec: duration }),
+    [penFeedPage.actionSection, duration]
+  );
 
   useEffect(() => {
     if (externalClockSec != null) return;
@@ -309,12 +314,12 @@ export function PenFeedPageStage({
   const layers = useMemo(
     () =>
       buildActionOverlayAtTime(
-        penFeedPage.actionSection,
+        actionSection,
         overlayTime,
         { revealed: viewer.revealed, hidden: viewer.hidden, steps: viewer.steps },
         viewer
       ),
-    [penFeedPage.actionSection, overlayTime, viewer]
+    [actionSection, overlayTime, viewer]
   );
 
   const isVideo = mediaKind === 'video' && Boolean(mediaSrc);

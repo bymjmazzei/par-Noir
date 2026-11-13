@@ -23,7 +23,7 @@ describe('flatten on publish', () => {
     expect(controller).toMatch(/encodeSection: \(slug, onProgress\) => encodePage\(slug, onProgress\)/);
     expect(controller).toMatch(/image: \{ slug: page\.slug, posterBlob: await flattenPage\(page\.slug\) \}/);
     expect(controller).toMatch(/saveDownload\(await flattenPage\(slug, \{ mime: 'image\/png' \}\)/);
-    expect(gallery).toMatch(/encodePageVideo\(root, page\)/);
+    expect(gallery).toMatch(/encodePageVideo\(root, page, \{ trimToTier: true \}\)/);
     expect(gallery).toMatch(/composePageStill\(root, page\)/);
   });
 
@@ -74,5 +74,10 @@ describe('flatten on publish', () => {
   it('browsers without WebCodecs get a clear update message', () => {
     expect(encode).toMatch(/typeof VideoEncoder === 'undefined'/);
     expect(controller).toMatch(/Update your browser to share video posts\./);
+  });
+
+  it('a page longer than the plan allows fails with its length, never a cut-off post', () => {
+    expect(encode).toMatch(/throw new PageTooLongError\(clock, tier\.maxDurationSec\)/);
+    expect(controller).toMatch(/Shorten the timeline, or upgrade for longer posts\./);
   });
 });
