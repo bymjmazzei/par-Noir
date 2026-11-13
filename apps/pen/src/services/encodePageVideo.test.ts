@@ -3,16 +3,15 @@ import { getPublishTier } from '@par-noir/aggregator-domain';
 import type { PenPageLayer } from '@par-noir/pen-protocol';
 import {
   BACKGROUND_VIDEO_ID,
-  EXCEEDS_TIER_MAX_DURATION,
   PAGE_BACKGROUND_ID,
   PAGE_BODY_ID,
   PAGE_VIDEO_FPS,
-  PageTooLongError,
   encodePageVideo,
   frameTimes,
   pagePaintOrder,
   splitPaintBands
 } from './encodePageVideo';
+import { EXCEEDS_TIER_MAX_DURATION, PageTooLongError } from './penPublishPlan';
 import { embeddableFontFaces, safeBackgroundImage } from './rasterizePagePoster';
 
 function layer(id: string, zIndex: number, over: Partial<PenPageLayer> = {}): PenPageLayer {

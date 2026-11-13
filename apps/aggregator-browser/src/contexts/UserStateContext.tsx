@@ -53,9 +53,6 @@ export interface UserState {
   publishPlan?: {
     maxDurationSec: number;
     allowHd: boolean;
-    uploadBytesUsed: number;
-    uploadBytesLimit: number;
-    softDegraded: boolean;
   };
 }
 
@@ -453,7 +450,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       try {
         const { API_ENDPOINT } = await import('../config/api');
         const res = await fetch(
-          `${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/verification-status?planId=floor`
+          `${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/verification-status`
         );
         if (!res.ok) return;
         const data = (await res.json()) as {
@@ -462,9 +459,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             planId?: string;
             maxDurationSec?: number;
             allowHd?: boolean;
-            uploadBytesUsed?: number;
-            uploadBytesLimit?: number;
-            softDegraded?: boolean;
           };
         };
         setUserState((prev) => ({
@@ -475,9 +469,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             ? {
                 maxDurationSec: data.plan.maxDurationSec ?? 60,
                 allowHd: Boolean(data.plan.allowHd),
-                uploadBytesUsed: data.plan.uploadBytesUsed ?? 0,
-                uploadBytesLimit: data.plan.uploadBytesLimit ?? 0,
-                softDegraded: Boolean(data.plan.softDegraded),
               }
             : undefined,
         }));

@@ -118,9 +118,9 @@ import { composedMaster, type ComposePageVideoResult } from '../../services/comp
 import {
   composePageStill,
   encodePageVideo,
-  PageTooLongError,
   VIDEO_ENCODER_UNAVAILABLE
 } from '../../services/encodePageVideo';
+import { PageTooLongError } from '../../services/penPublishPlan';
 import { setPlaybackMode } from '../../services/playbackMode';
 import { downloadBasename, pngBlobsToPdf, saveDownload } from '../../services/penDownload';
 import { WidgetEditorPanel } from '../../components/WidgetEditorPanel';

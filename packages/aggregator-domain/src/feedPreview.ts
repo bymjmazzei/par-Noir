@@ -76,8 +76,6 @@ export interface PublishTierNotch {
   /** Max single-post duration (seconds) */
   maxDurationSec: number;
   maxHeight: number;
-  /** Monthly preview ingest allowance (bytes) */
-  uploadBytesPerMonth: number;
   /** Allow HD preview object at publish */
   allowHd: boolean;
 }
@@ -89,7 +87,6 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     retailUsd: 0,
     maxDurationSec: 60,
     maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
-    uploadBytesPerMonth: Math.floor(0.5 * 1024 * 1024 * 1024),
     allowHd: true,
   },
   {
@@ -97,7 +94,6 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     retailUsd: 9,
     maxDurationSec: 60,
     maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
-    uploadBytesPerMonth: 1 * 1024 * 1024 * 1024,
     allowHd: true,
   },
   {
@@ -105,7 +101,6 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     retailUsd: 20,
     maxDurationSec: 3 * 60,
     maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
-    uploadBytesPerMonth: 5 * 1024 * 1024 * 1024,
     allowHd: true,
   },
   {
@@ -113,7 +108,6 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     retailUsd: 39,
     maxDurationSec: 10 * 60,
     maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
-    uploadBytesPerMonth: 50 * 1024 * 1024 * 1024,
     allowHd: true,
   },
   {
@@ -121,7 +115,6 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     retailUsd: 55,
     maxDurationSec: 10 * 60,
     maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
-    uploadBytesPerMonth: 100 * 1024 * 1024 * 1024,
     allowHd: true,
   },
   {
@@ -129,7 +122,6 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     retailUsd: 149,
     maxDurationSec: 30 * 60,
     maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
-    uploadBytesPerMonth: 200 * 1024 * 1024 * 1024,
     allowHd: true,
   },
   {
@@ -137,7 +129,6 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     retailUsd: 219,
     maxDurationSec: 30 * 60,
     maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
-    uploadBytesPerMonth: 500 * 1024 * 1024 * 1024,
     allowHd: true,
   },
   {
@@ -145,12 +136,9 @@ export const PUBLISH_TIER_NOTCHES: readonly PublishTierNotch[] = [
     retailUsd: 599,
     maxDurationSec: 30 * 60,
     maxHeight: FEED_PREVIEW_HD_MAX_HEIGHT,
-    uploadBytesPerMonth: 2000 * 1024 * 1024 * 1024,
     allowHd: true,
   },
 ] as const;
-
-export const FEED_PREVIEW_GB_OVERAGE_USD = 0.25;
 
 export function getPublishTier(id: PublishTierId | string | undefined | null): PublishTierNotch {
   const found = PUBLISH_TIER_NOTCHES.find((n) => n.id === id);
@@ -241,25 +229,27 @@ export function validateFeedPreviewByteSize(
   return { ok: true };
 }
 
+/** One 30fps frame: a composed page's last frame can round just past the limit. */
+const DURATION_TOLERANCE_MS = Math.ceil(1000 / 30);
+
 /**
- * Soft degrade: when monthly GB is exhausted, treat publisher as free ceilings for new encodes.
+ * Video SD/HD previews must report a length within the plan. Posters and
+ * non-video files have no length to check.
  */
-export function effectivePublishTier(params: {
-  planId: PublishTierId | string;
-  gbUsedBytes: number;
-  softDegrade?: boolean;
-}): PublishTierNotch {
-  const plan = getPublishTier(params.planId);
-  if (plan.id === 'free') return plan;
-  const over = params.gbUsedBytes >= plan.uploadBytesPerMonth;
-  if (over && params.softDegrade !== false) {
-    return {
-      ...getPublishTier('free'),
-      id: plan.id,
-      retailUsd: plan.retailUsd,
-    };
+export function validateFeedPreviewDuration(
+  variant: FeedPreviewVariant,
+  contentType: string,
+  durationMs: number | undefined,
+  tier: PublishTierNotch
+): { ok: true } | { ok: false; error: string } {
+  if (variant === 'poster' || !contentType.startsWith('video/')) return { ok: true };
+  if (durationMs == null || !Number.isFinite(durationMs) || durationMs < 0) {
+    return { ok: false, error: 'duration_required' };
   }
-  return plan;
+  if (durationMs > tier.maxDurationSec * 1000 + DURATION_TOLERANCE_MS) {
+    return { ok: false, error: 'exceeds_tier_max_duration' };
+  }
+  return { ok: true };
 }
 
 export type PublicVideoPreviewRequirement =

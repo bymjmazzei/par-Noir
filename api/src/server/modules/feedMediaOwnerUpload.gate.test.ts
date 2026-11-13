@@ -2,7 +2,7 @@
  * @jest-environment node
  *
  * Feed media routes: binary owner-upload for 1080p HD previews, HD for every viewer,
- * and the unverified daily view-start cap (no byte cap).
+ * the unverified daily view-start cap (no byte cap), and the server-decided plan.
  */
 import express from 'express';
 import request from 'supertest';
@@ -22,12 +22,14 @@ jest.mock('../utils/cache', () => ({
 }));
 
 const putMock = jest.fn(async () => undefined);
+const deleteMock = jest.fn(async () => undefined);
+const presignMock = jest.fn(async () => ({ url: 'https://r2/put', maxBytes: 1 }));
 jest.mock('./feedPreviewR2', () => ({
   getFeedR2: jest.fn(() => ({ config: { signedGetTtlSec: 300 } })),
   feedR2Put: (...args: unknown[]) => (putMock as jest.Mock)(...args),
   feedR2Head: jest.fn(async () => ({ size: 1 })),
-  feedR2Delete: jest.fn(async () => undefined),
-  feedR2PresignedPutUrl: jest.fn(async () => ({ url: 'https://r2/put', maxBytes: 1 })),
+  feedR2Delete: (...args: unknown[]) => (deleteMock as jest.Mock)(...args),
+  feedR2PresignedPutUrl: (...args: unknown[]) => (presignMock as jest.Mock)(...args),
   feedR2SignedGetUrl: jest.fn(async (key: string) => `https://r2/${key}`),
 }));
 
@@ -36,8 +38,9 @@ jest.mock('../middleware/authMiddleware', () => ({
   getBearerTokenPayload: jest.fn(() => (bearerPn ? { pnIdentifier: bearerPn } : null)),
 }));
 
+let verified = false;
 jest.mock('./engagementService', () => ({
-  EngagementService: { isIdentityVerifiedForMonetization: jest.fn(async () => false) },
+  EngagementService: { isIdentityVerifiedForMonetization: jest.fn(async () => verified) },
 }));
 
 const hdRef = { r2Key: 'feed/f1/hd', contentType: 'video/mp4', byteSize: 30_000_000, r2Warm: true };
@@ -51,6 +54,11 @@ jest.mock('./aggregatorMetadataServiceDB', () => ({
       updateMetadata: jest.fn(async () => undefined),
     }),
   },
+}));
+
+jest.mock('./mediaFingerprints', () => ({
+  enqueueFingerprint: jest.fn(),
+  creditFromMetadata: jest.fn(() => undefined),
 }));
 
 jest.mock('./publicBlobAccess', () => ({
@@ -72,13 +80,14 @@ describe('feed-media owner-upload', () => {
     cache.clear();
     putMock.mockClear();
     bearerPn = 'pn-owner';
+    verified = false;
   });
 
   it('accepts a raw binary HD body larger than the 10mb JSON limit', async () => {
     const bytes = Buffer.alloc(12 * 1024 * 1024, 1);
     const res = await request(app())
       .post('/api/aggregator/feed-media/owner-upload')
-      .query({ fileId: 'f1', variant: 'hd', contentType: 'video/mp4', planId: 'free' })
+      .query({ fileId: 'f1', variant: 'hd', contentType: 'video/mp4', durationMs: 30_000 })
       .set('Content-Type', 'application/octet-stream')
       .send(bytes);
     expect(res.status).toBe(200);
@@ -96,6 +105,91 @@ describe('feed-media owner-upload', () => {
       .set('Content-Type', 'application/octet-stream')
       .send(Buffer.alloc(0));
     expect(res.status).toBe(400);
+  });
+
+  it('ignores a client-claimed plan and stores nothing for a video past the real limit', async () => {
+    const res = await request(app())
+      .post('/api/aggregator/feed-media/owner-upload')
+      .query({ fileId: 'f1', variant: 'sd', contentType: 'video/mp4', planId: 'scale', durationMs: 90_000 })
+      .set('Content-Type', 'application/octet-stream')
+      .send(Buffer.alloc(1024, 1));
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('exceeds_tier_max_duration');
+    expect(res.body.plan.planId).toBe('free');
+    expect(putMock).not.toHaveBeenCalled();
+  });
+
+  it('requires a length on video uploads', async () => {
+    const res = await request(app())
+      .post('/api/aggregator/feed-media/owner-upload')
+      .query({ fileId: 'f1', variant: 'sd', contentType: 'video/mp4' })
+      .set('Content-Type', 'application/octet-stream')
+      .send(Buffer.alloc(1024, 1));
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('duration_required');
+    expect(putMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('feed-media plan is decided by the server', () => {
+  beforeEach(() => {
+    presignMock.mockClear();
+    deleteMock.mockClear();
+    bearerPn = 'pn-owner';
+    verified = false;
+  });
+
+  it('gives a verified account floor whatever plan the client asks for', async () => {
+    verified = true;
+    const res = await request(app())
+      .get('/api/aggregator/publish-plan')
+      .query({ planId: 'scale' })
+      .set('x-pn-publish-plan', 'scale');
+    expect(res.status).toBe(200);
+    expect(res.body.plan.planId).toBe('floor');
+    expect(res.body.plan).not.toHaveProperty('uploadBytesUsed');
+  });
+
+  it('presign refuses a video past the limit before signing anything', async () => {
+    const res = await request(app())
+      .post('/api/aggregator/feed-media/presign-upload')
+      .send({
+        fileId: 'f1',
+        variant: 'sd',
+        contentType: 'video/mp4',
+        contentLength: 1024,
+        planId: 'scale',
+        durationMs: 120_000,
+      });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('exceeds_tier_max_duration');
+    expect(presignMock).not.toHaveBeenCalled();
+  });
+
+  it('confirm deletes a stored video that reports a length past the limit', async () => {
+    const res = await request(app())
+      .post('/api/aggregator/feed-media/confirm-upload')
+      .send({
+        fileId: 'f1',
+        variant: 'sd',
+        ref: { r2Key: 'feed/f1/sd/long', contentType: 'video/mp4', byteSize: 1024, durationMs: 120_000 },
+      });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('exceeds_tier_max_duration');
+    expect(deleteMock).toHaveBeenCalledWith('feed/f1/sd/long');
+  });
+
+  it('confirm no longer reports a monthly byte total', async () => {
+    const res = await request(app())
+      .post('/api/aggregator/feed-media/confirm-upload')
+      .send({
+        fileId: 'f1',
+        variant: 'sd',
+        ref: { r2Key: 'feed/f1/sd/ok', contentType: 'video/mp4', byteSize: 1024, durationMs: 20_000 },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('uploadBytesUsed');
+    expect(deleteMock).not.toHaveBeenCalled();
   });
 });
 

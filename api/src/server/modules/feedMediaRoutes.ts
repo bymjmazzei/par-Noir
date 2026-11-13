@@ -4,12 +4,13 @@
 import express, { Application, Request, Response } from 'express';
 import {
   FEED_PREVIEW_HD_MAX_BYTES,
-  FEED_PREVIEW_SD_MAX_BYTES,
+  getPublishTier,
   isFeedPreviewObjectRef,
   r2ObjectKey,
   type FeedPreviewObjectRef,
   type FeedPreviewVariant,
   validateFeedPreviewByteSize,
+  validateFeedPreviewDuration,
   PUBLISH_TIER_NOTCHES,
 } from '@par-noir/aggregator-domain';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
@@ -22,8 +23,8 @@ import {
   getFeedR2,
 } from './feedPreviewR2';
 import {
-  addUploadBytes,
   checkAndConsumeFreeView,
+  publishPlanFor,
   resolvePublishPlan,
   viewerKeyFromRequest,
 } from './feedPreviewMetering';
@@ -34,6 +35,12 @@ export { redactFeedPreviewForClient };
 
 /** Largest preview variant plus headroom; JSON routes stay at the global 10mb limit. */
 const OWNER_UPLOAD_BODY_LIMIT = FEED_PREVIEW_HD_MAX_BYTES + 4 * 1024 * 1024;
+
+function durationFromParam(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 function variantFromParam(raw: string): FeedPreviewVariant | null {
   if (raw === 'poster' || raw === 'sd' || raw === 'hd') return raw;
@@ -232,9 +239,7 @@ export function registerFeedMediaRoutes(app: Application): void {
       if (!pn) return res.status(400).json({ error: 'pn_required' });
       const { EngagementService } = await import('./engagementService');
       const verified = await EngagementService.isIdentityVerifiedForMonetization(pn);
-      const planId =
-        typeof req.query.planId === 'string' ? req.query.planId : verified ? 'floor' : 'free';
-      const plan = await resolvePublishPlan(pn, planId);
+      const plan = publishPlanFor(verified);
       return res.json({
         pnHash: hashIdentifier(pn),
         verified,
@@ -245,7 +250,6 @@ export function registerFeedMediaRoutes(app: Application): void {
             retailUsd: n.retailUsd,
             maxDurationSec: n.maxDurationSec,
             maxHeight: n.maxHeight,
-            uploadBytesPerMonth: n.uploadBytesPerMonth,
             allowHd: n.allowHd,
           })),
         },
@@ -265,13 +269,7 @@ export function registerFeedMediaRoutes(app: Application): void {
       if (!tokenPayload?.pnIdentifier) {
         return res.status(401).json({ error: 'unauthorized' });
       }
-      const planId =
-        typeof req.query.planId === 'string'
-          ? req.query.planId
-          : typeof req.headers['x-pn-publish-plan'] === 'string'
-            ? req.headers['x-pn-publish-plan']
-            : 'floor';
-      const plan = await resolvePublishPlan(tokenPayload.pnIdentifier, planId);
+      const plan = await resolvePublishPlan(tokenPayload.pnIdentifier);
       return res.json({ plan, notches: PUBLISH_TIER_NOTCHES });
     } catch (err: unknown) {
       return res.status(500).json({
@@ -296,7 +294,6 @@ export function registerFeedMediaRoutes(app: Application): void {
       const variant = variantFromParam(String(req.body?.variant || ''));
       const contentType = String(req.body?.contentType || 'application/octet-stream');
       const contentLength = Number(req.body?.contentLength || 0);
-      const planId = typeof req.body?.planId === 'string' ? req.body.planId : 'floor';
 
       if (!fileId || !variant) {
         return res.status(400).json({ error: 'fileId_and_variant_required' });
@@ -306,15 +303,18 @@ export function registerFeedMediaRoutes(app: Application): void {
         return res.status(400).json({ error: sizeCheck.error });
       }
 
-      const plan = await resolvePublishPlan(tokenPayload.pnIdentifier, planId);
+      const plan = await resolvePublishPlan(tokenPayload.pnIdentifier);
       if (variant === 'hd' && !plan.allowHd) {
         return res.status(403).json({ error: 'hd_not_allowed_on_plan', plan });
       }
-      if (plan.uploadBytesUsed + contentLength > plan.uploadBytesLimit && plan.planId !== 'free') {
-        // Soft degrade already reflected in allowHd/duration; still allow free-sized uploads
-        if (contentLength > FEED_PREVIEW_SD_MAX_BYTES) {
-          return res.status(403).json({ error: 'monthly_upload_gb_exceeded', plan });
-        }
+      const lengthCheck = validateFeedPreviewDuration(
+        variant,
+        contentType,
+        durationFromParam(req.body?.durationMs),
+        getPublishTier(plan.planId)
+      );
+      if (!lengthCheck.ok) {
+        return res.status(403).json({ error: lengthCheck.error, plan });
       }
 
       const key = r2ObjectKey(fileId, variant, String(Date.now()));
@@ -335,7 +335,7 @@ export function registerFeedMediaRoutes(app: Application): void {
 
   /**
    * Browser-safe R2 warm upload (avoids cross-origin PUT to *.r2.cloudflarestorage.com).
-   * Raw bytes in the body; fileId / variant / contentType / planId in the query string.
+   * Raw bytes in the body; fileId / variant / contentType / durationMs in the query string.
    */
   app.post(
     '/api/aggregator/feed-media/owner-upload',
@@ -354,7 +354,6 @@ export function registerFeedMediaRoutes(app: Application): void {
       const fileId = String(req.query.fileId || '');
       const variant = variantFromParam(String(req.query.variant || ''));
       const contentType = String(req.query.contentType || 'application/octet-stream');
-      const planId = typeof req.query.planId === 'string' ? req.query.planId : 'floor';
       const buffer = Buffer.isBuffer(req.body) ? req.body : null;
 
       if (!fileId || !variant || !buffer || !buffer.length) {
@@ -366,14 +365,18 @@ export function registerFeedMediaRoutes(app: Application): void {
         return res.status(400).json({ error: sizeCheck.error });
       }
 
-      const plan = await resolvePublishPlan(tokenPayload.pnIdentifier, planId);
+      const plan = await resolvePublishPlan(tokenPayload.pnIdentifier);
       if (variant === 'hd' && !plan.allowHd) {
         return res.status(403).json({ error: 'hd_not_allowed_on_plan', plan });
       }
-      if (plan.uploadBytesUsed + buffer.length > plan.uploadBytesLimit && plan.planId !== 'free') {
-        if (buffer.length > FEED_PREVIEW_SD_MAX_BYTES) {
-          return res.status(403).json({ error: 'monthly_upload_gb_exceeded', plan });
-        }
+      const lengthCheck = validateFeedPreviewDuration(
+        variant,
+        contentType,
+        durationFromParam(req.query.durationMs),
+        getPublishTier(plan.planId)
+      );
+      if (!lengthCheck.ok) {
+        return res.status(403).json({ error: lengthCheck.error, plan });
       }
 
       const key = r2ObjectKey(fileId, variant, String(Date.now()));
@@ -409,6 +412,17 @@ export function registerFeedMediaRoutes(app: Application): void {
       if (!sizeCheck.ok) {
         return res.status(400).json({ error: sizeCheck.error });
       }
+      const plan = await resolvePublishPlan(tokenPayload.pnIdentifier);
+      const lengthCheck = validateFeedPreviewDuration(
+        variant,
+        ref.contentType,
+        ref.durationMs,
+        getPublishTier(plan.planId)
+      );
+      if (!lengthCheck.ok) {
+        if (ref.r2Key) await feedR2Delete(ref.r2Key);
+        return res.status(403).json({ error: lengthCheck.error, plan });
+      }
       if (ref.r2Key) {
         const head = await feedR2Head(ref.r2Key);
         if (!head) {
@@ -436,19 +450,15 @@ export function registerFeedMediaRoutes(app: Application): void {
             : { feedPreviewSd: { ...ref, r2Warm: true } };
       if (!existing) {
         // Row created by subsequent metadata PUT which must include these refs.
-        const used = await addUploadBytes(tokenPayload.pnIdentifier, ref.byteSize);
         return res.json({
           success: true,
           pendingRow: true,
-          uploadBytesUsed: used,
           ref: redactFeedPreviewForClient({ ...ref, r2Warm: true }),
         });
       }
       await agg.updateMetadata(fileId, patch as any);
-      const used = await addUploadBytes(tokenPayload.pnIdentifier, ref.byteSize);
       return res.json({
         success: true,
-        uploadBytesUsed: used,
         ref: redactFeedPreviewForClient({ ...ref, r2Warm: true }),
       });
     } catch (err: unknown) {

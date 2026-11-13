@@ -45,7 +45,6 @@ export async function publishFeedPreviewsForDashboard(params: {
       ...params,
       ownerToken,
       pnIdentifier,
-      planId,
       encoded: encoded.poster,
     }),
   };
@@ -54,7 +53,6 @@ export async function publishFeedPreviewsForDashboard(params: {
       ...params,
       ownerToken,
       pnIdentifier,
-      planId,
       encoded: encoded.sd,
     });
   }
@@ -63,7 +61,6 @@ export async function publishFeedPreviewsForDashboard(params: {
       ...params,
       ownerToken,
       pnIdentifier,
-      planId,
       encoded: encoded.hd,
     });
   }
@@ -74,19 +71,18 @@ async function uploadOne(params: {
   fileId: string;
   ownerToken: string;
   pnIdentifier: string;
-  planId: string;
   aggregatorService: FileAggregatorService;
   backendId: string;
   folderId?: string;
   encoded: EncodedPreview;
 }): Promise<FeedPreviewObjectRef> {
-  const { encoded, fileId, ownerToken, planId, pnIdentifier } = params;
+  const { encoded, fileId, ownerToken, pnIdentifier } = params;
   const presignRes = await ownerFetch(ownerToken, 'POST', '/api/aggregator/feed-media/presign-upload', {
     fileId,
     variant: encoded.variant,
     contentType: encoded.contentType,
     contentLength: encoded.byteSize,
-    planId,
+    durationMs: encoded.durationMs,
   }, { pnIdentifier });
   if (!presignRes.ok) {
     throw new Error(`presign_failed_${presignRes.status}`);

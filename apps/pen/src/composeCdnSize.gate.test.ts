@@ -7,7 +7,7 @@ import { getPublishTier } from '@par-noir/aggregator-domain';
 import { composedMaster, composeOutputSizes } from './services/composePageVideoEncode';
 import { rasterOutputSize } from './services/rasterizePagePoster';
 import { publishPublicCloudFile } from './services/penPublicPublish';
-import { PEN_PUBLISH_PLAN_ID } from './services/penPublishPlan';
+import { PEN_PUBLISH_PLAN_ID, PageTooLongError } from './services/penPublishPlan';
 
 describe('compose output follows the CDN tier', () => {
   it('a small on-screen 9:16 sheet still encodes 1080p HD and 720p SD', () => {
@@ -97,9 +97,50 @@ describe('publish uploads every variant as binary', () => {
     for (const u of uploads) {
       expect(u.body).toBeInstanceOf(Blob);
       expect((u.body as Blob).type).toBe('application/octet-stream');
+      const query = new URL(u.path, 'https://api').searchParams;
+      expect(query.has('planId')).toBe(false);
+      if (query.get('variant') !== 'poster') expect(query.get('durationMs')).toBe('5000');
     }
     expect((put?.feedPreviewHd as { height?: number } | undefined)?.height).toBe(1080);
     expect((put?.feedPreviewSd as { height?: number } | undefined)?.height).toBe(720);
+  });
+
+  it('a server length refusal surfaces as the page-too-long error with the plan limit', async () => {
+    const request = async (_method: string, path: string) => {
+      if (path.startsWith('/api/aggregator/feed-media/owner-upload')) {
+        const variant = new URL(path, 'https://api').searchParams.get('variant');
+        if (variant === 'poster') return new Response('{}', { status: 200 });
+        return new Response(
+          JSON.stringify({ error: 'exceeds_tier_max_duration', plan: { maxDurationSec: 60 } }),
+          { status: 403 }
+        );
+      }
+      if (path === '/api/drive/files') return new Response(JSON.stringify({ id: 'd1' }), { status: 200 });
+      if (path === '/api/aggregator/feed-media/confirm-upload') return new Response('{}', { status: 200 });
+      if (path.includes('/ensure-public')) {
+        return new Response(
+          JSON.stringify({
+            publicContentRef: { objectId: 'd1', publicUrl: 'https://drive.google.com/uc?export=download&id=d1', backend: 'google_drive' }
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response('{}', { status: 200 });
+    };
+    const run = publishPublicCloudFile({
+      request,
+      parentFolderId: 'public-folder',
+      bytes: new Uint8Array([1]),
+      fileName: 'pen-doc.mp4',
+      title: 'Clip',
+      previews: {
+        poster: { blob: new Blob([9], { type: 'image/jpeg' }), contentType: 'image/jpeg' },
+        sd: { blob: new Blob([1, 2], { type: 'video/mp4' }), contentType: 'video/mp4', durationMs: 84_000 }
+      },
+      metadata: { feedIds: ['public', 'media'], contentClass: 'media', fileType: 'video' }
+    });
+    await expect(run).rejects.toBeInstanceOf(PageTooLongError);
+    await expect(run).rejects.toMatchObject({ durationSec: 84, maxDurationSec: 60 });
   });
 
   it('a poster-only publish never indexes the poster as SD video', async () => {

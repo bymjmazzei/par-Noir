@@ -19,7 +19,7 @@ import { getCloudAccessTokenFromSession, shareDeviceDriveFile } from '@par-noir/
 import { API_ENDPOINT } from '../config/api';
 import { ownerFetch } from './penOwnerFetch';
 import { penSession } from './penSession';
-import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
+import { EXCEEDS_TIER_MAX_DURATION, PEN_PUBLISH_PLAN_ID, PageTooLongError } from './penPublishPlan';
 
 export type CloudRequest = (
   method: string,
@@ -153,7 +153,7 @@ async function uploadFeedVariant(params: {
     fileId: params.fileId,
     variant: params.variant,
     contentType,
-    planId: PEN_PUBLISH_PLAN_ID
+    ...(params.preview.durationMs != null ? { durationMs: String(params.preview.durationMs) } : {})
   });
   const uploadRes = await params.request(
     'POST',
@@ -161,7 +161,14 @@ async function uploadFeedVariant(params: {
     blob.slice(0, byteSize, 'application/octet-stream')
   );
   if (!uploadRes.ok) {
-    const err = (await uploadRes.json().catch(() => ({}))) as { error?: string };
+    const err = (await uploadRes.json().catch(() => ({}))) as {
+      error?: string;
+      plan?: { maxDurationSec?: number };
+    };
+    const maxSec = err.plan?.maxDurationSec;
+    if (err.error === EXCEEDS_TIER_MAX_DURATION && maxSec != null) {
+      throw new PageTooLongError((params.preview.durationMs ?? 0) / 1000, maxSec);
+    }
     throw new Error(err.error || `r2_owner_upload_failed_${uploadRes.status}`);
   }
   const uploaded = (await uploadRes.json()) as { key?: string };

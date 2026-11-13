@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  effectivePublishTier,
   getPublishTier,
   PUBLISH_TIER_NOTCHES,
   requirePublicImageFeedPreviews,
   requirePublicVideoFeedPreviews,
   validateFeedPreviewByteSize,
+  validateFeedPreviewDuration,
   FEED_PREVIEW_SD_MAX_BYTES,
   FEED_PREVIEW_HD_MAX_BYTES,
   FEED_PREVIEW_HD_MAX_HEIGHT,
@@ -18,20 +18,13 @@ describe('feedPreview tiers', () => {
     const paid = PUBLISH_TIER_NOTCHES.filter((n) => n.retailUsd > 0);
     expect(paid[0]?.retailUsd).toBe(9);
     expect(paid[1]?.retailUsd).toBe(20);
-    expect(getPublishTier('floor').uploadBytesPerMonth).toBe(1 * 1024 * 1024 * 1024);
     expect(getPublishTier('average_creator').maxDurationSec).toBe(180);
   });
 
-  it('soft-degrades to free ceilings when GB exhausted', () => {
-    const plan = getPublishTier('average_creator');
-    const degraded = effectivePublishTier({
-      planId: 'average_creator',
-      gbUsedBytes: plan.uploadBytesPerMonth,
-    });
-    expect(degraded.maxDurationSec).toBe(60);
-    expect(degraded.allowHd).toBe(true);
-    expect(degraded.maxHeight).toBe(1080);
-    expect(degraded.retailUsd).toBe(20);
+  it('limits plans per post only, with no monthly allowance', () => {
+    for (const n of PUBLISH_TIER_NOTCHES) {
+      expect(n).not.toHaveProperty('uploadBytesPerMonth');
+    }
   });
 
   it('gives every tier 1080p HD', () => {
@@ -60,6 +53,35 @@ describe('feedPreview encode targets', () => {
     expect(feedPreviewBitrate('hd', 1800)).toBe(1_000_000);
     expect(feedPreviewBitrate('sd', 5)).toBe(1_200_000);
     expect(feedPreviewBitrate('sd', 1800)).toBe(250_000);
+  });
+});
+
+describe('feedPreview duration validation', () => {
+  const free = getPublishTier('free');
+  const limitMs = free.maxDurationSec * 1000;
+
+  it('accepts a video within the plan, including a last frame that rounds over', () => {
+    expect(validateFeedPreviewDuration('sd', 'video/mp4', 12_000, free).ok).toBe(true);
+    expect(validateFeedPreviewDuration('hd', 'video/mp4', limitMs + 33, free).ok).toBe(true);
+  });
+
+  it('rejects a video longer than the plan', () => {
+    expect(validateFeedPreviewDuration('sd', 'video/webm', limitMs + 1000, free)).toEqual({
+      ok: false,
+      error: 'exceeds_tier_max_duration',
+    });
+  });
+
+  it('requires a length on video previews', () => {
+    expect(validateFeedPreviewDuration('sd', 'video/mp4', undefined, free)).toEqual({
+      ok: false,
+      error: 'duration_required',
+    });
+  });
+
+  it('ignores posters and non-video files', () => {
+    expect(validateFeedPreviewDuration('poster', 'image/jpeg', undefined, free).ok).toBe(true);
+    expect(validateFeedPreviewDuration('sd', 'image/webp', undefined, free).ok).toBe(true);
   });
 });
 

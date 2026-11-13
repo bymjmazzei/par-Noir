@@ -1,5 +1,5 @@
 /**
- * Monthly preview ingest metering + free daily view caps (Redis).
+ * The publisher's plan (decided here, never by the client) + free daily view caps (Redis).
  */
 import {
   FEED_FREE_DAILY_VIEW_STARTS,
@@ -8,20 +8,12 @@ import {
 } from '@par-noir/aggregator-domain';
 import { createHash } from 'crypto';
 
-function monthKey(d = new Date()): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
 function dayKey(d = new Date()): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 function hashPn(pn: string): string {
   return createHash('sha256').update(pn).digest('hex').slice(0, 16);
-}
-
-export function uploadMeterKey(pnIdentifier: string): string {
-  return `feed-upload-gb:v1:${hashPn(pnIdentifier)}:${monthKey()}`;
 }
 
 export function freeViewStartsKey(viewerKey: string): string {
@@ -34,52 +26,27 @@ export function viewerKeyFromRequest(pnIdentifier?: string | null, anonId?: stri
   return 'anon:unknown';
 }
 
-export async function getUploadBytesUsed(pnIdentifier: string): Promise<number> {
-  const { getCache } = await import('../utils/cache');
-  const v = await getCache<{ bytes?: number }>(uploadMeterKey(pnIdentifier));
-  return typeof v?.bytes === 'number' && Number.isFinite(v.bytes) ? v.bytes : 0;
-}
-
-export async function addUploadBytes(pnIdentifier: string, delta: number): Promise<number> {
-  const key = uploadMeterKey(pnIdentifier);
-  const { getCache, setCache } = await import('../utils/cache');
-  const cur = await getUploadBytesUsed(pnIdentifier);
-  const next = cur + Math.max(0, delta);
-  // ~40 days TTL so month keys expire
-  await setCache(key, { bytes: next }, 40 * 24 * 3600);
-  return next;
-}
-
 export type PublishPlanStatus = {
-  planId: PublishTierId | string;
+  planId: PublishTierId;
   maxDurationSec: number;
   maxHeight: number;
   allowHd: boolean;
-  uploadBytesUsed: number;
-  uploadBytesLimit: number;
-  softDegraded: boolean;
   retailUsd: number;
 };
 
-export async function resolvePublishPlan(
-  pnIdentifier: string,
-  planId?: string | null
-): Promise<PublishPlanStatus> {
-  const id = (planId || 'free') as PublishTierId;
-  const notch = getPublishTier(id);
-  const used = await getUploadBytesUsed(pnIdentifier);
-  const softDegraded = notch.id !== 'free' && used >= notch.uploadBytesPerMonth;
-  const effective = softDegraded
-    ? { ...getPublishTier('free'), id: notch.id, retailUsd: notch.retailUsd }
-    : notch;
+/** Verified publishers get floor; everyone else is free. Paid plans are not live yet. */
+export async function resolvePublishPlan(pnIdentifier: string): Promise<PublishPlanStatus> {
+  const { EngagementService } = await import('./engagementService');
+  return publishPlanFor(await EngagementService.isIdentityVerifiedForMonetization(pnIdentifier));
+}
+
+export function publishPlanFor(verified: boolean): PublishPlanStatus {
+  const notch = getPublishTier(verified ? 'floor' : 'free');
   return {
     planId: notch.id,
-    maxDurationSec: effective.maxDurationSec,
-    maxHeight: effective.maxHeight,
-    allowHd: effective.allowHd,
-    uploadBytesUsed: used,
-    uploadBytesLimit: notch.uploadBytesPerMonth,
-    softDegraded,
+    maxDurationSec: notch.maxDurationSec,
+    maxHeight: notch.maxHeight,
+    allowHd: notch.allowHd,
     retailUsd: notch.retailUsd,
   };
 }

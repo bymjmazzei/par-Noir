@@ -185,7 +185,11 @@ describe('fingerprints on confirm and revoke', () => {
   it('does not fingerprint hd renditions', async () => {
     const res = await request(app())
       .post('/api/aggregator/feed-media/confirm-upload')
-      .send({ fileId: 'f2', variant: 'hd', ref: { ...poster('feed/f2/hd'), contentType: 'video/mp4' } });
+      .send({
+        fileId: 'f2',
+        variant: 'hd',
+        ref: { ...poster('feed/f2/hd'), contentType: 'video/mp4', durationMs: 10_000 },
+      });
     expect(res.status).toBe(200);
     await new Promise((r) => setTimeout(r, 100));
     expect(table.size).toBe(0);

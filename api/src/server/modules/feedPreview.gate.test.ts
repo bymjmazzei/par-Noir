@@ -2,11 +2,11 @@
  * Feed preview persist + redact + public-require gates (no live R2/DB).
  */
 import {
-  effectivePublishTier,
   getPublishTier,
   requirePublicImageFeedPreviews,
   requirePublicVideoFeedPreviews,
   validateFeedPreviewByteSize,
+  validateFeedPreviewDuration,
   FEED_PREVIEW_SD_MAX_BYTES,
 } from '@par-noir/aggregator-domain';
 import {
@@ -30,14 +30,10 @@ describe('feed preview publish requirements', () => {
     ).toBe(false);
   });
 
-  it('soft-degrades average_creator when GB exhausted', () => {
-    const plan = getPublishTier('average_creator');
-    const d = effectivePublishTier({
-      planId: 'average_creator',
-      gbUsedBytes: plan.uploadBytesPerMonth,
-    });
-    expect(d.maxDurationSec).toBe(60);
-    expect(d.allowHd).toBe(true);
+  it('rejects a video preview longer than the plan', () => {
+    const free = getPublishTier('free');
+    const r = validateFeedPreviewDuration('sd', 'video/mp4', (free.maxDurationSec + 30) * 1000, free);
+    expect(r).toEqual({ ok: false, error: 'exceeds_tier_max_duration' });
   });
 });
 

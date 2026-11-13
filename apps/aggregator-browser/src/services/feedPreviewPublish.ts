@@ -123,7 +123,6 @@ export async function publishFeedPreviews(params: {
   const variant = async (preview: EncodedPreview) =>
     uploadOneVariant({
       ...params,
-      planId,
       pnIdentifier,
       encoded: credential ? await credential(preview) : preview,
     });
@@ -138,12 +137,11 @@ async function uploadOneVariant(params: {
   fileId: string;
   accessToken: string;
   accountId: string;
-  planId: string;
   pnIdentifier: string;
   encoded: EncodedPreview;
   blobClass?: ContentBlobClass;
 }): Promise<FeedPreviewObjectRef> {
-  const { encoded, fileId, accessToken, accountId, planId, pnIdentifier } = params;
+  const { encoded, fileId, accessToken, accountId, pnIdentifier } = params;
   const presignRes = await ownerFetch(
     'POST',
     '/api/aggregator/feed-media/presign-upload',
@@ -152,7 +150,7 @@ async function uploadOneVariant(params: {
       variant: encoded.variant,
       contentType: encoded.contentType,
       contentLength: encoded.byteSize,
-      planId,
+      durationMs: encoded.durationMs,
     },
     { authToken: accessToken, pnIdentifier }
   );

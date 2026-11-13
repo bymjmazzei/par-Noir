@@ -64,21 +64,10 @@ import {
 } from './mixPageAudio';
 import { getPlayheadSec, setPlayheadSec } from './playheadStore';
 import { playbackMode } from './playbackMode';
-import { PEN_PUBLISH_PLAN_ID } from './penPublishPlan';
+import { PEN_PUBLISH_PLAN_ID, PageTooLongError } from './penPublishPlan';
 
 export const PAGE_VIDEO_FPS = 30;
 export const VIDEO_ENCODER_UNAVAILABLE = 'video_encoder_unavailable';
-/** Same code browse uploads throw when a video runs past the plan's limit. */
-export const EXCEEDS_TIER_MAX_DURATION = 'exceeds_tier_max_duration';
-
-export class PageTooLongError extends Error {
-  constructor(
-    readonly durationSec: number,
-    readonly maxDurationSec: number
-  ) {
-    super(EXCEEDS_TIER_MAX_DURATION);
-  }
-}
 export const PAGE_BACKGROUND_ID = '@page-background';
 export const PAGE_BODY_ID = '@page-body';
 export const BACKGROUND_VIDEO_ID = '@background-video';
