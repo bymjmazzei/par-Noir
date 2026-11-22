@@ -1,37 +1,22 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
-import fs from 'fs';
 
-import { NATIVE_IPC_CHANNEL, SECURE_VOLUME_IPC_CHANNEL, type SecureVolumeIdentity, type SecureVolumeMountState, type SecureVolumeUnlockPayload } from '../shared/ipcChannels';
-import { SecureVolumeManager } from './secureVolume/SecureVolumeManager';
+import {
+  NATIVE_IPC_CHANNEL,
+  SECURE_VOLUME_IPC_CHANNEL,
+  type SecureVolumeIdentity,
+  type SecureVolumeUnlockPayload
+} from '../shared/ipcChannels';
+import {
+  SecureVolumeManager,
+  electronAppDirectory,
+  resolvePnDesktopDataRoot
+} from './secureVolume/SecureVolumeManager';
 
 const isDev = !app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
 
-const resolveDataRoot = (): string => {
-  const override = process.env.PN_DATA_ROOT?.trim();
-  let baseCandidate: string;
-  
-  if (override && override.length > 0) {
-    baseCandidate = path.resolve(override);
-  } else if (app.isPackaged) {
-    // In packaged mode, use directory containing the executable
-    baseCandidate = path.resolve(path.dirname(app.getPath('exe')), 'data');
-  } else {
-    // In dev mode, use directory next to app
-    baseCandidate = path.resolve(app.getAppPath(), '..', 'data');
-  }
-
-  try {
-    fs.mkdirSync(baseCandidate, { recursive: true });
-  } catch (error) {
-    console.warn('[desktop] Failed to create portable data root at', baseCandidate, error);
-  }
-
-  app.setPath('userData', baseCandidate);
-  return baseCandidate;
-};
-
-const portableDataRoot = resolveDataRoot();
+const portableDataRoot = resolvePnDesktopDataRoot();
+app.setPath('userData', portableDataRoot);
 console.log('[desktop] userData path set to', portableDataRoot);
 
 let mainWindow: BrowserWindow | null = null;
@@ -114,7 +99,13 @@ const registerIpc = () => {
       throw new Error('Missing target path');
     }
     const resolved = path.resolve(target);
-    if (!resolved.startsWith(app.getPath('userData'))) {
+    const status = await secureVolumeManager.getStatus();
+    const mount = status.mountPoint ? path.resolve(status.mountPoint) : null;
+    const underUserData = resolved.startsWith(path.resolve(app.getPath('userData')) + path.sep)
+      || resolved === path.resolve(app.getPath('userData'));
+    const underMount =
+      mount != null && (resolved === mount || resolved.startsWith(mount + path.sep));
+    if (!underUserData && !underMount) {
       throw new Error('Blocked unsafe path');
     }
     return shell.openPath(target);
@@ -155,18 +146,24 @@ const createWindow = async () => {
 };
 
 app.whenReady().then(async () => {
-  // Initialize secure volume manager, but don't block app startup if VeraCrypt isn't found
-  secureVolumeManager.init().catch((error) => {
-    console.warn('[desktop] Secure volume manager initialization failed (VeraCrypt may not be available):', error.message);
-  });
-  
+  secureVolumeManager
+    .init({
+      userDataPath: portableDataRoot,
+      appPath: electronAppDirectory(app)
+    })
+    .catch((error) => {
+      console.warn(
+        '[desktop] Secure volume manager initialization failed (VeraCrypt may not be available):',
+        error.message
+      );
+    });
+
   registerIpc();
-  
-  // Try to unmount any existing volumes, but don't fail if it errors
+
   secureVolumeManager.unmount().catch(() => {
     // Ignore unmount errors on startup
   });
-  
+
   await createWindow();
 
   app.on('activate', () => {
@@ -194,4 +191,3 @@ if (isDev) {
     console.warn('[desktop] VITE_DEV_SERVER_URL not set; run "vite dev" for live reload.');
   }
 }
-

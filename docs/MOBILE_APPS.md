@@ -1,6 +1,6 @@
 # Native mobile apps (iOS and Android)
 
-The Dashboard, Browser, Messaging, Prism, and **Unlock** web apps are wrapped with [Capacitor](https://capacitorjs.com/) for iOS and Android. Same codebase as web; native shells load the built web assets.
+The Dashboard, Browser, Messaging, Prism, Pen, and **Unlock** web apps are wrapped with [Capacitor](https://capacitorjs.com/) for iOS and Android. Same codebase as web; native shells load the built web assets.
 
 ## App overview
 
@@ -9,9 +9,14 @@ The Dashboard, Browser, Messaging, Prism, and **Unlock** web apps are wrapped wi
 | **Unlock** | `com.parnoir.unlock` | `apps/pn-unlock` | `build:mobile`, `open:android`, `open:ios` |
 | **Unlock Desktop** | `com.parnoir.unlock` | `apps/pn-unlock-desktop` | Electron: `build`, `dist:mac`, `dist:win` |
 | **Dashboard** | `com.parnoir.dashboard` | `apps/id-dashboard` | `build:mobile`, `open:android`, `open:ios` |
+| **Desktop Dashboard** | `com.parnoir.desktop` | `apps/desktop-dashboard` | Electron secure volume |
 | **Browser** | `com.parnoir.browser` | `apps/aggregator-browser` | `build:mobile`, `open:android`, `open:ios` |
 | **Messaging** | `com.parnoir.messaging` | `apps/aggregator-browser` (variant) | `build:mobile:messaging`; sync in `capacitor-messaging/` |
 | **Prism** | `com.parnoir.prism` | `apps/prism` | `build:mobile`, `open:android`, `open:ios` |
+| **Pen** | `com.parnoir.pen` | `apps/pen` | `build:mobile`, `open:android`, `open:ios` |
+| **Pen Desktop** | `com.parnoir.pen` | `apps/pen-desktop` | Electron: `build`, `dist:mac`, `dist:win` |
+
+**Pen desktop device custody:** drafts can stay on the shared secure volume (`{mount}/par-noir-pen/`) used by Desktop Dashboard (`PN_DATA_ROOT` / Application Support `par Noir/`). Cap Pen stays cloud-SoT for drafts.
 
 ## Unlock broker (phishing-hardened OAuth)
 
@@ -35,6 +40,7 @@ Public store submission paperwork is ops, not a merge blocker. Verified App Link
    - Browser: `cd apps/aggregator-browser && npm run build:mobile`
    - Messaging: `cd apps/aggregator-browser && npm run build:mobile:messaging` (uses `vite build --mode messaging` and `.env.messaging` → **`dist-messaging`**; then syncs `capacitor-messaging/`). Open **`capacitor-messaging/android`** in Android Studio, not the main browser project.
    - Prism: `cd apps/prism && npm run build:mobile` — open **`apps/prism/android`** (`com.parnoir.prism`). Web deploy is **`apps/prism/dist`** (e.g. `prism` Firebase target); same build works in the native shell.
+   - Pen: `cd apps/pen && npm run build:mobile` (run `npx cap add android` / `ios` once if missing). Desktop: `cd apps/pen-desktop && npm run build` (loads `apps/pen/dist`).
 
 2. **Open in IDE**
    - Android: `npm run open:android` in the app folder (or `open:android` in `capacitor-messaging` for Messaging).

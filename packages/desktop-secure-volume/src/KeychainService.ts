@@ -1,5 +1,5 @@
 import keytar from 'keytar';
-import type { SecureVolumeIdentity } from '../../shared/ipcChannels';
+import type { SecureVolumeIdentity } from '@par-noir/desktop-ipc';
 
 const SERVICE_NAME = 'com.parnoir.secure-volume';
 

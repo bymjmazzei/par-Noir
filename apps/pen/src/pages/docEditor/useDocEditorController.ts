@@ -1398,23 +1398,30 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
         JSON.stringify(draftMeta)
       );
 
-      await upsertDraftCloud({
-        userPnIdentifier: session.pnIdentifier,
-        manifest: saved.manifest,
-        draft: draftMeta,
-        sections: saved.sections
-      }).catch((e) => {
-        enqueueSyncJob(session.pnIdentifier, {
-          kind: 'draft_upsert',
-          docId,
-          payload: {
-            manifest: saved.manifest,
-            draft: draftMeta,
-            sections: saved.sections
-          }
+      const { isDeviceCustody, saveDeviceCustodyDraft } = await import(
+        '../../services/penDeviceCustody'
+      );
+      if (isDeviceCustody(saved.manifest)) {
+        await saveDeviceCustodyDraft(saved);
+      } else {
+        await upsertDraftCloud({
+          userPnIdentifier: session.pnIdentifier,
+          manifest: saved.manifest,
+          draft: draftMeta,
+          sections: saved.sections
+        }).catch((e) => {
+          enqueueSyncJob(session.pnIdentifier, {
+            kind: 'draft_upsert',
+            docId,
+            payload: {
+              manifest: saved.manifest,
+              draft: draftMeta,
+              sections: saved.sections
+            }
+          });
+          throw e;
         });
-        throw e;
-      });
+      }
 
       if (used.length && session.mlKemSecretKey) {
         void ensureDocScopedFonts({
@@ -1488,6 +1495,51 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       window.removeEventListener('beforeunload', flush);
     };
   }, [session.pnIdentifier]);
+
+  async function promoteDeviceToCloud() {
+    const current = bundleRef.current;
+    if (!current || current.manifest.custody !== 'device') return;
+    setError(null);
+    setStatus('Moving to cloud…');
+    try {
+      const next = {
+        ...current,
+        manifest: { ...current.manifest, custody: 'cloud' as const, updatedAt: new Date().toISOString() }
+      };
+      const saved = await saveLocalDocAsync(session.pnIdentifier, next);
+      setBundle({ ...saved });
+      bundleRef.current = saved;
+      const draftId =
+        saved.manifest.activeDraftId ||
+        sessionStorage.getItem(`pen_active_draft:${docId}`) ||
+        `draft_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+      const draftMeta = {
+        draftId,
+        docId,
+        authorPnHash: hashPnIdentifier(session.pnIdentifier),
+        createdAt: saved.manifest.createdAt,
+        updatedAt: saved.manifest.updatedAt,
+        status: 'unfinished' as const,
+        toc: saved.manifest.toc
+      };
+      await upsertDraftCloud({
+        userPnIdentifier: session.pnIdentifier,
+        manifest: saved.manifest,
+        draft: draftMeta,
+        sections: saved.sections
+      });
+      const { scheduleDocCloudBootstrap } = await import('../../services/penSyncFlush');
+      scheduleDocCloudBootstrap({
+        session,
+        bundle: saved,
+        draft: draftMeta
+      });
+      setStatus('Draft on cloud');
+      window.setTimeout(() => setStatus(null), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'promote_to_cloud_failed');
+    }
+  }
 
   async function promote() {
     setError(null);
@@ -2521,6 +2573,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
     previewToolbarHost,
     previewZoom,
     promote,
+    promoteDeviceToCloud,
     proposeSuggestion,
     publishAsLibraryTemplate,
     publishAsTemplate,

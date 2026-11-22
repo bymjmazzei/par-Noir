@@ -10,6 +10,7 @@ export type {
   BrowseOauthPayload,
   MessagingSessionPayload,
   PrismSessionPayload,
+  PenSessionPayload,
   SessionVaultPayload,
   SessionVaultDeps,
   SealedVaultRecord,

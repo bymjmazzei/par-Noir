@@ -183,7 +183,15 @@ export class ClientRegistrationService {
           'https://pen-parnoir.web.app/oauth-callback.html',
           'https://pen-parnoir.web.app/',
           'http://localhost:5177/oauth-callback.html',
-          'http://127.0.0.1:5177/oauth-callback.html'
+          'http://127.0.0.1:5177/oauth-callback.html',
+          'https://localhost/oauth-callback.html',
+          'https://localhost/',
+          'capacitor://localhost/oauth-callback.html',
+          'capacitor://localhost/',
+          'ionic://localhost/oauth-callback.html',
+          'ionic://localhost/',
+          'com.parnoir.pen://oauth-callback',
+          'com.parnoir.pen://'
         ],
         scopes: ['openid', 'profile', 'cloud:read', 'cloud:app']
       },

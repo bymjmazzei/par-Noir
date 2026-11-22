@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { IconSave } from './icons/PenIcons';
+import {
+  deviceCustodyAvailable,
+  preferDeviceCustodyDefault,
+  setPreferDeviceCustodyDefault
+} from '../services/penDeviceCustody';
 
 /** Save actions menu with draft status and transient status overlay. */
 export function SaveMenu({
@@ -10,9 +15,11 @@ export function SaveMenu({
   busy,
   statusMessage,
   errorMessage,
+  deviceCustody,
   onSaveDraft,
   onCommit,
-  onSuggest
+  onSuggest,
+  onPromoteToCloud
 }: {
   canCommit: boolean;
   canSuggest: boolean;
@@ -21,13 +28,18 @@ export function SaveMenu({
   busy?: boolean;
   statusMessage?: string | null;
   errorMessage?: string | null;
+  /** Current doc is device-custody (desktop). */
+  deviceCustody?: boolean;
   onSaveDraft: () => void;
   onCommit: () => void;
   onSuggest: () => void;
+  onPromoteToCloud?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [preferDevice, setPreferDevice] = useState(() => preferDeviceCustodyDefault());
   const rootRef = useRef<HTMLDivElement>(null);
   const toast = errorMessage || statusMessage;
+  const showDeviceOpts = deviceCustodyAvailable();
 
   useEffect(() => {
     if (!open) return;
@@ -115,6 +127,35 @@ export function SaveMenu({
             >
               Suggest instead
             </button>
+          )}
+          {showDeviceOpts && (
+            <>
+              <div className="my-1 border-t border-neutral-100" />
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-[12px] text-neutral-700 hover:bg-neutral-50 hover:text-black"
+                onClick={() => {
+                  const next = !preferDevice;
+                  setPreferDevice(next);
+                  setPreferDeviceCustodyDefault(next);
+                  setOpen(false);
+                }}
+              >
+                {preferDevice ? '✓ ' : ''}Keep new drafts on this device
+              </button>
+              {deviceCustody && onPromoteToCloud ? (
+                <button
+                  type="button"
+                  className="block w-full px-3 py-1.5 text-left text-[12px] font-bold text-black hover:bg-neutral-50"
+                  onClick={() => {
+                    onPromoteToCloud();
+                    setOpen(false);
+                  }}
+                >
+                  Move draft to cloud
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       )}

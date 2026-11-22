@@ -467,6 +467,9 @@ export type PenPageOrientation = 'portrait' | 'landscape';
 
 export type PenDocLifecycle = 'draft' | 'published';
 
+/** Where durable draft bytes live: cloud Drive replica vs device secure-volume tree. */
+export type PenDocCustody = 'cloud' | 'device';
+
 export interface PenDocManifest {
   docId: string;
   title: string;
@@ -567,6 +570,11 @@ export interface PenDocManifest {
   keyEpoch?: number;
   /** Whether current/ has been published at least once. */
   lifecycle?: PenDocLifecycle;
+  /**
+   * Durable draft custody. `device` = sealed on the desktop secure volume (no Drive
+   * until promote). Omitted / `cloud` = existing upsertDraftCloud path.
+   */
+  custody?: PenDocCustody;
   /** Optional My Library notebook id (Pen UI view metadata). */
   folderId?: string | null;
   /** Active working draft id under drafts/. */

@@ -35,6 +35,8 @@ export function scheduleDocCloudBootstrap(params: {
   bundle: LocalDocBundle;
   draft: PenDraftManifest;
 }): void {
+  // Device-custody drafts stay on the secure volume until explicit promote.
+  if (params.bundle.manifest.custody === 'device') return;
   const docId = params.bundle.manifest.docId;
   enqueueSyncJob(params.session.pnIdentifier, {
     kind: 'bootstrap',

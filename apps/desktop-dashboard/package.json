@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@par-noir/desktop-ipc": "file:../../packages/desktop-ipc",
+    "@par-noir/desktop-secure-volume": "file:../../packages/desktop-secure-volume",
     "keytar": "^7.9.0",
     "par-noir-dashboard": "file:../id-dashboard",
     "react": "^18.3.1",

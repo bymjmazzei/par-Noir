@@ -1,4 +1,4 @@
-import type { SecureVolumeIdentity } from '../../shared/ipcChannels';
+import type { SecureVolumeIdentity } from '@par-noir/desktop-ipc';
 import { KeychainService } from './KeychainService';
 
 export const TokenStorageService = {

@@ -26,6 +26,7 @@ import { requestTimestamp } from './penApi';
 import { resolveSigningKeys } from './penKeys';
 import { scheduleDocCloudBootstrap } from './penSyncFlush';
 import { mintDocKey } from './penDocCrypto';
+import { preferDeviceCustodyDefault } from './penDeviceCustody';
 
 function randomDocId(): string {
   return `pen_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
@@ -140,6 +141,7 @@ export async function createBlankDoc(input: {
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',
+    custody: preferDeviceCustodyDefault() ? 'device' : 'cloud',
     activeDraftId: draftId,
     licensing: defaultLicensingRoot(ownerPnHash, {
       membership: false,
@@ -153,11 +155,17 @@ export async function createBlankDoc(input: {
   sessionStorage.setItem(`pen_active_draft:${docId}`, draftId);
   sessionStorage.setItem(`pen_draft_meta:${docId}:${draftId}`, JSON.stringify(draft));
 
-  scheduleDocCloudBootstrap({
-    session: input.session,
-    bundle,
-    draft
-  });
+  if (manifest.custody === 'device') {
+    void import('./penDeviceCustody').then(({ saveDeviceCustodyDraft }) =>
+      saveDeviceCustodyDraft(bundle).catch(() => undefined)
+    );
+  } else {
+    scheduleDocCloudBootstrap({
+      session: input.session,
+      bundle,
+      draft
+    });
+  }
 
   return bundle;
 }

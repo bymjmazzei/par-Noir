@@ -64,7 +64,7 @@ import {
 } from './mixPageAudio';
 import { getPlayheadSec, setPlayheadSec } from './playheadStore';
 import { playbackMode } from './playbackMode';
-import { PEN_PUBLISH_PLAN_ID, PageTooLongError } from './penPublishPlan';
+import { currentPublishTier, PageTooLongError } from './penPublishPlan';
 
 export const PAGE_VIDEO_FPS = 30;
 export const VIDEO_ENCODER_UNAVAILABLE = 'video_encoder_unavailable';
@@ -539,7 +539,7 @@ export async function encodePageVideo(
   }
 ): Promise<ComposePageVideoResult> {
   if (typeof VideoEncoder === 'undefined') throw new Error(VIDEO_ENCODER_UNAVAILABLE);
-  const tier = opts?.tier ?? getPublishTier(PEN_PUBLISH_PLAN_ID);
+  const tier = opts?.tier ?? currentPublishTier();
   const section = normalizeSection(page.section);
   const backgroundSrc = page.manifest.pagePresentation?.backgroundVideo?.trim();
   const resolved = resolveTimelineDuration(

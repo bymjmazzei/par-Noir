@@ -1,7 +1,7 @@
 import { deriveCanonicalPnIdentifier, pnShortLabel } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
 /** Capacitor / Keychain app ids for session vault namespacing. */
-export type SessionVaultAppId = 'dashboard' | 'browse' | 'messaging' | 'prism' | 'unlock';
+export type SessionVaultAppId = 'dashboard' | 'browse' | 'messaging' | 'prism' | 'unlock' | 'pen';
 
 export type NativeKv = {
   get(key: string): Promise<string | null>;
@@ -73,13 +73,22 @@ export type PrismSessionPayload = {
   sessionJson: string;
 };
 
+/** Pen app: OAuth session JSON + durable docKeys for device-custody drafts. */
+export type PenSessionPayload = {
+  kind: 'pen_session';
+  oauthSessionJson: string;
+  /** docId → docKey (base64). Survives quit when sealed in the vault. */
+  docKeys?: Record<string, string>;
+};
+
 export type SessionVaultPayload =
   | DashboardKeysPayload
   | UnlockKeysPayload
   | UnlockMultiPayload
   | BrowseOauthPayload
   | MessagingSessionPayload
-  | PrismSessionPayload;
+  | PrismSessionPayload
+  | PenSessionPayload;
 
 export type SessionVaultDeps = {
   kv: NativeKv;

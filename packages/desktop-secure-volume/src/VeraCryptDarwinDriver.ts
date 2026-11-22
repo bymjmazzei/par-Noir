@@ -1,6 +1,6 @@
 import path from 'path';
 
-import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../shared/ipcChannels';
+import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '@par-noir/desktop-ipc';
 import type { SecureVolumeConfig } from './VolumeDriver';
 import { VeraCryptDriver, spawnAsync } from './VeraCryptDriver';
 

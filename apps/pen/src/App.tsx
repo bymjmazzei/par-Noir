@@ -2,7 +2,7 @@
  * Pen app — flow-first document builder with collab + authenticity.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   LockButton,
@@ -50,6 +50,8 @@ import {
   pullAndMergeFontsCloud,
   unbindFontsCloudSession
 } from './services/penFontsCloud';
+import { penForceOAuthRedirect } from './services/penPlatform';
+import { PenSessionVaultHost } from './components/PenSessionVaultHost';
 
 export type { PenSession };
 
@@ -215,9 +217,48 @@ function Locked() {
     saveBrowseDensity('_locked', 'feed');
   }, [location.pathname]);
 
-  if (session) return <AuthenticatedApp session={session} />;
+  // Cap / Electron: oauth-callback navigates here with ?oauth_resume=1&code=...
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('oauth_resume') !== '1') return;
+    const code = params.get('code');
+    const err = params.get('error');
+    const next = new URL(window.location.href);
+    next.searchParams.delete('oauth_resume');
+    next.searchParams.delete('code');
+    next.searchParams.delete('state');
+    next.searchParams.delete('error');
+    next.searchParams.delete('error_description');
+    window.history.replaceState({}, '', next.pathname + next.search + next.hash);
+    void onPopup({
+      code: code || undefined,
+      error: err || undefined,
+      error_description: params.get('error_description') || undefined,
+      state: params.get('state') || undefined,
+      granted_data_points: params.get('granted_data_points') || undefined,
+      consent_shown: params.get('consent_shown') || undefined
+    });
+  }, [onPopup]);
+
+  if (session) {
+    return (
+      <>
+        <PenSessionVaultHost session={session} />
+        <AuthenticatedApp session={session} />
+      </>
+    );
+  }
+
+  // Vault unlock overlay when locked on Cap / desktop
+  const lockedChrome = (body: ReactNode) => (
+    <>
+      <PenSessionVaultHost session={null} />
+      {body}
+    </>
+  );
 
   const lockedUnlock = {
+    forceRedirect: penForceOAuthRedirect(),
     onBeforeNavigate: (state: string) => {
       sessionStorage.setItem(OAUTH_STATE_KEY, state);
       setError(null);
@@ -231,7 +272,7 @@ function Locked() {
     location.pathname === '/templates' || lockedView === 'templates';
 
   if (lockedTemplates) {
-    return (
+    return lockedChrome(
       <div className="min-h-screen bg-white text-black">
         <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
           <div className="pen-app-chrome-left">
@@ -292,7 +333,7 @@ function Locked() {
     );
   }
 
-  return (
+  return lockedChrome(
     <PenLockedLanding
       busy={busy}
       error={error}
@@ -401,6 +442,12 @@ function AddMenu({
 }
 
 function AuthenticatedApp({ session }: { session: PenSession }) {
+  useEffect(() => {
+    void import('./services/penPublishPlan').then(({ fetchPublishPlan }) =>
+      fetchPublishPlan(session.accessToken)
+    );
+  }, [session.accessToken]);
+
   const navigate = useNavigate();
   const location = useLocation();
   const [docs, setDocs] = useState<LocalDocSummary[]>([]);

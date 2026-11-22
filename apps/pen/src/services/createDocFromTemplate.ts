@@ -36,6 +36,7 @@ import { resolveSigningKeys } from './penKeys';
 import { scheduleDocCloudBootstrap } from './penSyncFlush';
 import { createPollSheet } from './pollCloud';
 import { mintDocKey } from './penDocCrypto';
+import { preferDeviceCustodyDefault } from './penDeviceCustody';
 
 export function randomPenDocId(): string {
   return `pen_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
@@ -175,6 +176,7 @@ export async function bootstrapDocBundle(input: {
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',
+    custody: preferDeviceCustodyDefault() ? 'device' : 'cloud',
     activeDraftId: draftId,
     ...(input.basedOnTemplateId ? { basedOnTemplateId: input.basedOnTemplateId } : {}),
     ...(input.basedOnFileId ? { basedOnFileId: input.basedOnFileId } : {}),
@@ -195,11 +197,17 @@ export async function bootstrapDocBundle(input: {
     JSON.stringify(draft)
   );
 
-  scheduleDocCloudBootstrap({
-    session: input.session,
-    bundle,
-    draft
-  });
+  if (manifest.custody === 'device') {
+    void import('./penDeviceCustody').then(({ saveDeviceCustodyDraft }) =>
+      saveDeviceCustodyDraft(bundle).catch(() => undefined)
+    );
+  } else {
+    scheduleDocCloudBootstrap({
+      session: input.session,
+      bundle,
+      draft
+    });
+  }
 
   return bundle;
 }

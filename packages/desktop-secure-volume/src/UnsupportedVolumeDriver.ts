@@ -1,4 +1,4 @@
-import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../shared/ipcChannels';
+import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '@par-noir/desktop-ipc';
 import type { SecureVolumeConfig, VolumeDriver } from './VolumeDriver';
 
 export class UnsupportedVolumeDriver implements VolumeDriver {

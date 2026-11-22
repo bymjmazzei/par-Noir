@@ -1,0 +1,30 @@
+{
+  "name": "@par-noir/desktop-secure-volume",
+  "version": "0.1.0",
+  "description": "Shared secure-volume drivers and PN desktop data root for dashboard + Pen desktop",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": ["src"],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@par-noir/desktop-ipc": "file:../desktop-ipc",
+    "keytar": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}

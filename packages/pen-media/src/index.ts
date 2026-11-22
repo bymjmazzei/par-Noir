@@ -19,8 +19,12 @@ export {
   putLocalMedia,
   putLocalMediaForDriveFile,
   resolveLocalMediaUrl,
-  resolvePenMediaSrc
+  resolvePenMediaSrc,
+  configurePenMediaBackend,
+  createIdbPenMediaBackend,
+  createMemoryPenMediaBackend
 } from './store';
+export type { PenMediaBackend, PenMediaRecord } from './store';
 export { configurePenMedia } from './config';
 export type { PenMediaConfig } from './config';
 export { downloadPenMedia, ensurePenMediaUrl, sniffMediaMime } from './drive';

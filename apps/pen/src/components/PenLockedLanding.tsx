@@ -6,6 +6,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 import { handoffHasSigningKeys } from '../services/penKeys';
+import { penForceOAuthRedirect } from '../services/penPlatform';
 import { PenBrandingFooter } from './PenBrandingFooter';
 
 const CHECKLIST = [
@@ -161,6 +162,7 @@ export function PenLockedLanding({
             iconOnly
             title="Unlock"
             requireMessagingHandoff
+            forceRedirect={penForceOAuthRedirect()}
             isMessagingReady={(pending) => handoffHasSigningKeys(pending?.messagingHandoff)}
             config={unlockConfig}
             onBeforeNavigate={onBeforeNavigate}
@@ -204,6 +206,7 @@ export function PenLockedLanding({
                         <UnlockButton
                           className="pen-locked-unlock-cta"
                           requireMessagingHandoff
+                          forceRedirect={penForceOAuthRedirect()}
                           isMessagingReady={(pending) => handoffHasSigningKeys(pending?.messagingHandoff)}
                           config={unlockConfig}
                           onBeforeNavigate={onBeforeNavigate}

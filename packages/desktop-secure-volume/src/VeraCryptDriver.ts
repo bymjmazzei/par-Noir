@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 
-import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../shared/ipcChannels';
+import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '@par-noir/desktop-ipc';
 import type { SecureVolumeConfig, VolumeDriver } from './VolumeDriver';
 
 interface ExecResult {

@@ -1,9 +1,15 @@
 /**
- * Device media store — IndexedDB holds each file as a Blob (no byte copies, no base64).
+ * Device media store — pluggable backend (IndexedDB default; Cap/Electron via configure).
  * Layer fields hold refs; this module turns refs into blob: URLs for playback.
  */
 
-import { trackActivity } from './activity';
+import {
+  configurePenMediaBackend,
+  getPenMediaBackend,
+  hasPenMediaBackend,
+  type PenMediaRecord
+} from './backend';
+import { createIdbPenMediaBackend } from './idbBackend';
 import {
   isInlineMediaSrc,
   isPenMediaSrcRef,
@@ -13,89 +19,15 @@ import {
   penMediaRef
 } from './refs';
 
-const DB_NAME = 'pen_media_v2';
-const STORE = 'media';
-const DB_VERSION = 1;
-
-export type PenMediaRecord = {
-  id: string;
-  docId: string;
-  mime: string;
-  blob: Blob;
-  updatedAt: string;
-  /** Drive file this blob mirrors (uploaded on attach or cached from Drive). */
-  driveFileId?: string;
-};
+export type { PenMediaRecord };
 
 const urlCache = new Map<string, string>();
-let dbPromise: Promise<IDBDatabase> | null = null;
 
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      reject(new Error('indexeddb_unavailable'));
-      return;
-    }
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        const store = db.createObjectStore(STORE, { keyPath: 'id' });
-        store.createIndex('docId', 'docId', { unique: false });
-        store.createIndex('driveFileId', 'driveFileId', { unique: false });
-      }
-    };
-    req.onsuccess = () => {
-      const db = req.result;
-      db.onversionchange = () => {
-        db.close();
-        dbPromise = null;
-      };
-      resolve(db);
-    };
-    req.onerror = () => {
-      dbPromise = null;
-      reject(req.error || new Error('idb_open_failed'));
-    };
-  });
-  return dbPromise;
-}
-
-function request<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error || new Error('idb_request_failed'));
-  });
-}
-
-async function readRecord(mediaId: string): Promise<PenMediaRecord | null> {
-  const db = await openDb();
-  const tx = db.transaction(STORE, 'readonly');
-  const hit = await request(tx.objectStore(STORE).get(mediaId));
-  return (hit as PenMediaRecord | undefined) ?? null;
-}
-
-async function readRecordByDriveFileId(fileId: string): Promise<PenMediaRecord | null> {
-  const db = await openDb();
-  const tx = db.transaction(STORE, 'readonly');
-  const hit = await request(tx.objectStore(STORE).index('driveFileId').get(fileId));
-  return (hit as PenMediaRecord | undefined) ?? null;
-}
-
-async function writeRecord(record: PenMediaRecord): Promise<void> {
-  const db = await openDb();
-  await trackActivity(
-    'idb-write',
-    () =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(record);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('idb_put_failed'));
-        tx.onabort = () => reject(tx.error || new Error('idb_put_aborted'));
-      })
-  );
+function ensureBackend() {
+  if (!hasPenMediaBackend()) {
+    configurePenMediaBackend(createIdbPenMediaBackend());
+  }
+  return getPenMediaBackend();
 }
 
 function newMediaId(): string {
@@ -126,7 +58,7 @@ export async function putLocalMedia(params: {
 }): Promise<{ mediaId: string; ref: string; blobUrl: string; mime: string }> {
   const mediaId = params.mediaId || newMediaId();
   const mime = params.blob.type || 'application/octet-stream';
-  await writeRecord({
+  await ensureBackend().put({
     id: mediaId,
     docId: params.docId,
     mime,
@@ -141,8 +73,6 @@ export async function putLocalMedia(params: {
 
 /**
  * Cache media that already lives on Drive (picked or downloaded) under its file id.
- * Drive holds the bytes, so a failed device write (quota, aborted commit) still returns
- * a playable URL for this session; the next session downloads from Drive.
  */
 export async function putLocalMediaForDriveFile(params: {
   docId: string;
@@ -173,7 +103,7 @@ export async function getLocalMedia(
   mediaId: string
 ): Promise<{ docId: string; mime: string; blob: Blob; driveFileId?: string } | null> {
   try {
-    const rec = await readRecord(mediaId);
+    const rec = await ensureBackend().get(mediaId);
     if (!rec) return null;
     return { docId: rec.docId, mime: rec.mime, blob: rec.blob, driveFileId: rec.driveFileId };
   } catch {
@@ -191,10 +121,6 @@ export async function resolveLocalMediaUrl(mediaId: string): Promise<string | nu
   return url;
 }
 
-/**
- * Ref → playable URL from this device only (no network). Returns null for a
- * `penmedia:` file not cached yet; see `ensurePenMediaUrl` for the download path.
- */
 export async function resolvePenMediaSrc(src: string | null | undefined): Promise<string | null> {
   if (!src) return null;
   if (!isPenMediaSrcRef(src) || isInlineMediaSrc(src)) return src;
@@ -205,7 +131,7 @@ export async function resolvePenMediaSrc(src: string | null | undefined): Promis
   const byFile = urlCache.get(`file:${fileId}`);
   if (byFile) return byFile;
   try {
-    const rec = await readRecordByDriveFileId(fileId);
+    const rec = await ensureBackend().getByDriveFileId(fileId);
     if (!rec) return null;
     const url = cacheBlobUrl(rec.id, rec.blob);
     linkFileUrl(fileId, url);
@@ -229,14 +155,7 @@ function dropUrl(mediaId: string): void {
 export async function deleteLocalMedia(mediaId: string): Promise<void> {
   dropUrl(mediaId);
   try {
-    const db = await openDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).delete(mediaId);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error || new Error('idb_delete_failed'));
-      tx.onabort = () => reject(tx.error || new Error('idb_delete_aborted'));
-    });
+    await ensureBackend().delete(mediaId);
   } catch {
     /* ignore */
   }
@@ -244,11 +163,14 @@ export async function deleteLocalMedia(mediaId: string): Promise<void> {
 
 export async function deleteMediaForDoc(docId: string): Promise<void> {
   try {
-    const db = await openDb();
-    const tx = db.transaction(STORE, 'readonly');
-    const keys = await request(tx.objectStore(STORE).index('docId').getAllKeys(docId));
-    for (const k of keys) await deleteLocalMedia(String(k));
+    const keys = await ensureBackend().listIdsForDoc(docId);
+    for (const k of keys) await deleteLocalMedia(k);
   } catch {
     /* ignore */
   }
 }
+
+export { configurePenMediaBackend } from './backend';
+export type { PenMediaBackend } from './backend';
+export { createIdbPenMediaBackend } from './idbBackend';
+export { createMemoryPenMediaBackend } from './memoryBackend';

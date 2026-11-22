@@ -1,0 +1,8 @@
+{
+  "appId": "com.parnoir.pen",
+  "appName": "par Noir Pen",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

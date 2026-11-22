@@ -1,7 +1,7 @@
 import path from 'path';
 import { promises as fs } from 'fs';
 
-import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../shared/ipcChannels';
+import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '@par-noir/desktop-ipc';
 import type { SecureVolumeConfig, VolumeDriver } from './VolumeDriver';
 import { spawnAsync } from './VeraCryptDriver';
 

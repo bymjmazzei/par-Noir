@@ -7,7 +7,6 @@ import {
   FEED_PREVIEW_POSTER_MAX_BYTES,
   encodeFeedPreviewsForPublish,
   encodePosterFromImage,
-  getPublishTier,
   materializePublicShare,
   r2ObjectKey,
   sealPublicShareFromBytes,
@@ -19,7 +18,7 @@ import { getCloudAccessTokenFromSession, shareDeviceDriveFile } from '@par-noir/
 import { API_ENDPOINT } from '../config/api';
 import { ownerFetch } from './penOwnerFetch';
 import { penSession } from './penSession';
-import { EXCEEDS_TIER_MAX_DURATION, PEN_PUBLISH_PLAN_ID, PageTooLongError } from './penPublishPlan';
+import { EXCEEDS_TIER_MAX_DURATION, currentPublishTier, PageTooLongError } from './penPublishPlan';
 
 export type CloudRequest = (
   method: string,
@@ -124,7 +123,7 @@ export async function layerMediaPreviews(
   const encoded = await encodeFeedPreviewsForPublish(
     blob,
     blob.type || 'video/mp4',
-    getPublishTier(PEN_PUBLISH_PLAN_ID)
+    currentPublishTier()
   );
   const upload = (p: typeof encoded.poster): FeedPreviewUpload => ({
     blob: p.blob,

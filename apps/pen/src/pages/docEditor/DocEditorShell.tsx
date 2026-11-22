@@ -301,6 +301,7 @@ export function DocEditorShell(state: DocEditorReadyState) {
     previewToolbarHost,
     previewZoom,
     promote,
+    promoteDeviceToCloud,
     proposeSuggestion,
     publishAsLibraryTemplate,
     publishAsTemplate,
@@ -913,9 +914,11 @@ export function DocEditorShell(state: DocEditorReadyState) {
             lastDraftAt={lastDraftAt}
             statusMessage={status}
             errorMessage={error}
+            deviceCustody={bundle?.manifest.custody === 'device'}
             onSaveDraft={() => saveDraft()}
             onCommit={() => void promote()}
             onSuggest={() => void proposeSuggestion()}
+            onPromoteToCloud={() => void promoteDeviceToCloud()}
           />
           <DocShareHubMenu
             docId={docId}
