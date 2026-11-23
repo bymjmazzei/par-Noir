@@ -39,7 +39,7 @@
     "sql.js": "^1.16.0"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.11",
+    "@types/sql.js": "^1.16.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   }
