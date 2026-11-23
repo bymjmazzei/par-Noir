@@ -224,6 +224,24 @@ describe('tryPreferUnlockApp', () => {
     expect(r.mode).toBe('app');
     delete (window as Window & { Capacitor?: unknown }).Capacitor;
   });
+
+  it('opens via Electron penDesktop.openExternal and does not fall back to web', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    const openExternal = vi.fn(async () => undefined);
+    (window as Window & { __PN_PEN_DESKTOP__?: boolean; penDesktop?: { openExternal: typeof openExternal } }).__PN_PEN_DESKTOP__ =
+      true;
+    (window as Window & { penDesktop?: { openExternal: typeof openExternal } }).penDesktop = {
+      openExternal,
+    };
+    const p = tryPreferUnlockApp('com.parnoir.unlock://oauth/consent?x=1', { waitMs: 100 });
+    await vi.advanceTimersByTimeAsync(150);
+    const r = await p;
+    expect(openExternal).toHaveBeenCalledWith('com.parnoir.unlock://oauth/consent?x=1');
+    expect(r.opened).toBe(true);
+    expect(r.mode).toBe('app');
+    delete (window as Window & { __PN_PEN_DESKTOP__?: unknown }).__PN_PEN_DESKTOP__;
+    delete (window as Window & { penDesktop?: unknown }).penDesktop;
+  });
 });
 
 describe('callerCapAppResumeUrl', () => {

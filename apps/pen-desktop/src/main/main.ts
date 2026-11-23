@@ -185,7 +185,23 @@ function registerIpc(): void {
     confirmVaultBiometric(String(reason || ''))
   );
   ipcMain.handle('pen:open-external', async (_e, url: string) => {
-    if (typeof url === 'string' && /^https?:/i.test(url)) await shell.openExternal(url);
+    if (typeof url !== 'string' || !url) return;
+    // Prefer-app must open com.parnoir.unlock:// (and resume schemes). https alone
+    // forced a fallback to the web Unlock popup from Electron file://.
+    try {
+      const parsed = new URL(url);
+      const ok =
+        parsed.protocol === 'https:' ||
+        parsed.protocol === 'http:' ||
+        parsed.protocol === 'com.parnoir.unlock:' ||
+        parsed.protocol === 'com.parnoir.pen:' ||
+        parsed.protocol === 'com.parnoir.browser:' ||
+        parsed.protocol === 'com.parnoir.messaging:';
+      if (!ok) return;
+    } catch {
+      return;
+    }
+    await shell.openExternal(url);
   });
   ipcMain.handle('pen:get-pending-deep-link', async () => pendingDeepLink);
   ipcMain.handle('pen:secure-volume-status', async () => secureVolumeManager.getStatus());

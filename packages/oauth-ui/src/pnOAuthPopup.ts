@@ -6,7 +6,7 @@ import {
   stashMessagingHandoffOnOrigin,
 } from './messagingOAuthHandoff';
 import { resolveUnlockOrigin } from './consentUnlock/parseConsentParams';
-import { isCapacitorNative, launchUnlockBroker } from './unlockPreferApp';
+import { isCapacitorNative, isDesktopShell, launchUnlockBroker } from './unlockPreferApp';
 import { withHandoffPk } from './handoffSeal';
 import {
   brokerPollContextFromConsentUrl,
@@ -342,7 +342,10 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
   const launchOptions = { ...options, url: consentUrl };
   let preopened: Window | null = null;
   const reserveWebPopup = () => {
-    if (preopened || typeof window === 'undefined' || isCapacitorNative()) return;
+    // Cap / Electron Pen: prefer-app only — never reserve a web Unlock popup.
+    if (preopened || typeof window === 'undefined' || isCapacitorNative() || isDesktopShell()) {
+      return;
+    }
     preopened = window.open(
       'about:blank',
       popupName,

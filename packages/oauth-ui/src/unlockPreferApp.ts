@@ -37,6 +37,36 @@ export function isCapacitorNative(): boolean {
   }
 }
 
+type DesktopShellApi = { openExternal?: (url: string) => Promise<void> };
+
+/**
+ * Electron Pen (and similar) expose openExternal via preload. DOM custom-scheme
+ * clicks often never leave file:// — prefer-app then falls back to web Unlock.
+ */
+export function desktopShellApi(): DesktopShellApi | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const w = window as Window & {
+      __PN_PEN_DESKTOP__?: boolean;
+      penDesktop?: DesktopShellApi;
+    };
+    if (w.penDesktop?.openExternal) return w.penDesktop;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function isDesktopShell(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const w = window as Window & { __PN_PEN_DESKTOP__?: boolean; penDesktop?: unknown };
+    return Boolean(w.__PN_PEN_DESKTOP__ || w.penDesktop || desktopShellApi());
+  } catch {
+    return false;
+  }
+}
+
 /** True when already running inside the Unlock broker (web host / Electron flag). */
 export function isRunningInsideUnlockBroker(): boolean {
   if (typeof window === 'undefined') return false;
@@ -110,6 +140,18 @@ function triggerCustomScheme(appUrl: string): void {
   a.remove();
 }
 
+/** Electron: shell.openExternal; Cap/web: DOM custom-scheme click. */
+function openUnlockAppUrl(appUrl: string): void {
+  const shell = desktopShellApi();
+  if (shell?.openExternal) {
+    void shell.openExternal(appUrl).catch(() => {
+      triggerCustomScheme(appUrl);
+    });
+    return;
+  }
+  triggerCustomScheme(appUrl);
+}
+
 /**
  * Attempt to open the Unlock app via custom scheme.
  * The page hiding means Open. Blur then focus, still visible, means Cancel.
@@ -131,7 +173,8 @@ export async function tryPreferUnlockApp(
   }
   const waitMs = options?.waitMs ?? DEFAULT_PREFER_APP_WAIT_MS;
   const cancelGraceMs = options?.cancelGraceMs ?? CANCEL_GRACE_MS;
-  const nativePlatform = isCapacitorNative();
+  // Electron desktop: document often never hides on shell.openExternal — treat like Cap.
+  const nativePlatform = isCapacitorNative() || isDesktopShell();
   const launchCtx = brokerLaunchContextFromUrl(appUrl);
 
   return new Promise((resolve) => {
@@ -221,7 +264,7 @@ export async function tryPreferUnlockApp(
     window.addEventListener('focus', onFocus);
 
     try {
-      triggerCustomScheme(appUrl);
+      openUnlockAppUrl(appUrl);
     } catch {
       cleanup();
       resolve({ opened: false, mode: 'fallback' });
@@ -235,7 +278,7 @@ export async function tryPreferUnlockApp(
       }, 1000);
     }
 
-    // Cap iOS often shows "Open in Unlock?" without hiding the caller WebView.
+    // Cap / Electron: OS may not hide the caller; assume app after openExternal / scheme.
     if (nativePlatform || document.hidden) {
       finish();
       return;
