@@ -249,7 +249,7 @@ export type DocEditorReadyState = {
 
 export type DocEditorControllerState =
   | { phase: 'loading' }
-  | { phase: 'notFound' }
+  | { phase: 'notFound'; reason?: string; detail?: string }
   | DocEditorReadyState;
 
 /** Playhead where every intro on the page has finished: the page as its template preview shows it. */
@@ -279,6 +279,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   const [bundle, setBundle] = useState(initial);
   // Local buffer present (e.g. just created) → show editor immediately; hydrate in background.
   const [hydrating, setHydrating] = useState(!initial);
+  const [hydrateFail, setHydrateFail] = useState<{ reason?: string; detail?: string } | null>(
+    null
+  );
   const [activeSlug, setActiveSlug] = useState(initial?.manifest.toc[0] || 'body');
   const [showPreview, setShowPreview] = useState(true);
   const [previewToolbarHost, setPreviewToolbarHost] = useState<HTMLDivElement | null>(null);
@@ -1113,7 +1116,9 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       return;
     }
 
-    const applyCloud = (fromCloud: NonNullable<Awaited<ReturnType<typeof hydrateDocFromCloud>>>) => {
+    const applyCloud = (fromCloud: NonNullable<
+      Awaited<ReturnType<typeof hydrateDocFromCloud>>['bundle']
+    >) => {
       if (liveActiveRef.current) {
         setBundle((prev) =>
           prev
@@ -1136,6 +1141,7 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       setActiveSlug(fromCloud.manifest.toc[0] || 'body');
       setLastDraftAt(fromCloud.manifest.updatedAt || null);
       setDirty(false);
+      setHydrateFail(null);
     };
 
     const runHydrate = () => {
@@ -1147,12 +1153,22 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       }
       if (!hadLocal) setHydrating(true);
       void hydrateDocFromCloud({ session, docId })
-        .then((fromCloud) => {
-          if (cancelled || !fromCloud) return;
-          applyCloud(fromCloud);
+        .then((outcome) => {
+          if (cancelled) return;
+          if (outcome.bundle) {
+            applyCloud(outcome.bundle);
+            return;
+          }
+          if (outcome.failReason) {
+            setHydrateFail({ reason: outcome.failReason, detail: outcome.detail });
+          }
         })
-        .catch(() => {
-          /* offline — keep local buffer if any */
+        .catch((e) => {
+          if (cancelled || hadLocal) return;
+          setHydrateFail({
+            reason: 'unknown',
+            detail: e instanceof Error ? e.message : String(e)
+          });
         })
         .finally(() => {
           if (!cancelled) setHydrating(false);
@@ -2516,7 +2532,13 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   }
 
   if (hydrating) return { phase: 'loading' };
-  if (!bundle || !section) return { phase: 'notFound' };
+  if (!bundle || !section) {
+    return {
+      phase: 'notFound',
+      reason: hydrateFail?.reason,
+      detail: hydrateFail?.detail
+    };
+  }
   // Ready keys must be hook-level bindings; shells must not use bare identifiers.
   // Enforced by controllerReadyState.gate.test.ts
   return penControllerReady({

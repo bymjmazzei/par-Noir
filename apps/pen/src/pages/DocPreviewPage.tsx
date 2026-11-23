@@ -29,9 +29,11 @@ export function DocPreviewPage({
     let cancel = false;
     void (async () => {
       const local = loadLocalDoc(session.pnIdentifier, docId);
-      const hydrated = await hydrateDocFromCloud({ session, docId }).catch(() => local);
+      const outcome = await hydrateDocFromCloud({ session, docId }).catch(() => ({
+        bundle: local
+      }));
       if (cancel) return;
-      const doc = hydrated || local;
+      const doc = outcome.bundle || local;
       if (!doc || !loadDocKey(docId)) {
         setBundle(null);
         setBlocked(true);

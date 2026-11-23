@@ -219,7 +219,6 @@ import {
   bodyFromSections,
   openMessagingWithCorrespondence
 } from '../../services/penCorrespondenceHandoff';
-import { hydrateDocFromCloud } from '../../services/penHydrate';
 import { isDocBootstrapPending } from '../../services/penSyncQueue';
 import { ensureOwnerDocGroup } from '../../services/penCollab';
 import { loadDocKey } from '../../services/penDocCrypto';

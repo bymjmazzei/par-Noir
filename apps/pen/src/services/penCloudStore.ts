@@ -292,7 +292,10 @@ export async function fetchDocFromDrive(params: {
   let drive: Awaited<ReturnType<typeof penSessionDrive>>;
   try {
     drive = await penSessionDrive(params.userPnIdentifier);
-  } catch {
+  } catch (e) {
+    // Surface token gaps; empty tree stays a soft miss for hydrate diagnostics.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/cloud_on_device/i.test(msg)) throw e instanceof Error ? e : new Error(msg);
     return { manifest: null, chain: null, currentSections: [], drafts: [] };
   }
   return readPenCloudDoc({
