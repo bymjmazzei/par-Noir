@@ -211,6 +211,10 @@ import { hydrateDocFromCloud } from '../../services/penHydrate';
 import { isDocBootstrapPending } from '../../services/penSyncQueue';
 import { ensureOwnerDocGroup } from '../../services/penCollab';
 import { loadDocKey, saveDocKey } from '../../services/penDocCrypto';
+import {
+  hasCloudCredentialsReady,
+  PN_CLOUD_CREDENTIALS_READY_EVENT
+} from '@par-noir/oauth-ui';
 
 import { useNavigate } from 'react-router-dom';
 import type { PenSession } from '../../services/penSession';
@@ -1099,6 +1103,8 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
   // Cloud hydrate on mount. Skip GET while local-first bootstrap is still queued
   // (avoids console 404). When a local buffer exists, do not block the editor;
   // only apply cloud if the user has not started editing.
+  // Without a local buffer, wait for Drive credentials — otherwise hydrate
+  // returns null and the editor flashes "Document not found".
   useEffect(() => {
     let cancelled = false;
     const pn = session.pnIdentifier;
@@ -1106,44 +1112,59 @@ export function useDocEditorController(session: PenSession, docId: string): DocE
       setHydrating(false);
       return;
     }
-    const hadLocal = Boolean(loadLocalDoc(pn, docId));
-    if (!hadLocal) setHydrating(true);
-    void hydrateDocFromCloud({ session, docId })
-      .then((fromCloud) => {
-        if (cancelled) return;
-        if (!fromCloud) return;
-        if (liveActiveRef.current) {
-          // Live state owns sections/title/toc; take only the rest of the replica.
-          setBundle((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  chain: fromCloud.chain,
-                  manifest: {
-                    ...fromCloud.manifest,
-                    title: prev.manifest.title,
-                    toc: prev.manifest.toc,
-                    roles: prev.manifest.roles || fromCloud.manifest.roles
-                  }
+
+    const applyCloud = (fromCloud: NonNullable<Awaited<ReturnType<typeof hydrateDocFromCloud>>>) => {
+      if (liveActiveRef.current) {
+        setBundle((prev) =>
+          prev
+            ? {
+                ...prev,
+                chain: fromCloud.chain,
+                manifest: {
+                  ...fromCloud.manifest,
+                  title: prev.manifest.title,
+                  toc: prev.manifest.toc,
+                  roles: prev.manifest.roles || fromCloud.manifest.roles
                 }
-              : prev
-          );
-          return;
-        }
-        if (dirtyRef.current) return;
-        setBundle(fromCloud);
-        setActiveSlug(fromCloud.manifest.toc[0] || 'body');
-        setLastDraftAt(fromCloud.manifest.updatedAt || null);
-        setDirty(false);
-      })
-      .catch(() => {
-        /* offline — keep local buffer if any */
-      })
-      .finally(() => {
-        if (!cancelled) setHydrating(false);
-      });
+              }
+            : prev
+        );
+        return;
+      }
+      if (dirtyRef.current) return;
+      setBundle(fromCloud);
+      setActiveSlug(fromCloud.manifest.toc[0] || 'body');
+      setLastDraftAt(fromCloud.manifest.updatedAt || null);
+      setDirty(false);
+    };
+
+    const runHydrate = () => {
+      if (cancelled) return;
+      const hadLocal = Boolean(loadLocalDoc(pn, docId));
+      if (!hadLocal && !hasCloudCredentialsReady(pn)) {
+        setHydrating(true);
+        return;
+      }
+      if (!hadLocal) setHydrating(true);
+      void hydrateDocFromCloud({ session, docId })
+        .then((fromCloud) => {
+          if (cancelled || !fromCloud) return;
+          applyCloud(fromCloud);
+        })
+        .catch(() => {
+          /* offline — keep local buffer if any */
+        })
+        .finally(() => {
+          if (!cancelled) setHydrating(false);
+        });
+    };
+
+    runHydrate();
+    const onCloudReady = () => runHydrate();
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudReady);
     return () => {
       cancelled = true;
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudReady);
     };
   }, [docId, session]);
 

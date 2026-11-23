@@ -4,9 +4,12 @@
  */
 
 import type { Ref } from 'react';
+/** Bundled like Unlock — public/ relative URLs break under Electron file:// deep routes. */
+import footerBgUrl from '../../public/branding/Par-Noir-Pen.png';
+import footerLogoUrl from '../../public/branding/Par-Noir-Logo-White.png';
 
-const FOOTER_BG_SRC = './branding/Par-Noir-Pen.png';
-const FOOTER_LOGO_SRC = './branding/Par-Noir-Logo-White.png';
+const FOOTER_BG_SRC = footerBgUrl;
+const FOOTER_LOGO_SRC = footerLogoUrl;
 
 export function PenBrandingFooter({
   footerRef,

@@ -391,12 +391,18 @@ function handleDeepLink(url: string): void {
       const u = new URL(url.replace(`${PROTOCOL}://`, 'https://pen.local/'));
       const code = u.searchParams.get('code');
       if (code) {
-        const resume = `/?oauth_resume=1&code=${encodeURIComponent(code)}`;
-        void mainWindow.loadURL(
-          process.env.VITE_DEV_SERVER_URL
-            ? `${process.env.VITE_DEV_SERVER_URL.replace(/\/$/, '')}${resume}`
-            : `file://${penWebIndexHtml()}${resume}`
-        );
+        // Query must stay on the document URL (not the hash) so App can read
+        // location.search under HashRouter.
+        if (process.env.VITE_DEV_SERVER_URL) {
+          const base = process.env.VITE_DEV_SERVER_URL.replace(/\/$/, '');
+          void mainWindow.loadURL(
+            `${base}/?oauth_resume=1&code=${encodeURIComponent(code)}`
+          );
+        } else {
+          void mainWindow.loadFile(penWebIndexHtml(), {
+            query: { oauth_resume: '1', code }
+          });
+        }
       }
     } catch {
       /* ignore */

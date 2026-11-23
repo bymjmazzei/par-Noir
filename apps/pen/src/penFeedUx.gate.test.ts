@@ -126,6 +126,7 @@ describe('pen feed UX chrome', () => {
     const locked = readFileSync(resolve(root, 'components/PenLockedLanding.tsx'), 'utf8');
     const notebook = readFileSync(resolve(root, 'components/PenNotebookPage.tsx'), 'utf8');
     expect(footer).toMatch(/Par-Noir-Pen\.png/);
+    expect(footer).toMatch(/Par-Noir-Logo-White\.png/);
     expect(footer).toMatch(/pen-library-footer-logo/);
     expect(locked).toMatch(/PenBrandingFooter/);
     expect(notebook).toMatch(/PenBrandingFooter/);
