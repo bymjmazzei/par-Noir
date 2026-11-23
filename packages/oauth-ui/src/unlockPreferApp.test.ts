@@ -249,6 +249,20 @@ describe('callerCapAppResumeUrl', () => {
     ).toBe('com.parnoir.browser://oauth/resume');
   });
 
+  it('maps pen-app and pen custom-scheme / host', () => {
+    expect(callerCapAppResumeUrl({ clientId: 'pen-app' })).toBe('com.parnoir.pen://oauth/resume');
+    expect(
+      callerCapAppResumeUrl({
+        redirectUri: 'com.parnoir.pen://oauth-callback',
+      })
+    ).toBe('com.parnoir.pen://oauth/resume');
+    expect(
+      callerCapAppResumeUrl({
+        redirectUri: 'https://pen.parnoir.com/oauth-callback.html',
+      })
+    ).toBe('com.parnoir.pen://oauth/resume');
+  });
+
   it('returns null when unknown', () => {
     expect(callerCapAppResumeUrl({ clientId: 'third-party' })).toBeNull();
     expect(callerCapAppResumeUrl({})).toBeNull();

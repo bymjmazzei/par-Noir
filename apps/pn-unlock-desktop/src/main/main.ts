@@ -138,6 +138,14 @@ function writeVaultDisk(data: VaultDisk): void {
 function isAllowedExternalUrl(target: string): boolean {
   try {
     const parsed = new URL(target);
+    // Prefer-app callers resume via first-party custom schemes after broker-complete.
+    if (
+      parsed.protocol === 'com.parnoir.pen:' ||
+      parsed.protocol === 'com.parnoir.browser:' ||
+      parsed.protocol === 'com.parnoir.messaging:'
+    ) {
+      return true;
+    }
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
     // Allow localhost for local QA + parnoir.com production callbacks
     if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') return true;

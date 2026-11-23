@@ -7,15 +7,20 @@ import {
   readPreferAppBrokerWait,
   clearPreferAppBrokerWait,
   stashPreferAppBrokerWaitFromConsentUrl,
+  beginPreferAppBrokerPollLive,
+  endPreferAppBrokerPollLive,
+  isPreferAppBrokerPollLive,
   PN_PREFER_APP_BROKER_WAIT_KEY,
 } from './preferAppBrokerWait';
 
 describe('preferAppBrokerWait', () => {
   beforeEach(() => {
     clearPreferAppBrokerWait();
+    while (isPreferAppBrokerPollLive()) endPreferAppBrokerPollLive();
   });
   afterEach(() => {
     clearPreferAppBrokerWait();
+    while (isPreferAppBrokerPollLive()) endPreferAppBrokerPollLive();
   });
 
   it('stashes and reads wait', () => {
@@ -51,5 +56,16 @@ describe('preferAppBrokerWait', () => {
       })
     );
     expect(readPreferAppBrokerWait()).toBeNull();
+  });
+
+  it('tracks live prefer-app broker polls', () => {
+    expect(isPreferAppBrokerPollLive()).toBe(false);
+    beginPreferAppBrokerPollLive();
+    beginPreferAppBrokerPollLive();
+    expect(isPreferAppBrokerPollLive()).toBe(true);
+    endPreferAppBrokerPollLive();
+    expect(isPreferAppBrokerPollLive()).toBe(true);
+    endPreferAppBrokerPollLive();
+    expect(isPreferAppBrokerPollLive()).toBe(false);
   });
 });

@@ -13,7 +13,9 @@ import {
   pollUnlockDesktopBrokerOnce,
 } from './unlockDesktopBrokerPoll';
 import {
+  beginPreferAppBrokerPollLive,
   clearPreferAppBrokerWait,
+  endPreferAppBrokerPollLive,
   PN_PREFER_APP_RESUME_WAKE_EVENT,
   stashPreferAppBrokerWaitFromConsentUrl,
 } from './preferAppBrokerWait';
@@ -504,6 +506,7 @@ function startPnOAuthPopupAfterLaunch(
       oauthBc = undefined;
     };
 
+    let markedPreferAppLive = false;
     const disposeAwait = () => {
       closeOauthBc();
       if (pollInterval !== undefined) clearInterval(pollInterval);
@@ -519,6 +522,10 @@ function startPnOAuthPopupAfterLaunch(
       if (onBrokerVisible) {
         window.removeEventListener('focus', onBrokerVisible);
         window.removeEventListener(PN_PREFER_APP_RESUME_WAKE_EVENT, onBrokerVisible);
+      }
+      if (markedPreferAppLive) {
+        markedPreferAppLive = false;
+        endPreferAppBrokerPollLive();
       }
       try {
         localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
@@ -789,6 +796,8 @@ function startPnOAuthPopupAfterLaunch(
         document.addEventListener('visibilitychange', onBrokerVisibilityChange);
         window.addEventListener('focus', onBrokerVisible);
         window.addEventListener(PN_PREFER_APP_RESUME_WAKE_EVENT, onBrokerVisible);
+        beginPreferAppBrokerPollLive();
+        markedPreferAppLive = true;
       }
     }
 

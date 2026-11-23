@@ -52,6 +52,7 @@ import {
 } from './services/penFontsCloud';
 import { penForceOAuthRedirect } from './services/penPlatform';
 import { penOAuthRedirectUri } from './services/penOAuthRedirect';
+import { installPreferAppBrokerResume } from './services/preferAppBrokerResume';
 import { PenSessionVaultHost } from './components/PenSessionVaultHost';
 
 export type { PenSession };
@@ -238,6 +239,21 @@ function Locked() {
       state: params.get('state') || undefined,
       granted_data_points: params.get('granted_data_points') || undefined,
       consent_shown: params.get('consent_shown') || undefined
+    });
+  }, [onPopup]);
+
+  // Prefer-app: Unlock opens com.parnoir.pen://oauth/resume after broker-complete.
+  useEffect(() => {
+    return installPreferAppBrokerResume(async (payload) => {
+      await onPopup({
+        code: payload.code,
+        state: payload.state,
+        error: payload.error,
+        error_description: payload.error_description,
+        granted_data_points: payload.granted_data_points,
+        consent_shown: payload.consent_shown === '1' ? '1' : undefined,
+        messagingHandoff: payload.messagingHandoff,
+      });
     });
   }, [onPopup]);
 

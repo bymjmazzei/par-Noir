@@ -43,6 +43,9 @@ export const MESSAGING_CUSTOM_SCHEME = 'com.parnoir.messaging';
 /** Cap Browse — return target after prefer-app broker-complete. */
 export const BROWSE_CUSTOM_SCHEME = 'com.parnoir.browser';
 
+/** Cap / Electron Pen — return target after prefer-app broker-complete. */
+export const PEN_CUSTOM_SCHEME = 'com.parnoir.pen';
+
 /**
  * Prefer-app Unlock → browse handoff via API (works in all browsers).
  * Unlock POSTs complete; browse GETs pending by OAuth state.
@@ -53,9 +56,9 @@ export const OAUTH_BROKER_PENDING_PATH = '/oauth/authorize/broker-pending';
 export const OAUTH_BROKER_LAUNCHED_PATH = '/oauth/authorize/broker-launched';
 
 /**
- * Cap custom-scheme resume URL for the OAuth caller after Unlock broker-complete.
+ * Cap/desktop custom-scheme resume URL for the OAuth caller after Unlock broker-complete.
  * Prefer-app opens Unlock as a separate process; Cap Browser.close is a no-op then —
- * Unlock must App.openUrl this so the caller can resume broker-pending polling.
+ * Unlock must App.openUrl / shell.openExternal this so the caller can resume broker-pending polling.
  */
 export function callerCapAppResumeUrl(args: {
   clientId?: string | null;
@@ -68,15 +71,25 @@ export function callerCapAppResumeUrl(args: {
   if (clientId === 'browser-app') {
     return `${BROWSE_CUSTOM_SCHEME}://oauth/resume`;
   }
+  if (clientId === 'pen-app') {
+    return `${PEN_CUSTOM_SCHEME}://oauth/resume`;
+  }
   const redirectUri = (args.redirectUri || '').trim();
   if (!redirectUri) return null;
   try {
-    const host = new URL(redirectUri).hostname.toLowerCase();
+    const u = new URL(redirectUri);
+    if (u.protocol === `${PEN_CUSTOM_SCHEME}:`) {
+      return `${PEN_CUSTOM_SCHEME}://oauth/resume`;
+    }
+    const host = u.hostname.toLowerCase();
     if (host === 'messaging.parnoir.com' || host.startsWith('messaging.')) {
       return `${MESSAGING_CUSTOM_SCHEME}://oauth/resume`;
     }
     if (host === 'browse.parnoir.com' || host.startsWith('browse.')) {
       return `${BROWSE_CUSTOM_SCHEME}://oauth/resume`;
+    }
+    if (host === 'pen.parnoir.com' || host.startsWith('pen.')) {
+      return `${PEN_CUSTOM_SCHEME}://oauth/resume`;
     }
   } catch {
     /* ignore */

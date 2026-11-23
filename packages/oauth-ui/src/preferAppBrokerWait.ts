@@ -32,6 +32,21 @@ export function wakePreferAppBrokerPoll(): void {
   }
 }
 
+/** Live startPnOAuthPopup prefer-app polls — cold-start resume must not race them. */
+let livePreferAppBrokerPolls = 0;
+
+export function beginPreferAppBrokerPollLive(): void {
+  livePreferAppBrokerPolls += 1;
+}
+
+export function endPreferAppBrokerPollLive(): void {
+  livePreferAppBrokerPolls = Math.max(0, livePreferAppBrokerPolls - 1);
+}
+
+export function isPreferAppBrokerPollLive(): boolean {
+  return livePreferAppBrokerPolls > 0;
+}
+
 export type PreferAppBrokerWait = {
   v: 1;
   state: string;

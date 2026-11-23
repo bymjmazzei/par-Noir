@@ -5,6 +5,7 @@ import {
   shell,
   safeStorage,
   dialog,
+  session,
   systemPreferences
 } from 'electron';
 import path from 'path';
@@ -27,11 +28,40 @@ import {
 } from '@par-noir/desktop-secure-volume';
 
 const PROTOCOL = 'com.parnoir.pen';
+/** file:// Electron has no CORS Origin — stamp the hosted Pen origin for API calls. */
+const PEN_API_ORIGIN = 'https://pen.parnoir.com';
 const isDev = !app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
 
 const portableDataRoot = resolvePnDesktopDataRoot();
 app.setPath('userData', portableDataRoot);
 console.log('[pen-desktop] data root', portableDataRoot);
+
+function registerApiOriginBridge(): void {
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    {
+      urls: [
+        'https://api.parnoir.com/*',
+        'http://127.0.0.1:*/oauth/*',
+        'http://localhost:*/oauth/*'
+      ]
+    },
+    (details, callback) => {
+      const headers = { ...details.requestHeaders };
+      const existing = String(headers.Origin || headers.origin || '');
+      const needsStamp =
+        !existing ||
+        existing === 'null' ||
+        existing.startsWith('file:') ||
+        existing.startsWith('http://127.0.0.1') ||
+        existing.startsWith('http://localhost');
+      if (needsStamp) {
+        headers.Origin = PEN_API_ORIGIN;
+        delete headers.origin;
+      }
+      callback({ requestHeaders: headers });
+    }
+  );
+}
 
 let mainWindow: BrowserWindow | null = null;
 let pendingDeepLink: string | null = null;
@@ -323,25 +353,37 @@ function registerIpc(): void {
   });
 }
 
+function focusMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 function handleDeepLink(url: string): void {
   pendingDeepLink = url;
-  if (mainWindow) {
-    mainWindow.webContents.send('pen:deep-link', url);
-    if (url.includes('oauth-callback') || url.includes('code=')) {
-      try {
-        const u = new URL(url.replace(`${PROTOCOL}://`, 'https://pen.local/'));
-        const code = u.searchParams.get('code');
-        if (code) {
-          const resume = `/?oauth_resume=1&code=${encodeURIComponent(code)}`;
-          void mainWindow.loadURL(
-            process.env.VITE_DEV_SERVER_URL
-              ? `${process.env.VITE_DEV_SERVER_URL.replace(/\/$/, '')}${resume}`
-              : `file://${penWebIndexHtml()}${resume}`
-          );
-        }
-      } catch {
-        /* ignore */
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  focusMainWindow();
+  mainWindow.webContents.send('pen:deep-link', url);
+  // Prefer-app wake: Unlock opens com.parnoir.pen://oauth/resume after broker-complete.
+  // Renderer flushes broker-pending poll — do not navigate away from the waiting document.
+  if (url.includes('oauth/resume')) {
+    return;
+  }
+  if (url.includes('oauth-callback') || url.includes('code=')) {
+    try {
+      const u = new URL(url.replace(`${PROTOCOL}://`, 'https://pen.local/'));
+      const code = u.searchParams.get('code');
+      if (code) {
+        const resume = `/?oauth_resume=1&code=${encodeURIComponent(code)}`;
+        void mainWindow.loadURL(
+          process.env.VITE_DEV_SERVER_URL
+            ? `${process.env.VITE_DEV_SERVER_URL.replace(/\/$/, '')}${resume}`
+            : `file://${penWebIndexHtml()}${resume}`
+        );
       }
+    } catch {
+      /* ignore */
     }
   }
 }
@@ -419,6 +461,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    registerApiOriginBridge();
     registerIpc();
     // Show UI first; secure volume can init in the background.
     void secureVolumeManager

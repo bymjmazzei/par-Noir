@@ -6,6 +6,7 @@ import {
   searchFromUnlockUrl,
   postOAuthBrokerComplete,
   postBrokerLaunched,
+  callerCapAppResumeUrl,
   AGENT_VAULT_REQUIRED_MESSAGE,
   type AgentVaultEntry,
 } from '@par-noir/oauth-ui';
@@ -125,9 +126,38 @@ export default function App(): React.ReactElement {
   const onBrokerHandoffComplete = useCallback(() => {
     const api = desktopApi();
     if (!api) return;
+    let resume: string | null = null;
+    try {
+      const q = search.startsWith('?') ? search.slice(1) : search;
+      const params = new URLSearchParams(q);
+      resume = callerCapAppResumeUrl({
+        clientId: params.get('client_id'),
+        redirectUri: params.get('redirect_uri'),
+      });
+    } catch {
+      /* ignore */
+    }
     window.setTimeout(() => {
-      void api.yieldToBrowser();
-    }, 350);
+      void (async () => {
+        if (resume) {
+          try {
+            await api.openExternal(resume);
+          } catch {
+            /* Pen may not be registered yet — still yield */
+          }
+        }
+        await api.yieldToBrowser();
+      })();
+    }, 200);
+  }, [search]);
+
+  const openExternal = useCallback(async (url: string) => {
+    const api = desktopApi();
+    if (api) {
+      await api.openExternal(url);
+      return;
+    }
+    window.location.href = url;
   }, []);
 
   const saveAgentIdentity = useCallback(
@@ -156,6 +186,7 @@ export default function App(): React.ReactElement {
         search={search}
         apiEndpointDefault={API_DEFAULT.replace(/\/$/, '')}
         deliverLocalBroker={deliverLocalBroker}
+        openExternal={openExternal}
         openShellReturn={openShellReturn}
         onBrokerHandoffComplete={onBrokerHandoffComplete}
         logoUrl={logoUrl}

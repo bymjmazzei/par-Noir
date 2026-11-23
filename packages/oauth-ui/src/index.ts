@@ -222,6 +222,7 @@ export {
   UNLOCK_CUSTOM_SCHEME,
   MESSAGING_CUSTOM_SCHEME,
   BROWSE_CUSTOM_SCHEME,
+  PEN_CUSTOM_SCHEME,
   OAUTH_BROKER_COMPLETE_PATH,
   OAUTH_BROKER_PENDING_PATH,
   OAUTH_BROKER_LAUNCHED_PATH,
@@ -270,6 +271,9 @@ export {
   stashPreferAppBrokerWaitFromConsentUrl,
   pollStashedPreferAppBrokerOnce,
   wakePreferAppBrokerPoll,
+  beginPreferAppBrokerPollLive,
+  endPreferAppBrokerPollLive,
+  isPreferAppBrokerPollLive,
 } from './preferAppBrokerWait';
 export type { PreferAppBrokerWait } from './preferAppBrokerWait';
 export {
