@@ -15,7 +15,8 @@ export function isCapacitorNative(): boolean {
 
 export function isPenDesktop(): boolean {
   if (typeof window === 'undefined') return false;
-  return Boolean((window as Window & { penDesktop?: unknown }).penDesktop);
+  const w = window as Window & { penDesktop?: unknown; __PN_PEN_DESKTOP__?: boolean };
+  return Boolean(w.penDesktop || w.__PN_PEN_DESKTOP__);
 }
 
 /** Full-page OAuth (no popup) on Cap or Electron. */

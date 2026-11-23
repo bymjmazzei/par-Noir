@@ -7,6 +7,7 @@ import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 import { handoffHasSigningKeys } from '../services/penKeys';
 import { penForceOAuthRedirect } from '../services/penPlatform';
+import { penOAuthRedirectUri } from '../services/penOAuthRedirect';
 import { PenBrandingFooter } from './PenBrandingFooter';
 
 const CHECKLIST = [
@@ -144,7 +145,7 @@ export function PenLockedLanding({
 
   const unlockConfig = {
     clientId: PN_CLIENT_ID,
-    redirectUri: `${window.location.origin}/oauth-callback.html`,
+    redirectUri: penOAuthRedirectUri(),
     apiEndpoint: API_ENDPOINT,
     scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
   };

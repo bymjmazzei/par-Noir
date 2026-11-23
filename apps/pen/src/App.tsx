@@ -51,6 +51,7 @@ import {
   unbindFontsCloudSession
 } from './services/penFontsCloud';
 import { penForceOAuthRedirect } from './services/penPlatform';
+import { penOAuthRedirectUri } from './services/penOAuthRedirect';
 import { PenSessionVaultHost } from './components/PenSessionVaultHost';
 
 export type { PenSession };
@@ -149,7 +150,7 @@ function Locked() {
 
       setBusy(true);
       try {
-        const redirectUri = `${window.location.origin}/oauth-callback.html`;
+        const redirectUri = penOAuthRedirectUri();
         const tokens = await exchangePortalAuthorizationCode({
           apiEndpoint: API_ENDPOINT,
           clientId: PN_CLIENT_ID,
@@ -296,7 +297,7 @@ function Locked() {
             requireMessagingHandoff
             config={{
               clientId: PN_CLIENT_ID,
-              redirectUri: `${window.location.origin}/oauth-callback.html`,
+              redirectUri: penOAuthRedirectUri(),
               apiEndpoint: API_ENDPOINT,
               scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
             }}
