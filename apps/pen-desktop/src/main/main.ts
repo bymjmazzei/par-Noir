@@ -351,6 +351,7 @@ const createWindow = async () => {
     width: 1280,
     height: 900,
     backgroundColor: '#ffffff',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       nodeIntegration: false,
@@ -359,10 +360,24 @@ const createWindow = async () => {
     }
   });
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else {
-    await mainWindow.loadFile(penWebIndexHtml());
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    mainWindow?.focus();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error('[pen-desktop] did-fail-load', { code, desc, url });
+  });
+
+  try {
+    if (process.env.VITE_DEV_SERVER_URL) {
+      await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    } else {
+      await mainWindow.loadFile(penWebIndexHtml());
+    }
+  } catch (err) {
+    console.error('[pen-desktop] load failed', err);
+    mainWindow.show();
   }
 
   mainWindow.on('closed', () => {
@@ -391,8 +406,22 @@ if (!gotLock) {
     }
   });
 
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void createWindow();
+      return;
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
   app.whenReady().then(async () => {
-    await secureVolumeManager
+    registerIpc();
+    // Show UI first; secure volume can init in the background.
+    void secureVolumeManager
       .init({
         userDataPath: portableDataRoot,
         appPath: electronAppDirectory(app)
@@ -400,13 +429,9 @@ if (!gotLock) {
       .catch((err) => {
         console.warn('[pen-desktop] secure volume init failed', err?.message || err);
       });
-    registerIpc();
     await createWindow();
     const bootUrl = process.argv.find((a) => a.startsWith(`${PROTOCOL}://`));
     if (bootUrl) handleDeepLink(bootUrl);
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) void createWindow();
-    });
   });
 }
 

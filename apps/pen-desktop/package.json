@@ -7,8 +7,8 @@
   "main": "dist-electron/main/main.js",
   "scripts": {
     "build:pen": "npm run build --prefix ../pen",
-    "build:main": "tsc -p tsconfig.main.json",
-    "build:preload": "tsc -p tsconfig.preload.json",
+    "build:main": "esbuild src/main/main.ts --bundle --platform=node --format=cjs --outfile=dist-electron/main/main.js --external:electron --external:keytar",
+    "build:preload": "esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --outfile=dist-electron/preload/preload.js --external:electron",
     "build": "npm run build:pen && npm run build:main && npm run build:preload",
     "dist:mac": "npm run build && electron-builder --mac --dir",
     "dist:win": "npm run build && electron-builder --win --dir",
@@ -16,12 +16,14 @@
   },
   "dependencies": {
     "@par-noir/desktop-ipc": "file:../../packages/desktop-ipc",
-    "@par-noir/desktop-secure-volume": "file:../../packages/desktop-secure-volume"
+    "@par-noir/desktop-secure-volume": "file:../../packages/desktop-secure-volume",
+    "keytar": "^7.9.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",
     "electron": "29.3.0",
     "electron-builder": "^24.13.1",
+    "esbuild": "^0.25.9",
     "typescript": "^5.4.5"
   },
   "build": {
