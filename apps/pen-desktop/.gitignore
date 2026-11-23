@@ -1,0 +1,5 @@
+7za
+.bin/
+dist/
+dist-electron/
+*.log

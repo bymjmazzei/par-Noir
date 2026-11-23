@@ -27,6 +27,7 @@
   "build": {
     "appId": "com.parnoir.pen",
     "productName": "par Noir Pen",
+    "npmRebuild": false,
     "directories": {
       "buildResources": "build"
     },
